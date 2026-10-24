@@ -1,12 +1,13 @@
 # Project Template
 
-Private [Copier](https://copier.readthedocs.io/) template for new repositories set up for plan-then-execute AI coding: Claude Opus plans each change into `PLAN.md`, a cheaper model executes it one verified step at a time, and any step that needs a decision goes back to Opus. The base works for any language; a .NET layer adds shared build settings and C# conventions. Projects live on GitHub by default, or on GitLab. Every project made from it can pull later template improvements with `Update-Project.ps1`.
+Private [Copier](https://copier.readthedocs.io/) template for new repositories set up for plan-then-execute AI coding: Claude Opus plans each change into `PLAN.md`, a cheaper model executes it one verified step at a time, and any step that needs a decision goes back to Opus. Every project works with Claude Code and with GitHub Copilot, and you can switch between them at any time ([Claude Code or GitHub Copilot](#claude-code-or-github-copilot)). The base works for any language; a .NET layer adds shared build settings and C# conventions. Projects live on GitHub by default, or on GitLab. Every project made from it can pull later template improvements with `Update-Project.ps1`.
 
 **Related:** [Configuration G](https://github.com/polewskm/personal-notes/blob/main/ham-radio/shack/shack-pc/local-ai/configuration-g.md) — the accounts, the shack PC, the VS Code tunnel and the daily loop this template is built for. [Plan-and-execute](https://github.com/polewskm/personal-notes/blob/main/ham-radio/shack/shack-pc/local-ai/plan-and-execute.md) — how the workflow works and how to choose between its variants. This repository is the single source of truth for the workflow's templates and scripts ([workflow/](workflow/)); personal-notes and every project consume them.
 
 ## Table of Contents
 
 - [What a Project Gets](#what-a-project-gets)
+- [Claude Code or GitHub Copilot](#claude-code-or-github-copilot)
 - [Extend or Override the Template](#extend-or-override-the-template)
 - [Questions](#questions)
 - [Create a Project](#create-a-project)
@@ -36,8 +37,9 @@ Replaced on every update. A project never edits them; an edit is discarded by th
 |---|---|
 | `.github/instructions/project-template.instructions.md` | The plan-then-execute rules and base conventions, for every agent: Copilot loads it on its own; Claude Code imports it through the first entry in `AGENTS.md` |
 | `CLAUDE.md` | Imports `AGENTS.md` for Claude Code and adds Claude-specific notes |
-| `.claude/commands/` (16), `.claude/agents/plan-executor.md` | `/plan-feature`, `/plan-bugfix`, `/orchestrate-plan`, `/replan-step`, `/review-plan-diff`, … and the Sonnet subagent that executes steps — generated |
-| `.github/agents/` (4), `.github/prompts/` (16) | VS Code chat agents — the Local Implementer runs steps on the shack PC's model — and prompt files — generated |
+| `.claude/commands/` (16), `.claude/agents/plan-executor.md` | Claude Code: `/plan-feature`, `/plan-bugfix`, `/orchestrate-plan`, `/replan-step`, `/review-plan-diff`, … and the Sonnet subagent that executes steps — generated |
+| `.github/agents/` (8 + 1), `.github/prompts/` (17) | Copilot Chat in VS Code: the Copilot agents (planner, implementer on Auto, reviewer, orchestrator), the Hybrid agents (the same, with the Local Implementer on the shack PC's model), and the same commands as prompt files — generated |
+| `.github/skills/` (16), `.github/agents/plan-executor.agent.md` | Copilot CLI: the same commands as skills, and the agent `/orchestrate-plan` delegates to — generated |
 | `build/ProjectTemplate.props` (.NET) | Latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata; `*.Tests` projects aren't packable and skip XML docs |
 | `.github/instructions/csharp.instructions.md` (.NET) | C# conventions — test layout and naming, regions, xUnit and Moq, collection expressions, `const`, UTF-8 literals — applied by Copilot to `*.cs` |
 | `.claude/rules/csharp.md` (.NET) | Points Claude Code at the same conventions whenever it touches a `*.cs` file |
@@ -69,6 +71,26 @@ Written once, when the project is created, and never touched by an update, even 
 | `AGENTS.md` | The index every agent reads: the template's rules first, then the project's own instruction files, build and test commands, and conventions |
 | `README.md` | Build and test commands, and the workflow at a glance |
 | `Directory.Build.props` (.NET) | Imports `build/ProjectTemplate.props`, then holds the project's own build settings, which override the template's |
+
+## Claude Code or GitHub Copilot
+
+Every project carries the same workflow for both, so you can work on it with your Claude plan or your Copilot plan, and switch whenever you like: open the other panel in VS Code, or run `claude` or `copilot` in a terminal. Nothing in the project needs to change. `PLAN.md` is the only state the tools share, so one can plan and another execute, re-plan or review.
+
+| Phase | Claude Code | Copilot Chat in VS Code | Copilot CLI |
+|---|---|---|---|
+| Plan | `/plan-feature <what to build>` | The Copilot Planner agent on Opus, or `/plan-feature` | `copilot --model claude-opus-5.5`, then `/plan-feature` |
+| Execute | `/orchestrate-plan` | Run all steps with subagents, or Execute next step | `/orchestrate-plan` |
+| Re-plan one step | `/replan-step N` | Re-plan with the planner | `/replan-step N` |
+| Review | `/review-plan-diff` | Review the work | `/review-plan-diff` |
+
+| | Claude Code | GitHub Copilot |
+|---|---|---|
+| Subscription | A Claude plan; it works only in Anthropic's own tools | The Copilot plan of the GitHub account Copilot is signed in with |
+| Sign in | `claude auth login`, once per PC; no `ANTHROPIC_API_KEY` set, or Claude Code bills the API instead | VS Code's Accounts menu, and `copilot login` for Copilot CLI |
+| Reads | `CLAUDE.md` → `AGENTS.md` and each `@` file it lists | `AGENTS.md`, and every `.github/instructions/*.instructions.md` |
+| Executes on | Sonnet, in the `plan-executor` subagent | Auto with the Copilot agents; the shack PC's local model with the Hybrid agents |
+
+Each request bills the subscription of the tool that makes it, so a Copilot plan provided by an employer pays for whatever you run in Copilot. The agents name models such as `Claude Opus 5.5 (copilot)`; when an organization's Copilot policy turns a model off, VS Code runs the agent on the model selected in the picker instead. VS Code lists each command twice — once as a prompt file, once as a Copilot CLI skill — and either runs it.
 
 ## Extend or Override the Template
 
@@ -294,4 +316,4 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 
 ---
 
-**TL;DR:** `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote` creates a project with `AGENTS.md`, `CLAUDE.md`, Claude Code permissions, the plan-then-execute commands and agents, CI, Dependabot, and optional .NET settings, then creates its repository on GitHub, public, and pushes. Add `-Visibility private` for a private repository; answer GitLab to the host question (or pass `-Data @{ git_host = 'gitlab' }`) for GitLab. Every file has one of three owners: template-owned files are replaced on every update and never edited; merged files — settings whose tools can't include a second file — take the template's changes merged with the project's edits; and project-owned files, including the `AGENTS.md` index, are never touched. `.\.template\Update-Project.ps1`, run in a project, updates itself to the newest version first, then does all three and commits, or stops on a same-line conflict in a merged file. Dependabot keeps each GitHub project's actions, packages and SDK current through weekly pull requests. Change the workflow in `workflow/templates`, run `Update-Template.ps1` and `Test-Template.ps1`, then tag and push; this repository is its single source of truth.
+**TL;DR:** `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote` creates a project with `AGENTS.md`, `CLAUDE.md`, Claude Code permissions, the plan-then-execute commands and agents for Claude Code, Copilot Chat and Copilot CLI — switch between your Claude and Copilot plans at any time — CI, Dependabot, and optional .NET settings, then creates its repository on GitHub, public, and pushes. Add `-Visibility private` for a private repository; answer GitLab to the host question (or pass `-Data @{ git_host = 'gitlab' }`) for GitLab. Every file has one of three owners: template-owned files are replaced on every update and never edited; merged files — settings whose tools can't include a second file — take the template's changes merged with the project's edits; and project-owned files, including the `AGENTS.md` index, are never touched. `.\.template\Update-Project.ps1`, run in a project, updates itself to the newest version first, then does all three and commits, or stops on a same-line conflict in a merged file. Dependabot keeps each GitHub project's actions, packages and SDK current through weekly pull requests. Change the workflow in `workflow/templates`, run `Update-Template.ps1` and `Test-Template.ps1`, then tag and push; this repository is its single source of truth.

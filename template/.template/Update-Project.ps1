@@ -108,7 +108,7 @@ try {
     if ($ownClone) {
         $TemplateClone = Join-Path ([IO.Path]::GetTempPath()) "project-template-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
         git clone --quiet --no-checkout --filter=blob:none -- $src $TemplateClone 2>$null
-        if ($LASTEXITCODE) { throw "Cloning the template from $src failed. Check that Git can read it (gh auth setup-git)." }
+        if ($LASTEXITCODE) { throw "Can't read the project template at $src. Updating needs read access to it; for its owner, Git's credentials (gh auth setup-git). Without access the project still works as it is: only template updates are unavailable." }
     }
     $to = if ($Ref) { $Ref } else { Get-NewestTag $TemplateClone }
     if (-not $to) { throw "The template at $src has no version tags." }

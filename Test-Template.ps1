@@ -56,7 +56,8 @@ finally { Pop-Location }
 $common = 'AGENTS.md', 'CLAUDE.md', 'README.md', '.copier-answers.yml', '.gitignore', '.gitattributes', '.editorconfig',
     '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
     '.claude\commands\orchestrate-plan.md', '.claude\commands\replan-step.md', '.claude\commands\review-plan-diff.md',
-    '.github\agents\local-implementer.agent.md', '.github\prompts\plan-feature.prompt.md',
+    '.github\agents\local-implementer.agent.md', '.github\agents\copilot-planner.agent.md', '.github\agents\plan-executor.agent.md',
+    '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-copilot.prompt.md', '.github\skills\plan-feature\SKILL.md',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.vscode\settings.json', '.vscode\extensions.json'
 $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'Directory.Packages.props', 'global.json', '.claude\rules\csharp.md',
     '.github\instructions\csharp.instructions.md'
@@ -107,10 +108,11 @@ foreach ($case in $cases) {
 $workflow = Join-Path $PSScriptRoot 'workflow'
 $fresh = Join-Path $Work 'generated'
 New-Item -ItemType Directory -Force $fresh | Out-Null
-& (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $fresh -Variant Local -Target VSCode, Claude | Out-Null
-$stale = foreach ($dir in '.claude\commands', '.claude\agents', '.github\agents', '.github\prompts') {
-    $a = @(Get-ChildItem -LiteralPath (Join-Path $fresh $dir) -File -ErrorAction SilentlyContinue | ForEach-Object { "$dir\$($_.Name) $((Get-FileHash $_.FullName).Hash)" })
-    $b = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot "template\$dir") -File -ErrorAction SilentlyContinue | ForEach-Object { "$dir\$($_.Name) $((Get-FileHash $_.FullName).Hash)" })
+& (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $fresh -Variant Both -Target VSCode, Claude, CopilotCli | Out-Null
+$stale = foreach ($dir in '.claude\commands', '.claude\agents', '.github\agents', '.github\prompts', '.github\skills') {
+    $freshDir = Join-Path $fresh $dir; $templateDir = Join-Path $PSScriptRoot "template\$dir"
+    $a = @(Get-ChildItem -LiteralPath $freshDir -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { "$dir\$([IO.Path]::GetRelativePath($freshDir, $_.FullName)) $((Get-FileHash $_.FullName).Hash)" })
+    $b = @(Get-ChildItem -LiteralPath $templateDir -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { "$dir\$([IO.Path]::GetRelativePath($templateDir, $_.FullName)) $((Get-FileHash $_.FullName).Hash)" })
     Compare-Object $a $b | ForEach-Object { ($_.InputObject -split ' ')[0] } | Select-Object -Unique
 }
 Check 'generated workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) (($stale | Select-Object -Unique) -join ', ')
