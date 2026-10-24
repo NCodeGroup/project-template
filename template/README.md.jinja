@@ -1,0 +1,25 @@
+# {{ project_name }}
+{% if project_description %}
+{{ project_description }}
+{% endif %}
+## Development
+
+Run from the repository root in PowerShell 7:
+
+| Task | Command |
+|---|---|
+| Build | {% if build_command %}`{{ build_command }}`{% else %}none{% endif %} |
+| Test | {% if test_command %}`{{ test_command }}`{% else %}none yet{% endif %} |
+
+## AI-Assisted Workflow
+
+This repository is set up for plan-then-execute coding: Claude Opus plans each change into `PLAN.md`, a cheaper model executes it one verified step at a time, and any step that needs a decision goes back to Opus. [AGENTS.md](AGENTS.md) is the index of the instructions every agent follows.
+
+| Phase | In the Claude Code panel | Permission mode |
+|---|---|---|
+| Plan | `/plan-feature <what to build>` (or `/plan-bugfix`, `/plan-refactor`, `/plan-tests`, …), then review `PLAN.md` | Accept edits |
+| Execute | `/orchestrate-plan` | Auto |
+| Re-plan one step | `/replan-step N` | Auto |
+| Review | `/review-plan-diff` | Auto |
+
+The workflow files come from a Copier template, which owns them: never edit `CLAUDE.md`, `.template/`, `.claude/commands/`, `.claude/agents/`, `.github/agents/`, `.github/prompts/`, `.github/instructions/project-template.instructions.md` or `.copier-answers.yml`. To change how agents work here, edit `AGENTS.md` or a file it lists. To pull in template improvements, run `.\.template\Update-Project.ps1`: it updates itself, replaces the template's files, merges template changes into the shared settings files, and never touches `AGENTS.md` or this README.

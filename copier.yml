@@ -1,0 +1,86 @@
+# Copier template: a new repository set up for plan-then-execute AI coding.
+# Use:    copier copy --vcs-ref <tag> <this repo> <destination>   (New-Project.ps1 wraps it)
+# Update: .\.template\Update-Project.ps1, run in the project
+
+_min_copier_version: "9.0.0"
+_subdirectory: template
+_answers_file: .copier-answers.yml
+
+# Every file has one of three owners (the README's "What a Project Gets"):
+# - Project-owned (_skip_if_exists): written once when the project is created; updates never touch them.
+# - Merged (_merged_files): files whose tools can't include a second file. Updates merge the template's changes
+#   with the project's edits, like a Git merge. .template\Update-Project.ps1 reads this list; Copier ignores it.
+# - Template-owned: every other file. Updates replace it, discarding any edit.
+_skip_if_exists:
+  - AGENTS.md
+  - README.md
+  - Directory.Build.props
+_merged_files:
+  - .gitignore
+  - .gitattributes
+  - .editorconfig
+  - .vscode/settings.json
+  - .vscode/extensions.json
+  - .claude/settings.json
+  - .github/workflows/ci.yml
+  - .github/dependabot.yml
+  - .gitlab-ci.yml
+  - Directory.Packages.props
+  - global.json
+
+project_name:
+  type: str
+  help: Project name, used in headings (for example QSO Log Viewer)
+  validator: "{% if not project_name.strip() %}Required{% endif %}"
+
+project_description:
+  type: str
+  help: One-sentence description
+  default: ""
+
+stack:
+  type: str
+  help: Main language or platform
+  choices:
+    .NET (C#): dotnet
+    Python: python
+    Node.js or TypeScript: node
+    PowerShell: powershell
+    Other: other
+  default: dotnet
+
+git_host:
+  type: str
+  help: Where the repository is hosted
+  choices:
+    GitHub: github
+    GitLab: gitlab
+  default: github
+
+author_name:
+  type: str
+  help: Author and copyright holder for .NET assembly and package metadata
+  default: Marcin Polewski
+  when: "{{ stack == 'dotnet' }}"
+
+build_command:
+  type: str
+  help: Build command, run from the repository root in PowerShell (blank if there is no build step)
+  default: >-
+    {%- if stack == 'dotnet' -%}dotnet build
+    {%- elif stack == 'node' -%}npm run build
+    {%- elif stack == 'powershell' -%}Invoke-ScriptAnalyzer -Path . -Recurse -EnableExit
+    {%- endif -%}
+
+test_command:
+  type: str
+  help: Test command, run from the repository root in PowerShell
+  default: >-
+    {%- if stack == 'dotnet' -%}dotnet test
+    {%- elif stack == 'python' -%}python -m pytest -q
+    {%- elif stack == 'node' -%}npm test
+    {%- elif stack == 'powershell' -%}Invoke-Pester -CI
+    {%- endif -%}
+
+_message_after_copy: |
+  Created {{ project_name }}. Next: open it through the shack PC's VS Code tunnel, review AGENTS.md, and plan the first change with /plan-feature in the Claude Code panel.

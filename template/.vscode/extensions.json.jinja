@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "anthropic.claude-code",
+    "ollama.ollama",
+    "editorconfig.editorconfig"
+{%- if stack == 'dotnet' %},
+    "ms-dotnettools.csdevkit"
+{%- elif stack == 'python' %},
+    "ms-python.python"
+{%- elif stack == 'powershell' %},
+    "ms-vscode.powershell"
+{%- endif %}
+  ]
+}

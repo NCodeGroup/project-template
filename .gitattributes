@@ -1,0 +1,2 @@
+# Keep every file LF on disk, including on Windows: Copier copies non-.jinja files byte for byte.
+* text=auto eol=lf

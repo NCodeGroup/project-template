@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+{%- if stack == 'dotnet' %}
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+{%- elif stack == 'python' %}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.x"
+      - name: Install dependencies
+        if: hashFiles('**/*.py') != ''
+        run: |
+          python -m pip install --upgrade pip pytest
+          if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
+          if (Test-Path pyproject.toml) { python -m pip install -e . }
+{%- elif stack == 'node' %}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - name: Install dependencies
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+{%- elif stack == 'powershell' %}
+      - name: Install modules
+        if: hashFiles('**/*.ps1', '**/*.psm1') != ''
+        run: Install-Module Pester, PSScriptAnalyzer -Force -Scope CurrentUser
+{%- endif %}
+{%- set has_code -%}
+{%- if stack == 'dotnet' -%}hashFiles('**/*.csproj', '**/*.sln', '**/*.slnx') != ''
+{%- elif stack == 'python' -%}hashFiles('**/*.py') != ''
+{%- elif stack == 'node' -%}hashFiles('package.json') != ''
+{%- elif stack == 'powershell' -%}hashFiles('**/*.ps1', '**/*.psm1') != ''
+{%- endif -%}
+{%- endset %}
+{%- if build_command %}
+      - name: Build
+{%- if has_code %}
+        if: {{ has_code }}
+{%- endif %}
+        run: |
+          {{ build_command }}
+{%- endif %}
+{%- if test_command %}
+      - name: Test
+{%- if has_code %}
+        if: {{ has_code }}
+{%- endif %}
+        run: |
+          {{ test_command }}
+{%- endif %}

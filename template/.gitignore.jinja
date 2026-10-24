@@ -1,0 +1,46 @@
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+*.swp
+.vs/
+.idea/
+
+# Claude Code: personal settings and worktrees
+.claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md
+
+# Leftovers from `copier update --conflict rej`
+*.rej
+
+# Secrets
+.env
+.env.*
+!.env.example
+secrets/
+{%- if stack == 'dotnet' %}
+
+# .NET
+bin/
+obj/
+artifacts/
+TestResults/
+*.user
+*.nupkg
+{%- elif stack == 'python' %}
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+{%- elif stack == 'node' %}
+
+# Node.js
+node_modules/
+dist/
+coverage/
+{%- endif %}

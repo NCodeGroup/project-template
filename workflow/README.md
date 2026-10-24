@@ -1,0 +1,24 @@
+# Workflow
+
+The single source of truth for the plan-and-execute workflow: the prompt and agent templates, and the PowerShell 7 scripts that install, compose and run them. Everything else — the generated files under [`../template/`](../template/), personal-notes, and any repository the installer writes into — is a consumer. The workflow itself, and how to choose between its variants, is in personal-notes' [plan-and-execute.md](https://github.com/polewskm/personal-notes/blob/main/ham-radio/shack/shack-pc/local-ai/plan-and-execute.md).
+
+| File | Purpose |
+|---|---|
+| [templates/](templates/) | The 16 prompt templates, the 4 VS Code agent templates, the `plan-executor` subagent templates, the `PLAN.md` format and an example plan ([templates/README.md](templates/README.md)) |
+| [Install-HybridWorkflow.ps1](Install-HybridWorkflow.ps1) | Generate Claude Code commands and the `plan-executor` subagent, VS Code prompt files and agents (Local and Copilot variants), and Copilot CLI skills and agent from `templates/` into a repository (`-Repo`) or the user profile (`-User`). Re-running overwrites what it generated |
+| [New-PlanPrompt.ps1](New-PlanPrompt.ps1) | Compose a template and a request into one prompt for any chat (`-List`, `-Copy`) |
+| [Invoke-PlanSteps.ps1](Invoke-PlanSteps.ps1) | Execute `PLAN.md` step by step (local or Copilot executor); verifies each Done-when command itself, commits per step, detects `[?]` escalations, and re-plans automatically with `-Replan claude\|copilot\|local` |
+| [HybridWorkflow.psm1](HybridWorkflow.psm1) | Shared template reader used by the three scripts above |
+
+```powershell
+.\workflow\Install-HybridWorkflow.ps1 -User                          # commands, skills and agents for every project, in your user profile
+.\workflow\Install-HybridWorkflow.ps1 -Repo C:\src\other-repo        # into a repository not made from this template
+.\workflow\New-PlanPrompt.ps1 plan-feature "Add CSV export" -Copy    # a prompt for any chat
+.\workflow\Invoke-PlanSteps.ps1 -Plan C:\src\qso-viewer\PLAN.md -Replan claude
+```
+
+After changing a template, run `.\Update-Template.ps1` at the repository root to regenerate the copies under `template/`, then `.\Test-Template.ps1`, which fails while they differ.
+
+---
+
+**TL;DR:** Edit the workflow only here: `templates/` holds every prompt and agent, `Install-HybridWorkflow.ps1` installs them anywhere, `New-PlanPrompt.ps1` composes them for a chat, and `Invoke-PlanSteps.ps1` runs a plan step by step. `Update-Template.ps1` turns them into the project template's generated files.

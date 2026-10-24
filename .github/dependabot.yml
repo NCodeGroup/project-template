@@ -1,0 +1,12 @@
+# Keeps the actions in this repository's own workflow current. The pins inside template/ are in merged files,
+# which each project's own Dependabot keeps current.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+        update-types: [minor, patch]

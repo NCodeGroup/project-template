@@ -1,0 +1,41 @@
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+build-and-test:
+{%- if stack == 'dotnet' %}
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  rules:
+    - exists: ["**/*.csproj", "**/*.sln", "**/*.slnx"]
+{%- elif stack == 'python' %}
+  image: python:3
+  rules:
+    - exists: ["**/*.py"]
+  before_script:
+    - python -m pip install --upgrade pip pytest
+    - if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+    - if [ -f pyproject.toml ]; then python -m pip install -e .; fi
+{%- elif stack == 'node' %}
+  image: node:lts
+  rules:
+    - exists: ["package.json"]
+  before_script:
+    - if [ -f package-lock.json ]; then npm ci; fi
+{%- elif stack == 'powershell' %}
+  image: mcr.microsoft.com/powershell:lts
+  rules:
+    - exists: ["**/*.ps1", "**/*.psm1"]
+  before_script:
+    - pwsh -NoProfile -Command "Install-Module Pester, PSScriptAnalyzer -Force -Scope CurrentUser"
+{%- else %}
+  image: alpine:3
+{%- endif %}
+  script:
+{%- if not build_command and not test_command %}
+    - echo "No build or test command configured"
+{%- endif %}
+{%- for command in [build_command, test_command] if command %}
+    - |
+      {{ ("pwsh -NoProfile -Command '" ~ command ~ "'") if stack == 'powershell' else command }}
+{%- endfor %}

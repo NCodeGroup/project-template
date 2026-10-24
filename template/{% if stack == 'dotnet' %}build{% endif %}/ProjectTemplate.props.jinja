@@ -1,0 +1,22 @@
+<Project>
+
+  <!-- Shared build settings from the project template, imported by Directory.Build.props. Template updates replace this file; never edit it. Override a setting in Directory.Build.props, after the import. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <Authors>{{ author_name }}</Authors>
+    <Company>{{ author_name }}</Company>
+    <Copyright>Copyright © $([System.DateTime]::Now.Year) {{ author_name }}</Copyright>
+    <NeutralLanguage>en-US</NeutralLanguage>
+  </PropertyGroup>
+
+  <!-- Test projects, named <Name>.Tests by the C# conventions. IsTestProject isn't set yet when this file is read. -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>
