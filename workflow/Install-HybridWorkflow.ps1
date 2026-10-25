@@ -19,6 +19,8 @@
       CopilotCli  -Repo: .github\skills\<template>\SKILL.md, .github\agents\plan-executor.agent.md
                   -User: ~\.copilot\skills, ~\.copilot\agents
 
+    Claude Code commands of templates with a "worktree" field start with a section that puts the plan in a git worktree of its own (create) or moves the session into it (join): templates\_claude-worktree-*.md.
+
     VS Code model names use "<model name> (<vendor>)"; the Settings dropdown for
     chat.planAgent.defaultModel lists the exact names. Copilot CLI uses model IDs such as
     claude-sonnet-5.5 (see `copilot help config`); Claude Code uses aliases such as sonnet or full model IDs such as claude-sonnet-5-5.
@@ -93,6 +95,12 @@ $claudeRole = @{
     reviewer     = "model: sonnet`neffort: high"
     executor     = 'model: inherit'
 }
+# Claude Code only: the section that puts a plan in a worktree of its own (create) or moves the session to it (join).
+function Get-ClaudeWorktreeSection([string]$Kind) {
+    $path = Join-Path $templateDir "_claude-worktree-$Kind.md"
+    if (-not (Test-Path -LiteralPath $path)) { throw "Unknown worktree value '$Kind'; use create or join." }
+    (Read-HybridTemplateFile $path).Body.TrimEnd()
+}
 $vscodeModel = @{ planner = $PlannerModel; analyst = $PlannerModel; orchestrator = $PlannerModel; reviewer = $ReviewerModel }
 $skillInput = 'the request given after the command name'
 
@@ -135,7 +143,10 @@ foreach ($d in $dest) {
     if ('Claude' -in $Target) {
         foreach ($t in $templates) {
             $body = Get-HybridPromptText -Name $t.Name -Placeholder '$ARGUMENTS'
-            $fm = "---`ndescription: $(Q $t.Description)`nargument-hint: $(Q "[$($t.ArgumentHint)]")`n$($claudeRole[$t.Role])`ndisable-model-invocation: true`n---`n"
+            $hint = $t.ArgumentHint
+            if ($t.Worktree) { $body = (Get-ClaudeWorktreeSection $t.Worktree) + "`n`n## Task`n`n" + $body }
+            if ($t.Worktree -eq 'join') { $hint += "; the plan's worktree name when several are open" }
+            $fm = "---`ndescription: $(Q $t.Description)`nargument-hint: $(Q "[$hint]")`n$($claudeRole[$t.Role])`ndisable-model-invocation: true`n---`n"
             Write-Generated (Join-Path $d.ClaudeCommands "$($t.Name).md") ($fm + $body)
         }
         Write-Generated (Join-Path $d.ClaudeAgents 'plan-executor.md') (Get-RenderedFile "$templateDir\plan-executor.claude.md" @{ CLAUDE_EXECUTOR_MODEL = $ClaudeExecutorModel })

@@ -108,7 +108,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: the existing `AppendFormat` property in `Get-HybridTemplateList`.
 - Done when: `Import-Module ./workflow/HybridWorkflow.psm1 -Force; $l = Get-HybridTemplateList; if (@($l | Where-Object Worktree -EQ 'create').Count -eq 9 -and @($l | Where-Object Worktree -EQ 'join').Count -eq 4 -and (@($l | Where-Object { -not $_.Worktree }).Name -join ',') -eq 'analyze-architecture,analyze-decision,review-code') { exit 0 } else { exit 1 }`
 
-### [ ] 4. Put the worktree section into the Claude Code commands
+### [x] 4. Put the worktree section into the Claude Code commands
 - Files: `workflow/Install-HybridWorkflow.ps1` (edit)
 - Change:
   1. Directly before the line that starts `$vscodeModel = @{`, add:
