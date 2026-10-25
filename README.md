@@ -49,6 +49,7 @@ Replaced on every update. A project never edits them; an edit is discarded by th
 | `.copier-answers.yml` | Copier's: the answers and template version that `Update-Project.ps1` reads |
 | `.template/Update-Project.ps1` | The [update script](#update-a-project): run in the project, it pulls in the newest template version and updates itself |
 | `.githooks/commit-msg` | Strips AI agent attribution from every commit message — `Co-authored-by:` trailers for Copilot and Claude, `Claude-Session:` trailers, "Generated with Claude Code" lines — whichever tool commits ([Commit Attribution](#commit-attribution)) |
+| `.template/Test-CommitAttribution.ps1` | Fails CI on a commit attributed to an AI agent ([Commit Attribution](#commit-attribution)) |
 
 Which generated files a project gets follows `workflow_tools`. A command, prompt file, skill or agent the project adds under a name the template doesn't use is the project's.
 
@@ -63,7 +64,7 @@ The project edits them freely, and later template changes merge in: an update ke
 | `.claude/settings.json` | Commit and pull request attribution off; `git push` always asks for approval, in Bash and PowerShell; `.env` files and `secrets/` can't be read |
 | `.vscode/settings.json`, `.vscode/extensions.json` | LF and final newlines, `git.addAICoAuthor` off, the Ollama timeout (only with the local model); recommended extensions (Claude Code, GitHub Copilot Chat, Ollama, EditorConfig, and the stack's language extension; the Ollama extension only with the local model) |
 | `.editorconfig`, `.gitattributes`, `.gitignore` | UTF-8 and LF everywhere, binary types, and ignores for Claude Code's local files and worktrees, secrets and build output |
-| `.github/workflows/ci.yml` or `.gitlab-ci.yml` | CI on GitHub or GitLab, whichever the `git_host` answer names, that runs the build and test commands once code exists; GitHub Actions pinned to commit SHAs |
+| `.github/workflows/ci.yml` or `.gitlab-ci.yml` | CI on GitHub or GitLab, whichever the `git_host` answer names: a job that runs the build and test commands once code exists, and a `Commit attribution` job that runs `.template/Test-CommitAttribution.ps1`; on GitHub it also runs in a merge queue, with actions pinned to commit SHAs |
 | `.github/dependabot.yml` (GitHub only) | [Dependabot](#stay-current), built into GitHub: a weekly pull request for newer CI actions and, by stack, NuGet packages and the .NET SDK, pip or npm packages |
 | `Directory.Packages.props` (.NET) | Central package management: versions in one place |
 | `global.json` (.NET) | The .NET SDK version (10.0.402, rolling forward to newer feature bands); CI installs exactly what it names |
@@ -345,8 +346,11 @@ A commit records the people who wrote it. AI tools add their own attribution by 
 | `git.addAICoAuthor` off in `.vscode/settings.json` | VS Code's own Copilot trailer when you commit from Source Control |
 | The rule in `.github/instructions/project-template.instructions.md` (here, `AGENTS.md`) | Agents that write the commit message themselves, such as Copilot's |
 | `.githooks/commit-msg` (here, `template/.githooks/commit-msg`) | Anything that slips through, from any tool. Git runs a hook only once a clone enables it: `New-Project.ps1` and `Update-Project.ps1` run `git config core.hooksPath .githooks`; in a fresh clone of a project, run it yourself or update the project. In a clone of this repository, run `git config core.hooksPath template/.githooks` |
+| `.template/Test-CommitAttribution.ps1` (here, `template/.template/`), run by the `Commit attribution` job in `ci.yml` or `.gitlab-ci.yml` | A commit authored, committed or co-authored by an AI agent, whoever made it and however: on every pull request, merge queue entry and push to the default branch. It reports; to make it block a merge, require the Commit attribution check in the repository's branch rules on GitHub, or turn on "Pipelines must succeed" on GitLab |
 
 The hook removes only agent lines: `Co-authored-by:` trailers naming Copilot or an `@anthropic.com` or `Copilot@users.noreply.github.com` address, `Claude-Session:` trailers, and "Generated with Claude Code" lines. A person's co-author trailer stays. To clean commits that already have them, before pushing, enable the hook and amend every unpushed commit through it: `git rebase origin/main --exec "git commit --amend --no-edit --allow-empty"`.
+
+The check fails with the commits it found and the command that fixes them: `git rebase <base> --exec "git commit --amend --no-edit --reset-author"`, then `git push --force-with-lease`. The Copilot cloud agent authors its own commits, so its pull requests fail until they are re-authored this way.
 
 ## Stay Current
 

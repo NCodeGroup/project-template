@@ -26,7 +26,7 @@ Work in this repository is planned by a frontier model and executed by cheaper o
 
 - UTF-8 without BOM and LF line endings; follow `.editorconfig`.
 - Secrets never enter the repository or a prompt: `.env` files and `secrets/` are gitignored{% if 'claude' in workflow_tools %}, and Claude Code is denied reading them{% endif %}.
-- Commits and pull requests record the people who wrote them: never add a `Co-authored-by:` trailer naming an AI agent (Copilot, Claude or any other), a `Claude-Session:` trailer, or a "Generated with" line. Claude Code's `attribution` setting and VS Code's `git.addAICoAuthor` are off in this repository, and `.githooks/commit-msg` strips any that slip through.
+- Commits and pull requests record the people who wrote them: never add a `Co-authored-by:` trailer naming an AI agent (Copilot, Claude or any other), a `Claude-Session:` trailer, or a "Generated with" line. Claude Code's `attribution` setting and VS Code's `git.addAICoAuthor` are off in this repository, and `.githooks/commit-msg` strips any that slip through. CI runs `.template/Test-CommitAttribution.ps1` on every pull request{% if git_host == 'github' %}, merge queue entry{% endif %} and push to the default branch, and fails on a commit authored, committed or co-authored by an AI agent; to fix one, re-author it: `git rebase <base> --exec "git commit --amend --no-edit --reset-author"`.
 - Pull requests: {% if git_host == 'gitlab' %}`glab mr create`{% else %}`gh pr create`{% endif %}, only when asked.
 
 ## Template Files and Project Files

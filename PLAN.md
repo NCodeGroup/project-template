@@ -401,7 +401,7 @@ Steps 29–37 extend the change. Every project, and this repository, gets the se
 - Pattern: the existing `$followUps` code and the `ci-existing` check.
 - Done when: `$o = .\Test-Adoption.ps1 -SkipDotnetBuild | Out-String; if ($LASTEXITCODE -or -not $o.Contains('Adoption tests: PASSED') -or -not $o.Contains('PASS  ci-existing: asks to add the commit attribution job to the kept ci.yml') -or -not $o.Contains('PASS  plain: asks to add the commit attribution job to the kept .gitlab-ci.yml') -or -not $o.Contains('PASS  scaffold: no commit attribution follow-up when the template added ci.yml')) { exit 1 }`
 
-### [ ] 35. Document the server-side check
+### [x] 35. Document the server-side check
 - Files: `template/.github/instructions/project-template.instructions.md.jinja` (edit), `README.md` (edit)
 - Change:
   1. In the rules file, add this to the end of the bullet that starts `- Commits and pull requests record the people who wrote them`: `` CI runs `.template/Test-CommitAttribution.ps1` on every pull request{% if git_host == 'github' %}, merge queue entry{% endif %} and push to the default branch, and fails on a commit authored, committed or co-authored by an AI agent; to fix one, re-author it: `git rebase <base> --exec "git commit --amend --no-edit --reset-author"`. ``
