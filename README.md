@@ -252,7 +252,7 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 ## Change the Template
 
 1. Edit the base files under `template/`: `*.jinja` files are rendered with the answers, every other file is copied as is. A file name such as `{% if stack == 'dotnet' %}global.json{% endif %}` makes the file conditional. A new file is template-owned unless `copier.yml` lists it under `_merged_files` or `_skip_if_exists`. Keep a file template-owned whenever its tool can include a second, project-owned file; list it under `_merged_files` when it can't.
-2. For the workflow commands, agents and prompts, edit the source templates in [workflow/templates](workflow/templates/), then run `.\Update-Template.ps1` to regenerate their copies under `template/`.
+2. For the workflow commands, agents and prompts, edit the source templates in [workflow/templates](workflow/templates/), then run `.\Update-Template.ps1` to regenerate their copies under `template/` and at the repository root.
 3. Run `.\Test-Template.ps1` and confirm the last line reads `Template tests: PASSED`.
 4. Commit, tag the next version, and push with tags: `git tag v0.2.0` and `git push origin main --tags`.
 
@@ -265,7 +265,7 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 | The CI file for the `git_host` answer, and `.github/dependabot.yml` on GitHub only | Every render |
 | LF line endings, no leftover Jinja, valid JSON, valid YAML | Every rendered file |
 | `.copier-answers.yml` records the version | Every render |
-| Generated workflow files match a fresh run of `workflow\Install-HybridWorkflow.ps1` | Always, including CI |
+| Generated workflow files, under `template/` and at the repository root, match a fresh run of `workflow\Install-HybridWorkflow.ps1` | Always, including CI |
 | The installer writes both variants for every tool; `New-PlanPrompt.ps1` composes a prompt; `Invoke-PlanSteps.ps1 -DryRun` parses the example plan | Always |
 | `dotnet new classlib` and `xunit`, added to a root solution, pass the default `dotnet build` and `dotnet test` under `Directory.Build.props` and `global.json` | .NET (skip with `-SkipDotnetBuild`) |
 | A project's own `.template\Update-Project.ps1` hands the update over to the new version's script; it replaces template-owned files, discards and reports an edit to one, and restores a deleted one; merges a merged file, keeping the project's edit, and keeps a deleted one deleted; leaves project-owned files untouched and shows the template's changes to them; deletes and adds files as the template did; makes one commit, and changes nothing on a second run. On a same-line change to a merged file it stops with exit code 1, commits nothing, still replaces the template-owned files, and finishes once the conflict is resolved. The root wrapper updates another project by `-Path` | Python and Node.js projects (skip with `-SkipUpdate`) |
@@ -293,7 +293,8 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `New-Project.ps1` | Create a project, its first commit and optionally its remote |
 | `Update-Project.ps1` | Update a project by `-Path` from this clone: a wrapper around `template\.template\Update-Project.ps1`, the update script every project carries |
 | `workflow/` | The single source of the workflow: prompt and agent templates, the installer, the prompt composer and the step runner ([workflow/README.md](workflow/README.md)) |
-| `Update-Template.ps1` | Regenerate the workflow files under `template/` from `workflow/templates` |
+| `Update-Template.ps1` | Regenerate the workflow files under `template/` and at the repository root from `workflow/templates` |
+| `.claude/`, `.github/agents/`, `.github/prompts/`, `.github/skills/` | This repository's own workflow: the same generated files as `template/` gets, committed so that working on the template with Claude Code or Copilot has `/plan-feature`, `/orchestrate-plan` and the rest on any PC that clones it. Never edit them; `Update-Template.ps1` regenerates them |
 | `Test-Template.ps1` | Render every stack and check the result |
 | `.github/workflows/test-template.yml` | Runs `Test-Template.ps1` on Windows for every push to `main` and every pull request |
 | `.github/dependabot.yml` | Dependabot for the actions in `test-template.yml` |

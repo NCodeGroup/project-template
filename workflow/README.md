@@ -17,8 +17,8 @@ The single source of truth for the plan-and-execute workflow: the prompt and age
 .\workflow\Invoke-PlanSteps.ps1 -Plan C:\src\qso-viewer\PLAN.md -Replan claude
 ```
 
-After changing a template, run `.\Update-Template.ps1` at the repository root to regenerate the copies under `template/`, then `.\Test-Template.ps1`, which fails while they differ.
+After changing a template, run `.\Update-Template.ps1` at the repository root to regenerate the copies under `template/` and this repository's own copies at its root, then `.\Test-Template.ps1`, which fails while they differ.
 
 ---
 
-**TL;DR:** Edit the workflow only here: `templates/` holds every prompt and agent, `Install-HybridWorkflow.ps1` installs them anywhere, `New-PlanPrompt.ps1` composes them for a chat, and `Invoke-PlanSteps.ps1` runs a plan step by step. `Update-Template.ps1` turns them into the project template's generated files.
+**TL;DR:** Edit the workflow only here: `templates/` holds every prompt and agent, `Install-HybridWorkflow.ps1` installs them anywhere, `New-PlanPrompt.ps1` composes them for a chat, and `Invoke-PlanSteps.ps1` runs a plan step by step. `Update-Template.ps1` turns them into the project template's generated files and this repository's own.

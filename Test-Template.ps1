@@ -8,9 +8,9 @@
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in %TEMP%\project-template-test, so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab and checks YAML with
-    PyYAML through uv. Also checks that the generated workflow files under template/ match a fresh run of
-    workflow\Install-HybridWorkflow.ps1, and that the workflow scripts run. Prints PASS or FAIL per check and
-    exits 1 on any failure.
+    PyYAML through uv. Also checks that the generated workflow files under template/ and at the repository root
+    match a fresh run of workflow\Install-HybridWorkflow.ps1, and that the workflow scripts run. Prints PASS or FAIL
+    per check and exits 1 on any failure.
 
 .EXAMPLE
     .\Test-Template.ps1
@@ -109,13 +109,19 @@ $workflow = Join-Path $PSScriptRoot 'workflow'
 $fresh = Join-Path $Work 'generated'
 New-Item -ItemType Directory -Force $fresh | Out-Null
 & (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $fresh -Variant Both -Target VSCode, Claude, CopilotCli | Out-Null
-$stale = foreach ($dir in '.claude\commands', '.claude\agents', '.github\agents', '.github\prompts', '.github\skills') {
-    $freshDir = Join-Path $fresh $dir; $templateDir = Join-Path $PSScriptRoot "template\$dir"
-    $a = @(Get-ChildItem -LiteralPath $freshDir -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { "$dir\$([IO.Path]::GetRelativePath($freshDir, $_.FullName)) $((Get-FileHash $_.FullName).Hash)" })
-    $b = @(Get-ChildItem -LiteralPath $templateDir -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { "$dir\$([IO.Path]::GetRelativePath($templateDir, $_.FullName)) $((Get-FileHash $_.FullName).Hash)" })
-    Compare-Object $a $b | ForEach-Object { ($_.InputObject -split ' ')[0] } | Select-Object -Unique
+# Generated files under $Root that differ from a fresh install, or are missing or extra.
+function Get-StaleWorkflowFile([string]$Root) {
+    foreach ($dir in '.claude\commands', '.claude\agents', '.github\agents', '.github\prompts', '.github\skills') {
+        $freshDir = Join-Path $fresh $dir; $rootDir = Join-Path $Root $dir
+        $a = @(Get-ChildItem -LiteralPath $freshDir -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { "$dir\$([IO.Path]::GetRelativePath($freshDir, $_.FullName)) $((Get-FileHash $_.FullName).Hash)" })
+        $b = @(Get-ChildItem -LiteralPath $rootDir -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { "$dir\$([IO.Path]::GetRelativePath($rootDir, $_.FullName)) $((Get-FileHash $_.FullName).Hash)" })
+        @($a | Where-Object { $_ -notin $b }) + @($b | Where-Object { $_ -notin $a }) | ForEach-Object { ($_ -split ' ')[0] }
+    }
 }
-Check 'generated workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) (($stale | Select-Object -Unique) -join ', ')
+$stale = @(Get-StaleWorkflowFile (Join-Path $PSScriptRoot 'template') | Select-Object -Unique)
+Check 'generated workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) ($stale -join ', ')
+$stale = @(Get-StaleWorkflowFile $PSScriptRoot | Select-Object -Unique)
+Check 'this repository''s own workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) ($stale -join ', ')
 $both = Join-Path $Work 'installed-both'
 New-Item -ItemType Directory -Force $both | Out-Null
 $installed = & (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $both | Out-String
