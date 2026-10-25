@@ -12,6 +12,9 @@ These rules come from the project template. Template updates replace this file, 
 Work in this repository is planned by a frontier model and executed by cheaper ones, one verified step at a time.
 
 - `PLAN.md` at the repository root is the handoff between them. The planning commands (`/plan-feature`, `/plan-bugfix`, …) write it in a fixed shape: Goal, Context for the executor, Decisions, Out of scope, Steps and Review checklist.
+{%- if 'claude' in workflow_tools %}
+- In Claude Code, each plan lives in its own git worktree, so several sessions can work on different plans at once: the planning command creates `.claude/worktrees/<name>/` on the branch `worktree-<name>` and commits `PLAN.md` there, and the commands that execute, re-plan or review the plan work in that worktree. Its root is the plan's repository root. To continue the plan in another tool, open that folder.
+{%- endif %}
 - Each step is a `### [ ] N. Title` heading with Files, Change, Pattern and `- Done when:` lines. Markers: `[ ]` pending, `[x]` done, `[?]` escalated, `[!]` failed.
 - A Done-when command is one PowerShell command, run from the repository root, that exits 0 only when its step is done. The build and test commands are in `AGENTS.md`.
 - An executor changes only the files its step lists, runs the step's Done-when command, and marks the step `[x]` when it passes. When a step needs a decision the plan didn't make, it reverts its partial edits, marks the step `[?]`, adds an `- Escalation:` line and stops — it never improvises a design.

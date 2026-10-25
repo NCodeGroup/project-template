@@ -229,7 +229,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: the neighboring bullets and sentences.
 - Done when: `$c = Get-Content -Raw template\CLAUDE.md; $m = Get-Content -Raw template\README.md.jinja; if ($c.Contains('.claude/worktrees/<name>/') -and $c.Contains("from the root of the plan's worktree") -and -not $c.Contains('PowerShell tool, from the repository root') -and $m.Contains('Each plan gets its own git worktree under')) { exit 0 } else { exit 1 }`
 
-### [ ] 10. Describe plan worktrees in the template's rules
+### [x] 10. Describe plan worktrees in the template's rules
 - Files: `template/.github/instructions/project-template.instructions.md.jinja` (edit)
 - Change: Directly after the line that starts ``- `PLAN.md` at the repository root is the handoff between them.``, insert these three lines:
 
