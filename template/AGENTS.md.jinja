@@ -2,7 +2,7 @@
 {% if project_description %}
 {{ project_description }}
 {% endif %}
-Instructions for every coding agent in this repository. This file is an index: read each file it lists, in order, then the sections below. Where the project's instructions differ from the template's, the project's win. Claude Code reads this file through `CLAUDE.md` and imports each `@` file; GitHub Copilot reads it directly and loads every `.github/instructions/*.instructions.md` file on its own.
+Instructions for every coding agent in this repository. This file is an index: read each file it lists, in order, then the sections below. Where the project's instructions differ from the template's, the project's win.{% if 'claude' in workflow_tools %} Claude Code reads this file through `CLAUDE.md` and imports each `@` file.{% endif %}{% if 'copilot' in workflow_tools or 'local' in workflow_tools %} GitHub Copilot reads it directly and loads every `.github/instructions/*.instructions.md` file on its own.{% endif %}
 
 This file belongs to the project: template updates never change it. Keep it under 200 lines; put anything longer in a listed file.
 

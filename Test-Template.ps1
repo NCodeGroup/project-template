@@ -118,6 +118,10 @@ foreach ($case in $cases) {
     $settings = Get-Content -LiteralPath (Join-Path $dest '.vscode/settings.json') -Raw
     $local = 'local' -in $tools
     Check "${name}: editor settings for the chosen tools" (($extensions.Contains('ollama.ollama') -eq $local) -and ($settings.Contains('ollama.inferenceTimeoutMinutes') -eq $local) -and ($extensions.Contains('anthropic.claude-code') -eq ('claude' -in $tools)))
+    $agents = Get-Content -LiteralPath (Join-Path $dest 'AGENTS.md') -Raw
+    $ignore = Get-Content -LiteralPath (Join-Path $dest '.gitignore') -Raw
+    $claude = 'claude' -in $tools
+    Check "${name}: AGENTS.md and .gitignore for the chosen tools" (($agents.Contains('CLAUDE.md') -eq $claude) -and ($ignore.Contains('CLAUDE.local.md') -eq $claude))
     Check "${name}: answers record v0.1.0" ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -match '(?m)^_commit: v0\.1\.0$')
 }
 

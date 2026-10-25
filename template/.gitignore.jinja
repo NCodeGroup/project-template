@@ -4,11 +4,13 @@ Thumbs.db
 *.swp
 .vs/
 .idea/
+{%- if 'claude' in workflow_tools %}
 
 # Claude Code: personal settings and worktrees
 .claude/settings.local.json
 .claude/worktrees/
 CLAUDE.local.md
+{%- endif %}
 
 # Leftovers from `copier update --conflict rej`
 *.rej
