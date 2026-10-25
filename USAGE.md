@@ -149,12 +149,12 @@ Each finished step is a commit, `Plan step N: <title>`. When the review is clean
 
 ## Switch Between Claude and Copilot
 
-There is nothing to switch in the project or in your accounts: both tools stay signed in, and you use the other panel or command. `PLAN.md` and the commits carry the work across; chat history doesn't.
+There is nothing to switch in the project or in your accounts: both tools stay signed in, and you use the other panel or command. `PLAN.md` and the commits carry the work across; chat history doesn't. A Claude Code plan is in its worktree: to continue it in Copilot, open `.claude/worktrees/<name>` in VS Code, or `cd` there for Copilot CLI.
 
 | You're in | To continue in the other |
 |---|---|
-| A plan written in Claude Code | Copilot Chat: the Copilot Orchestrator agent, with Opus selected, and "Execute PLAN.md" — or the Copilot Implementer for one step. Copilot CLI: `/orchestrate-plan` |
-| A plan written in Copilot | Claude Code: `/orchestrate-plan`, or `/execute-step` for one step |
+| A plan written in Claude Code | Open its worktree's folder, `.claude/worktrees/<name>`. Copilot Chat: the Copilot Orchestrator agent, with Opus selected, and "Execute PLAN.md" — or the Copilot Implementer for one step. Copilot CLI: `/orchestrate-plan` |
+| A plan written in Copilot | Claude Code: `/orchestrate-plan`, or `/execute-step` for one step; with no plan worktree open, they work on `PLAN.md` where it is |
 | A step that came back `[?]` | `/replan-step N` in either; then execute again in either |
 | Finished work | `/review-plan-diff`, or Review the work, in either |
 
@@ -194,7 +194,8 @@ The Hybrid agents, and the `execute-step-local` prompt file, execute on `qwen3.6
 | Copilot CLI isn't available | The organization turned it off | Use Copilot Chat or Claude Code |
 | `New-Project.ps1` or `Update-Project.ps1` can't read the template | Git has no credentials for it | `gh auth setup-git` |
 | Claude Code stops with a limit message | The 5-hour or weekly limit is reached | Continue in Copilot, or wait for the reset `/usage` shows |
+| `/orchestrate-plan` lists plans and asks which one | Several plan worktrees are open | Name the plan's worktree: `/orchestrate-plan <name>`; `git worktree list` shows them |
 
 ---
 
-**TL;DR:** Install Git, the GitHub CLI, uv and Copier, VS Code, Claude Code (`irm https://claude.ai/install.ps1 | iex`) and optionally Copilot CLI (`winget install --id GitHub.Copilot -e`), plus the Claude Code and Copilot Chat extensions. Sign Claude Code in with your Claude plan (`claude auth login`, usage credits off, no `ANTHROPIC_API_KEY`) and Copilot with the GitHub account that has your Copilot plan (VS Code's Accounts menu, `copilot login`, no `GH_TOKEN`). Every template project has the same commands for both — `/plan-feature`, `/orchestrate-plan`, `/replan-step`, `/review-plan-diff` — and `PLAN.md` is the only state they share, so switch whenever you like by using the other panel or command.
+**TL;DR:** Install Git, the GitHub CLI, uv and Copier, VS Code, Claude Code (`irm https://claude.ai/install.ps1 | iex`) and optionally Copilot CLI (`winget install --id GitHub.Copilot -e`), plus the Claude Code and Copilot Chat extensions. Sign Claude Code in with your Claude plan (`claude auth login`, usage credits off, no `ANTHROPIC_API_KEY`) and Copilot with the GitHub account that has your Copilot plan (VS Code's Accounts menu, `copilot login`, no `GH_TOKEN`). Every template project has the same commands for both — `/plan-feature`, `/orchestrate-plan`, `/replan-step`, `/review-plan-diff` — and `PLAN.md` is the only state they share, so switch whenever you like by using the other panel or command. In Claude Code each plan has its own git worktree, so several sessions work on different plans at once.

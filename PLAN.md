@@ -297,7 +297,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: the neighboring rows and sentences.
 - Done when: `$t = Get-Content -Raw USAGE.md; if ($t.Contains('| Where a plan lives |') -and $t.Contains("open its worktree's folder.") -and $t.Contains('so run one session per plan') -and $t.Contains('git worktree remove .claude/worktrees/<name>')) { exit 0 } else { exit 1 }`
 
-### [ ] 14. Document plan worktrees in USAGE.md: switching and troubleshooting
+### [x] 14. Document plan worktrees in USAGE.md: switching and troubleshooting
 - Files: `USAGE.md` (edit)
 - Change:
   1. Replace ``the commits carry the work across; chat history doesn't.`` with:
