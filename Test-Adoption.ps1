@@ -142,7 +142,7 @@ Check 'unit: Move-PackageVersionsToCentral' (-not $pa.Contains('Version="') -and
 $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 $adapters = Join-Path $PSScriptRoot 'adopt\legacy'
 $scaffold = Join-Path $adapters 'NCode.ProjectSettings.Scaffold.ps1'
-$folder = New-TestFolder 'scaffold' @{
+$folder = New-TestFolder 'scaffold-adapter' @{
     'NCodeGroup.png' = $png
     'src/A/A.csproj' = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <ItemGroup>`n    <PackageReference Include=""NCode.ProjectSettings.Scaffold""`n                      Version=""1.0.0"">`n      <PrivateAssets>all</PrivateAssets>`n    </PackageReference>`n    <PackageReference Include=""JetBrains.Annotations"" Version=""2.0.0"" />`n  </ItemGroup>`n</Project>`n"
 }
@@ -280,3 +280,4 @@ if (-not $UnitOnly) {
 ''
 if ($failures.Count) { "Adoption tests: FAILED ($($failures.Count))"; exit 1 }
 'Adoption tests: PASSED'
+exit 0

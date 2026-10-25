@@ -268,22 +268,26 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 
 1. Edit the base files under `template/`: `*.jinja` files are rendered with the answers, every other file is copied as is. A file name such as `{% if stack == 'dotnet' %}global.json{% endif %}` makes the file conditional. A new file is template-owned unless `copier.yml` lists it under `_merged_files` or `_skip_if_exists`. Keep a file template-owned whenever its tool can include a second, project-owned file; list it under `_merged_files` when it can't.
 2. For the workflow commands, agents and prompts, edit the source templates in [workflow/templates](workflow/templates/), then run `.\Update-Template.ps1` to regenerate their copies under `template/` and at the repository root.
-3. Run `.\Test-Template.ps1` and confirm the last line reads `Template tests: PASSED`.
+3. Run `.\Test-Template.ps1` and `.\Test-Adoption.ps1`, and confirm their last lines read `Template tests: PASSED` and `Adoption tests: PASSED`.
 4. Commit, tag the next version, and push with tags: `git tag v0.2.0` and `git push origin main --tags`.
 
-`Test-Template.ps1` works on a tagged snapshot of the working tree in `%TEMP%`, and runs on every push to `main` and every pull request through `.github/workflows/test-template.yml`:
+`Test-Template.ps1` works on a tagged snapshot of the working tree in `%TEMP%`. Both it and `Test-Adoption.ps1` run on every push to `main` and every pull request through `.github/workflows/test-template.yml`:
 
 | Check | For |
 |---|---|
 | Common files present | Every stack, on GitHub and GitLab |
 | .NET layer present, or absent | .NET, or every other stack |
+| NuGet package settings in `build/ProjectTemplate.props` only with `nuget_package` | .NET |
 | The CI file for the `git_host` answer, and `.github/dependabot.yml` on GitHub only | Every render |
 | LF line endings, no leftover Jinja, valid JSON, valid YAML | Every rendered file |
+| Workflow files, editor settings, `.gitignore`, `AGENTS.md`, the template rules and `README.md` only for the chosen `workflow_tools` | Every render |
 | `.copier-answers.yml` records the version | Every render |
 | Generated workflow files, under `template/` and at the repository root, match a fresh run of `workflow\Install-HybridWorkflow.ps1` | Always, including CI |
 | The installer writes both variants for every tool; `New-PlanPrompt.ps1` composes a prompt; `Invoke-PlanSteps.ps1 -DryRun` parses the example plan | Always |
+| `New-Project.ps1` passes a list answer in `-Data` to Copier | Always |
 | `dotnet new classlib` and `xunit`, added to a root solution, pass the default `dotnet build` and `dotnet test` under `Directory.Build.props` and `global.json` | .NET (skip with `-SkipDotnetBuild`) |
 | A project's own `.template\Update-Project.ps1` hands the update over to the new version's script; it replaces template-owned files, discards and reports an edit to one, and restores a deleted one; merges a merged file, keeping the project's edit, and keeps a deleted one deleted; leaves project-owned files untouched and shows the template's changes to them; deletes and adds files as the template did; makes one commit, and changes nothing on a second run. On a same-line change to a merged file it stops with exit code 1, commits nothing, still replaces the template-owned files, and finishes once the conflict is resolved. The root wrapper updates another project by `-Path` | Python and Node.js projects (skip with `-SkipUpdate`) |
+| `Test-Adoption.ps1`: the adoption functions and legacy adapters on small inputs; adopting a Python repository on GitLab and a .NET repository built on the NCodeGroup scaffold — answers worked out, merged files rebuilt, `AGENTS.md` and `Directory.Build.props` extended, versions moved into `Directory.Packages.props`, follow-ups reported, a failing build committing nothing, the package packed with README, icon and license, and a later template update merging cleanly | Always (`-SkipDotnetBuild` skips the .NET build and pack) |
 
 ## Publish the Template
 
