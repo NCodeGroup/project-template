@@ -168,8 +168,10 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
      Check 'workflow: no Copilot file, plan-executor subagent or analysis command enters a worktree' (-not $worktreeLeaked) ($worktreeLeaked -join ', ')
      ```
   2. In the help's `.DESCRIPTION` paragraph, replace `and that the workflow scripts run.` with `that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, and that the workflow scripts run.`
+
+  Every existing line other than the `.DESCRIPTION` line stays byte-identical; in particular, the line `$both = Join-Path $Work 'installed-both'` keeps its spaces. `git diff --numstat -- Test-Template.ps1` shows `18	1`: 17 inserted lines plus the changed `.DESCRIPTION` line.
 - Pattern: the `$executorChecks` check just above the insertion point.
-- Done when: `$e = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path .\Test-Template.ps1).Path, [ref]$null, [ref]$e); $t = Get-Content -Raw .\Test-Template.ps1; if (-not $e -and $t.Contains("Check 'workflow: Claude Code planning commands create the plan''s worktree, and the commands that work on a plan move into it'") -and $t.Contains("Check 'workflow: no Copilot file, plan-executor subagent or analysis command enters a worktree'") -and $t.Contains('carry the plan-worktree sections')) { exit 0 } else { exit 1 }`
+- Done when: `$e = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path .\Test-Template.ps1).Path, [ref]$null, [ref]$e); $t = Get-Content -Raw .\Test-Template.ps1; if (-not $e -and (git diff --numstat -- Test-Template.ps1) -match '^18\s+1\s' -and $t.Contains('$both = Join-Path $Work ''installed-both''') -and $t.Contains("Check 'workflow: Claude Code planning commands create the plan''s worktree, and the commands that work on a plan move into it'") -and $t.Contains("Check 'workflow: no Copilot file, plan-executor subagent or analysis command enters a worktree'") -and $t.Contains('carry the plan-worktree sections')) { exit 0 } else { exit 1 }`
 
 ### [ ] 7. Keep plan worktrees out of the test snapshots
 - Files: `Test-Template.ps1` (edit), `Test-Adoption.ps1` (edit)
