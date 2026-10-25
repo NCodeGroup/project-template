@@ -366,17 +366,17 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 
 1. Edit the base files under `template/`: `*.jinja` files are rendered with the answers, every other file is copied as is. A file name such as `{% if stack == 'dotnet' %}global.json{% endif %}` makes the file conditional. A new file is template-owned unless `copier.yml` lists it under `_merged_files` or `_skip_if_exists`. Keep a file template-owned whenever its tool can include a second, project-owned file; list it under `_merged_files` when it can't. A question that a later version adds must be read through a default wherever `copier.yml` uses it before the question is answered — the `_exclude` patterns read `workflow_tools | default([...])` — because an update renders the old version's files with the new `copier.yml` before the project has that answer; without the default an old project's update stops with conflicts. `Test-Template.ps1` fails an `_exclude` pattern that excludes anything without the answer.
 2. For the workflow commands, agents and prompts, edit the source templates in [workflow/templates](workflow/templates/), then run `.\Update-Template.ps1` to regenerate their copies under `template/` and at the repository root.
-3. Run `.\Test-Template.ps1` and `.\Test-Adoption.ps1`, and confirm their last lines read `Template tests: PASSED` and `Adoption tests: PASSED`.
+3. Run `.\Test-Template.ps1`, `.\Test-Adoption.ps1` and `.\Test-CommitAttribution.ps1`, and confirm their last lines read `Template tests: PASSED`, `Adoption tests: PASSED` and `Commit attribution tests: PASSED`.
 4. Commit, tag the next version, and push with tags: `git tag v0.2.0` and `git push origin main --tags`.
 
-`Test-Template.ps1` works on a tagged snapshot of the working tree in `%TEMP%`. Both it and `Test-Adoption.ps1` run on every push to `main` and every pull request through `.github/workflows/test-template.yml`:
+`Test-Template.ps1` works on a tagged snapshot of the working tree in `%TEMP%`. It, `Test-Adoption.ps1` and `Test-CommitAttribution.ps1` run on every push to `main` and every pull request through `.github/workflows/test-template.yml`:
 
 | Check | For |
 |---|---|
 | Common files present | Every stack, on GitHub and GitLab |
 | .NET layer present, or absent | .NET, or every other stack |
 | NuGet package settings in `build/ProjectTemplate.props` only with `nuget_package` | .NET |
-| The CI file for the `git_host` answer, and `.github/dependabot.yml` on GitHub only | Every render |
+| The CI file for the `git_host` answer, with its `Commit attribution` job, and `.github/dependabot.yml` on GitHub only | Every render |
 | LF line endings, no leftover Jinja, valid JSON, valid YAML | Every rendered file |
 | Workflow files, editor settings, `.gitignore`, `AGENTS.md`, the template rules and `README.md` only for the chosen `workflow_tools` | Every render |
 | `.copier-answers.yml` records the version | Every render |
@@ -385,9 +385,12 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 | The installer writes both variants for every tool; `New-PlanPrompt.ps1` composes a prompt; `Invoke-PlanSteps.ps1 -DryRun` parses the example plan | Always |
 | `New-Project.ps1` passes a list answer in `-Data` to Copier | Always |
 | `New-Project.ps1` and `Update-Project.ps1` enable `.githooks`, with `commit-msg` executable; the hook strips Claude and Copilot attribution and keeps a person's co-author trailer, and keeps a prose line that mentions the advertising phrase | Always; the update check with the update tests |
+| The shipped `.template/Test-CommitAttribution.ps1` passes on a new project's own history | Always |
 | `dotnet new classlib` and `xunit`, added to a root solution, pass the default `dotnet build` and `dotnet test` under `Directory.Build.props` and `global.json` | .NET (skip with `-SkipDotnetBuild`) |
 | A project's own `.template\Update-Project.ps1` hands the update over to the new version's script; it replaces template-owned files, discards and reports an edit to one, and restores a deleted one; merges a merged file, keeping the project's edit, and keeps a deleted one deleted; leaves project-owned files untouched and shows the template's changes to them; deletes and adds files as the template did; makes one commit, and changes nothing on a second run. On a same-line change to a merged file it stops with exit code 1, commits nothing, still replaces the template-owned files, and finishes once the conflict is resolved. The root wrapper updates another project by `-Path` | Python and Node.js projects (skip with `-SkipUpdate`) |
 | `Test-Adoption.ps1`: the adoption functions and legacy adapters on small inputs; adopting a Python repository on GitLab and a .NET repository built on the NCodeGroup scaffold — answers worked out, merged files rebuilt, `AGENTS.md` and `Directory.Build.props` extended, versions moved into `Directory.Packages.props`, follow-ups reported, a failing build committing nothing, a failure after Copier rolling the repository back, the report naming only the follow-ups the repository really has, the package packed with README, icon and license, and a later template update merging cleanly | Always (`-SkipDotnetBuild` skips the .NET build and pack) |
+| `Test-CommitAttribution.ps1`: the check every project gets fails on a commit authored or committed by an AI agent account, a co-author trailer naming one, a `Claude-Session:` trailer or Claude Code's advertising line, and passes a person's co-author trailer, Dependabot, a prose line that mentions the advertising phrase, and an unknown or empty base | Always |
+| The `Commit attribution` job checks this repository's own new commits with `template/.template/Test-CommitAttribution.ps1` | Every push to `main` and pull request |
 
 ## Publish the Template
 
@@ -419,7 +422,8 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `.claude/`, `.github/agents/`, `.github/prompts/`, `.github/skills/` | This repository's own workflow: the same generated files as `template/` gets, committed so that working on the template with Claude Code or Copilot has `/plan-feature`, `/orchestrate-plan` and the rest on any PC that clones it. Never edit them; `Update-Template.ps1` regenerates them |
 | `Test-Template.ps1` | Render every stack and check the result |
 | `Test-Adoption.ps1` | Check the adoption functions and legacy adapters, then adopt small test repositories |
-| `.github/workflows/test-template.yml` | Runs `Test-Template.ps1` on Windows for every push to `main` and every pull request |
+| `Test-CommitAttribution.ps1` | Test the commit attribution check that every project gets |
+| `.github/workflows/test-template.yml` | Runs `Test-Template.ps1`, `Test-Adoption.ps1` and `Test-CommitAttribution.ps1` on Windows, and checks this repository's commit attribution, for every push to `main` and every pull request |
 | `.github/dependabot.yml` | Dependabot for the actions in `test-template.yml` |
 | `USAGE.md` | Setting up a PC for Claude Code and GitHub Copilot, and using and switching between them in a project |
 | `.gitattributes` | Keeps every file LF on disk, because Copier copies non-`.jinja` files byte for byte |

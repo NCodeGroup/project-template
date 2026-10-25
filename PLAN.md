@@ -362,7 +362,7 @@ Steps 29–37 extend the change. Every project, and this repository, gets the se
 - Pattern: step 31's check.
 - Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  dotnet-gitlab: CI runs the commit attribution check') -or -not $o.Contains('PASS  other-gitlab: CI runs the commit attribution check') -or -not $o.Contains('PASS  python-gitlab: valid YAML')) { exit 1 }`
 
-### [ ] 33. Check this repository's own commits, and test the check, in CI
+### [x] 33. Check this repository's own commits, and test the check, in CI
 - Files: `.github/workflows/test-template.yml` (edit), `README.md` (edit)
 - Change: in `test-template.yml`, after the step `Test adopting existing repositories`, add a step `name: Test the commit attribution check` with `run: ./Test-CommitAttribution.ps1`. After the `test` job, add this second job. The file isn't rendered by Copier, so it needs no `{% raw %}`.
   ```yaml

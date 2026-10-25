@@ -29,3 +29,20 @@ jobs:
         run: ./Test-Template.ps1
       - name: Test adopting existing repositories
         run: ./Test-Adoption.ps1
+      - name: Test the commit attribution check
+        run: ./Test-CommitAttribution.ps1
+
+  commit-attribution:
+    name: Commit attribution
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check commit attribution
+        shell: pwsh
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: ./template/.template/Test-CommitAttribution.ps1 -Root . -Base $env:BASE -Head $env:HEAD
