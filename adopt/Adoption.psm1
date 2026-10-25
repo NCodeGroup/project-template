@@ -16,6 +16,17 @@ function Get-MSBuildFile([string]$Path) {
         Where-Object { $_.FullName -notmatch $script:SkipPath }
 }
 
+# The package manager a Node.js repository uses: the one its packageManager field names, else the one whose lockfile
+# is at the root, else npm.
+function Get-NodePackageManager([string]$Path, $Package) {
+    if ("$($Package.packageManager)" -match '^(npm|pnpm|yarn|bun)@') { return $Matches[1] }
+    $lockfiles = [ordered]@{ 'pnpm-lock.yaml' = 'pnpm'; 'yarn.lock' = 'yarn'; 'bun.lock' = 'bun'; 'bun.lockb' = 'bun' }
+    foreach ($file in $lockfiles.Keys) {
+        if (Test-Path -LiteralPath (Join-Path $Path $file)) { return $lockfiles[$file] }
+    }
+    'npm'
+}
+
 function Get-AdoptionAnswers([string]$Path) {
     $Path = (Resolve-Path -LiteralPath $Path).Path
     $found = @(Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Include '*.sln', '*.slnx', '*.csproj', '*.fsproj', '*.vbproj' |
@@ -46,6 +57,15 @@ function Get-AdoptionAnswers([string]$Path) {
             $answers.build_command = "dotnet build $relative"
             $answers.test_command = "dotnet test $relative"
         }
+    }
+    if ($stack -eq 'node') {
+        # Only the scripts package.json has: the template's npm defaults fail where there is no such script.
+        $package = Get-Content -LiteralPath (Join-Path $Path 'package.json') -Raw | ConvertFrom-Json -AsHashtable
+        $scripts = if ($package.scripts -is [System.Collections.IDictionary]) { $package.scripts } else { @{} }
+        $manager = Get-NodePackageManager $Path $package
+        $answers.build_command = if ($scripts['build']) { "$manager run build" } else { '' }
+        # npm init writes a test script that only fails.
+        $answers.test_command = if ($scripts['test'] -and $scripts['test'] -notmatch 'no test specified') { "$manager run test" } else { '' }
     }
     $answers
 }

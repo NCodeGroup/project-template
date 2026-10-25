@@ -77,7 +77,6 @@ $detail = ($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -joi
 Check 'unit: Get-AdoptionAnswers works out a .NET repository' (($a.stack -eq 'dotnet') -and ($a.project_name -eq 'NCode.Demo') -and ($a.git_host -eq 'gitlab') -and ($a.author_name -eq 'NCode Group') -and ($a.build_command -eq 'dotnet build src/NCode.Demo.slnx') -and ($a.test_command -eq 'dotnet test src/NCode.Demo.slnx')) $detail
 
 $others = [ordered]@{
-    'only-node'   = @{ File = 'package.json'; Stack = 'node' }
     'only-python' = @{ File = 'pyproject.toml'; Stack = 'python' }
     'only-ps'     = @{ File = 'tool.ps1'; Stack = 'powershell' }
     'only-other'  = @{ File = 'main.tf'; Stack = 'other' }
@@ -90,6 +89,22 @@ $bad = foreach ($name in $others.Keys) {
     }
 }
 Check 'unit: Get-AdoptionAnswers works out other stacks' (-not $bad) ($bad -join ' | ')
+
+$nodes = [ordered]@{
+    'node-yarn'       = @{ Files = @{ 'package.json' = '{"packageManager":"yarn@4.14.1","scripts":{"build":"tsc","test":"vitest run"}}' }; Build = 'yarn run build'; Test = 'yarn run test' }
+    'node-pnpm'       = @{ Files = @{ 'package.json' = '{"scripts":{"test":"vitest run"}}'; 'pnpm-lock.yaml' = "lockfileVersion: '9.0'`n" }; Build = ''; Test = 'pnpm run test' }
+    'node-bun'        = @{ Files = @{ 'package.json' = '{"scripts":{"build":"bun build ./index.ts"}}'; 'bun.lock' = "{}`n" }; Build = 'bun run build'; Test = '' }
+    'node-npm'        = @{ Files = @{ 'package.json' = '{"scripts":{"build":"tsc","test":"echo \"Error: no test specified\" && exit 1"}}' }; Build = 'npm run build'; Test = '' }
+    'node-no-scripts' = @{ Files = @{ 'package.json' = '{"packageManager":"yarn@4.14.1","scripts":{"diagram:export":"echo export"}}'; 'yarn.lock' = "`n" }; Build = ''; Test = '' }
+}
+$bad = foreach ($name in $nodes.Keys) {
+    $folder = New-TestFolder $name $nodes[$name].Files
+    $a = Get-AdoptionAnswers $folder
+    if (-not ($a.stack -eq 'node' -and $a.git_host -eq 'github' -and $a.project_name -eq $name -and $a.Contains('build_command') -and $a.build_command -eq $nodes[$name].Build -and $a.Contains('test_command') -and $a.test_command -eq $nodes[$name].Test)) {
+        "${name}: $(($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')"
+    }
+}
+Check 'unit: Get-AdoptionAnswers works out Node.js commands from package.json' (-not $bad) ($bad -join ' | ')
 
 $m = Merge-AdoptedFile '.gitignore' "bin/`nmine.log`n" "*.user`nobj/`n"
 Check 'unit: Merge-AdoptedFile appends lines' ($m.Strategy -eq 'Lines' -and $m.Text.StartsWith("*.user`nobj/`n") -and $m.Text.EndsWith("`nbin/`nmine.log`n")) $m.Text
@@ -284,6 +299,18 @@ if (-not $UnitOnly) {
     $failCount = git -C $failing rev-list --count HEAD
     $failStaged = git -C $failing diff --cached --name-only
     Check 'failing: a failed build stages the adoption and commits nothing' ($failExit -eq 1 -and $failCount -eq '1' -and '.copier-answers.yml' -in $failStaged -and $failOut.Contains('"exit 3" fails after adopting')) "$failExit | $failCount | $failOut"
+
+    # Node.js only for tooling: a package.json without build or test scripts.
+    $notes = New-Fixture 'notes' @{
+        'README.md'    = "# Notes`n"
+        'package.json' = '{"name":"notes","private":true,"packageManager":"yarn@4.14.1","scripts":{"diagram:export":"echo export"}}' + "`n"
+        'yarn.lock'    = "`n"
+    } 'https://github.com/example/notes.git'
+    $notesOut = & $adopt -Path $notes -Template $tpl -Ref v0.1.0 | Out-String
+    $notesAnswers = Get-Content -Raw -LiteralPath (Join-Path $notes '.copier-answers.yml')
+    $notesCi = Get-Content -Raw -LiteralPath (Join-Path $notes '.github\workflows\ci.yml')
+    $notesSubject = git -C $notes log -1 --format=%s
+    Check 'notes: a Node.js repository without build or test scripts commits without running a command' ($notesSubject -eq 'Adopt project-template v0.1.0' -and $notesAnswers -match '(?m)^stack: node\s*$' -and $notesAnswers -match "(?m)^build_command: ''\s*$" -and $notesAnswers -match "(?m)^test_command: ''\s*$" -and -not $notesOut.Contains('Running ') -and -not $notesCi.Contains('run build') -and -not $notesCi.Contains('npm test')) "$notesSubject | $notesAnswers | $notesOut | $notesCi"
 
     # A later template version changes the merged files.
     Push-Location (Join-Path $tpl 'template')
