@@ -29,17 +29,18 @@ _merged_files:
   - global.json
 
 # The workflow files of tools the project doesn't use; an empty pattern excludes nothing.
+# Each pattern reads workflow_tools through a default, because an update renders the old version's files with these patterns before the project has that answer.
 _exclude:
-  - "{% if 'claude' not in workflow_tools %}CLAUDE.md{% endif %}"
-  - "{% if 'claude' not in workflow_tools %}.claude{% endif %}"
-  - "{% if 'copilot' not in workflow_tools %}.github/agents/copilot-*.agent.md{% endif %}"
-  - "{% if 'copilot' not in workflow_tools %}.github/agents/plan-executor.agent.md{% endif %}"
-  - "{% if 'copilot' not in workflow_tools %}.github/skills{% endif %}"
-  - "{% if 'copilot' not in workflow_tools %}.github/prompts/execute-step.prompt.md{% endif %}"
-  - "{% if 'local' not in workflow_tools %}.github/agents/hybrid-*.agent.md{% endif %}"
-  - "{% if 'local' not in workflow_tools %}.github/agents/local-implementer.agent.md{% endif %}"
-  - "{% if 'local' not in workflow_tools %}.github/prompts/execute-step-local.prompt.md{% endif %}"
-  - "{% if 'copilot' not in workflow_tools and 'local' not in workflow_tools %}.github/prompts{% endif %}"
+  - "{% if 'claude' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}CLAUDE.md{% endif %}"
+  - "{% if 'claude' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.claude{% endif %}"
+  - "{% if 'copilot' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/agents/copilot-*.agent.md{% endif %}"
+  - "{% if 'copilot' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/agents/plan-executor.agent.md{% endif %}"
+  - "{% if 'copilot' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/skills{% endif %}"
+  - "{% if 'copilot' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/prompts/execute-step.prompt.md{% endif %}"
+  - "{% if 'local' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/agents/hybrid-*.agent.md{% endif %}"
+  - "{% if 'local' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/agents/local-implementer.agent.md{% endif %}"
+  - "{% if 'local' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/prompts/execute-step-local.prompt.md{% endif %}"
+  - "{% if 'copilot' not in (workflow_tools | default(['claude', 'copilot', 'local'])) and 'local' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/prompts{% endif %}"
 
 project_name:
   type: str

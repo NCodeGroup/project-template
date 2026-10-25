@@ -172,6 +172,9 @@ $stale = @(Get-StaleWorkflowFile (Join-Path $PSScriptRoot 'template') | Select-O
 Check 'generated workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) ($stale -join ', ')
 $stale = @(Get-StaleWorkflowFile $PSScriptRoot | Select-Object -Unique)
 Check 'this repository''s own workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) ($stale -join ', ')
+$excludeCheck = 'import sys, yaml, jinja2; c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); e = jinja2.Environment(); bad = [p for p in c["_exclude"] if e.from_string(p).render().strip()]; print("; ".join(bad)); sys.exit(1 if bad else 0)'
+$excludeOutput = uv run --quiet --no-project --with pyyaml --with jinja2 python -c $excludeCheck (Join-Path $PSScriptRoot 'copier.yml') 2>&1 | Out-String
+Check 'copier.yml: _exclude patterns exclude nothing when workflow_tools is missing' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()
 $both = Join-Path $Work 'installed-both'
 New-Item -ItemType Directory -Force $both | Out-Null
 $installed = & (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $both | Out-String
