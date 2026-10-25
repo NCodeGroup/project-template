@@ -133,6 +133,27 @@ $pp = Get-Content -Raw -LiteralPath (Join-Path $folder 'Directory.Packages.props
 $iBar = $pp.IndexOf('<PackageVersion Include="Bar" Version="2.0.0" />')
 $iFoo = $pp.IndexOf('<PackageVersion Include="Foo" Version="1.2.0" />')
 Check 'unit: Move-PackageVersionsToCentral' (-not $pa.Contains('Version="') -and -not $pb.Contains('Version="') -and $pb.Contains('PrivateAssets="all"') -and $iBar -ge 0 -and $iBar -lt $iFoo -and 'Foo: 1.0.0, 1.2.0 -> 1.2.0' -in $report) "$pa | $pb | $pp | $($report -join ' / ')"
+$png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+$adapters = Join-Path $PSScriptRoot 'adopt\legacy'
+$scaffold = Join-Path $adapters 'NCode.ProjectSettings.Scaffold.ps1'
+$folder = New-TestFolder 'scaffold' @{
+    'NCodeGroup.png' = $png
+    'src/A/A.csproj' = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <ItemGroup>`n    <PackageReference Include=""NCode.ProjectSettings.Scaffold""`n                      Version=""1.0.0"">`n      <PrivateAssets>all</PrivateAssets>`n    </PackageReference>`n    <PackageReference Include=""JetBrains.Annotations"" Version=""2.0.0"" />`n  </ItemGroup>`n</Project>`n"
+}
+$detected = & $scaffold -Path $folder -Phase Detect
+$a = & $scaffold -Path $folder -Phase Answers
+$out = @(& $scaffold -Path $folder -Phase Apply)
+$proj = Get-Content -Raw -LiteralPath (Join-Path $folder 'src/A/A.csproj')
+$after = & $scaffold -Path $folder -Phase Detect
+Check 'unit: scaffold adapter' ($detected -eq $true -and $a.nuget_package -eq $true -and $a.package_license -eq 'Apache-2.0' -and $a.author_name -eq 'NCode Group' -and $a.package_icon -eq 'NCodeGroup.png' -and $out[0] -like '*src/A/A.csproj' -and $proj.Contains('JetBrains.Annotations') -and -not $proj.Contains('NCode.ProjectSettings.Scaffold') -and $after -eq $false) "$detected | $($out -join ' / ') | $proj | $after"
+
+$workflow = Join-Path $adapters 'HybridWorkflowInstall.ps1'
+$folder = New-TestFolder 'workflow-install' @{ '.github/prompts/execute-step-copilot.prompt.md' = "old`n" }
+$detected = & $workflow -Path $folder -Phase Detect
+$out = @(& $workflow -Path $folder -Phase Apply)
+$gone = -not (Test-Path -LiteralPath (Join-Path $folder '.github/prompts/execute-step-copilot.prompt.md'))
+$after = & $workflow -Path $folder -Phase Detect
+Check 'unit: workflow install adapter' ($detected -eq $true -and $gone -and $out.Count -eq 1 -and $after -eq $false) "$detected | $($out -join ' / ') | $after"
 ''
 if ($failures.Count) { "Adoption tests: FAILED ($($failures.Count))"; exit 1 }
 'Adoption tests: PASSED'
