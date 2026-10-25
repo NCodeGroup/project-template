@@ -275,7 +275,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: the neighboring rows.
 - Done when: `$t = Get-Content -Raw workflow\templates\README.md; $w = Get-Content -Raw workflow\README.md; if ($t.Contains('The Claude Code plan-worktree sections ([Claude Code Plan Worktrees](#claude-code-plan-worktrees))') -and $t.Contains('when it works on one;') -and $w.Contains('the Claude Code plan-worktree sections, the')) { exit 0 } else { exit 1 }`
 
-### [ ] 13. Document plan worktrees in USAGE.md: the tools and daily work
+### [x] 13. Document plan worktrees in USAGE.md: the tools and daily work
 - Files: `USAGE.md` (edit)
 - Change:
   1. In the `## How the Two Tools Fit` table, directly after the row that starts `| Executes plan steps on |`, insert:

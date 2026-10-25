@@ -25,8 +25,9 @@ How to set up a PC for the template's AI workflow — Claude Code on your Claude
 | Workflow files in a project | `.claude/commands/`, `.claude/agents/` | `.github/agents/` and `.github/prompts/` for Copilot Chat, `.github/skills/` for Copilot CLI |
 | Reads | `CLAUDE.md`, which imports `AGENTS.md` and each `@` file it lists | `AGENTS.md`, and every `.github/instructions/*.instructions.md` |
 | Executes plan steps on | Claude Sonnet 5.5, in the `plan-executor` subagent | Claude Sonnet 5.5 with the Copilot agents; the shack PC's local model with the Hybrid agents |
+| Where a plan lives | Its own git worktree, `.claude/worktrees/<name>/`, so several sessions can work on different plans at once | The folder that's open, usually the main checkout |
 
-Both run the same commands against the same `PLAN.md`, so either can plan, execute, re-plan or review, whichever one started the plan.
+Both run the same commands against the same `PLAN.md`, so either can plan, execute, re-plan or review, whichever one started the plan. To continue a Claude Code plan in Copilot, open its worktree's folder.
 
 A Claude plan works only in Anthropic's own tools. Copilot Chat's built-in Claude agent isn't a way to use it: that agent bills your Copilot plan or a Claude API key. To use your Claude plan in VS Code, use the Claude Code extension.
 
@@ -140,11 +141,11 @@ Create one with `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote` ([README](
 | Re-plan a step that came back `[?]` | `/replan-step N` | Re-plan with the planner | `/replan-step N` |
 | Review the result | `/review-plan-diff` | Review the work | `/review-plan-diff` |
 
-- **Claude Code:** the planning commands run on Opus with high effort, whatever the session's model, and `/orchestrate-plan` hands each step to the Sonnet `plan-executor` subagent, checks it, and re-plans what comes back.
+- **Claude Code:** the planning commands run on Opus with high effort, whatever the session's model, and `/orchestrate-plan` hands each step to the Sonnet `plan-executor` subagent, checks it, and re-plans what comes back. Each planning command creates a worktree for its plan, commits `PLAN.md` there and names it in its reply; `/orchestrate-plan`, `/execute-step`, `/replan-step` and `/review-plan-diff` move into it, so run one session per plan. With several plans open, name the one you mean, `/orchestrate-plan <name>`, or start a terminal session in it with `claude --worktree <name>`. A worktree is a fresh checkout: to copy gitignored files such as `.env` into each new one, list them in a `.worktreeinclude` file at the repository root.
 - **Copilot Chat:** use Session Target Local, where the agents and their buttons live; the buttons switch both the agent and the model. The Copilot agents execute on Claude Sonnet 5.5; the Hybrid agents execute on the shack PC's local model. Each command also appears as a Copilot CLI skill, so it's listed twice; either runs it.
 - **Copilot CLI:** `/orchestrate-plan` hands each step to the `plan-executor` agent and re-plans escalations on the session's model, so start the session on Opus.
 
-Each finished step is a commit, `Plan step N: <title>`. When the review is clean, push, and delete `PLAN.md` or keep it as the record of the change. To pull in template improvements, run `.\.template\Update-Project.ps1` ([README](README.md#update-a-project)).
+Each finished step is a commit, `Plan step N: <title>`. When the review is clean, push, and delete `PLAN.md` or keep it as the record of the change. In Claude Code the commits are on the worktree's branch, `worktree-<name>`: push it and open a pull request, or merge it into your branch, then remove the worktree — choose remove when Claude Code asks on exit, or run `git worktree remove .claude/worktrees/<name>` and `git branch -d worktree-<name>`. To pull in template improvements, run `.\.template\Update-Project.ps1` ([README](README.md#update-a-project)).
 
 ## Switch Between Claude and Copilot
 
