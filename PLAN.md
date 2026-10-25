@@ -3,13 +3,17 @@
 ## Goal
 Existing repositories — about 13 NCodeGroup libraries built on the `NCode.ProjectSettings.Scaffold` NuGet package, NCode.Identity, and others — need the template's workflow and its updates, which today only `New-Project.ps1` projects get. This change adds `Adopt-Project.ps1`, which brings a repository under the template without asking questions: it works out the answers, runs Copier, rebuilds each merged file as the template's file plus the repository's own content (so later `Update-Project.ps1` runs merge instead of conflicting), extends `AGENTS.md` and `Directory.Build.props`, removes legacy setups through pluggable adapters, verifies the build, and commits. To make that fit public and library repositories, the template also gains a `workflow_tools` question (which of Claude Code, Copilot and the shack PC's local model a project gets) and an opt-in NuGet packaging option that replaces the scaffold.
 
+Steps 29–37 extend the change. Every project, and this repository, gets the server-side half of the AI-attribution protection that NCode.Identity got in its PR #12: a check script that fails on a commit authored, committed or co-authored by an AI agent, run in each project's CI on pull requests, in a merge queue and on pushes (GitHub and GitLab), with its own tests. And every tool's plan executor runs on Claude Sonnet 5.5 instead of Copilot's Auto, which some sessions do not offer and which picks a different model from run to run.
+
 ## Context for the executor
 - Build: none — PowerShell 7 scripts and a Copier template.
-- Test: `.\Test-Template.ps1` renders the template and checks it (about 3 minutes in full; `-SkipDotnetBuild -SkipUpdate` takes about 1.5 minutes). From step 9 on, `.\Test-Adoption.ps1` tests adoption (`-UnitOnly` runs in seconds; `-SkipDotnetBuild` skips the .NET build and pack). Both print `PASS  <name>` or `FAIL  <name>` per check and end with `Template tests: PASSED` / `Adoption tests: PASSED`.
+- Test: `.\Test-Template.ps1` renders the template and checks it (about 3 minutes in full; `-SkipDotnetBuild -SkipUpdate` takes about 1.5 minutes). From step 9 on, `.\Test-Adoption.ps1` tests adoption (`-UnitOnly` runs in seconds; `-SkipDotnetBuild` skips the .NET build and pack). Both print `PASS  <name>` or `FAIL  <name>` per check and end with `Template tests: PASSED` / `Adoption tests: PASSED`. From step 30 on, `.\Test-CommitAttribution.ps1` tests the commit attribution check in seconds and ends with `Commit attribution tests: PASSED`.
 - Needs Copier on PATH (`uv tool install copier`), uv, Git with a global `user.name` and `user.email`, and the .NET SDK 10.0.402.
 - Conventions: scripts start with comment-based help (`.SYNOPSIS`, `.DESCRIPTION`, `.EXAMPLE`) like `New-Project.ps1`, then `[CmdletBinding()]`, `param(...)` and `$ErrorActionPreference = 'Stop'`. Four-space indentation. Every file is UTF-8 without BOM with LF line endings; write files with `[IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))`. Small helpers such as `Invoke-Copier` are copied into each script that needs them rather than shared — keep doing that. Comments are rare and explain why, in one line. Test checks use `Check '<name>' (<bool>) (<detail>)`, as in `Test-Template.ps1`; check names have no apostrophes. Docs use short plain sentences, tables, and sentence-case headings.
 - Gotchas:
   - Files under `template/` are rendered by Copier only when their name ends in `.jinja`; every other file is copied byte for byte. Jinja `{%-` strips the newline before the tag; keep the rendered output of the default answers byte-identical unless a step says otherwise.
+  - GitHub Actions expressions `${{ ... }}` inside a `.jinja` file are read by Jinja as its own expressions. Wrap any lines that contain them in `{% raw %}` … `{% endraw %}`, so they render literally.
+  - NCode.Identity's versions of the attribution pieces are the reference for steps 29–31: `C:\GitHub\NCode\Identity\build\commit-attribution.ps1`, `C:\GitHub\NCode\Identity\build\tests\commit-attribution.tests.ps1` and `C:\GitHub\NCode\Identity\.github\workflows\commit-attribution.yml`. Read them; change nothing in that repository.
   - `template/.claude/commands/`, `template/.claude/agents/`, `template/.github/agents/`, `template/.github/prompts/` and `template/.github/skills/` are generated, and so are the same five folders at the repository root (this repository's own workflow): never edit them; change `workflow/` and run `.\Update-Template.ps1`, which regenerates both.
   - The update tests in `Test-Template.ps1` edit these exact strings in template sources, so they must stay: `Thumbs.db` in `.gitignore.jinja`, `"editorconfig.editorconfig"` in `.vscode/extensions.json.jinja`, `## Conventions` in `AGENTS.md.jinja` and `project-template.instructions.md.jinja`, `## AI-Assisted Workflow` in `README.md.jinja`, `## Claude Code` in `CLAUDE.md`.
   - Copier facts this plan relies on (all verified with Copier 9.19.1): `--data` reads values as YAML, so a list is passed as `[claude, copilot]`; a question whose `when` is false renders as its default (empty for no default) and isn't recorded; a question with no default and no answer fails `--defaults` with "Question ... is required"; `_exclude` patterns are Jinja-rendered and an empty pattern excludes nothing; `copier copy --overwrite` still keeps the `_skip_if_exists` files.
@@ -39,12 +43,21 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
 - Step 14 (re-plan): the `plain` fixture gets a `pyproject.toml`; Python detection stays as in step 9 (a marker file at the root, not any `*.py`), so a folder of loose scripts is `other`.
 - Step 18 (re-plan, before its first run): it also fixes two things found while verifying steps 13–17 — the unit check's `scaffold` folder name collides with the step 16 fixture, and `Test-Adoption.ps1` can end with a non-zero `$LASTEXITCODE` after printing PASSED, which fails a GitHub Actions `pwsh` step.
 - Step 27 (re-plan): the anchored pattern alone fails on the emoji line in a UTF-8 locale (this PC has `LC_ALL=en_US.UTF-8`), so the hook runs its `grep` calls with `LC_ALL=C`, and the test runs the hook under a UTF-8 locale.
+- The commit attribution check ships in every project as the template-owned `.template/Test-CommitAttribution.ps1`, beside `Update-Project.ps1`: updates keep it current, and one copy serves GitHub and GitLab. It is NCode.Identity's `build/commit-attribution.ps1` with three changes, which NCode.Identity's own plan makes to its copy too: the "Generated with Claude Code" pattern is anchored to the start of the line (`^\W*generated with \[?claude code`), as the hook's is; an empty `-Base` is treated like an all-zero one, because a `workflow_dispatch` run has no `before`; and with no usable base the remedy line says `git rebase <base>` rather than naming a base that doesn't help.
+- It runs as a `commit-attribution` job named `Commit attribution` in the merged `ci.yml` (GitHub) and `.gitlab-ci.yml` (GitLab), not as a template-owned workflow file. A template-owned workflow pins an action that each project's Dependabot would bump and each template update would put back. `ci.yml` gains a `merge_group` trigger, so a required check also reports in a merge queue.
+- GitLab runs the job in `mcr.microsoft.com/dotnet/sdk:10.0`, which has `git` and `pwsh` (checked in its Dockerfile), with `GIT_DEPTH: "0"`. The base is `CI_MERGE_REQUEST_DIFF_BASE_SHA` in a merge request pipeline and `CI_COMMIT_BEFORE_SHA` on a push.
+- Making the check required is left to each project: a repository's branch rules or GitLab's "Pipelines must succeed" setting are not files the template owns. The README says how.
+- This repository runs the same script on its own history in `test-template.yml`, and tests it with a new `Test-CommitAttribution.ps1`, kept apart from `Test-Template.ps1` so each stays fast.
+- The plan executor runs on Claude Sonnet 5.5 in every tool: `Claude Sonnet 5.5 (copilot)` for the VS Code Copilot agents, `claude-sonnet-5.5` for Copilot CLI and `Invoke-PlanSteps.ps1`, and the pinned `claude-sonnet-5-5` for Claude Code, so a new Sonnet is adopted on purpose by changing one installer default. The fast executor (Claude Haiku 5.5, "Execute next step (fast model)") and the Hybrid variant's local model are separate, deliberate choices and stay. The Copilot variant's executor label is derived from its model name, so the agents' text names the model they run on.
 
 ## Out of scope
 - Adopting any real repository — NCode.Identity, the NCodeGroup libraries, identity-platform, the homelab repositories. Each is a separate change once this ships; NCode.Identity's also amends its ADR-0170 and its prompt/skill check.
 - The personal-notes repository (`plan-and-execute.md` names `execute-step-copilot`; `configuration-g.md` describes `copier copy` for existing repositories). A follow-up there.
 - Versioning or publishing CI for libraries, removing redundant `Microsoft.SourceLink.GitHub` references, and merging a repository's own CI into `ci.yml` — per-repository judgment.
 - Tagging or pushing a template release.
+- Changing NCode.Identity, which has its own plan, or personal-notes, whose `plan-and-execute.md` still names `Auto (copilot)` and `-Model auto` (a follow-up there).
+- Creating branch rules or GitLab settings that make the check required in a project.
+- The reviewer, planner and fast-executor models, and the Hybrid variant's local model.
 - Any change to `Update-Project.ps1` other than formatting list answers in step 7.
 - Pester or any new test framework; tests stay plain scripts with `Check`.
 - No files other than those each step lists.
@@ -298,12 +311,155 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
 - Change: review finding. Steps 24 and 25 changed what `Adopt-Project.ps1` does, step 23 made a rule for anyone who changes `copier.yml`, and the README mentions none of it. (1) In `## Adopt an Existing Repository`, in the sentence that starts `The script refuses a folder that isn't the root of a Git repository`, add `has no commits yet,` after `has uncommitted changes,`. (2) In the paragraph that starts `Before committing, the script runs the build and test commands`, after the sentence ending `abandon the adoption with `git reset --hard; git clean -fd`.` add: `If anything else fails after the template is applied, the script resets the repository to where it was and says so, so there is nothing to clean up.` (3) Replace the paragraph that starts `Some judgment is left to you.` with: `Some judgment is left to you. The script prints it as a ready request: folding `.github/copilot-instructions.md` into `AGENTS.md`; for a .NET repository, reconciling the template's `csharp.instructions.md` with the repository's own instruction files; and, when the template added `ci.yml` because the repository had none, reconciling its other workflows in `.github/workflows` with it. A `ci.yml` the repository already had is kept, and so is every workflow beside it.` Keep the code block that follows. (4) In `## Change the Template`, at the end of item 1, add: `A question that a later version adds must be read through a default wherever `copier.yml` uses it before the question is answered — the `_exclude` patterns read `workflow_tools | default([...])` — because an update renders the old version's files with the new `copier.yml` before the project has that answer; without the default an old project's update stops with conflicts. `Test-Template.ps1` fails an `_exclude` pattern that excludes anything without the answer.` (5) In the checks table of `## Change the Template`, add a row ``Every `_exclude` pattern excludes nothing when `workflow_tools` is missing`` | `Always`; append to the hook row's text `, and keeps a prose line that mentions the advertising phrase`; and append to the `Test-Adoption.ps1` row, before its closing `|`-separated column, `a failure after Copier rolling the repository back, the report naming only the follow-ups the repository really has,`. Wrap nothing else and change no other line.
 - Pattern: the surrounding paragraphs and table rows.
 - Done when: `$t = Get-Content -Raw README.md; if ($t.Contains([char]13) -or -not $t.Contains('has no commits yet') -or -not $t.Contains('resets the repository to where it was') -or -not $t.Contains('A `ci.yml` the repository already had is kept') -or -not $t.Contains('workflow_tools | default([...])') -or -not $t.Contains('keeps a prose line that mentions the advertising phrase') -or -not $t.Contains('rolling the repository back')) { exit 1 }`
+
+### [ ] 29. Add the commit attribution check to the template
+- Files: `template/.template/Test-CommitAttribution.ps1` (new)
+- Change: port `C:\GitHub\NCode\Identity\build\commit-attribution.ps1` (read it in full) with these four differences and no other change in behavior. (1) Start the file with this repository's comment-based help, as `New-Project.ps1` does, with no shebang or `#requires` line: `.SYNOPSIS` `Fail when a commit in a range is attributed to an AI agent.`; a `.DESCRIPTION` that states the rules as Identity's help does, says this file comes from the project template and template updates replace it, and gives the re-author command; one `.PARAMETER` per parameter; `.EXAMPLE` lines `.\.template\Test-CommitAttribution.ps1 -Base origin/main` and `.\.template\Test-CommitAttribution.ps1 -Base origin/main~20 -Head origin/main`. (2) `param([Parameter(Mandatory)][AllowEmptyString()][string]$Base, [string]$Head = 'HEAD', [string]$Root = (Split-Path -Parent $PSScriptRoot))`; the project root is the parent of `.template`. (3) An empty or whitespace `$Base` is handled like an all-zero one, but writes `Commit attribution: no base given; checking $Head only.`; and whenever the base is empty, all zeros or not in the clone, the remedy line names `<base>` instead of `$Base` (`git rebase <base> --exec ...`). (4) The third attribution pattern is `'^\W*generated with \[?claude code'` instead of `'generated with \[?claude code'`. Keep `Set-StrictMode -Version Latest`, `$ErrorActionPreference = 'Stop'`, the account patterns, every output line, the `::error` annotations under GitHub Actions and the exit codes exactly as Identity's.
+- Pattern: Identity's `build/commit-attribution.ps1`; the help block of `New-Project.ps1`.
+- Done when: `$f = 'template/.template/Test-CommitAttribution.ps1'; $o = pwsh -NoProfile -File $f -Root . -Base origin/main -Head HEAD | Out-String; $t = Get-Content -Raw $f; if ($LASTEXITCODE -or $o -notmatch 'none is attributed to an AI agent' -or -not $t.StartsWith('<#') -or -not $t.Contains('.SYNOPSIS') -or -not $t.Contains('AllowEmptyString') -or -not $t.Contains('^\W*generated with') -or $t.Contains([char]13)) { exit 1 }`
+
+### [ ] 30. Test the commit attribution check
+- Files: `Test-CommitAttribution.ps1` (new, at the repository root)
+- Change: a test script in this repository's style. It has a help block like `Test-Adoption.ps1`'s (synopsis `Test the commit attribution check every project gets as .template\Test-CommitAttribution.ps1.`), `[CmdletBinding()] param([string]$Work = (Join-Path $env:TEMP 'project-template-attribution-test'))`, `$ErrorActionPreference = 'Stop'`, `Check` copied from `Test-Template.ps1`, and a fresh `$Work`. It builds one fixture repository under `$Work`, set up like the one in `C:\GitHub\NCode\Identity\build\tests\commit-attribution.tests.ps1` (`user.name`, `user.email`, `commit.gpgsign false`, `core.autocrlf false`, `core.hooksPath` pointing at an empty folder), with a base commit. Port every case of that file except the hook check, which `Test-Template.ps1` covers, each as a `Check`. Keep the names, except rename `a person's co-author trailer passes` to `a co-author trailer naming a person passes` (check names have no apostrophes). Each case runs `& pwsh -NoProfile -File (Join-Path $PSScriptRoot 'template\.template\Test-CommitAttribution.ps1') -Root <fixture> -Base <rev> -Head <rev> 2>&1 | Out-String` and asserts the exit code and output as Identity's test does. In `a Generated with Claude Code line fails`, the line is `$([char]::ConvertFromUtf32(0x1F916)) Generated with [Claude Code](https://claude.com/claude-code)`. Add two cases: `a prose line that mentions the advertising phrase passes` (message `Add a feature`, a blank line, then `The hook strips the Generated with Claude Code line.`; exit 0) and `an empty base checks only the head` (`-Base ''`; exit 0, output contains `checking`). End with `if ($failures.Count) { "Commit attribution tests: FAILED ($($failures.Count))"; exit 1 }`, then `'Commit attribution tests: PASSED'` and `exit 0`, and remove `$Work` in a `finally`.
+- Pattern: Identity's test file for the cases; `Test-Adoption.ps1` for the shape and the ending.
+- Done when: `$o = .\Test-CommitAttribution.ps1 | Out-String; if ($LASTEXITCODE -or -not $o.Contains('Commit attribution tests: PASSED') -or -not $o.Contains('PASS  a prose line that mentions the advertising phrase passes') -or -not $o.Contains('PASS  an empty base checks only the head') -or -not $o.Contains('PASS  a range finds an agent commit in the middle') -or -not $o.Contains('PASS  an agent committer fails')) { exit 1 }`
+
+### [ ] 31. Run the check in a GitHub project's CI
+- Files: `template/.github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja` (edit), `Test-Template.ps1` (edit)
+- Change: in `ci.yml.jinja`, add these lines after the `pull_request:` trigger: the comment `  # A required check must also report in a merge queue.`, then `  merge_group:` and `    types: [checks_requested]`. At the end of the file, after a blank line, add a second job:
+  ```jinja
+    commit-attribution:
+      name: Commit attribution
+      runs-on: ubuntu-latest
+      timeout-minutes: 5
+      steps:
+        - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          with:
+            fetch-depth: 0
+        - name: Check commit attribution
+          shell: pwsh
+  {% raw %}        env:
+            BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+            HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}{% endraw %}
+          run: ./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD
+  ```
+  (`{% raw %}` sits at the very start of the `env:` line and `{% endraw %}` at the very end of the `HEAD:` line, so both lines render exactly as written.) In `Test-Template.ps1`: (1) add `'.template\Test-CommitAttribution.ps1'` to `$common`. (2) In the `no leftover Jinja` check, change the pattern `'\{\{|\{%'` to `'(?<!\$)\{\{|\{%'`, so a GitHub expression `${{` is not taken for leftover Jinja. (3) In the case loop, when `$case.Host -eq 'github'`, add `Check "${name}: CI runs the commit attribution check"`, true when `.github\workflows\ci.yml` contains `./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD`, `merge_group:` and `${{ github.event.pull_request.base.sha`. (4) Directly after the check `hooks: commit-msg keeps a prose line that mentions the advertising phrase`, add `Check 'project: the shipped commit attribution check passes on its own history'`. It is true when `& pwsh -NoProfile -File (Join-Path $listProject '.template\Test-CommitAttribution.ps1') -Base (git -C $listProject rev-list --max-parents=0 HEAD) -Head HEAD` exits 0 and its output contains `none is attributed to an AI agent`.
+- Pattern: the `$hostOnly` check in the case loop; the hook checks for step (4).
+- Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  dotnet: CI runs the commit attribution check') -or -not $o.Contains('PASS  project: the shipped commit attribution check passes on its own history') -or -not $o.Contains('PASS  dotnet: no leftover Jinja')) { exit 1 }`
+
+### [ ] 32. Run the check in a GitLab project's CI
+- Files: `template/{% if git_host == 'gitlab' %}.gitlab-ci.yml{% endif %}.jinja` (edit), `Test-Template.ps1` (edit)
+- Change: at the end of `.gitlab-ci.yml.jinja`, after a blank line, add the comment `# The .NET SDK image has git and PowerShell; the check needs the full history.` and this job:
+  ```yaml
+  commit-attribution:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    variables:
+      GIT_DEPTH: "0"
+    script:
+      - pwsh -NoProfile -File .template/Test-CommitAttribution.ps1 -Base "${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" -Head "$CI_COMMIT_SHA"
+  ```
+  It needs no `rules:`: the file's `workflow: rules:` already limits pipelines to merge requests and the default branch. In `Test-Template.ps1`, extend the check `"${name}: CI runs the commit attribution check"` from step 31 to GitLab cases: when `$case.Host -eq 'gitlab'`, `.gitlab-ci.yml` contains `commit-attribution:`, `mcr.microsoft.com/dotnet/sdk:10.0`, `GIT_DEPTH: "0"` and `.template/Test-CommitAttribution.ps1 -Base`.
+- Pattern: step 31's check.
+- Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  dotnet-gitlab: CI runs the commit attribution check') -or -not $o.Contains('PASS  other-gitlab: CI runs the commit attribution check') -or -not $o.Contains('PASS  python-gitlab: valid YAML')) { exit 1 }`
+
+### [ ] 33. Check this repository's own commits, and test the check, in CI
+- Files: `.github/workflows/test-template.yml` (edit), `README.md` (edit)
+- Change: in `test-template.yml`, after the step `Test adopting existing repositories`, add a step `name: Test the commit attribution check` with `run: ./Test-CommitAttribution.ps1`. After the `test` job, add this second job. The file isn't rendered by Copier, so it needs no `{% raw %}`.
+  ```yaml
+    commit-attribution:
+      name: Commit attribution
+      runs-on: ubuntu-latest
+      timeout-minutes: 5
+      steps:
+        - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          with:
+            fetch-depth: 0
+        - name: Check commit attribution
+          shell: pwsh
+          env:
+            BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+            HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          run: ./template/.template/Test-CommitAttribution.ps1 -Root . -Base $env:BASE -Head $env:HEAD
+  ```
+  In `README.md`'s `## Change the Template`:
+  - Item 3 becomes: ``3. Run `.\Test-Template.ps1`, `.\Test-Adoption.ps1` and `.\Test-CommitAttribution.ps1`, and confirm their last lines read `Template tests: PASSED`, `Adoption tests: PASSED` and `Commit attribution tests: PASSED`.``
+  - In the paragraph after the list, ``Both it and `Test-Adoption.ps1` run on every push`` becomes ``It, `Test-Adoption.ps1` and `Test-CommitAttribution.ps1` run on every push``.
+  - In the checks table, the row text ``The CI file for the `git_host` answer, and `.github/dependabot.yml` on GitHub only`` becomes ``The CI file for the `git_host` answer, with its `Commit attribution` job, and `.github/dependabot.yml` on GitHub only``.
+  - After the row that starts `` | `New-Project.ps1` and `Update-Project.ps1` enable `.githooks` ``, add `` | The shipped `.template/Test-CommitAttribution.ps1` passes on a new project's own history | Always | ``.
+  - At the end of the table, add `` | `Test-CommitAttribution.ps1`: the check every project gets fails on a commit authored or committed by an AI agent account, a co-author trailer naming one, a `Claude-Session:` trailer or Claude Code's advertising line, and passes a person's co-author trailer, Dependabot, a prose line that mentions the advertising phrase, and an unknown or empty base | Always | `` and `` | The `Commit attribution` job checks this repository's own new commits with `template/.template/Test-CommitAttribution.ps1` | Every push to `main` and pull request | ``.
+
+  In `## Repository Layout`, after the `Test-Adoption.ps1` row, add `` | `Test-CommitAttribution.ps1` | Test the commit attribution check that every project gets | ``, and change the `.github/workflows/test-template.yml` row's text to `` Runs `Test-Template.ps1`, `Test-Adoption.ps1` and `Test-CommitAttribution.ps1` on Windows, and checks this repository's commit attribution, for every push to `main` and every pull request ``.
+- Pattern: the existing steps and rows.
+- Done when: `uv run --quiet --no-project --with pyyaml python -c "import sys, yaml; d = yaml.safe_load(open(sys.argv[1], encoding='utf-8')); assert d['jobs']['commit-attribution']['name'] == 'Commit attribution'; assert any(s.get('run') == './Test-CommitAttribution.ps1' for s in d['jobs']['test']['steps'])" .github/workflows/test-template.yml; $r = Get-Content -Raw README.md; if ($LASTEXITCODE -or -not $r.Contains('`Commit attribution tests: PASSED`') -or -not $r.Contains('| `Test-CommitAttribution.ps1` | Test the commit attribution check') -or -not $r.Contains('passes on a new project''s own history') -or $r.Contains('Both it and `Test-Adoption.ps1`') -or $r.Contains([char]13)) { exit 1 }`
+
+### [ ] 34. Tell an adopter to add the check when the repository kept its own CI file
+- Files: `Adopt-Project.ps1` (edit), `Test-Adoption.ps1` (edit)
+- Change: in `Adopt-Project.ps1`, where `$followUps` is built (inside the `try`), add: for each of `.github/workflows/ci.yml` and `.gitlab-ci.yml` that is a key of `$originals` (the repository's own file, kept) and whose current text does not contain `Test-CommitAttribution.ps1`, add the follow-up `add the template's commit-attribution job to <that path>, so CI rejects commits attributed to an AI agent`. In `Test-Adoption.ps1`, add three checks:
+  - `plain: asks to add the commit attribution job to the kept .gitlab-ci.yml`, directly after `plain: CI file kept`, while `$out` still holds the `plain` adoption's output. The output contains `add the template's commit-attribution job to .gitlab-ci.yml`.
+  - `scaffold: no commit attribution follow-up when the template added ci.yml`, directly after `scaffold: reconciles the C# instructions`. The output does not contain `commit-attribution job`.
+  - `ci-existing: asks to add the commit attribution job to the kept ci.yml`, directly after the `ci-existing` check. `$ciOut` contains `add the template's commit-attribution job to .github/workflows/ci.yml`.
+- Pattern: the existing `$followUps` code and the `ci-existing` check.
+- Done when: `$o = .\Test-Adoption.ps1 -SkipDotnetBuild | Out-String; if ($LASTEXITCODE -or -not $o.Contains('Adoption tests: PASSED') -or -not $o.Contains('PASS  ci-existing: asks to add the commit attribution job to the kept ci.yml') -or -not $o.Contains('PASS  plain: asks to add the commit attribution job to the kept .gitlab-ci.yml') -or -not $o.Contains('PASS  scaffold: no commit attribution follow-up when the template added ci.yml')) { exit 1 }`
+
+### [ ] 35. Document the server-side check
+- Files: `template/.github/instructions/project-template.instructions.md.jinja` (edit), `README.md` (edit)
+- Change:
+  1. In the rules file, add this to the end of the bullet that starts `- Commits and pull requests record the people who wrote them`: `` CI runs `.template/Test-CommitAttribution.ps1` on every pull request{% if git_host == 'github' %}, merge queue entry{% endif %} and push to the default branch, and fails on a commit authored, committed or co-authored by an AI agent; to fix one, re-author it: `git rebase <base> --exec "git commit --amend --no-edit --reset-author"`. ``
+  2. In `README.md`'s `## Commit Attribution`, add a last row to the layer table: `` `.template/Test-CommitAttribution.ps1` (here, `template/.template/`), run by the `Commit attribution` job in `ci.yml` or `.gitlab-ci.yml` `` | `A commit authored, committed or co-authored by an AI agent, whoever made it and however: on every pull request, merge queue entry and push to the default branch. It reports; to make it block a merge, require the Commit attribution check in the repository's branch rules on GitHub, or turn on "Pipelines must succeed" on GitLab`.
+  3. After the paragraph that starts `The hook removes only agent lines`, add: `` The check fails with the commits it found and the command that fixes them: `git rebase <base> --exec "git commit --amend --no-edit --reset-author"`, then `git push --force-with-lease`. The Copilot cloud agent authors its own commits, so its pull requests fail until they are re-authored this way. ``
+  4. In `### Template-Owned Files`, add a row after `.githooks/commit-msg`: `` `.template/Test-CommitAttribution.ps1` `` | `Fails CI on a commit attributed to an AI agent ([Commit Attribution](#commit-attribution))`.
+  5. In `### Merged Files`, the purpose cell of the `.github/workflows/ci.yml` or `.gitlab-ci.yml` row becomes: `` CI on GitHub or GitLab, whichever the `git_host` answer names: a job that runs the build and test commands once code exists, and a `Commit attribution` job that runs `.template/Test-CommitAttribution.ps1`; on GitHub it also runs in a merge queue, with actions pinned to commit SHAs ``.
+- Pattern: the surrounding rows and paragraphs.
+- Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; $r = Get-Content -Raw README.md; if (-not $o.Contains('Template tests: PASSED') -or -not (Select-String -LiteralPath template\.github\instructions\project-template.instructions.md.jinja -SimpleMatch '.template/Test-CommitAttribution.ps1' -Quiet) -or -not $r.Contains('| `.template/Test-CommitAttribution.ps1` |') -or -not $r.Contains('Pipelines must succeed') -or $r.Contains([char]13)) { exit 1 }`
+
+### [ ] 36. Execute plan steps on Claude Sonnet 5.5 in every tool
+- Files: `workflow/Install-HybridWorkflow.ps1` (edit), `workflow/Invoke-PlanSteps.ps1` (edit), `Test-Template.ps1` (edit); regenerated files under `template/` and at the repository root (by running `.\Update-Template.ps1`)
+- Change:
+  - **`Install-HybridWorkflow.ps1`:**
+    - Set the defaults `$CopilotExecutorModel = 'Claude Sonnet 5.5 (copilot)'` and `$ClaudeExecutorModel = 'claude-sonnet-5-5'`. Leave `$CliExecutorModel` (already `claude-sonnet-5.5`), `$CopilotFastModel` and the local models unchanged.
+    - In the `$variants.Copilot` tokens, set `EXECUTOR_LABEL = ($CopilotExecutorModel -replace '\s*\([^)]*\)\s*$', '')`.
+    - In the help: change `a lower-cost Copilot model (Auto by default) executes` to `Claude Sonnet 5.5 executes (-CopilotExecutorModel)`; change the example `-CopilotExecutorModel 'Claude Sonnet 5.5 (copilot)'` to `-CopilotExecutorModel 'Claude Haiku 5.5 (copilot)'`; and change `Claude Code uses aliases such as sonnet.` to `Claude Code uses aliases such as sonnet or full model IDs such as claude-sonnet-5-5.`.
+  - **`Invoke-PlanSteps.ps1`:**
+    - In the `if (-not $Model)` line, the `-Executor copilot` default becomes `'claude-sonnet-5.5'` instead of `'auto'`.
+    - The help's `(-Executor copilot, e.g. -Model auto)` becomes `(-Executor copilot; Claude Sonnet 5.5 unless -Model says otherwise)`.
+    - Drop `-Model auto` from the example line.
+  - Run `.\Update-Template.ps1`.
+  - **`Test-Template.ps1`:** directly after the check `copier.yml: _exclude patterns exclude nothing when workflow_tools is missing`, add `Check 'workflow: every executor runs on Claude Sonnet 5.5'`. It is true when:
+    - `template\.github\agents\copilot-implementer.agent.md` contains `model: 'Claude Sonnet 5.5 (copilot)'`;
+    - `template\.github\agents\plan-executor.agent.md` contains `model: claude-sonnet-5.5`;
+    - `template\.claude\agents\plan-executor.md` contains `model: claude-sonnet-5-5`;
+    - `template\.github\prompts\execute-step.prompt.md` contains `Claude Sonnet 5.5 (copilot)`;
+    - and no file under `template\.github` or `template\.claude` contains `Auto (copilot)` or a line `model: auto`.
+- Pattern: the existing tokens in the `$variants.Copilot` block.
+- Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  workflow: every executor runs on Claude Sonnet 5.5') -or -not $o.Contains('PASS  this repository''s own workflow files match workflow/templates') -or -not (Select-String -LiteralPath .github\agents\copilot-implementer.agent.md -SimpleMatch "model: 'Claude Sonnet 5.5 (copilot)'" -Quiet)) { exit 1 }`
+
+### [ ] 37. Name the executor model in the docs
+- Files: `README.md` (edit), `USAGE.md` (edit), `workflow/templates/README.md` (edit)
+- Change: replace each place that says the Copilot executor is Auto:
+  - **`README.md`:** `implementer on Auto` → `implementer on Claude Sonnet 5.5`.
+  - **`USAGE.md`:**
+    - the table cell `Auto with the Copilot agents` → `Claude Sonnet 5.5 with the Copilot agents`;
+    - the table cell `` Sonnet, in the `plan-executor` subagent `` → `` Claude Sonnet 5.5, in the `plan-executor` subagent ``;
+    - `The Copilot agents execute on Auto;` → `The Copilot agents execute on Claude Sonnet 5.5;`.
+  - **`workflow/templates/README.md`:**
+    - `Copilot Implementer (Auto)` → `Copilot Implementer (Claude Sonnet 5.5)`;
+    - `` (`model: sonnet` by default) `` → `` (`model: claude-sonnet-5-5` by default) ``.
+  - **`README.md`'s checks table:** after the row that starts `| The installer writes both variants for every tool`, add `` | Every executor — the Copilot Implementer, the `execute-step` prompt, and the Copilot CLI and Claude Code `plan-executor` agents — runs on Claude Sonnet 5.5 | Always | ``.
+
+  Leave every mention of Claude Code's Auto permission mode (`execute in Auto`, ``Auto (`auto`)``) as it is: that is a permission mode, not a model.
+- Pattern: the surrounding text.
+- Done when: `$t = (Get-Content -Raw README.md) + (Get-Content -Raw USAGE.md) + (Get-Content -Raw workflow\templates\README.md); if ($t.Contains('implementer on Auto') -or $t.Contains('Auto with the Copilot agents') -or $t.Contains('execute on Auto') -or $t.Contains('Implementer (Auto)') -or $t.Contains('`model: sonnet` by default') -or -not $t.Contains('Copilot Implementer (Claude Sonnet 5.5)') -or -not $t.Contains('agents — runs on Claude Sonnet 5.5 | Always |') -or $t.Contains([char]13)) { exit 1 }`
+
 ## Review checklist
-- Run the full `.\Test-Template.ps1` and `.\Test-Adoption.ps1` (several minutes) and confirm both end with `PASSED`; the steps only ran the fast modes.
+- Run the full `.\Test-Template.ps1`, `.\Test-Adoption.ps1` and `.\Test-CommitAttribution.ps1` and confirm all three end with `PASSED`; the steps only ran the fast modes.
+- A GitHub project's rendered `ci.yml` holds the literal `${{ github.event... }}` expressions and parses as YAML; a GitLab project's job uses `mcr.microsoft.com/dotnet/sdk:10.0` with `GIT_DEPTH: "0"`.
+- `template/.template/Test-CommitAttribution.ps1` behaves like NCode.Identity's `build/commit-attribution.ps1` apart from the three changes in the Decisions.
+- An old project still updates to this version without a conflict: the `ci.yml` and `.gitlab-ci.yml` additions merge (repeat the old-project update with real tags from the plan's base).
+- No generated file names `Auto (copilot)` or `model: auto`; the fast executor stays Claude Haiku 5.5 and the Hybrid agents stay on the local model.
 - With the default answers, the rendered `.gitignore`, `.vscode/settings.json`, `.vscode/extensions.json` and `build/ProjectTemplate.props` are byte-identical to before this change, apart from the attribution settings in the Decisions, so existing projects see no other merged-file churn; `AGENTS.md`, `README.md` and the template rules change only in wording.
 - No step removed or changed the commit-attribution pieces listed in the Decisions, and the full test runs pass through the hook.
 - `copier.yml`'s `_exclude` leaves out nothing with all three tools chosen, and `Test-Template.ps1`'s update tests still edit the strings listed under Gotchas.
-- `Adopt-Project.ps1` never prompts, never touches a repository with uncommitted changes or an answers file, and on any failure before the commit leaves the repository with only staged changes the user can reset.
+- `Adopt-Project.ps1` never prompts, never touches a repository with uncommitted changes or an answers file, rolls the repository back to its starting commit on a failure before verifying, and on a failed build stages the adoption and commits nothing.
 - `Merge-AdoptedFile` keeps the template's lines in order with the repository's content only added, except JSON values the repository overrides; `Add-TemplateIndexEntry` puts the entry where the Decisions say on an `AGENTS.md` shaped like NCode.Identity's (an H1, a paragraph, then `## Layout`).
 - The legacy adapters change only files that reference their setup, and their report lines name every file they changed.
 - No file outside the steps' lists changed, and `PLAN.md`'s Out of scope items are untouched.
