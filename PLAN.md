@@ -99,7 +99,7 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
 - Pattern: the `{%- if stack == 'dotnet' %}` block in `.gitignore.jinja`.
 - Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  python-copilot: AGENTS.md and .gitignore for the chosen tools')) { exit 1 }`
 
-### [ ] 5. Make the template rules name only the chosen tools
+### [x] 5. Make the template rules name only the chosen tools
 - Files: `template/.github/instructions/project-template.instructions.md.jinja` (edit), `Test-Template.ps1` (edit)
 - Change: rewrite four bullets with Jinja on `workflow_tools` (keep every other line, and the `## Conventions` heading, unchanged):
   - The bullet starting `- The same commands exist in Claude Code` becomes: `- The workflow commands are in {% if 'claude' in workflow_tools %}Claude Code (`.claude/commands/`){% if 'copilot' in workflow_tools %}, {% elif 'local' in workflow_tools %} and {% endif %}{% endif %}{% if 'copilot' in workflow_tools or 'local' in workflow_tools %}VS Code's Copilot Chat (`.github/prompts/` and `.github/agents/`){% endif %}{% if 'copilot' in workflow_tools %} and Copilot CLI (`.github/skills/`){% endif %}, and `PLAN.md` is the only state they share: any of them can plan, execute, re-plan or review the same plan, whichever wrote the steps before.`
