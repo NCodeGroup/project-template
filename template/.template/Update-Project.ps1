@@ -145,7 +145,23 @@ try {
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
         foreach ($file in $deleted) { $copierArgs += '--exclude', $file }
-        Invoke-Copier @copierArgs
+        # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes
+        # every path Git reports as ignored to one `git apply` command. Keep the project's rules in force meanwhile, or a
+        # folder only they ignore, such as node_modules/, is listed file by file and overflows Windows' command line.
+        $infoExclude = git rev-parse --path-format=absolute --git-path info/exclude
+        $excludeBefore = if (Test-Path -LiteralPath $infoExclude) { [IO.File]::ReadAllText($infoExclude) }
+        $projectIgnore = Join-Path $project '.gitignore'
+        try {
+            if (Test-Path -LiteralPath $projectIgnore) {
+                New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
+                [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$([IO.File]::ReadAllText($projectIgnore))")
+            }
+            Invoke-Copier @copierArgs
+        }
+        finally {
+            if ($null -eq $excludeBefore) { Remove-Item -LiteralPath $infoExclude -Force -ErrorAction SilentlyContinue }
+            else { [IO.File]::WriteAllText($infoExclude, $excludeBefore) }
+        }
 
         # Drop the reset commit but keep its changes, and any conflict, in the index and the working tree.
         if ($resetCommitted) { git update-ref HEAD $head; if ($LASTEXITCODE) { throw 'Removing the reset commit failed.' } }

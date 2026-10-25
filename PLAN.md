@@ -52,7 +52,7 @@
 - Pattern: `Test-Template.ps1` (helpers, snapshot, render); `Test-Adoption.ps1` (help block, ending).
 - Done when: `$o = .\Test-UpdateIgnoredFiles.ps1 | Out-String; if ($o.Contains('PASS  fixture: under the template') -and $o.Contains('FAIL  update: no WinError 206') -and $o.Contains('Update ignored-files tests: FAILED')) { exit 0 } else { $o; exit 1 }`
 
-### [ ] 2. Keep the project's ignore rules in force during copier update
+### [x] 2. Keep the project's ignore rules in force during copier update
 - Files: `template/.template/Update-Project.ps1` (edit)
 - Change: replace the single line `        Invoke-Copier @copierArgs` (inside the outer `try`, just after the `foreach ($file in $deleted)` line) with the block below. Keep the indentation (8 spaces) and leave every other line unchanged:
   ```powershell
