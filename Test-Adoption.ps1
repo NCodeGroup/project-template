@@ -107,6 +107,19 @@ Check 'unit: Merge-AdoptedFile keeps YAML' ($m.Strategy -eq 'Keep' -and $m.Text 
 $m = Merge-AdoptedFile '.gitignore' "bin/`n" "bin/`n`n"
 Check 'unit: Merge-AdoptedFile leaves a matching file' ($m.Strategy -eq 'Same') $m.Strategy
 
+$entryMarker = 'project-template.instructions.md'
+$r = Add-TemplateIndexEntry "# Guide`n`n## Instructions`n`n- @a.md - mine`n`n## Layout`n"
+$lines = $r -split "`n"
+$h = [array]::IndexOf($lines, '## Instructions')
+Check 'unit: Add-TemplateIndexEntry under Instructions' ($h -ge 0 -and $lines[$h + 1] -eq '' -and $lines[$h + 2].Contains($entryMarker) -and $lines[$h + 3] -eq '- @a.md - mine' -and $r.EndsWith("## Layout`n")) $r
+$r = Add-TemplateIndexEntry "# Guide`n`nSome text.`n`n## Layout`n- x`n"
+$lines = $r -split "`n"
+$pt = [array]::IndexOf($lines, '## Project Template'); $ly = [array]::IndexOf($lines, '## Layout')
+Check 'unit: Add-TemplateIndexEntry before the first section' ($lines[2] -eq 'Some text.' -and $pt -eq 4 -and $lines[3] -eq '' -and $lines[5] -eq '' -and $lines[6].Contains($entryMarker) -and $lines[7] -eq '' -and $ly -eq 8 -and $r.EndsWith("`n") -and -not $r.EndsWith("`n`n")) $r
+Check 'unit: Add-TemplateIndexEntry once' ((Add-TemplateIndexEntry $r) -eq $r) ''
+$x = "<?xml version=""1.0""?>`n<Project>`n  <PropertyGroup>`n    <A>1</A>`n  </PropertyGroup>`n</Project>`n"
+$r = Add-ProjectTemplateImport $x
+Check 'unit: Add-ProjectTemplateImport' ($r.StartsWith("<?xml version=""1.0""?>`n<Project>`n") -and $r.Contains('<Import Project="$(MSBuildThisFileDirectory)build/ProjectTemplate.props" />') -and $r.IndexOf('<Import') -lt $r.IndexOf('<PropertyGroup>') -and (Add-ProjectTemplateImport $r) -eq $r) $r
 ''
 if ($failures.Count) { "Adoption tests: FAILED ($($failures.Count))"; exit 1 }
 'Adoption tests: PASSED'

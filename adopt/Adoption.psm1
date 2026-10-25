@@ -104,4 +104,45 @@ function Merge-AdoptedFile([string]$Name, [string]$Original, [string]$Rendered) 
     $keep
 }
 
-Export-ModuleMember -Function Get-CopierList, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile
+function Add-TemplateIndexEntry([string]$Text) {
+    if ($Text.Contains('project-template.instructions.md')) { return $Text }
+    $entry = '- @.github/instructions/project-template.instructions.md ' + [char]0x2014 + ' the plan-then-execute workflow and base conventions, from the project template. Template updates replace it; never edit it. Where this file or a file it lists says otherwise, the project''s instruction wins.'
+    $lines = [Collections.Generic.List[string]]::new([string[]]@($Text -replace "`r`n", "`n" -split "`n"))
+    $out = [Collections.Generic.List[string]]::new()
+    $at = $lines.IndexOf('## Instructions')
+    if ($at -ge 0) {
+        $next = $at + 1
+        while ($next -lt $lines.Count -and $lines[$next].Trim() -eq '') { $next++ }
+        $out.AddRange($lines.GetRange(0, $at + 1))
+        if ($next -eq $at + 1) { $out.Add('') } else { $out.AddRange($lines.GetRange($at + 1, $next - $at - 1)) }
+        $out.Add($entry)
+        if ($next -lt $lines.Count -and $lines[$next].StartsWith('#')) { $out.Add('') }
+        $out.AddRange($lines.GetRange($next, $lines.Count - $next))
+    }
+    else {
+        $first = $lines.FindIndex({ param($l) $l.StartsWith('## ') })
+        if ($first -ge 0) {
+            $out.AddRange($lines.GetRange(0, $first))
+            if ($out.Count -and $out[$out.Count - 1].Trim() -ne '') { $out.Add('') }
+            $out.AddRange([string[]]@('## Project Template', '', $entry, ''))
+            $out.AddRange($lines.GetRange($first, $lines.Count - $first))
+        }
+        else {
+            $out.AddRange($lines)
+            $out.AddRange([string[]]@('', '## Project Template', '', $entry))
+        }
+    }
+    ($out -join "`n").TrimEnd("`n") + "`n"
+}
+
+function Add-ProjectTemplateImport([string]$Text) {
+    if ($Text.Contains('ProjectTemplate.props')) { return $Text }
+    $Text = $Text -replace "`r`n", "`n"
+    $regex = [regex]::new('<Project\b[^>]*>')
+    if (-not $regex.IsMatch($Text)) { throw 'No <Project> element found.' }
+    $import = "`n`n  <!-- Shared settings from the project template; this file's own settings, after the import, override them. -->`n  <Import Project=""`$(MSBuildThisFileDirectory)build/ProjectTemplate.props"" />`n"
+    $evaluator = [Text.RegularExpressions.MatchEvaluator] { param($m) $m.Value + $import }
+    $regex.Replace($Text, $evaluator, 1)
+}
+
+Export-ModuleMember -Function Get-CopierList, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport

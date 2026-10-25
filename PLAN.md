@@ -172,7 +172,7 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
 - Pattern: none in the repository; follow the strategy list above exactly.
 - Done when: `$o = .\Test-Adoption.ps1 -UnitOnly | Out-String; if (-not $o.Contains('Adoption tests: PASSED') -or -not $o.Contains('PASS  unit: Merge-AdoptedFile merges JSON') -or -not $o.Contains('PASS  unit: Merge-AdoptedFile appends MSBuild elements')) { exit 1 }`
 
-### [ ] 11. Extend a repository's AGENTS.md and Directory.Build.props
+### [x] 11. Extend a repository's AGENTS.md and Directory.Build.props
 - Files: `adopt/Adoption.psm1` (edit), `Test-Adoption.ps1` (edit)
 - Change: export two text-in, text-out functions (input normalized to LF; output ends with one `"`n"`):
   - `Add-TemplateIndexEntry([string]$Text)`: unchanged if it contains `project-template.instructions.md`. The entry is `- @.github/instructions/project-template.instructions.md — the plan-then-execute workflow and base conventions, from the project template. Template updates replace it; never edit it. Where this file or a file it lists says otherwise, the project's instruction wins.` If a line is exactly `## Instructions`, insert the entry after that heading and the blank lines following it (adding one blank line when there is none). Else, if a line starts with `## `, insert `## Project Template`, a blank line, the entry and a blank line before the first such line. Else append a blank line, `## Project Template`, a blank line and the entry.
