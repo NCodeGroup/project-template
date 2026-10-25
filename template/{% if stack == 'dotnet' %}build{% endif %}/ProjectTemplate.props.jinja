@@ -12,6 +12,28 @@
     <Copyright>Copyright © $([System.DateTime]::Now.Year) {{ author_name }}</Copyright>
     <NeutralLanguage>en-US</NeutralLanguage>
   </PropertyGroup>
+{%- if nuget_package %}
+
+  <!-- NuGet packages: license expression, README and icon in each package, Source Link (built into the .NET SDK) with untracked sources, symbol packages and XML documentation. -->
+  <PropertyGroup>
+    <PackageLicenseExpression>{{ package_license }}</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+{%- if package_icon %}
+    <PackageIcon>{{ package_icon }}</PackageIcon>
+{%- endif %}
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="/" Visible="false" />
+{%- if package_icon %}
+    <None Include="$(MSBuildThisFileDirectory)../{{ package_icon }}" Pack="true" PackagePath="/" Visible="false" />
+{%- endif %}
+  </ItemGroup>
+{%- endif %}
 
   <!-- Test projects, named <Name>.Tests by the C# conventions. IsTestProject isn't set yet when this file is read. -->
   <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">

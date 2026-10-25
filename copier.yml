@@ -87,6 +87,25 @@ author_name:
   default: Marcin Polewski
   when: "{{ stack == 'dotnet' }}"
 
+nuget_package:
+  type: bool
+  help: "Publish the projects as NuGet packages: license, README and icon in each package, Source Link, symbol packages"
+  default: false
+  when: "{{ stack == 'dotnet' }}"
+
+package_license:
+  type: str
+  help: SPDX license expression for the packages, such as MIT or Apache-2.0
+  when: "{{ stack == 'dotnet' and nuget_package }}"
+  validator: "{% if not package_license.strip() %}Required for a NuGet package{% endif %}"
+
+package_icon:
+  type: str
+  help: "Package icon: a PNG file at the repository root, or blank for none"
+  default: ""
+  when: "{{ stack == 'dotnet' and nuget_package }}"
+  validator: '{% if "/" in package_icon or "\\" in package_icon %}A file name at the repository root, without a folder{% endif %}'
+
 build_command:
   type: str
   help: Build command, run from the repository root in PowerShell (blank if there is no build step)

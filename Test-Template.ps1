@@ -78,7 +78,7 @@ $cases = @(
     @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
     @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
     @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
-    @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot' }
+    @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'MIT'; package_icon = 'icon.png' } }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
 )
 $yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
@@ -87,13 +87,20 @@ foreach ($case in $cases) {
     $name = $case.Name
     $dest = Join-Path $Work $name
     $tools = if ($case.Tools) { @($case.Tools) } else { $allTools }
-    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $name" --data "stack=$($case.Stack)" --data "git_host=$($case.Host)" --data "workflow_tools=[$($tools -join ', ')]" $tpl $dest
+    $extraData = foreach ($k in $case.Data.Keys) { '--data'; "$k=$($case.Data[$k])" }
+    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $name" --data "stack=$($case.Stack)" --data "git_host=$($case.Host)" --data "workflow_tools=[$($tools -join ', ')]" @extraData $tpl $dest
 
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
     $present = @($dotnetOnly | Where-Object { Test-Path (Join-Path $dest $_) })
     if ($case.Stack -eq 'dotnet') { Check "${name}: .NET layer present" ($present.Count -eq $dotnetOnly.Count) }
     else { Check "${name}: no .NET layer" ($present.Count -eq 0) ($present -join ', ') }
+    if ($case.Stack -eq 'dotnet') {
+        $buildProps = Get-Content -LiteralPath (Join-Path $dest 'build\ProjectTemplate.props') -Raw
+        $nugetOk = if ($case.Data.nuget_package) { $buildProps.Contains('<PackageLicenseExpression>MIT</PackageLicenseExpression>') -and $buildProps.Contains('<PackageIcon>icon.png</PackageIcon>') -and $buildProps.Contains('../icon.png') }
+            else { -not $buildProps.Contains('PackageLicenseExpression') }
+        Check "${name}: NuGet package settings" $nugetOk
+    }
     $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
     $wrong = @($hostOnly[$case.Host] | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($hostOnly[$otherHost] | Where-Object { Test-Path (Join-Path $dest $_) })
     Check "${name}: $($case.Host) files only" (-not $wrong) ($wrong -join ', ')
