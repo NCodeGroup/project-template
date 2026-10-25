@@ -144,16 +144,29 @@ $hooksPath = (git -C $listProject config core.hooksPath) -join ''
 $hookMode = (git -C $listProject ls-files -s .githooks/commit-msg) -join ''
 Check 'New-Project: enables the hooks with an executable commit-msg' (($hooksPath -eq '.githooks') -and $hookMode.StartsWith('100755')) "$hooksPath $hookMode"
 $hookMessage = Join-Path $Work 'hook-message.txt'
-[IO.File]::WriteAllText($hookMessage, "Hook check`n`nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`nClaude-Session: https://claude.ai/code/session_1`nCo-authored-by: Jane Doe <jane@example.com>`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($hookMessage, "Hook check`n`nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`nClaude-Session: https://claude.ai/code/session_1`n$([char]::ConvertFromUtf32(0x1F916)) Generated with [Claude Code](https://claude.com/claude-code)`nCo-authored-by: Jane Doe <jane@example.com>`n", [Text.UTF8Encoding]::new($false))
+$proseMessage = Join-Path $Work 'hook-prose-message.txt'
+[IO.File]::WriteAllText($proseMessage, "Prose check`n`nThe hook strips the Generated with Claude Code line.`n", [Text.UTF8Encoding]::new($false))
+# A UTF-8 locale is where a bare pattern failed to strip the emoji line.
+$previousLocale = $env:LC_ALL
+$env:LC_ALL = 'en_US.UTF-8'
 Push-Location $listProject
 try {
     [IO.File]::WriteAllText((Join-Path $listProject 'hook-check.txt'), "hook check`n", [Text.UTF8Encoding]::new($false))
     Invoke-Git add hook-check.txt
     Invoke-Git commit -q -F $hookMessage
     $hookLog = (git log -1 --format=%B) -join "`n"
+    [IO.File]::WriteAllText((Join-Path $listProject 'hook-prose.txt'), "hook prose`n", [Text.UTF8Encoding]::new($false))
+    Invoke-Git add hook-prose.txt
+    Invoke-Git commit -q -F $proseMessage
+    $proseLog = (git log -1 --format=%B) -join "`n"
 }
-finally { Pop-Location }
-Check 'hooks: commit-msg strips AI agent attribution and keeps people' ($hookLog.Contains('Jane Doe') -and -not $hookLog.Contains('anthropic.com') -and -not $hookLog.Contains('Copilot@') -and -not $hookLog.Contains('Claude-Session')) $hookLog
+finally {
+    Pop-Location
+    if ($null -eq $previousLocale) { Remove-Item Env:LC_ALL -ErrorAction SilentlyContinue } else { $env:LC_ALL = $previousLocale }
+}
+Check 'hooks: commit-msg strips AI agent attribution and keeps people' ($hookLog.Contains('Jane Doe') -and -not $hookLog.Contains('anthropic.com') -and -not $hookLog.Contains('Copilot@') -and -not $hookLog.Contains('Claude-Session') -and -not $hookLog.Contains('Generated with')) $hookLog
+Check 'hooks: commit-msg keeps a prose line that mentions the advertising phrase' ($proseLog.Contains('The hook strips the Generated with Claude Code line.')) $proseLog
 
 $workflow = Join-Path $PSScriptRoot 'workflow'
 $fresh = Join-Path $Work 'generated'

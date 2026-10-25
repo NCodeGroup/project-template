@@ -23,16 +23,17 @@ msg_file="$1"
 copilot='^[[:space:]]*co-authored-by:[[:space:]]*(github[[:space:]]+)?copilot(-swe-agent)?(\[bot\])?[[:space:]]*<'
 agent_email='^[[:space:]]*co-authored-by:.*<[^>]*(noreply@anthropic\.com|copilot@users\.noreply\.github\.com)>'
 claude_session='^[[:space:]]*claude-session:'
-generated='generated with \[?claude code'
+# The C locale reads each byte as a character, so the emoji before the phrase matches [^[:alnum:]] whatever locale the user has; a UTF-8 locale reads it differently on some platforms.
+generated='^[^[:alnum:]]*generated with \[?claude code'
 
-if ! grep -qiE -e "$copilot" -e "$agent_email" -e "$claude_session" -e "$generated" "$msg_file"; then
+if ! LC_ALL=C grep -qiE -e "$copilot" -e "$agent_email" -e "$claude_session" -e "$generated" "$msg_file"; then
     exit 0
 fi
 
 # `git stripspace` collapses the blank lines a removed trailer leaves behind,
 # as git's own message cleanup does; comment lines stay for the editor flow.
 stripped="$msg_file.no-agent-attribution"
-grep -viE -e "$copilot" -e "$agent_email" -e "$claude_session" -e "$generated" "$msg_file" | git stripspace >"$stripped"
+LC_ALL=C grep -viE -e "$copilot" -e "$agent_email" -e "$claude_session" -e "$generated" "$msg_file" | git stripspace >"$stripped"
 mv "$stripped" "$msg_file"
 
 echo "commit-msg: removed AI agent attribution from the commit message." >&2
