@@ -151,7 +151,7 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
 - Pattern: the `author_name` question in `copier.yml`; the test-projects `PropertyGroup` in `ProjectTemplate.props.jinja`.
 - Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  dotnet-library: NuGet package settings') -or -not $o.Contains('PASS  dotnet: NuGet package settings')) { exit 1 }`
 
-### [ ] 9. Start the adoption module: file lists and worked-out answers
+### [x] 9. Start the adoption module: file lists and worked-out answers
 - Files: `adopt/Adoption.psm1` (new), `Test-Adoption.ps1` (new)
 - Change: `Adoption.psm1` starts with a one-line comment ("Functions Adopt-Project.ps1 uses to bring an existing repository under the template.") and exports:
   - `Get-CopierList([string]$CopierYml, [string]$Key)` — the list under `$Key` in that file; same parsing loop as `Get-TemplateList` in `template/.template/Update-Project.ps1`, reading `Get-Content -LiteralPath $CopierYml`.
