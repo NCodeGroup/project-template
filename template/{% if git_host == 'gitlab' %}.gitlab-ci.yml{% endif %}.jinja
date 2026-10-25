@@ -39,3 +39,11 @@ build-and-test:
     - |
       {{ ("pwsh -NoProfile -Command '" ~ command ~ "'") if stack == 'powershell' else command }}
 {%- endfor %}
+
+# The .NET SDK image has git and PowerShell; the check needs the full history.
+commit-attribution:
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  variables:
+    GIT_DEPTH: "0"
+  script:
+    - pwsh -NoProfile -File .template/Test-CommitAttribution.ps1 -Base "${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" -Head "$CI_COMMIT_SHA"

@@ -347,7 +347,7 @@ Steps 29–37 extend the change. Every project, and this repository, gets the se
 - Pattern: the `$hostOnly` check in the case loop; the hook checks for step (4).
 - Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  dotnet: CI runs the commit attribution check') -or -not $o.Contains('PASS  project: the shipped commit attribution check passes on its own history') -or -not $o.Contains('PASS  dotnet: no leftover Jinja')) { exit 1 }`
 
-### [ ] 32. Run the check in a GitLab project's CI
+### [x] 32. Run the check in a GitLab project's CI
 - Files: `template/{% if git_host == 'gitlab' %}.gitlab-ci.yml{% endif %}.jinja` (edit), `Test-Template.ps1` (edit)
 - Change: at the end of `.gitlab-ci.yml.jinja`, after a blank line, add the comment `# The .NET SDK image has git and PowerShell; the check needs the full history.` and this job:
   ```yaml

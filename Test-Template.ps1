@@ -108,6 +108,10 @@ foreach ($case in $cases) {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD') -and $ci.Contains('merge_group:') -and $ci.Contains('${{ github.event.pull_request.base.sha'))
     }
+    else {
+        $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
+        Check "${name}: CI runs the commit attribution check" ($ci.Contains('commit-attribution:') -and $ci.Contains('mcr.microsoft.com/dotnet/sdk:10.0') -and $ci.Contains('GIT_DEPTH: "0"') -and $ci.Contains('.template/Test-CommitAttribution.ps1 -Base'))
+    }
     $wanted = @($tools | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique)
     $unwanted = @($allTools | Where-Object { $_ -notin $tools } | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique | Where-Object { $_ -notin $wanted })
     $wrong = @($wanted | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($unwanted | Where-Object { Test-Path (Join-Path $dest $_) })
