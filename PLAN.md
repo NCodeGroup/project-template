@@ -143,7 +143,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: none.
 - Done when: `$gen = @(git status --porcelain -- template/.claude/commands .claude/commands); $other = @(git status --porcelain -- template/.github .github template/.claude/agents .claude/agents); $hits = @(Select-String -LiteralPath template\.claude\commands\plan-feature.md, .claude\commands\orchestrate-plan.md -SimpleMatch 'EnterWorktree' -List); if ($gen.Count -eq 26 -and $other.Count -eq 0 -and $hits.Count -eq 2) { exit 0 } else { exit 1 }`
 
-### [ ] 6. Check the worktree sections in Test-Template.ps1
+### [x] 6. Check the worktree sections in Test-Template.ps1
 - Files: `Test-Template.ps1` (edit)
 - Change:
   1. Directly after the line that starts `Check 'workflow: every executor runs on Claude Sonnet 5.5'`, and before `$both = Join-Path $Work 'installed-both'`, add:

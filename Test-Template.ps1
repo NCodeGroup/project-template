@@ -9,7 +9,7 @@
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in %TEMP%\project-template-test, so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab and checks YAML with
     PyYAML through uv. Also checks that the generated workflow files under template/ and at the repository root
-    match a fresh run of workflow\Install-HybridWorkflow.ps1, and that the workflow scripts run. Prints PASS or FAIL
+    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, and that the workflow scripts run. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
 .EXAMPLE
@@ -215,6 +215,23 @@ $executorAuto = @(
     }
 )
 Check 'workflow: every executor runs on Claude Sonnet 5.5' (-not $executorMissing -and -not $executorAuto) ((@($executorMissing) + @($executorAuto)) -join ', ')
+$worktreeKinds = [ordered]@{
+    create = 'plan-feature', 'plan-bugfix', 'plan-refactor', 'plan-tests', 'plan-migration', 'plan-performance', 'plan-security', 'plan-docs', 'handoff-plan'
+    join   = 'orchestrate-plan', 'execute-step', 'replan-step', 'review-plan-diff'
+}
+$worktreeMissing = @(
+    foreach ($kind in $worktreeKinds.Keys) {
+        $section = [IO.File]::ReadAllText((Join-Path $workflow "templates\_claude-worktree-$kind.md")).Replace("`r`n", "`n").Trim()
+        $worktreeKinds[$kind] | Where-Object { -not [IO.File]::ReadAllText((Join-Path $PSScriptRoot "template\.claude\commands\$_.md")).Contains($section) }
+    }
+)
+$worktreeLeaked = @(
+    Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'template\.github'), (Join-Path $PSScriptRoot 'template\.claude\agents') -Recurse -File |
+        Where-Object { $text = [IO.File]::ReadAllText($_.FullName); $text.Contains('EnterWorktree') -or $text -match '(?m)^isolation:' } | ForEach-Object Name
+    'analyze-architecture', 'analyze-decision', 'review-code' | Where-Object { [IO.File]::ReadAllText((Join-Path $PSScriptRoot "template\.claude\commands\$_.md")).Contains('EnterWorktree') }
+)
+Check 'workflow: Claude Code planning commands create the plan''s worktree, and the commands that work on a plan move into it' (-not $worktreeMissing) ($worktreeMissing -join ', ')
+Check 'workflow: no Copilot file, plan-executor subagent or analysis command enters a worktree' (-not $worktreeLeaked) ($worktreeLeaked -join ', ')
 $both = Join-Path $Work 'installed-both'
 New-Item -ItemType Directory -Force $both | Out-Null
 $installed = & (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $both | Out-String
