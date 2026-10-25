@@ -67,7 +67,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: `workflow/templates/_plan-format.md`, another section file without front matter.
 - Done when: `$p = 'workflow\templates\_claude-worktree-create.md'; $t = if (Test-Path $p) { Get-Content -Raw $p } else { '' }; if ($t.StartsWith('## Plan in a worktree of its own') -and $t.Contains('EnterWorktree') -and $t.Contains('tool and that') -and $t.Contains('git commit -m "Plan: <the plan') -and -not $t.Contains('$')) { exit 0 } else { exit 1 }`
 
-### [ ] 2. Write the Claude Code section that moves a session into the plan's worktree
+### [x] 2. Write the Claude Code section that moves a session into the plan's worktree
 - Files: `workflow/templates/_claude-worktree-join.md` (new)
 - Change: Create the file with exactly the content of this block (no front matter), ending with one newline:
 
