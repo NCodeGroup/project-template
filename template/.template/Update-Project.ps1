@@ -151,7 +151,13 @@ try {
     }
 
     $conflicts = @(git diff --name-only --diff-filter=U)
-    if (-not $conflicts) { git add -A }
+    if (-not $conflicts) {
+        git add -A
+        # Executable on Linux and macOS; Windows doesn't record the bit on its own.
+        if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
+    }
+    # Enable the template's versioned hooks in this clone, unless it already uses hooks of its own.
+    if ((Test-Path -LiteralPath .githooks) -and -not (git config --get core.hooksPath)) { git config core.hooksPath .githooks }
     $changes = @(Get-Change)
     $jinjaTag = '\{' + '%.*?%' + '\}'
     $projectOwnedChanged = @(if ($from -ne $to) {

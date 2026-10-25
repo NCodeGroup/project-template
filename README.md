@@ -12,6 +12,7 @@ Private [Copier](https://copier.readthedocs.io/) template for new repositories s
 - [Questions](#questions)
 - [Create a Project](#create-a-project)
 - [Update a Project](#update-a-project)
+- [Commit Attribution](#commit-attribution)
 - [Stay Current](#stay-current)
 - [Change the Template](#change-the-template)
 - [Publish the Template](#publish-the-template)
@@ -45,6 +46,7 @@ Replaced on every update. A project never edits them; an edit is discarded by th
 | `.claude/rules/csharp.md` (.NET) | Points Claude Code at the same conventions whenever it touches a `*.cs` file |
 | `.copier-answers.yml` | Copier's: the answers and template version that `Update-Project.ps1` reads |
 | `.template/Update-Project.ps1` | The [update script](#update-a-project): run in the project, it pulls in the newest template version and updates itself |
+| `.githooks/commit-msg` | Strips AI agent attribution from every commit message — `Co-authored-by:` trailers for Copilot and Claude, `Claude-Session:` trailers, "Generated with Claude Code" lines — whichever tool commits ([Commit Attribution](#commit-attribution)) |
 
 Generated files are rendered from [workflow/templates](workflow/templates/) by `Update-Template.ps1`; change them there.
 
@@ -54,8 +56,8 @@ The project edits them freely, and later template changes merge in: an update ke
 
 | File | Purpose |
 |---|---|
-| `.claude/settings.json` | `git push` always asks for approval, in Bash and PowerShell; `.env` files and `secrets/` can't be read |
-| `.vscode/settings.json`, `.vscode/extensions.json` | LF and final newlines, the Ollama timeout; recommended extensions (Claude Code, GitHub Copilot Chat, Ollama, EditorConfig, and the stack's language extension) |
+| `.claude/settings.json` | Commit and pull request attribution off; `git push` always asks for approval, in Bash and PowerShell; `.env` files and `secrets/` can't be read |
+| `.vscode/settings.json`, `.vscode/extensions.json` | LF and final newlines, `git.addAICoAuthor` off, the Ollama timeout; recommended extensions (Claude Code, GitHub Copilot Chat, Ollama, EditorConfig, and the stack's language extension) |
 | `.editorconfig`, `.gitattributes`, `.gitignore` | UTF-8 and LF everywhere, binary types, and ignores for Claude Code's local files and worktrees, secrets and build output |
 | `.github/workflows/ci.yml` or `.gitlab-ci.yml` | CI on GitHub or GitLab, whichever the `git_host` answer names, that runs the build and test commands once code exists; GitHub Actions pinned to commit SHAs |
 | `.github/dependabot.yml` (GitHub only) | [Dependabot](#stay-current), built into GitHub: a weekly pull request for newer CI actions and, by stack, NuGet packages and the .NET SDK, pip or npm packages |
@@ -144,7 +146,7 @@ Needs Git with `user.name` and `user.email` set, Copier (`uv tool install copier
 | `-Data` | None | Answers given in advance, so those questions aren't asked: `-Data @{ project_name = 'Demo'; git_host = 'gitlab' }` |
 | `-Defaults` | Off | Ask nothing: every question not in `-Data` takes its default |
 
-The script runs `copier copy`, which asks the [questions](#questions) and writes the files and the answers (`.copier-answers.yml`), then `git init -b main` and the first commit, `Create project from project-template v0.1.0`. With `-CreateRemote` it reads `git_host` from `.copier-answers.yml`: for `github` it runs `gh repo create <name> --public --source . --push`; for `gitlab`, `glab repo create <name> --public` and `git push -u origin main`. `-Visibility` replaces `--public` with `--private` or `--internal`. GitLab would otherwise default to internal, so the script always passes the flag.
+The script runs `copier copy`, which asks the [questions](#questions) and writes the files and the answers (`.copier-answers.yml`), then `git init -b main`, enables the template's Git hooks (`git config core.hooksPath .githooks`), and makes the first commit, `Create project from project-template v0.1.0`. With `-CreateRemote` it reads `git_host` from `.copier-answers.yml`: for `github` it runs `gh repo create <name> --public --source . --push`; for `gitlab`, `glab repo create <name> --public` and `git push -u origin main`. `-Visibility` replaces `--public` with `--private` or `--internal`. GitLab would otherwise default to internal, so the script always passes the flag.
 
 A public project is readable by anyone, including its `.copier-answers.yml`, which names this private template; only people with access to the template can run `copier update`. Secrets stay out of it as in any project (`AGENTS.md`, `.gitignore`), and its CI is safe for pull requests from forks: `pull_request` with a read-only token and no secrets. Without a `LICENSE` file, the code is all rights reserved; add one if others should be able to use it. To change the visibility later: `gh repo edit --visibility private --accept-visibility-change-consequences`, or `glab api --method PUT projects/:id --raw-field visibility=private` (`glab repo update` has no visibility flag).
 
@@ -235,6 +237,19 @@ Thumbs.db # template
 ```
 
 VS Code lists the file under Merge Changes in Source Control and calls the halves Current and Incoming, with Accept buttons above each block. Git won't commit while a file is still unmerged, but `git add` marks it resolved even with markers left in it, so run `git diff --cached --check` before committing.
+## Commit Attribution
+
+A commit records the people who wrote it. AI tools add their own attribution by default — Claude Code a `Co-Authored-By: Claude <noreply@anthropic.com>` trailer and a `Claude-Session:` trailer, Copilot a `Co-authored-by: Copilot` trailer — and GitHub then lists the agent as a contributor, which only rewriting published history undoes. Every project, and this repository, turns it off in layers that travel with the repository, so they work on any PC that clones it:
+
+| Layer | Stops |
+|---|---|
+| `attribution` in `.claude/settings.json`: `commit` and `pr` empty, `sessionUrl` off | Claude Code's trailers and pull request text |
+| `git.addAICoAuthor` off in `.vscode/settings.json` | VS Code's own Copilot trailer when you commit from Source Control |
+| The rule in `.github/instructions/project-template.instructions.md` (here, `AGENTS.md`) | Agents that write the commit message themselves, such as Copilot's |
+| `.githooks/commit-msg` (here, `template/.githooks/commit-msg`) | Anything that slips through, from any tool. Git runs a hook only once a clone enables it: `New-Project.ps1` and `Update-Project.ps1` run `git config core.hooksPath .githooks`; in a fresh clone of a project, run it yourself or update the project. In a clone of this repository, run `git config core.hooksPath template/.githooks` |
+
+The hook removes only agent lines: `Co-authored-by:` trailers naming Copilot or an `@anthropic.com` or `Copilot@users.noreply.github.com` address, `Claude-Session:` trailers, and "Generated with Claude Code" lines. A person's co-author trailer stays. To clean commits that already have them, before pushing, enable the hook and amend every unpushed commit through it: `git rebase origin/main --exec "git commit --amend --no-edit --allow-empty"`.
+
 ## Stay Current
 
 A project pins exact versions so that a build today matches a build next month: each package, each CI action (by commit SHA), the .NET SDK in `global.json`, and the template version in `.copier-answers.yml`. Pinned versions never update themselves; something has to notice each new upstream release and change the pin.
@@ -294,6 +309,7 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `Update-Project.ps1` | Update a project by `-Path` from this clone: a wrapper around `template\.template\Update-Project.ps1`, the update script every project carries |
 | `workflow/` | The single source of the workflow: prompt and agent templates, the installer, the prompt composer and the step runner ([workflow/README.md](workflow/README.md)) |
 | `Update-Template.ps1` | Regenerate the workflow files under `template/` and at the repository root from `workflow/templates` |
+| `AGENTS.md`, `.claude/settings.json`, `.vscode/settings.json` | This repository's own agent instructions and settings: no AI attribution in commits ([Commit Attribution](#commit-attribution)) |
 | `.claude/`, `.github/agents/`, `.github/prompts/`, `.github/skills/` | This repository's own workflow: the same generated files as `template/` gets, committed so that working on the template with Claude Code or Copilot has `/plan-feature`, `/orchestrate-plan` and the rest on any PC that clones it. Never edit them; `Update-Template.ps1` regenerates them |
 | `Test-Template.ps1` | Render every stack and check the result |
 | `.github/workflows/test-template.yml` | Runs `Test-Template.ps1` on Windows for every push to `main` and every pull request |

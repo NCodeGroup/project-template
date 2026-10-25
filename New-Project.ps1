@@ -66,7 +66,11 @@ try {
     $answers = Get-Content -LiteralPath .copier-answers.yml
     $message = ('Create project from project-template ' + (Get-Answer $answers '_commit')).TrimEnd()
     git init -b main | Out-Null
+    # The template's versioned hooks, such as the one that strips AI agent attribution from commit messages.
+    git config core.hooksPath .githooks
     git add -A
+    # Executable on Linux and macOS; Windows doesn't record the bit on its own.
+    if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
     git commit -q -m $message
     if ($LASTEXITCODE) { throw 'The first commit failed.' }
     "Committed the new project in $((Get-Location).Path)."
