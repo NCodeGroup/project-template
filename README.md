@@ -43,12 +43,14 @@ Replaced on every update. A project never edits them; an edit is discarded by th
 | `.claude/commands/` (16), `.claude/agents/plan-executor.md` | Claude Code: `/plan-feature`, `/plan-bugfix`, `/orchestrate-plan`, `/replan-step`, `/review-plan-diff`, … and the Sonnet subagent that executes steps — generated |
 | `.github/agents/` (8 + 1), `.github/prompts/` (17) | Copilot Chat in VS Code: the Copilot agents (planner, implementer on Auto, reviewer, orchestrator), the Hybrid agents (the same, with the Local Implementer on the shack PC's model), and the same commands as prompt files — generated |
 | `.github/skills/` (16), `.github/agents/plan-executor.agent.md` | Copilot CLI: the same commands as skills, and the agent `/orchestrate-plan` delegates to — generated |
-| `build/ProjectTemplate.props` (.NET) | Latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata; `*.Tests` projects aren't packable and skip XML docs |
+| `build/ProjectTemplate.props` (.NET) | Latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata; `*.Tests` projects aren't packable and skip XML docs; with `nuget_package`, the license expression, README and icon in each package, Source Link with untracked sources, symbol packages and XML documentation |
 | `.github/instructions/csharp.instructions.md` (.NET) | C# conventions — test layout and naming, regions, xUnit and Moq, collection expressions, `const`, UTF-8 literals — applied by Copilot to `*.cs` |
 | `.claude/rules/csharp.md` (.NET) | Points Claude Code at the same conventions whenever it touches a `*.cs` file |
 | `.copier-answers.yml` | Copier's: the answers and template version that `Update-Project.ps1` reads |
 | `.template/Update-Project.ps1` | The [update script](#update-a-project): run in the project, it pulls in the newest template version and updates itself |
 | `.githooks/commit-msg` | Strips AI agent attribution from every commit message — `Co-authored-by:` trailers for Copilot and Claude, `Claude-Session:` trailers, "Generated with Claude Code" lines — whichever tool commits ([Commit Attribution](#commit-attribution)) |
+
+Which generated files a project gets follows `workflow_tools`. A command, prompt file, skill or agent the project adds under a name the template doesn't use is the project's.
 
 Generated files are rendered from [workflow/templates](workflow/templates/) by `Update-Template.ps1`; change them there.
 
@@ -59,7 +61,7 @@ The project edits them freely, and later template changes merge in: an update ke
 | File | Purpose |
 |---|---|
 | `.claude/settings.json` | Commit and pull request attribution off; `git push` always asks for approval, in Bash and PowerShell; `.env` files and `secrets/` can't be read |
-| `.vscode/settings.json`, `.vscode/extensions.json` | LF and final newlines, `git.addAICoAuthor` off, the Ollama timeout; recommended extensions (Claude Code, GitHub Copilot Chat, Ollama, EditorConfig, and the stack's language extension) |
+| `.vscode/settings.json`, `.vscode/extensions.json` | LF and final newlines, `git.addAICoAuthor` off, the Ollama timeout (only with the local model); recommended extensions (Claude Code, GitHub Copilot Chat, Ollama, EditorConfig, and the stack's language extension; the Ollama extension only with the local model) |
 | `.editorconfig`, `.gitattributes`, `.gitignore` | UTF-8 and LF everywhere, binary types, and ignores for Claude Code's local files and worktrees, secrets and build output |
 | `.github/workflows/ci.yml` or `.gitlab-ci.yml` | CI on GitHub or GitLab, whichever the `git_host` answer names, that runs the build and test commands once code exists; GitHub Actions pinned to commit SHAs |
 | `.github/dependabot.yml` (GitHub only) | [Dependabot](#stay-current), built into GitHub: a weekly pull request for newer CI actions and, by stack, NuGet packages and the .NET SDK, pip or npm packages |
@@ -98,6 +100,7 @@ A project never edits a template-owned file. It adds to the template and overrid
 | To | Add | Picked up by |
 |---|---|---|
 | Add an instruction, or override one of the template's, for every agent | A line under Conventions in `AGENTS.md`, or a file listed in its index as `@<path> — what it covers`. A `.github/instructions/<name>.instructions.md` file with an `applyTo` glob also reaches Copilot automatically | Claude Code imports each `@` entry; Copilot reads `AGENTS.md` and loads every `.github/instructions/` file; other agents follow the index |
+| Add a command, skill or agent | A file with a new name in `.claude/commands/`, `.github/prompts/`, `.github/skills/<name>/` or `.github/agents/` | The tool; updates leave it alone |
 | Add an instruction for Claude Code only | `.claude/rules/<name>.md` | Claude Code loads every file there |
 | Override a .NET build setting | A property in `Directory.Build.props`, after its import of `build/ProjectTemplate.props` | MSBuild: the later value wins |
 | Change a merged file — `.gitignore`, CI, editor settings, permissions | Edit the file; later template changes merge into it | — |
@@ -114,7 +117,11 @@ An instruction override is the project's word against the template's, so say it 
 | `project_description` | Blank | The line under each heading |
 | `stack` | .NET | The .NET layer, default commands, CI setup steps, `.gitignore` section, recommended extension |
 | `git_host` | GitHub | The CI file (`.github/workflows/ci.yml` or `.gitlab-ci.yml`) and, on GitHub, `.github/dependabot.yml`; the pull-request command in the template's rules; with `-CreateRemote`, where the repository is created: `gh` on GitHub, `glab` on GitLab |
+| `workflow_tools` | Claude Code, Copilot and the local model | Which workflow files the project gets: `CLAUDE.md` and `.claude/` with Claude Code; the Copilot agents, prompt files, skills and `plan-executor.agent.md` with Copilot; the Hybrid agents, `execute-step-local.prompt.md` and the Ollama settings with the local model. `-Data` takes a list: `workflow_tools = 'claude', 'copilot'` |
 | `author_name` (.NET only) | Marcin Polewski | `Authors`, `Company` and `Copyright` in `build/ProjectTemplate.props` |
+| `nuget_package` (.NET only) | Off | The package settings in `build/ProjectTemplate.props` |
+| `package_license` | None; required with `nuget_package` | The SPDX license expression |
+| `package_icon` | Blank | A PNG at the repository root, packed as the icon |
 | `build_command`, `test_command` | By stack, below | `AGENTS.md`, `README.md`, and through them every plan's Context for the executor |
 
 | Stack | Build | Test |
@@ -417,4 +424,4 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 
 ---
 
-**TL;DR:** `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote` creates a project with `AGENTS.md`, `CLAUDE.md`, Claude Code permissions, the plan-then-execute commands and agents for Claude Code, Copilot Chat and Copilot CLI — switch between your Claude and Copilot plans at any time — CI, Dependabot, and optional .NET settings, then creates its repository on GitHub, public, and pushes. Add `-Visibility private` for a private repository; answer GitLab to the host question (or pass `-Data @{ git_host = 'gitlab' }`) for GitLab. Every file has one of three owners: template-owned files are replaced on every update and never edited; merged files — settings whose tools can't include a second file — take the template's changes merged with the project's edits; and project-owned files, including the `AGENTS.md` index, are never touched. `.\.template\Update-Project.ps1`, run in a project, updates itself to the newest version first, then does all three and commits, or stops on a same-line conflict in a merged file. Dependabot keeps each GitHub project's actions, packages and SDK current through weekly pull requests. Change the workflow in `workflow/templates`, run `Update-Template.ps1` and `Test-Template.ps1`, then tag and push; this repository is its single source of truth.
+**TL;DR:** `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote` creates a project with `AGENTS.md`, `CLAUDE.md`, Claude Code permissions, the plan-then-execute commands and agents for Claude Code, Copilot Chat and Copilot CLI — switch between your Claude and Copilot plans at any time — CI, Dependabot, and optional .NET settings, then creates its repository on GitHub, public, and pushes. Add `-Visibility private` for a private repository; answer GitLab to the host question (or pass `-Data @{ git_host = 'gitlab' }`) for GitLab. Every file has one of three owners: template-owned files are replaced on every update and never edited; merged files — settings whose tools can't include a second file — take the template's changes merged with the project's edits; and project-owned files, including the `AGENTS.md` index, are never touched. `.\.template\Update-Project.ps1`, run in a project, updates itself to the newest version first, then does all three and commits, or stops on a same-line conflict in a merged file. Dependabot keeps each GitHub project's actions, packages and SDK current through weekly pull requests. Change the workflow in `workflow/templates`, run `Update-Template.ps1` and `Test-Template.ps1`, then tag and push; this repository is its single source of truth. `.\Adopt-Project.ps1 -Path <repository>` brings an existing repository under the template.
