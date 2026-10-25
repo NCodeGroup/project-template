@@ -4,5 +4,10 @@
     "commit": "",
     "pr": "",
     "sessionUrl": false
+  },
+  "permissions": {
+    "allow": [
+      "EnterWorktree"
+    ]
   }
 }

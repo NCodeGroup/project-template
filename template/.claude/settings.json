@@ -6,6 +6,9 @@
     "sessionUrl": false
   },
   "permissions": {
+    "allow": [
+      "EnterWorktree"
+    ],
     "ask": [
       "Bash(git push)",
       "Bash(git push *)",

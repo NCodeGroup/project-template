@@ -191,7 +191,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: the replaced line.
 - Done when: `$ok = $true; foreach ($f in '.\Test-Template.ps1', '.\Test-Adoption.ps1') { $e = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f).Path, [ref]$null, [ref]$e); $t = Get-Content -Raw $f; if ($e -or -not $t.Contains("Where-Object Name -NE 'worktrees'") -or $t.Contains("Where-Object Name -NE '.git' | Copy-Item")) { $ok = $false } }; if ($ok) { exit 0 } else { exit 1 }`
 
-### [ ] 8. Allow entering a worktree, and ignore worktrees in this repository
+### [x] 8. Allow entering a worktree, and ignore worktrees in this repository
 - Files: `template/.claude/settings.json` (edit), `.claude/settings.json` (edit), `.gitignore` (new)
 - Change:
   1. `template/.claude/settings.json`: in `permissions`, add an `allow` list holding `"EnterWorktree"` as the first key, before `"ask"`, formatted like the `ask` list: `"allow": [`, then `"EnterWorktree"` on its own line, then `],`.
