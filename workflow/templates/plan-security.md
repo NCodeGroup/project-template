@@ -3,6 +3,7 @@ description: Assess an area for security weaknesses and plan hardening
 argument-hint: Component, endpoint or data flow to harden
 role: planner
 append-format: true
+worktree: create
 ---
 Assess and plan security hardening for:
 

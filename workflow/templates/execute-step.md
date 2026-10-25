@@ -3,6 +3,7 @@ description: Execute one step of PLAN.md on the execution model; escalate instea
 argument-hint: Step number, or blank for the next unchecked step
 role: executor
 append-format: false
+worktree: join
 ---
 You are executing one step of an approved plan in `PLAN.md`. A stronger model wrote the plan and owns every design decision; your job is to carry out the step exactly as written.
 

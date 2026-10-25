@@ -3,6 +3,7 @@ description: Run PLAN.md in one session — you verify and re-plan, a cheaper su
 argument-hint: Optional extra instructions, such as a step to start from
 role: orchestrator
 append-format: false
+worktree: join
 ---
 Execute `PLAN.md` as its coordinator. You are the strong reasoning model: you verify every result and do all re-planning. A cheaper, faster subagent makes every edit.
 

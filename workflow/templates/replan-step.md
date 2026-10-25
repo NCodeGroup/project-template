@@ -3,6 +3,7 @@ description: Re-plan a PLAN.md step the executor escalated ([?]) or failed ([!])
 argument-hint: Step number, plus the error or escalation note if you have it
 role: planner
 append-format: false
+worktree: join
 ---
 A step of `PLAN.md` came back from the executor: it escalated the step (marked `[?]` with an `- Escalation:` note) or failed it (marked `[!]`).
 

@@ -32,6 +32,7 @@ function Get-HybridTemplateList {
                     Description  = $t.Meta.description
                     ArgumentHint = $t.Meta.'argument-hint'
                     AppendFormat = $t.Meta.'append-format' -eq 'true'
+                    Worktree     = $t.Meta.worktree
                     Body         = $t.Body
                 }
             }

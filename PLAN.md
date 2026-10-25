@@ -85,7 +85,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: step 1's file.
 - Done when: `$p = 'workflow\templates\_claude-worktree-join.md'; $t = if (Test-Path $p) { Get-Content -Raw $p } else { '' }; if ($t.StartsWith("## Work in the plan's worktree") -and $t.Contains('git worktree list --porcelain') -and $t.Contains('tool and its') -and -not $t.Contains('$')) { exit 0 } else { exit 1 }`
 
-### [ ] 3. Tag each prompt template with its worktree role
+### [x] 3. Tag each prompt template with its worktree role
 - Files: `workflow/HybridWorkflow.psm1` (edit); the 13 templates that the command below edits.
 - Change:
   1. In `Get-HybridTemplateList`, in the `[pscustomobject]@{ … }` it builds, add `Worktree     = $t.Meta.worktree` on a new line directly after the `AppendFormat = …` line, aligned like the lines above it.

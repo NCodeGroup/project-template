@@ -3,6 +3,7 @@ description: Plan tests for risky or untested code
 argument-hint: Module, feature or folder to cover
 role: planner
 append-format: true
+worktree: create
 ---
 Plan tests for:
 

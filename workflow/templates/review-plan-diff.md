@@ -3,6 +3,7 @@ description: Review the executor's work against PLAN.md and queue fix steps
 argument-hint: Optional base branch or commit to diff against
 role: reviewer
 append-format: false
+worktree: join
 ---
 Review the changes made while executing `PLAN.md`.
 

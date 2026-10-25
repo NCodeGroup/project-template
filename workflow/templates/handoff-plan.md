@@ -3,6 +3,7 @@ description: Turn the plan from this conversation into PLAN.md for the executor 
 argument-hint: Optional extra constraints or notes
 role: planner
 append-format: true
+worktree: create
 ---
 Convert the plan we agreed on in this conversation into an executable handoff for a smaller, cheaper executor model.
 

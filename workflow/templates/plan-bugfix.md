@@ -3,6 +3,7 @@ description: Find the root cause of a bug and plan a test-first fix
 argument-hint: Symptom, error message and how to reproduce it
 role: planner
 append-format: true
+worktree: create
 ---
 Investigate this bug and plan the fix:
 

@@ -3,6 +3,7 @@ description: Plan a behavior-preserving refactor in small, always-green steps
 argument-hint: What to restructure and the target shape
 role: planner
 append-format: true
+worktree: create
 ---
 Plan this refactor so that behavior does not change:
 

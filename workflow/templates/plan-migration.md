@@ -3,6 +3,7 @@ description: Plan a dependency, framework or API upgrade
 argument-hint: What to upgrade, from which version to which
 role: planner
 append-format: true
+worktree: create
 ---
 Plan this migration:
 

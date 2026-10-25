@@ -3,6 +3,7 @@ description: Plan a new feature for the executor model to build
 argument-hint: Feature to build and how it should behave
 role: planner
 append-format: true
+worktree: create
 ---
 Plan this feature for a smaller model to implement:
 

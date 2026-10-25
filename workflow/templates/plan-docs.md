@@ -3,6 +3,7 @@ description: Plan documentation that the executor model can write
 argument-hint: What to document and for whom
 role: planner
 append-format: true
+worktree: create
 ---
 Plan documentation for:
 

@@ -3,6 +3,7 @@ description: Measure a performance problem and plan verified fixes
 argument-hint: What is slow, how slow, and the target
 role: planner
 append-format: true
+worktree: create
 ---
 Investigate and plan performance work for:
 
