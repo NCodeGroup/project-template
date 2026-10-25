@@ -154,6 +154,45 @@ $out = @(& $workflow -Path $folder -Phase Apply)
 $gone = -not (Test-Path -LiteralPath (Join-Path $folder '.github/prompts/execute-step-copilot.prompt.md'))
 $after = & $workflow -Path $folder -Phase Detect
 Check 'unit: workflow install adapter' ($detected -eq $true -and $gone -and $out.Count -eq 1 -and $after -eq $false) "$detected | $($out -join ' / ') | $after"
+
+if (-not $UnitOnly) {
+    $tpl = Join-Path $Work 'template-repo'
+    New-Item -ItemType Directory -Force $tpl | Out-Null
+    Get-ChildItem -LiteralPath $PSScriptRoot -Force | Where-Object Name -NE '.git' | Copy-Item -Destination $tpl -Recurse -Force
+    Push-Location $tpl
+    try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
+    finally { Pop-Location }
+
+    function New-Fixture([string]$Name, [hashtable]$Files, [string]$Remote) {
+        $folder = New-TestFolder $Name $Files
+        Push-Location $folder
+        try { Invoke-Git init -q -b main; Invoke-Git remote add origin $Remote; Invoke-Git add -A; Invoke-Git commit -q -m 'Initial' }
+        finally { Pop-Location }
+        $folder
+    }
+
+    $plain = New-Fixture 'plain' @{
+        'AGENTS.md'             = "# Legacy Agents`n`nOwn rules.`n`n## Conventions`n`n- Keep it simple.`n"
+        'README.md'             = "# Plain`n"
+        '.gitignore'            = "*.local-test`n"
+        'main.py'               = "print('hi')`n"
+        'pyproject.toml'        = "[project]`nname = ""plain""`n"
+        '.vscode/settings.json' = "{`n  // editor`n  ""editor.rulers"": [100]`n}`n"
+        '.gitlab-ci.yml'        = "test:`n  script: echo hi`n"
+    } 'https://gitlab.com/example/plain.git'
+    $adopt = Join-Path $PSScriptRoot 'Adopt-Project.ps1'
+    $out = & $adopt -Path $plain -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot' } | Out-String
+    $answersText = Get-Content -Raw -LiteralPath (Join-Path $plain '.copier-answers.yml')
+    Check 'plain: answers recorded' ($answersText -match '(?m)^_commit: v0\.1\.0\s*$' -and $answersText -match '(?m)^stack: python\s*$' -and $answersText -match '(?m)^git_host: gitlab\s*$' -and $answersText -match '(?m)^project_name: plain\s*$') "$answersText | $out"
+    $subject = git -C $plain log -1 --format=%s
+    $count = git -C $plain rev-list --count HEAD
+    $status = git -C $plain status --porcelain
+    Check 'plain: one commit, nothing left over' ($subject -eq 'Adopt project-template v0.1.0' -and $count -eq '2' -and -not $status) "$subject | $count | $status"
+    Check 'plain: README.md untouched' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'README.md')) -eq "# Plain`n") ''
+    Check 'plain: workflow files for claude, copilot only' ((Test-Path -LiteralPath (Join-Path $plain 'CLAUDE.md')) -and (Test-Path -LiteralPath (Join-Path $plain '.github\skills\plan-feature\SKILL.md')) -and -not (Test-Path -LiteralPath (Join-Path $plain '.github\agents\hybrid-planner.agent.md'))) ''
+    $message = try { & $adopt -Path $plain -Template $tpl -Ref v0.1.0 | Out-Null } catch { $_.Exception.Message }
+    Check 'plain: a second run refuses' ("$message".Contains('already uses the project template')) "$message"
+}
 ''
 if ($failures.Count) { "Adoption tests: FAILED ($($failures.Count))"; exit 1 }
 'Adoption tests: PASSED'
