@@ -1,8 +1,14 @@
 {
   "recommendations": [
+{%- if 'claude' in workflow_tools %}
     "anthropic.claude-code",
+{%- endif %}
+{%- if 'copilot' in workflow_tools or 'local' in workflow_tools %}
     "github.copilot-chat",
+{%- endif %}
+{%- if 'local' in workflow_tools %}
     "ollama.ollama",
+{%- endif %}
     "editorconfig.editorconfig"
 {%- if stack == 'dotnet' %},
     "ms-dotnettools.csdevkit"

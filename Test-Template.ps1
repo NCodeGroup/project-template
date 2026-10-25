@@ -114,6 +114,10 @@ foreach ($case in $cases) {
     $yamlFiles = @($files | Where-Object Extension -In '.yml', '.yaml' | ForEach-Object FullName)
     $yamlOutput = uv run --quiet --no-project --with pyyaml python -c $yamlCheck @yamlFiles 2>&1 | Out-String
     Check "${name}: valid YAML ($($yamlFiles.Count) files)" ($LASTEXITCODE -eq 0) $yamlOutput.Trim()
+    $extensions = Get-Content -LiteralPath (Join-Path $dest '.vscode/extensions.json') -Raw
+    $settings = Get-Content -LiteralPath (Join-Path $dest '.vscode/settings.json') -Raw
+    $local = 'local' -in $tools
+    Check "${name}: editor settings for the chosen tools" (($extensions.Contains('ollama.ollama') -eq $local) -and ($settings.Contains('ollama.inferenceTimeoutMinutes') -eq $local) -and ($extensions.Contains('anthropic.claude-code') -eq ('claude' -in $tools)))
     Check "${name}: answers record v0.1.0" ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -match '(?m)^_commit: v0\.1\.0$')
 }
 
