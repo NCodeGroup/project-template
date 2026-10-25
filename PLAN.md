@@ -25,6 +25,7 @@
 - The test checks its own premise: under the template's `.gitignore` alone, the ignored paths must add up to more than 32,767 characters of `--exclude=` arguments. Without this check, a future template that ignores `node_modules/` for .NET would make the test pass without testing anything.
 - The fix reaches a project once a template version that contains it is tagged: the project's old script hands the update over to the target version's script before Copier runs, so `NCode.Identity` (v0.3.0) is fixed by updating to the next tag. Tagging is the maintainer's job after review, not a plan step.
 - Re-plan step 1: the test collects the update's output line by line, because `try { ... | Out-String } catch` discarded Copier's `WinError 206` traceback when the script threw, and the first run could not see the root cause in its output.
+- Re-plan step 4: its Done-when expects 5 mentions of `Test-UpdateIgnoredFiles.ps1`, one per README edit; the first version asked for 6, which the five edits can't produce.
 - `--path-format=absolute` needs Git 2.31 (March 2021); accepted, because Copier itself already warns below Git 2.24 and current Git for Windows is 2.56.
 
 ## Out of scope
@@ -92,7 +93,7 @@
   4. In the Repository Layout table, after the `Test-Adoption.ps1` row, add: `| `Test-UpdateIgnoredFiles.ps1` | Update a project whose own `.gitignore` ignores a large folder |`
   5. In the `.github/workflows/test-template.yml` layout row, change "Runs `Test-Template.ps1`, `Test-Adoption.ps1` and `Test-CommitAttribution.ps1`" to "Runs `Test-Template.ps1`, `Test-Adoption.ps1`, `Test-UpdateIgnoredFiles.ps1` and `Test-CommitAttribution.ps1`".
 - Pattern: the neighbouring `Test-Adoption.ps1` mentions in the same places.
-- Done when: `$r = Get-Content README.md -Raw; if (([regex]::Matches($r, 'Test-UpdateIgnoredFiles\.ps1')).Count -ge 6 -and $r.Contains('Update ignored-files tests: PASSED') -and $r.Contains('Runs `Test-Template.ps1`, `Test-Adoption.ps1`, `Test-UpdateIgnoredFiles.ps1` and `Test-CommitAttribution.ps1`')) { exit 0 } else { exit 1 }`
+- Done when: `$r = Get-Content README.md -Raw; if (([regex]::Matches($r, 'Test-UpdateIgnoredFiles\.ps1')).Count -ge 5 -and $r.Contains('Update ignored-files tests: PASSED') -and $r.Contains('Runs `Test-Template.ps1`, `Test-Adoption.ps1`, `Test-UpdateIgnoredFiles.ps1` and `Test-CommitAttribution.ps1`')) { exit 0 } else { exit 1 }`
 
 ## Review checklist
 - Step 1's test failed for the root cause (its output held `WinError 206`) before step 2, and passes after it.
