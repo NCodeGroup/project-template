@@ -11,6 +11,8 @@ Private [Copier](https://copier.readthedocs.io/) template for new repositories s
 - [Extend or Override the Template](#extend-or-override-the-template)
 - [Questions](#questions)
 - [Create a Project](#create-a-project)
+- [Adopt an Existing Repository](#adopt-an-existing-repository)
+  - [Legacy Adapters](#legacy-adapters)
 - [Update a Project](#update-a-project)
 - [Commit Attribution](#commit-attribution)
 - [Stay Current](#stay-current)
@@ -152,7 +154,96 @@ A public project is readable by anyone, including its `.copier-answers.yml`, whi
 
 For a .NET project, `dotnet new` templates put a `Version` on each `<PackageReference>`, which central package management rejects (NU1008); move each version into `Directory.Packages.props`. The template's rules tell the agents the same, and `dotnet add package` already does it. Add each project to one solution at the repository root (`dotnet new sln` once, then `dotnet sln add <project folder>`), so the default `dotnet build` and `dotnet test` — and CI — cover it.
 
-To add the template to an existing repository, run `copier copy <template> <repository>` on a clean working tree. Copier keeps the repository's `AGENTS.md`, `README.md` and `Directory.Build.props`, and asks before overwriting any other file it already has: keep the repository's own `.gitignore` and settings files, and later updates merge the template's changes into them. Then add the template's rules to `AGENTS.md` as the first index entry: `- @.github/instructions/project-template.instructions.md — the plan-then-execute workflow and base conventions, from the project template`.
+To bring an existing repository under the template, use [Adopt-Project.ps1](#adopt-an-existing-repository).
+
+## Adopt an Existing Repository
+
+`Adopt-Project.ps1` brings a repository that already exists under the template, so it gets the workflow and later updates. Run it from this clone, on a repository with a clean working tree. It needs the same tools as [Create a Project](#create-a-project).
+
+```powershell
+.\Adopt-Project.ps1 -Path C:\src\buffers                                                    # works out the answers, adopts, verifies, commits
+.\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot' }    # for a public or shared repository: no Hybrid agents, which use the shack PC's private model
+.\Adopt-Project.ps1 -Path C:\src\buffers -NoCommit                                          # stages the result for review instead
+```
+
+| Parameter | Default | Purpose |
+|---|---|---|
+| `-Path` | — | The repository's root folder |
+| `-Template` | `https://github.com/polewskm/project-template.git` | Template source; `.` uses this clone |
+| `-Ref` | The newest tag | Template version to use |
+| `-Data` | None | Answers that win over everything the script works out: `-Data @{ stack = 'node' }` |
+| `-NoVerify` | Off | Skip the build and test commands before the commit |
+| `-NoCommit` | Off | Stage the result instead of committing it; it still verifies unless `-NoVerify` is also given |
+
+The script refuses a folder that isn't the root of a Git repository, has uncommitted changes, already has `.copier-answers.yml` (use `Update-Project.ps1` instead), or has no Git `user.name` or `user.email`.
+
+### How it works
+
+It never asks a question. Each answer comes from the first of these that has it:
+
+1. `-Data`.
+2. A [legacy adapter](#legacy-adapters).
+3. What the script works out from the repository.
+4. The template's default.
+
+The script works out these answers:
+
+| Answer | Worked out from |
+|---|---|
+| `stack` | `dotnet` if there is a solution or a C#, F# or VB project within two folders of the root; else `node` if `package.json` is at the root; else `python` if `pyproject.toml`, `requirements.txt` or `setup.py` is; else `powershell` if there is a `.ps1`, `.psm1` or `.psd1` file; else `other` |
+| `project_name` | The only solution's name, else the folder name |
+| `git_host` | `gitlab` if the `origin` remote names GitLab, else `github` |
+| `author_name` (.NET) | `Authors`, else `Company`, in the root `Directory.Build.props` |
+| `build_command`, `test_command` (.NET) | `dotnet build <solution>` and `dotnet test <solution>`, when the only solution isn't at the root |
+
+Everything else, including `workflow_tools`, takes the template's default. The script prints the answers, runs `copier copy --overwrite`, and enables the template's Git hooks (`git config core.hooksPath .githooks`) unless the repository already sets its own, as `New-Project.ps1` does ([Commit Attribution](#commit-attribution)).
+
+What it does with a file the repository already has depends on the file's owner ([What a Project Gets](#what-a-project-gets)):
+
+| Owner | What happens |
+|---|---|
+| Template | Replaced by the template's file; the repository's copy is discarded |
+| Merged | Rebuilt as the template's file plus the repository's own content, so a later update merges the repository's content like any project's edits (below) |
+| Project | Kept. `AGENTS.md` gains the template's rules as an index entry: first under its `## Instructions` heading, else in a new `## Project Template` section before its first section, else at the end. `Directory.Build.props` gains the import of `build/ProjectTemplate.props` as its first element, so its own settings override the template's |
+
+A merged file is rebuilt by type:
+
+| File | Rebuilt as |
+|---|---|
+| `.gitignore`, `.gitattributes`, `.editorconfig` | The template's file, then the repository's lines under a comment (`.editorconfig` drops its `root =` lines) |
+| `*.json` | The two merged key by key in the template's order; the repository's values win and lists are combined. Comments are dropped, and the report says so |
+| `*.props` | The template's file with the repository's elements added before `</Project>` |
+| Anything else, such as YAML CI and Dependabot files | The repository's file, kept. A template change to it conflicts on update: keep your side |
+
+A .NET repository without `Directory.Packages.props` moves to central package management: each `Version` goes from the project files into `Directory.Packages.props`. When projects disagree on a version, the highest wins and the report says so.
+
+Before committing, the script runs the build and test commands from the answers. It then commits on the current branch as `Adopt project-template v0.1.0`, with the report of what it merged, removed and moved as the message body. If a command fails, it stages everything, commits nothing, and exits 1; fix the problem and commit, or abandon the adoption with `git reset --hard; git clean -fd`.
+
+Some judgment is left to you. The script prints it as a ready request, such as folding `.github/copilot-instructions.md` into `AGENTS.md` and reconciling other workflows in `.github/workflows` with `ci.yml`:
+
+```text
+Still to do — in the repository, run:
+  /plan-migration Finish adopting the project template: fold .github/copilot-instructions.md into AGENTS.md or a file it lists; reconcile .github/workflows/main.yml with ci.yml
+```
+
+Afterwards the repository updates like any project: `.\.template\Update-Project.ps1` ([Update a Project](#update-a-project)).
+
+### Legacy Adapters
+
+A legacy adapter removes one old setup that the template replaces. Each is a script in [adopt/legacy/](adopt/legacy/) that takes `-Path` and `-Phase`. `Adopt-Project.ps1` runs every script there with `-Phase Detect`; for each that returns `$true` it:
+
+| Phase | When | Returns |
+|---|---|---|
+| `Detect` | First | `$true` if the repository has the setup |
+| `Answers` | Before Copier runs | A hashtable of answers, which beat what the script works out but not `-Data` |
+| `Apply` | After Copier runs | Lines for the report; the script prints them and puts them in the commit message |
+
+To handle another setup, add a script to `adopt/legacy/`; nothing else changes.
+
+| Adapter | Detects | Does |
+|---|---|---|
+| `NCode.ProjectSettings.Scaffold.ps1` | A project file referencing the `NCode.ProjectSettings.Scaffold` NuGet package | Answers `nuget_package`, `package_license` (`Apache-2.0`), `author_name` (`NCode Group`) and, when `NCodeGroup.png` is at the root, `package_icon`. Removes the package reference, whose settings `build/ProjectTemplate.props` now provides, and reports that its `GlobalAssemblyInfo.cs`, its license and copyright copies and its build-time release notes are gone. Lists any file still using a property the package defined |
+| `HybridWorkflowInstall.ps1` | `.github/prompts/execute-step-copilot.prompt.md`, the name an older `Install-HybridWorkflow.ps1` used | Deletes it; the template's Copilot prompt is `execute-step.prompt.md` |
 
 ## Update a Project
 
@@ -310,12 +401,15 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `copier.yml` | Questions and Copier settings: `_subdirectory: template` keeps everything else out of projects; `_merged_files` and `_skip_if_exists` list the merged and project-owned files |
 | `template/` | The files a project gets |
 | `New-Project.ps1` | Create a project, its first commit and optionally its remote |
+| `Adopt-Project.ps1` | Bring an existing repository under the template, with no questions asked |
+| `adopt/` | `Adoption.psm1`, the functions `Adopt-Project.ps1` uses, and `legacy/`, one adapter per old setup it removes |
 | `Update-Project.ps1` | Update a project by `-Path` from this clone: a wrapper around `template\.template\Update-Project.ps1`, the update script every project carries |
 | `workflow/` | The single source of the workflow: prompt and agent templates, the installer, the prompt composer and the step runner ([workflow/README.md](workflow/README.md)) |
 | `Update-Template.ps1` | Regenerate the workflow files under `template/` and at the repository root from `workflow/templates` |
 | `AGENTS.md`, `.claude/settings.json`, `.vscode/settings.json` | This repository's own agent instructions and settings: no AI attribution in commits ([Commit Attribution](#commit-attribution)) |
 | `.claude/`, `.github/agents/`, `.github/prompts/`, `.github/skills/` | This repository's own workflow: the same generated files as `template/` gets, committed so that working on the template with Claude Code or Copilot has `/plan-feature`, `/orchestrate-plan` and the rest on any PC that clones it. Never edit them; `Update-Template.ps1` regenerates them |
 | `Test-Template.ps1` | Render every stack and check the result |
+| `Test-Adoption.ps1` | Check the adoption functions and legacy adapters, then adopt small test repositories |
 | `.github/workflows/test-template.yml` | Runs `Test-Template.ps1` on Windows for every push to `main` and every pull request |
 | `.github/dependabot.yml` | Dependabot for the actions in `test-template.yml` |
 | `USAGE.md` | Setting up a PC for Claude Code and GitHub Copilot, and using and switching between them in a project |
