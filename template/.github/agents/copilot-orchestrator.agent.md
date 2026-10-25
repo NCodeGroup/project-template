@@ -32,7 +32,7 @@ For each step whose heading starts with `### [ ]`, in order:
 
 Make code changes yourself only as a last resort, after a step has been re-planned twice, and say so in the summary. Finish with a table of step, result, delegations, re-plans and notes, then suggest running review-plan-diff.
 
-In this session, the subagent to delegate to is "Copilot Implementer"; it runs on a lower-cost Copilot model. When re-planning a step, follow these rules:
+In this session, the subagent to delegate to is "Copilot Implementer"; it runs on Claude Sonnet 5.5. When re-planning a step, follow these rules:
 
 A step of `PLAN.md` came back from the executor: it escalated the step (marked `[?]` with an `- Escalation:` note) or failed it (marked `[!]`).
 

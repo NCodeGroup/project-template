@@ -412,7 +412,7 @@ Steps 29–37 extend the change. Every project, and this repository, gets the se
 - Pattern: the surrounding rows and paragraphs.
 - Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; $r = Get-Content -Raw README.md; if (-not $o.Contains('Template tests: PASSED') -or -not (Select-String -LiteralPath template\.github\instructions\project-template.instructions.md.jinja -SimpleMatch '.template/Test-CommitAttribution.ps1' -Quiet) -or -not $r.Contains('| `.template/Test-CommitAttribution.ps1` |') -or -not $r.Contains('Pipelines must succeed') -or $r.Contains([char]13)) { exit 1 }`
 
-### [ ] 36. Execute plan steps on Claude Sonnet 5.5 in every tool
+### [x] 36. Execute plan steps on Claude Sonnet 5.5 in every tool
 - Files: `workflow/Install-HybridWorkflow.ps1` (edit), `workflow/Invoke-PlanSteps.ps1` (edit), `Test-Template.ps1` (edit); regenerated files under `template/` and at the repository root (by running `.\Update-Template.ps1`)
 - Change:
   - **`Install-HybridWorkflow.ps1`:**

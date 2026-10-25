@@ -7,7 +7,7 @@
     Loop, until no "### [ ] N. Title" step is left (or only the steps given with -Step):
       1. Execute: sends the execute-step prompt plus the step text to Copilot CLI — offline against the
          shack PC's Ollama server (-Executor local, default) or with a GitHub-hosted model
-         (-Executor copilot, e.g. -Model auto).
+         (-Executor copilot; Claude Sonnet 5.5 unless -Model says otherwise).
       2. Escalation: if the executor marks the step [?] with an "- Escalation:" note (it needs a decision,
          a refactor or a redesign the plan didn't make), the step goes to re-planning.
       3. Verify: runs the step's "- Done when: `command`" itself; the model's own claim is not trusted.
@@ -26,7 +26,7 @@
     .\Invoke-PlanSteps.ps1 -Plan C:\src\app\PLAN.md -DryRun
     .\Invoke-PlanSteps.ps1 -Plan .\PLAN.md                                  # local executor, manual re-planning
     .\Invoke-PlanSteps.ps1 -Plan .\PLAN.md -Replan claude                   # Opus on Claude Max re-plans automatically
-    .\Invoke-PlanSteps.ps1 -Plan .\PLAN.md -Executor copilot -Model auto -Replan copilot   # all Copilot
+    .\Invoke-PlanSteps.ps1 -Plan .\PLAN.md -Executor copilot -Replan copilot   # all Copilot
 #>
 param(
     [string]$Plan = '.\PLAN.md',
@@ -45,7 +45,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'HybridWorkflow.psm1') -Force
 
-if (-not $Model) { $Model = if ($Executor -eq 'local') { 'qwen3.6:35b-a3b-coding' } else { 'auto' } }
+if (-not $Model) { $Model = if ($Executor -eq 'local') { 'qwen3.6:35b-a3b-coding' } else { 'claude-sonnet-5.5' } }
 if (-not $ReplanModel) { $ReplanModel = @{ none = ''; claude = 'opus'; copilot = 'claude-opus-5.5'; local = 'qwen3.6:35b-a3b-coding' }[$Replan] }
 
 $planPath = (Resolve-Path $Plan).Path

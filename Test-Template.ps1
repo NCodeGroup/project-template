@@ -199,6 +199,22 @@ Check 'this repository''s own workflow files match workflow/templates (else run 
 $excludeCheck = 'import sys, yaml, jinja2; c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); e = jinja2.Environment(); bad = [p for p in c["_exclude"] if e.from_string(p).render().strip()]; print("; ".join(bad)); sys.exit(1 if bad else 0)'
 $excludeOutput = uv run --quiet --no-project --with pyyaml --with jinja2 python -c $excludeCheck (Join-Path $PSScriptRoot 'copier.yml') 2>&1 | Out-String
 Check 'copier.yml: _exclude patterns exclude nothing when workflow_tools is missing' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()
+$executorChecks = @(
+    @{ Path = 'template\.github\agents\copilot-implementer.agent.md'; Text = "model: 'Claude Sonnet 5.5 (copilot)'" }
+    @{ Path = 'template\.github\agents\plan-executor.agent.md'; Text = 'model: claude-sonnet-5.5' }
+    @{ Path = 'template\.claude\agents\plan-executor.md'; Text = 'model: claude-sonnet-5-5' }
+    @{ Path = 'template\.github\prompts\execute-step.prompt.md'; Text = 'Claude Sonnet 5.5 (copilot)' }
+)
+$executorMissing = @($executorChecks | Where-Object { -not [IO.File]::ReadAllText((Join-Path $PSScriptRoot $_.Path)).Contains($_.Text) } | ForEach-Object Path)
+$executorAuto = @(
+    foreach ($dir in 'template\.github', 'template\.claude') {
+        Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot $dir) -Recurse -File -Force | Where-Object {
+            $t = [IO.File]::ReadAllText($_.FullName)
+            $t.Contains('Auto (copilot)') -or $t -match '(?m)^\s*model:\s*[''"]?auto[''"]?\s*$'
+        } | ForEach-Object Name
+    }
+)
+Check 'workflow: every executor runs on Claude Sonnet 5.5' (-not $executorMissing -and -not $executorAuto) ((@($executorMissing) + @($executorAuto)) -join ', ')
 $both = Join-Path $Work 'installed-both'
 New-Item -ItemType Directory -Force $both | Out-Null
 $installed = & (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $both | Out-String

@@ -9,7 +9,7 @@
       Local    Hybrid Planner / Local Implementer / Hybrid Reviewer / Hybrid Orchestrator
                — Opus plans and reviews, the shack PC's local model executes.
       Copilot  Copilot Planner / Copilot Implementer / Copilot Reviewer / Copilot Orchestrator
-               — Opus plans and reviews, a lower-cost Copilot model (Auto by default) executes.
+               — Opus plans and reviews, Claude Sonnet 5.5 executes (-CopilotExecutorModel).
 
     Targets and where they write:
       VSCode      -Repo: .github\agents\<variant agents>.agent.md, .github\prompts\<template>.prompt.md
@@ -21,12 +21,12 @@
 
     VS Code model names use "<model name> (<vendor>)"; the Settings dropdown for
     chat.planAgent.defaultModel lists the exact names. Copilot CLI uses model IDs such as
-    claude-sonnet-5.5 (see `copilot help config`); Claude Code uses aliases such as sonnet.
+    claude-sonnet-5.5 (see `copilot help config`); Claude Code uses aliases such as sonnet or full model IDs such as claude-sonnet-5-5.
 
 .EXAMPLE
     .\Install-HybridWorkflow.ps1 -User
     .\Install-HybridWorkflow.ps1 -Repo C:\src\my-project
-    .\Install-HybridWorkflow.ps1 -Repo . -Variant Copilot -CopilotExecutorModel 'Claude Sonnet 5.5 (copilot)'
+    .\Install-HybridWorkflow.ps1 -Repo . -Variant Copilot -CopilotExecutorModel 'Claude Haiku 5.5 (copilot)'
 #>
 param(
     [string]$Repo,
@@ -37,9 +37,9 @@ param(
     [string]$ReviewerModel = 'Claude Sonnet 5.5 (copilot)',
     [string]$LocalModel = 'qwen3.6:35b-a3b-coding (ollama-models)',
     [string]$FastLocalModel = 'ornith:9b (ollama-models)',
-    [string]$CopilotExecutorModel = 'Auto (copilot)',
+    [string]$CopilotExecutorModel = 'Claude Sonnet 5.5 (copilot)',
     [string]$CopilotFastModel = 'Claude Haiku 5.5 (copilot)',
-    [string]$ClaudeExecutorModel = 'sonnet',
+    [string]$ClaudeExecutorModel = 'claude-sonnet-5-5',
     [string]$CliExecutorModel = 'claude-sonnet-5.5'
 )
 $ErrorActionPreference = 'Stop'
@@ -79,7 +79,7 @@ if ($Variant -in 'Copilot', 'Both') {
     $variants.Copilot = @{
         Tokens = @{
             PLANNER_AGENT = 'Copilot Planner'; IMPLEMENTER_AGENT = 'Copilot Implementer'; REVIEWER_AGENT = 'Copilot Reviewer'; ORCHESTRATOR_AGENT = 'Copilot Orchestrator'
-            EXECUTOR_LABEL = 'a lower-cost Copilot model'; EXECUTOR_MODEL = $CopilotExecutorModel; FAST_EXECUTOR_MODEL = $CopilotFastModel
+            EXECUTOR_LABEL = ($CopilotExecutorModel -replace '\s*\([^)]*\)\s*$', ''); EXECUTOR_MODEL = $CopilotExecutorModel; FAST_EXECUTOR_MODEL = $CopilotFastModel
         }
         Files  = @{ planner = 'copilot-planner'; implementer = 'copilot-implementer'; reviewer = 'copilot-reviewer'; orchestrator = 'copilot-orchestrator' }
     }

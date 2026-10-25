@@ -1,15 +1,15 @@
 ---
 name: Copilot Implementer
-description: Execute one PLAN.md step on a lower-cost Copilot model; hand it back to the planner instead of improvising
+description: Execute one PLAN.md step on Claude Sonnet 5.5; hand it back to the planner instead of improvising
 argument-hint: Step number, or blank for the next unchecked step
-model: 'Auto (copilot)'
+model: 'Claude Sonnet 5.5 (copilot)'
 tools: ['read', 'search', 'edit', 'execute', 'todo']
 handoffs:
   - label: Next step
     agent: Copilot Implementer
     prompt: Execute the next unchecked step in PLAN.md.
     send: true
-    model: 'Auto (copilot)'
+    model: 'Claude Sonnet 5.5 (copilot)'
   - label: Re-plan with the planner
     agent: Copilot Planner
     prompt: Re-plan the PLAN.md step marked [?] or [!] using its Escalation note and the executor's report above, then hand it back for execution.

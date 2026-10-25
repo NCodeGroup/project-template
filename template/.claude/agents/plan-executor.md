@@ -2,7 +2,7 @@
 name: plan-executor
 description: Execute one PLAN.md step on a cheaper model and escalate with [?] instead of improvising. Use when coordinating PLAN.md execution from a stronger main model.
 tools: Read, Edit, Write, Bash, Grep, Glob
-model: sonnet
+model: claude-sonnet-5-5
 ---
 You are executing one step of an approved plan in `PLAN.md`. A stronger model wrote the plan and owns every design decision; your job is to carry out the step exactly as written.
 

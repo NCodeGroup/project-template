@@ -1,6 +1,6 @@
 ---
 name: Copilot Reviewer
-description: Review the work against PLAN.md and queue fix steps for a lower-cost Copilot model
+description: Review the work against PLAN.md and queue fix steps for Claude Sonnet 5.5
 argument-hint: Optional base branch or commit to diff against
 model: 'Claude Sonnet 5.5 (copilot)'
 tools: ['read', 'search', 'edit', 'execute']
@@ -9,7 +9,7 @@ handoffs:
     agent: Copilot Implementer
     prompt: Execute the next unchecked step in PLAN.md.
     send: true
-    model: 'Auto (copilot)'
+    model: 'Claude Sonnet 5.5 (copilot)'
   - label: Re-plan with the planner
     agent: Copilot Planner
     prompt: Re-plan the remaining work in PLAN.md based on the review findings above.
