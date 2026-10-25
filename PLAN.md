@@ -111,7 +111,7 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
 - Pattern: the `{% if stack == 'dotnet' %}` fragments already in that bullet.
 - Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  python-copilot: template rules for the chosen tools') -or -not $o.Contains('PASS  dotnet: template rules for the chosen tools')) { exit 1 }`
 
-### [ ] 6. Make the project README describe only the chosen tools
+### [x] 6. Make the project README describe only the chosen tools
 - Files: `template/README.md.jinja` (edit), `Test-Template.ps1` (edit)
 - Change: in the `## AI-Assisted Workflow` section, keep the heading and the first paragraph. Wrap the paragraph starting `Work in Claude Code or GitHub Copilot` (with the blank line before it) in `{%- if 'claude' in workflow_tools and ('copilot' in workflow_tools or 'local' in workflow_tools) %}`…`{%- endif %}`. Replace the `| Phase | …` table with one row per tool:
   ```jinja

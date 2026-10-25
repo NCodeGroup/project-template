@@ -15,15 +15,27 @@ Run from the repository root in PowerShell 7:
 
 This repository is set up for plan-then-execute coding: Claude Opus plans each change into `PLAN.md`, a cheaper model executes it one verified step at a time, and any step that needs a decision goes back to Opus. [AGENTS.md](AGENTS.md) is the index of the instructions every agent follows.
 
+{%- if 'claude' in workflow_tools and ('copilot' in workflow_tools or 'local' in workflow_tools) %}
+
 Work in Claude Code or GitHub Copilot, and switch whenever you like: both have the same commands, and `PLAN.md` is the only state they share, so one can plan and the other execute. Each bills its own subscription.
+{%- endif %}
 
-| Phase | Claude Code | Copilot Chat in VS Code | Copilot CLI |
-|---|---|---|---|
-| Plan | `/plan-feature <what to build>` (or `/plan-bugfix`, `/plan-refactor`, `/plan-tests`, …), then review `PLAN.md` | The Copilot Planner agent on Opus, or `/plan-feature` | `copilot --model claude-opus-5.5`, then `/plan-feature` |
-| Execute | `/orchestrate-plan` | Run all steps with subagents, or Execute next step | `/orchestrate-plan` |
-| Re-plan one step | `/replan-step N` | Re-plan with the planner | `/replan-step N` |
-| Review | `/review-plan-diff` | Review the work | `/review-plan-diff` |
+| Tool | Plan | Execute | Re-plan one step | Review |
+|---|---|---|---|---|
+{%- if 'claude' in workflow_tools %}
+| Claude Code | `/plan-feature <what to build>` (or `/plan-bugfix`, `/plan-refactor`, `/plan-tests`, …), then review `PLAN.md` | `/orchestrate-plan` | `/replan-step N` | `/review-plan-diff` |
+{%- endif %}
+{%- if 'copilot' in workflow_tools %}
+| Copilot Chat in VS Code | The Copilot Planner agent on Opus, or `/plan-feature` | Run all steps with subagents, or Execute next step | Re-plan with the planner | Review the work |
+| Copilot CLI | `copilot --model claude-opus-5.5`, then `/plan-feature` | `/orchestrate-plan` | `/replan-step N` | `/review-plan-diff` |
+{%- endif %}
+{%- if 'local' in workflow_tools %}
+| Copilot Chat on the local model | The Hybrid Planner agent on Opus | Run all steps with subagents, or Execute next step, on the shack PC's local model | Re-plan with the planner | Review the work |
+{%- endif %}
 
-In Claude Code, plan in Accept edits mode and execute in Auto. In Copilot Chat, the Copilot agents execute on a Copilot model; the Hybrid agents execute on the shack PC's local model.
+{%- if 'claude' in workflow_tools %}
 
-The workflow files come from a Copier template, which owns them: never edit `CLAUDE.md`, `.template/`, `.claude/commands/`, `.claude/agents/`, `.github/agents/`, `.github/prompts/`, `.github/skills/`, `.github/instructions/project-template.instructions.md` or `.copier-answers.yml`. To change how agents work here, edit `AGENTS.md` or a file it lists. To pull in template improvements, run `.\.template\Update-Project.ps1`: it updates itself, replaces the template's files, merges template changes into the shared settings files, and never touches `AGENTS.md` or this README.
+In Claude Code, plan in Accept edits mode and execute in Auto.
+{%- endif %}
+
+The workflow files come from a Copier template, which owns them: never edit `.template/`, `.githooks/commit-msg`, `.github/instructions/project-template.instructions.md`, `.copier-answers.yml`{% if 'claude' in workflow_tools %}, `CLAUDE.md`{% endif %} or the commands, agents and skills the template generates. To change how agents work here, edit `AGENTS.md` or a file it lists. To pull in template improvements, run `.\.template\Update-Project.ps1`: it updates itself, replaces the template's files, merges template changes into the shared settings files, and never touches `AGENTS.md` or this README.
