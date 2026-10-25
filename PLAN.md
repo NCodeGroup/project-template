@@ -36,7 +36,7 @@
 
 ## Steps
 
-### [ ] 1. Add the regression test Test-UpdateIgnoredFiles.ps1
+### [x] 1. Add the regression test Test-UpdateIgnoredFiles.ps1
 - Files: `Test-UpdateIgnoredFiles.ps1` (new)
 - Change: a self-contained test script, in this order:
   1. Comment-based help like `Test-Adoption.ps1` lines 1-23. SYNOPSIS: "Test that a project's update succeeds when the project's own .gitignore ignores a large folder that the template's doesn't." DESCRIPTION explains the WinError 206 overflow in two sentences. `.PARAMETER Work`: the scratch folder, default `%TEMP%\project-template-update-ignored-test`. `.PARAMETER Packages`: fake packages in `node_modules`, default 700.
