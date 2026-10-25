@@ -161,18 +161,25 @@ A typical reason to switch is a limit: when `/usage` shows Claude's 5-hour or we
 
 ## Repositories Not Made From the Template
 
-The same commands work in any repository. From this repository's clone:
+Adopt one from this repository's clone. See [Adopt an existing repository](README.md#adopt-an-existing-repository).
 
 ```powershell
-.\workflow\Install-HybridWorkflow.ps1 -User                  # Claude Code commands and Copilot CLI skills for every repository, in your user profile
-.\workflow\Install-HybridWorkflow.ps1 -Repo C:\src\other     # everything, including the VS Code agents, into one repository
+.\Adopt-Project.ps1 -Path C:\src\other
 ```
 
-Re-run it after the template's workflow changes; it overwrites what it wrote. [workflow/README.md](workflow/README.md) lists its options.
+For a public or shared repository, add `-Data @{ workflow_tools = 'claude', 'copilot' }`.
+
+To get the commands and skills in every repository, run:
+
+```powershell
+.\workflow\Install-HybridWorkflow.ps1 -User     # Claude Code commands and Copilot CLI skills for every repository, in your user profile
+```
+
+`-Repo` installs only the workflow files into one repository, without template updates. Re-run the installer after the template's workflow changes; it overwrites what it wrote. [workflow/README.md](workflow/README.md) lists its options.
 
 ## The Shack PC's Local Model
 
-The Hybrid agents, and the `execute-step` prompt file, execute on `qwen3.6:35b-a3b-coding` on the shack PC's Ollama server through the Ollama extension. Claude Code and the Copilot agents don't need it. Setting it up is in personal-notes: [client-setup.md](https://github.com/polewskm/personal-notes/blob/main/ham-radio/shack/shack-pc/local-ai/client-setup.md).
+The Hybrid agents, and the `execute-step-local` prompt file, execute on `qwen3.6:35b-a3b-coding` on the shack PC's Ollama server through the Ollama extension. Claude Code and the Copilot agents don't need it. Setting it up is in personal-notes: [client-setup.md](https://github.com/polewskm/personal-notes/blob/main/ham-radio/shack/shack-pc/local-ai/client-setup.md).
 
 ## Troubleshooting
 

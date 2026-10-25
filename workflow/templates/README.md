@@ -29,7 +29,7 @@ Each prompt has a small front-matter header (`description`, `argument-hint`, `ro
 |---|---|---|---|
 | planner, analyst, orchestrator | `model: opus`, `effort: high` | Planner model (Opus 5.5) | Session model — start the session on Opus |
 | reviewer | `model: sonnet`, `effort: high` | Reviewer model (Sonnet 5.5) | Session model |
-| executor | `model: inherit` (the session's model) | Local model, plus `execute-step-copilot` on the Copilot executor model | Session model |
+| executor | `model: inherit` (the session's model) | Copilot executor model (`execute-step`), plus `execute-step-local` on the local model when both variants are installed | Session model |
 
 ## Agent Templates
 

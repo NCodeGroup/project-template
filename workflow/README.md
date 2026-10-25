@@ -12,7 +12,7 @@ The single source of truth for the plan-and-execute workflow: the prompt and age
 
 ```powershell
 .\workflow\Install-HybridWorkflow.ps1 -User                          # commands, skills and agents for every project, in your user profile
-.\workflow\Install-HybridWorkflow.ps1 -Repo C:\src\other-repo        # into a repository not made from this template
+.\workflow\Install-HybridWorkflow.ps1 -Repo C:\src\other-repo        # workflow files only, into a repository that won't adopt the template (..\Adopt-Project.ps1 adopts one)
 .\workflow\New-PlanPrompt.ps1 plan-feature "Add CSV export" -Copy    # a prompt for any chat
 .\workflow\Invoke-PlanSteps.ps1 -Plan C:\src\qso-viewer\PLAN.md -Replan claude
 ```
