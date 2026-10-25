@@ -10,12 +10,15 @@
     can update itself with .\.template\Update-Project.ps1 afterwards.
 
     The repository must be the root of a Git repository with no uncommitted changes and no .copier-answers.yml.
-    The result is one commit, "Adopt project-template <version>"; -NoCommit stages it instead.
+    The result is one commit, "Adopt project-template <version>"; -NoCommit stages it instead. Before committing, the
+    build and test commands from the answers run in the repository; if one fails, the adoption stays staged and
+    nothing is committed. -NoVerify skips that check.
 
 .EXAMPLE
     .\Adopt-Project.ps1 -Path C:\src\buffers
     .\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot' }
     .\Adopt-Project.ps1 -Path C:\src\buffers -NoCommit
+    .\Adopt-Project.ps1 -Path C:\src\buffers -NoVerify
 #>
 [CmdletBinding()]
 param(
@@ -23,7 +26,8 @@ param(
     [string]$Template = 'https://github.com/polewskm/project-template.git',
     [string]$Ref,
     [hashtable]$Data = @{},
-    [switch]$NoCommit
+    [switch]$NoCommit,
+    [switch]$NoVerify
 )
 $ErrorActionPreference = 'Stop'
 
@@ -143,10 +147,30 @@ try {
     }
 
     ''
+    if (-not $NoVerify) {
+        foreach ($key in 'build_command', 'test_command') {
+            $command = Get-Answer $key
+            if ($null -eq $command -or $command -in '', "''", '""', 'null') { continue }
+            "Running $command"
+            $output = pwsh -NoProfile -Command $command 2>&1 | Out-String
+            if ($LASTEXITCODE) {
+                @($output -split '\r?\n' | Where-Object { $_ -ne '' }) | Select-Object -Last 30
+                "`"$command`" fails after adopting. The adoption is staged, not committed: fix it and commit, or abandon it with: git reset --hard; git clean -fd"
+                exit 1
+            }
+        }
+        ''
+    }
     $message = "Adopt project-template $version"
     if ($NoCommit) { 'Staged, not committed. Review it with: git diff --cached --stat'; return }
-    git commit -q -m $message
-    if ($LASTEXITCODE) { throw 'The commit failed.' }
+    $messageFile = [IO.Path]::GetTempFileName()
+    try {
+        $body = if ($report.Count) { "`n`n" + ($report -join "`n") } else { '' }
+        [IO.File]::WriteAllText($messageFile, "$message$body`n", $utf8)
+        git commit -q -F $messageFile
+        if ($LASTEXITCODE) { throw 'The commit failed.' }
+    }
+    finally { Remove-Item -LiteralPath $messageFile -Force -ErrorAction SilentlyContinue }
     "Committed `"$message`". Review it with: git show --stat"
 }
 finally {

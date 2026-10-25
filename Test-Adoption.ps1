@@ -187,7 +187,7 @@ if (-not $UnitOnly) {
         '.gitlab-ci.yml'        = "test:`n  script: echo hi`n"
     } 'https://gitlab.com/example/plain.git'
     $adopt = Join-Path $PSScriptRoot 'Adopt-Project.ps1'
-    $out = & $adopt -Path $plain -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot' } | Out-String
+    $out = & $adopt -Path $plain -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot' } -NoVerify | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $plain '.copier-answers.yml')
     Check 'plain: answers recorded' ($answersText -match '(?m)^_commit: v0\.1\.0\s*$' -and $answersText -match '(?m)^stack: python\s*$' -and $answersText -match '(?m)^git_host: gitlab\s*$' -and $answersText -match '(?m)^project_name: plain\s*$') "$answersText | $out"
     $subject = git -C $plain log -1 --format=%s
@@ -219,7 +219,7 @@ if (-not $UnitOnly) {
         '.github/copilot-instructions.md'   = "# Copilot Instructions`n"
         '.github/workflows/main.yml'        = "name: main`non: [push]`njobs:`n  build:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n      - run: dotnet build`n"
     } 'https://github.com/NCodeGroup/Demo.git'
-    $out = & $adopt -Path $scaffoldRepo -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; test_command = '' } | Out-String
+    $out = & $adopt -Path $scaffoldRepo -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; test_command = '' } -NoVerify:$SkipDotnetBuild | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.copier-answers.yml')
     Check 'scaffold: answers from the adapter' ($answersText -match '(?m)^stack: dotnet\s*$' -and $answersText -match '(?m)^project_name: NCode\.Demo\s*$' -and $answersText -match '(?m)^nuget_package: true\s*$' -and $answersText -match '(?m)^package_license: Apache-2\.0\s*$' -and $answersText -match '(?m)^package_icon: NCodeGroup\.png\s*$' -and $answersText -match '(?m)^author_name: NCode Group\s*$') "$answersText | $out"
     $csproj = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'src/NCode.Demo/NCode.Demo.csproj')
@@ -229,6 +229,33 @@ if (-not $UnitOnly) {
     $editorconfig = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.editorconfig')
     Check 'scaffold: Directory.Build.props imports the template settings' ($props.Contains('build/ProjectTemplate.props') -and $props.Contains('<LangVersion>latest</LangVersion>') -and @($editorconfig -split "`n" | Where-Object { $_ -match '^\s*root\s*=' }).Count -eq 1) "$props | $editorconfig"
     Check 'scaffold: report lists the follow-ups' ($out.Contains('/plan-migration Finish adopting the project template') -and $out.Contains('.github/copilot-instructions.md') -and $out.Contains('.github/workflows/main.yml')) $out
+
+    if (-not $SkipDotnetBuild) {
+        $subject = git -C $scaffoldRepo log -1 --format=%s
+        $packOut = dotnet pack (Join-Path $scaffoldRepo 'src\NCode.Demo') -o (Join-Path $Work 'pack') 2>&1 | Out-String
+        $nupkg = @(Get-ChildItem -LiteralPath (Join-Path $Work 'pack') -Filter '*.nupkg' -ErrorAction SilentlyContinue | Where-Object Name -NotLike '*.snupkg')
+        $snupkg = @(Get-ChildItem -LiteralPath (Join-Path $Work 'pack') -Filter '*.snupkg' -ErrorAction SilentlyContinue)
+        $entries = @(); $nuspec = ''
+        if ($nupkg.Count) {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $zip = [IO.Compression.ZipFile]::OpenRead($nupkg[0].FullName)
+            try {
+                $entries = @($zip.Entries | ForEach-Object FullName)
+                $nuspecEntry = $zip.Entries | Where-Object FullName -Like '*.nuspec' | Select-Object -First 1
+                $reader = [IO.StreamReader]::new($nuspecEntry.Open())
+                try { $nuspec = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            }
+            finally { $zip.Dispose() }
+        }
+        Check 'scaffold: verified, committed, and packed with README, icon and license' ($out.Contains('Running dotnet build') -and $subject -eq 'Adopt project-template v0.1.0' -and $nupkg.Count -eq 1 -and 'README.md' -in $entries -and 'NCodeGroup.png' -in $entries -and $nuspec.Contains('<license type="expression">Apache-2.0</license>') -and $snupkg.Count -eq 1) "$subject | $($entries -join ',') | $nuspec | $packOut | $out"
+    }
+
+    $failing = New-Fixture 'failing' @{ 'README.md' = "# Failing`n" } 'https://github.com/example/failing.git'
+    $failOut = & $adopt -Path $failing -Template $tpl -Ref v0.1.0 -Data @{ stack = 'other'; build_command = 'exit 3'; test_command = '' } | Out-String
+    $failExit = $LASTEXITCODE
+    $failCount = git -C $failing rev-list --count HEAD
+    $failStaged = git -C $failing diff --cached --name-only
+    Check 'failing: a failed build stages the adoption and commits nothing' ($failExit -eq 1 -and $failCount -eq '1' -and '.copier-answers.yml' -in $failStaged -and $failOut.Contains('"exit 3" fails after adopting')) "$failExit | $failCount | $failOut"
 
     # A later template version changes the merged files.
     Push-Location (Join-Path $tpl 'template')
