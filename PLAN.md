@@ -34,6 +34,8 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
 - In the generated folders, ownership is per file: a command, skill or agent a project adds under a new name is the project's.
 - Adoption tests are a separate script, `Test-Adoption.ps1`, run as its own CI step, so each stays under two minutes.
 
+- Step 3 (re-plan): the default render of `.vscode/settings.json` must equal the old file byte for byte; the Done-when checks the literal `\n`, because the template's JSON check parses leniently and accepted a literal line break inside `"\n"`.
+
 ## Out of scope
 - Adopting any real repository — NCode.Identity, the NCodeGroup libraries, identity-platform, the homelab repositories. Each is a separate change once this ships; NCode.Identity's also amends its ADR-0170 and its prompt/skill check.
 - The personal-notes repository (`plan-and-execute.md` names `execute-step-copilot`; `configuration-g.md` describes `copier copy` for existing repositories). A follow-up there.
@@ -86,8 +88,9 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
   }
   ```
   In `Test-Template.ps1`'s case loop add the check `"${name}: editor settings for the chosen tools"`: `extensions.json` contains `ollama.ollama` and `settings.json` contains `ollama.inferenceTimeoutMinutes` exactly when `'local' -in $tools`, and `extensions.json` contains `anthropic.claude-code` exactly when `'claude' -in $tools`.
+  Every other line of `settings.json.jinja` stays exactly as in the old `settings.json`: in particular `"files.eol": "\n",` keeps the two characters backslash and `n`, never a real line break (an editing tool may turn `\n` into a newline; check the file's bytes).
 - Pattern: the stack block at the end of `extensions.json.jinja`.
-- Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  python-copilot: editor settings for the chosen tools') -or (Test-Path template\.vscode\settings.json) -or -not (Test-Path template\.vscode\settings.json.jinja)) { exit 1 }`
+- Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  python-copilot: editor settings for the chosen tools') -or (Test-Path template\.vscode\settings.json) -or -not (Test-Path template\.vscode\settings.json.jinja) -or -not (Get-Content -Raw template\.vscode\settings.json.jinja).Contains('"files.eol": "\n",') -or -not (Get-Content -Raw $env:TEMP\project-template-test\python\.vscode\settings.json).Contains('"files.eol": "\n",')) { exit 1 }`
 
 ### [ ] 4. Make AGENTS.md and .gitignore follow the chosen tools
 - Files: `template/AGENTS.md.jinja` (edit), `template/.gitignore.jinja` (edit), `Test-Template.ps1` (edit)
