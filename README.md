@@ -182,7 +182,7 @@ To bring an existing repository under the template, use [Adopt-Project.ps1](#ado
 | `-NoVerify` | Off | Skip the build and test commands before the commit |
 | `-NoCommit` | Off | Stage the result instead of committing it; it still verifies unless `-NoVerify` is also given |
 
-The script refuses a folder that isn't the root of a Git repository, has uncommitted changes, already has `.copier-answers.yml` (use `Update-Project.ps1` instead), or has no Git `user.name` or `user.email`.
+The script refuses a folder that isn't the root of a Git repository, has uncommitted changes, has no commits yet, already has `.copier-answers.yml` (use `Update-Project.ps1` instead), or has no Git `user.name` or `user.email`.
 
 ### How it works
 
@@ -224,9 +224,9 @@ A merged file is rebuilt by type:
 
 A .NET repository without `Directory.Packages.props` moves to central package management: each `Version` goes from the project files into `Directory.Packages.props`. When projects disagree on a version, the highest wins and the report says so.
 
-Before committing, the script runs the build and test commands from the answers. It then commits on the current branch as `Adopt project-template v0.1.0`, with the report of what it merged, removed and moved as the message body. If a command fails, it stages everything, commits nothing, and exits 1; fix the problem and commit, or abandon the adoption with `git reset --hard; git clean -fd`.
+Before committing, the script runs the build and test commands from the answers. It then commits on the current branch as `Adopt project-template v0.1.0`, with the report of what it merged, removed and moved as the message body. If a command fails, it stages everything, commits nothing, and exits 1; fix the problem and commit, or abandon the adoption with `git reset --hard; git clean -fd`. If anything else fails after the template is applied, the script resets the repository to where it was and says so, so there is nothing to clean up.
 
-Some judgment is left to you. The script prints it as a ready request, such as folding `.github/copilot-instructions.md` into `AGENTS.md` and reconciling other workflows in `.github/workflows` with `ci.yml`:
+Some judgment is left to you. The script prints it as a ready request: folding `.github/copilot-instructions.md` into `AGENTS.md`; for a .NET repository, reconciling the template's `csharp.instructions.md` with the repository's own instruction files; and, when the template added `ci.yml` because the repository had none, reconciling its other workflows in `.github/workflows` with it. A `ci.yml` the repository already had is kept, and so is every workflow beside it.
 
 ```text
 Still to do — in the repository, run:
@@ -364,7 +364,7 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 
 ## Change the Template
 
-1. Edit the base files under `template/`: `*.jinja` files are rendered with the answers, every other file is copied as is. A file name such as `{% if stack == 'dotnet' %}global.json{% endif %}` makes the file conditional. A new file is template-owned unless `copier.yml` lists it under `_merged_files` or `_skip_if_exists`. Keep a file template-owned whenever its tool can include a second, project-owned file; list it under `_merged_files` when it can't.
+1. Edit the base files under `template/`: `*.jinja` files are rendered with the answers, every other file is copied as is. A file name such as `{% if stack == 'dotnet' %}global.json{% endif %}` makes the file conditional. A new file is template-owned unless `copier.yml` lists it under `_merged_files` or `_skip_if_exists`. Keep a file template-owned whenever its tool can include a second, project-owned file; list it under `_merged_files` when it can't. A question that a later version adds must be read through a default wherever `copier.yml` uses it before the question is answered — the `_exclude` patterns read `workflow_tools | default([...])` — because an update renders the old version's files with the new `copier.yml` before the project has that answer; without the default an old project's update stops with conflicts. `Test-Template.ps1` fails an `_exclude` pattern that excludes anything without the answer.
 2. For the workflow commands, agents and prompts, edit the source templates in [workflow/templates](workflow/templates/), then run `.\Update-Template.ps1` to regenerate their copies under `template/` and at the repository root.
 3. Run `.\Test-Template.ps1` and `.\Test-Adoption.ps1`, and confirm their last lines read `Template tests: PASSED` and `Adoption tests: PASSED`.
 4. Commit, tag the next version, and push with tags: `git tag v0.2.0` and `git push origin main --tags`.
@@ -380,13 +380,14 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 | LF line endings, no leftover Jinja, valid JSON, valid YAML | Every rendered file |
 | Workflow files, editor settings, `.gitignore`, `AGENTS.md`, the template rules and `README.md` only for the chosen `workflow_tools` | Every render |
 | `.copier-answers.yml` records the version | Every render |
+| Every `_exclude` pattern excludes nothing when `workflow_tools` is missing | Always |
 | Generated workflow files, under `template/` and at the repository root, match a fresh run of `workflow\Install-HybridWorkflow.ps1` | Always, including CI |
 | The installer writes both variants for every tool; `New-PlanPrompt.ps1` composes a prompt; `Invoke-PlanSteps.ps1 -DryRun` parses the example plan | Always |
 | `New-Project.ps1` passes a list answer in `-Data` to Copier | Always |
-| `New-Project.ps1` and `Update-Project.ps1` enable `.githooks`, with `commit-msg` executable; the hook strips Claude and Copilot attribution and keeps a person's co-author trailer | Always; the update check with the update tests |
+| `New-Project.ps1` and `Update-Project.ps1` enable `.githooks`, with `commit-msg` executable; the hook strips Claude and Copilot attribution and keeps a person's co-author trailer, and keeps a prose line that mentions the advertising phrase | Always; the update check with the update tests |
 | `dotnet new classlib` and `xunit`, added to a root solution, pass the default `dotnet build` and `dotnet test` under `Directory.Build.props` and `global.json` | .NET (skip with `-SkipDotnetBuild`) |
 | A project's own `.template\Update-Project.ps1` hands the update over to the new version's script; it replaces template-owned files, discards and reports an edit to one, and restores a deleted one; merges a merged file, keeping the project's edit, and keeps a deleted one deleted; leaves project-owned files untouched and shows the template's changes to them; deletes and adds files as the template did; makes one commit, and changes nothing on a second run. On a same-line change to a merged file it stops with exit code 1, commits nothing, still replaces the template-owned files, and finishes once the conflict is resolved. The root wrapper updates another project by `-Path` | Python and Node.js projects (skip with `-SkipUpdate`) |
-| `Test-Adoption.ps1`: the adoption functions and legacy adapters on small inputs; adopting a Python repository on GitLab and a .NET repository built on the NCodeGroup scaffold — answers worked out, merged files rebuilt, `AGENTS.md` and `Directory.Build.props` extended, versions moved into `Directory.Packages.props`, follow-ups reported, a failing build committing nothing, the package packed with README, icon and license, and a later template update merging cleanly | Always (`-SkipDotnetBuild` skips the .NET build and pack) |
+| `Test-Adoption.ps1`: the adoption functions and legacy adapters on small inputs; adopting a Python repository on GitLab and a .NET repository built on the NCodeGroup scaffold — answers worked out, merged files rebuilt, `AGENTS.md` and `Directory.Build.props` extended, versions moved into `Directory.Packages.props`, follow-ups reported, a failing build committing nothing, a failure after Copier rolling the repository back, the report naming only the follow-ups the repository really has, the package packed with README, icon and license, and a later template update merging cleanly | Always (`-SkipDotnetBuild` skips the .NET build and pack) |
 
 ## Publish the Template
 
