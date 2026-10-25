@@ -67,6 +67,12 @@ try {
     }
 
     $answers = Get-AdoptionAnswers $project
+    $adapters = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'adopt\legacy') -Filter '*.ps1' -File | Sort-Object Name | Where-Object { & $_.FullName -Path $project -Phase Detect })
+    foreach ($adapter in $adapters) {
+        "Found $($adapter.BaseName)"
+        $adapterAnswers = & $adapter.FullName -Path $project -Phase Answers
+        foreach ($k in $adapterAnswers.Keys) { $answers[$k] = $adapterAnswers[$k] }
+    }
     foreach ($k in $Data.Keys) { $answers[$k] = $Data[$k] }
     'Answers:'
     foreach ($k in $answers.Keys) {
@@ -103,6 +109,20 @@ try {
     if ($originals.ContainsKey('Directory.Build.props') -and (Test-Path -LiteralPath build\ProjectTemplate.props)) {
         [IO.File]::WriteAllText((Join-Path $project 'Directory.Build.props'), (Add-ProjectTemplateImport $originals['Directory.Build.props']), $utf8)
     }
+    foreach ($adapter in $adapters) {
+        foreach ($line in @(& $adapter.FullName -Path $project -Phase Apply)) { $report.Add("  $line") }
+    }
+    if ((Test-Path -LiteralPath Directory.Packages.props) -and -not $originals.ContainsKey('Directory.Packages.props')) {
+        foreach ($line in @(Move-PackageVersionsToCentral $project)) { $report.Add("  $line") }
+    }
+
+    $followUps = [Collections.Generic.List[string]]::new()
+    if (Test-Path -LiteralPath .github/copilot-instructions.md) { $followUps.Add('fold .github/copilot-instructions.md into AGENTS.md or a file it lists') }
+    if (Test-Path -LiteralPath .github/workflows/ci.yml) {
+        foreach ($f in Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Extension -in '.yml', '.yaml' -and $_.Name -ne 'ci.yml' } | Sort-Object Name) {
+            $followUps.Add("reconcile .github/workflows/$($f.Name) with ci.yml")
+        }
+    }
 
     git add -A
     # Executable on Linux and macOS; Windows doesn't record the bit on its own.
@@ -115,6 +135,12 @@ try {
     "Adopted project-template $version in ${project}:"
     git status --porcelain | ForEach-Object { "  $_" }
     if ($report.Count) { ''; "Merged with the repository's own files:"; $report }
+
+    if ($followUps.Count) {
+        ''
+        "Still to do $([char]0x2014) in the repository, run:"
+        "  /plan-migration Finish adopting the project template: $($followUps -join '; ')"
+    }
 
     ''
     $message = "Adopt project-template $version"

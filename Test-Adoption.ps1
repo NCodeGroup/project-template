@@ -207,6 +207,29 @@ if (-not $UnitOnly) {
     Check 'plain: AGENTS.md gains the template rules' ($iEntry -ge 0 -and $iEntry -lt $agents.IndexOf('## Conventions') -and $agents.Contains('Own rules.')) $agents
     Check 'plain: CI file kept' ((Get-Content -Raw -LiteralPath (Join-Path $plain '.gitlab-ci.yml')) -eq "test:`n  script: echo hi`n") ''
 
+    $scaffoldRepo = New-Fixture 'scaffold' @{
+        'NCode.Demo.slnx'                   = "<Solution>`n  <Project Path=""src/NCode.Demo/NCode.Demo.csproj"" />`n</Solution>`n"
+        'src/NCode.Demo/NCode.Demo.csproj'  = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n  <ItemGroup>`n    <PackageReference Include=""NCode.ProjectSettings.Scaffold""`n                      Version=""1.0.21"">`n      <PrivateAssets>all</PrivateAssets>`n    </PackageReference>`n    <PackageReference Include=""JetBrains.Annotations"" Version=""2025.2.4"" PrivateAssets=""All"" />`n  </ItemGroup>`n</Project>`n"
+        'src/NCode.Demo/Greeter.cs'         = "namespace NCode.Demo;`n`n/// <summary>Greets people.</summary>`npublic static class Greeter`n{`n    /// <summary>Builds a greeting.</summary>`n    /// <param name=""name"">Who to greet.</param>`n    /// <returns>The greeting.</returns>`n    public static string Greet(string name) => `$""Hello, {name}!"";`n}`n"
+        'Directory.Build.props'             = "<Project>`n  <PropertyGroup>`n    <LangVersion>latest</LangVersion>`n  </PropertyGroup>`n</Project>`n"
+        '.gitignore'                        = "bin/`nobj/`n*.local-test`n"
+        '.editorconfig'                     = "root = true`n`n[*.cs]`nindent_size = 4`n"
+        'README.md'                         = "# NCode.Demo`n"
+        'NCodeGroup.png'                    = $png
+        '.github/copilot-instructions.md'   = "# Copilot Instructions`n"
+        '.github/workflows/main.yml'        = "name: main`non: [push]`njobs:`n  build:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n      - run: dotnet build`n"
+    } 'https://github.com/NCodeGroup/Demo.git'
+    $out = & $adopt -Path $scaffoldRepo -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; test_command = '' } | Out-String
+    $answersText = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.copier-answers.yml')
+    Check 'scaffold: answers from the adapter' ($answersText -match '(?m)^stack: dotnet\s*$' -and $answersText -match '(?m)^project_name: NCode\.Demo\s*$' -and $answersText -match '(?m)^nuget_package: true\s*$' -and $answersText -match '(?m)^package_license: Apache-2\.0\s*$' -and $answersText -match '(?m)^package_icon: NCodeGroup\.png\s*$' -and $answersText -match '(?m)^author_name: NCode Group\s*$') "$answersText | $out"
+    $csproj = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'src/NCode.Demo/NCode.Demo.csproj')
+    $packages = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'Directory.Packages.props')
+    Check 'scaffold: package removed and versions central' (-not $csproj.Contains('NCode.ProjectSettings.Scaffold') -and -not $csproj.Contains('Version="') -and $csproj.Contains('JetBrains.Annotations') -and $packages.Contains('<PackageVersion Include="JetBrains.Annotations" Version="2025.2.4" />') -and -not $packages.Contains('NCode.ProjectSettings.Scaffold')) "$csproj | $packages"
+    $props = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'Directory.Build.props')
+    $editorconfig = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.editorconfig')
+    Check 'scaffold: Directory.Build.props imports the template settings' ($props.Contains('build/ProjectTemplate.props') -and $props.Contains('<LangVersion>latest</LangVersion>') -and @($editorconfig -split "`n" | Where-Object { $_ -match '^\s*root\s*=' }).Count -eq 1) "$props | $editorconfig"
+    Check 'scaffold: report lists the follow-ups' ($out.Contains('/plan-migration Finish adopting the project template') -and $out.Contains('.github/copilot-instructions.md') -and $out.Contains('.github/workflows/main.yml')) $out
+
     # A later template version changes the merged files.
     Push-Location (Join-Path $tpl 'template')
     try {
