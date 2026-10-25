@@ -324,7 +324,7 @@ Steps 29–37 extend the change. Every project, and this repository, gets the se
 - Pattern: Identity's test file for the cases; `Test-Adoption.ps1` for the shape and the ending.
 - Done when: `$o = .\Test-CommitAttribution.ps1 | Out-String; if ($LASTEXITCODE -or -not $o.Contains('Commit attribution tests: PASSED') -or -not $o.Contains('PASS  a prose line that mentions the advertising phrase passes') -or -not $o.Contains('PASS  an empty base checks only the head') -or -not $o.Contains('PASS  a range finds an agent commit in the middle') -or -not $o.Contains('PASS  an agent committer fails')) { exit 1 }`
 
-### [ ] 31. Run the check in a GitHub project's CI
+### [x] 31. Run the check in a GitHub project's CI
 - Files: `template/.github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja` (edit), `Test-Template.ps1` (edit)
 - Change: in `ci.yml.jinja`, add these lines after the `pull_request:` trigger: the comment `  # A required check must also report in a merge queue.`, then `  merge_group:` and `    types: [checks_requested]`. At the end of the file, after a blank line, add a second job:
   ```jinja

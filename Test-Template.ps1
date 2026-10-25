@@ -54,7 +54,7 @@ try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Sn
 finally { Pop-Location }
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.vscode\settings.json', '.vscode\extensions.json'
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.vscode\settings.json', '.vscode\extensions.json'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
     claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
@@ -104,6 +104,10 @@ foreach ($case in $cases) {
     $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
     $wrong = @($hostOnly[$case.Host] | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($hostOnly[$otherHost] | Where-Object { Test-Path (Join-Path $dest $_) })
     Check "${name}: $($case.Host) files only" (-not $wrong) ($wrong -join ', ')
+    if ($case.Host -eq 'github') {
+        $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
+        Check "${name}: CI runs the commit attribution check" ($ci.Contains('./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD') -and $ci.Contains('merge_group:') -and $ci.Contains('${{ github.event.pull_request.base.sha'))
+    }
     $wanted = @($tools | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique)
     $unwanted = @($allTools | Where-Object { $_ -notin $tools } | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique | Where-Object { $_ -notin $wanted })
     $wrong = @($wanted | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($unwanted | Where-Object { Test-Path (Join-Path $dest $_) })
@@ -112,7 +116,7 @@ foreach ($case in $cases) {
     $files = Get-ChildItem -LiteralPath $dest -Recurse -File -Force
     $crlf = $files | Where-Object { $_.Extension -notin '.cmd', '.bat' -and [IO.File]::ReadAllText($_.FullName).Contains("`r") } | ForEach-Object Name
     Check "${name}: LF line endings" (-not $crlf) ($crlf -join ', ')
-    $jinja = $files | Where-Object { Select-String -LiteralPath $_.FullName -Pattern '\{\{|\{%' -Quiet } | ForEach-Object Name
+    $jinja = $files | Where-Object { Select-String -LiteralPath $_.FullName -Pattern '(?<!\$)\{\{|\{%' -Quiet } | ForEach-Object Name
     Check "${name}: no leftover Jinja" (-not $jinja) ($jinja -join ', ')
     $badJson = $files | Where-Object Extension -EQ '.json' | Where-Object {
         try { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json | Out-Null; $false } catch { $true }
@@ -167,6 +171,9 @@ finally {
 }
 Check 'hooks: commit-msg strips AI agent attribution and keeps people' ($hookLog.Contains('Jane Doe') -and -not $hookLog.Contains('anthropic.com') -and -not $hookLog.Contains('Copilot@') -and -not $hookLog.Contains('Claude-Session') -and -not $hookLog.Contains('Generated with')) $hookLog
 Check 'hooks: commit-msg keeps a prose line that mentions the advertising phrase' ($proseLog.Contains('The hook strips the Generated with Claude Code line.')) $proseLog
+$attributionBase = (git -C $listProject rev-list --max-parents=0 HEAD) -join ''
+$attributionOutput = & pwsh -NoProfile -File (Join-Path $listProject '.template\Test-CommitAttribution.ps1') -Base $attributionBase -Head HEAD 2>&1 | Out-String
+Check 'project: the shipped commit attribution check passes on its own history' (($LASTEXITCODE -eq 0) -and $attributionOutput.Contains('none is attributed to an AI agent')) $attributionOutput
 
 $workflow = Join-Path $PSScriptRoot 'workflow'
 $fresh = Join-Path $Work 'generated'
