@@ -433,7 +433,7 @@ Steps 29–37 extend the change. Every project, and this repository, gets the se
 - Pattern: the existing tokens in the `$variants.Copilot` block.
 - Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  workflow: every executor runs on Claude Sonnet 5.5') -or -not $o.Contains('PASS  this repository''s own workflow files match workflow/templates') -or -not (Select-String -LiteralPath .github\agents\copilot-implementer.agent.md -SimpleMatch "model: 'Claude Sonnet 5.5 (copilot)'" -Quiet)) { exit 1 }`
 
-### [ ] 37. Name the executor model in the docs
+### [x] 37. Name the executor model in the docs
 - Files: `README.md` (edit), `USAGE.md` (edit), `workflow/templates/README.md` (edit)
 - Change: replace each place that says the Copilot executor is Auto:
   - **`README.md`:** `implementer on Auto` → `implementer on Claude Sonnet 5.5`.

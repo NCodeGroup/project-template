@@ -38,13 +38,13 @@ The four VS Code agent templates are variant-neutral; the installer renders each
 | Template | Local variant (`-Variant Local`) | Copilot variant (`-Variant Copilot`) | Does |
 |---|---|---|---|
 | [planner.agent.md](planner.agent.md) | Hybrid Planner | Copilot Planner | Plans on Opus, re-plans steps that come back; buttons to execute, execute fast, or run all |
-| [implementer.agent.md](implementer.agent.md) | Local Implementer (qwen3.6) | Copilot Implementer (Auto) | Executes one step, escalates with `[?]`; buttons for next step, re-plan with the planner, review |
+| [implementer.agent.md](implementer.agent.md) | Local Implementer (qwen3.6) | Copilot Implementer (Claude Sonnet 5.5) | Executes one step, escalates with `[?]`; buttons for next step, re-plan with the planner, review |
 | [reviewer.agent.md](reviewer.agent.md) | Hybrid Reviewer | Copilot Reviewer | Reviews on Sonnet and queues fix steps; buttons to execute the fixes or re-plan |
 | [orchestrator.agent.md](orchestrator.agent.md) | Hybrid Orchestrator | Copilot Orchestrator | Opus runs every step through implementer subagents, verifies each, re-plans escalations itself |
 
 | Template | Installed as | For |
 |---|---|---|
-| [plan-executor.claude.md](plan-executor.claude.md) | `.claude/agents/plan-executor.md` | Claude Code subagent (`model: sonnet` by default) that `orchestrate-plan` delegates to |
+| [plan-executor.claude.md](plan-executor.claude.md) | `.claude/agents/plan-executor.md` | Claude Code subagent (`model: claude-sonnet-5-5` by default) that `orchestrate-plan` delegates to |
 | [plan-executor.cli.md](plan-executor.cli.md) | `.github/agents/plan-executor.agent.md` | Copilot CLI custom agent (`model: claude-sonnet-5.5` by default) that `orchestrate-plan` delegates to |
 
 ## Other Files

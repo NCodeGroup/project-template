@@ -41,7 +41,7 @@ Replaced on every update. A project never edits them; an edit is discarded by th
 | `.github/instructions/project-template.instructions.md` | The plan-then-execute rules and base conventions, for every agent: Copilot loads it on its own; Claude Code imports it through the first entry in `AGENTS.md` |
 | `CLAUDE.md` | Imports `AGENTS.md` for Claude Code and adds Claude-specific notes |
 | `.claude/commands/` (16), `.claude/agents/plan-executor.md` | Claude Code: `/plan-feature`, `/plan-bugfix`, `/orchestrate-plan`, `/replan-step`, `/review-plan-diff`, … and the Sonnet subagent that executes steps — generated |
-| `.github/agents/` (8 + 1), `.github/prompts/` (17) | Copilot Chat in VS Code: the Copilot agents (planner, implementer on Auto, reviewer, orchestrator), the Hybrid agents (the same, with the Local Implementer on the shack PC's model), and the same commands as prompt files — generated |
+| `.github/agents/` (8 + 1), `.github/prompts/` (17) | Copilot Chat in VS Code: the Copilot agents (planner, implementer on Claude Sonnet 5.5, reviewer, orchestrator), the Hybrid agents (the same, with the Local Implementer on the shack PC's model), and the same commands as prompt files — generated |
 | `.github/skills/` (16), `.github/agents/plan-executor.agent.md` | Copilot CLI: the same commands as skills, and the agent `/orchestrate-plan` delegates to — generated |
 | `build/ProjectTemplate.props` (.NET) | Latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata; `*.Tests` projects aren't packable and skip XML docs; with `nuget_package`, the license expression, README and icon in each package, Source Link with untracked sources, symbol packages and XML documentation |
 | `.github/instructions/csharp.instructions.md` (.NET) | C# conventions — test layout and naming, regions, xUnit and Moq, collection expressions, `const`, UTF-8 literals — applied by Copilot to `*.cs` |
@@ -387,6 +387,7 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 | Every `_exclude` pattern excludes nothing when `workflow_tools` is missing | Always |
 | Generated workflow files, under `template/` and at the repository root, match a fresh run of `workflow\Install-HybridWorkflow.ps1` | Always, including CI |
 | The installer writes both variants for every tool; `New-PlanPrompt.ps1` composes a prompt; `Invoke-PlanSteps.ps1 -DryRun` parses the example plan | Always |
+| Every executor — the Copilot Implementer, the `execute-step` prompt, and the Copilot CLI and Claude Code `plan-executor` agents — runs on Claude Sonnet 5.5 | Always |
 | `New-Project.ps1` passes a list answer in `-Data` to Copier | Always |
 | `New-Project.ps1` and `Update-Project.ps1` enable `.githooks`, with `commit-msg` executable; the hook strips Claude and Copilot attribution and keeps a person's co-author trailer, and keeps a prose line that mentions the advertising phrase | Always; the update check with the update tests |
 | The shipped `.template/Test-CommitAttribution.ps1` passes on a new project's own history | Always |

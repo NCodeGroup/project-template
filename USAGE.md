@@ -24,7 +24,7 @@ How to set up a PC for the template's AI workflow — Claude Code on your Claude
 | Where | The Claude Code extension in VS Code, or `claude` in a terminal | Copilot Chat in VS Code, or `copilot` (Copilot CLI) in a terminal |
 | Workflow files in a project | `.claude/commands/`, `.claude/agents/` | `.github/agents/` and `.github/prompts/` for Copilot Chat, `.github/skills/` for Copilot CLI |
 | Reads | `CLAUDE.md`, which imports `AGENTS.md` and each `@` file it lists | `AGENTS.md`, and every `.github/instructions/*.instructions.md` |
-| Executes plan steps on | Sonnet, in the `plan-executor` subagent | Auto with the Copilot agents; the shack PC's local model with the Hybrid agents |
+| Executes plan steps on | Claude Sonnet 5.5, in the `plan-executor` subagent | Claude Sonnet 5.5 with the Copilot agents; the shack PC's local model with the Hybrid agents |
 
 Both run the same commands against the same `PLAN.md`, so either can plan, execute, re-plan or review, whichever one started the plan.
 
@@ -141,7 +141,7 @@ Create one with `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote` ([README](
 | Review the result | `/review-plan-diff` | Review the work | `/review-plan-diff` |
 
 - **Claude Code:** the planning commands run on Opus with high effort, whatever the session's model, and `/orchestrate-plan` hands each step to the Sonnet `plan-executor` subagent, checks it, and re-plans what comes back.
-- **Copilot Chat:** use Session Target Local, where the agents and their buttons live; the buttons switch both the agent and the model. The Copilot agents execute on Auto; the Hybrid agents execute on the shack PC's local model. Each command also appears as a Copilot CLI skill, so it's listed twice; either runs it.
+- **Copilot Chat:** use Session Target Local, where the agents and their buttons live; the buttons switch both the agent and the model. The Copilot agents execute on Claude Sonnet 5.5; the Hybrid agents execute on the shack PC's local model. Each command also appears as a Copilot CLI skill, so it's listed twice; either runs it.
 - **Copilot CLI:** `/orchestrate-plan` hands each step to the `plan-executor` agent and re-plans escalations on the session's model, so start the session on Opus.
 
 Each finished step is a commit, `Plan step N: <title>`. When the review is clean, push, and delete `PLAN.md` or keep it as the record of the change. To pull in template improvements, run `.\.template\Update-Project.ps1` ([README](README.md#update-a-project)).
