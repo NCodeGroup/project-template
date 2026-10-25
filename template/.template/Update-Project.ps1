@@ -148,13 +148,18 @@ try {
         # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes
         # every path Git reports as ignored to one `git apply` command. Keep the project's rules in force meanwhile, or a
         # folder only they ignore, such as node_modules/, is listed file by file and overflows Windows' command line.
+        # The copy sits between marker lines, so a run that was killed before restoring info/exclude is cleaned up here.
         $infoExclude = git rev-parse --path-format=absolute --git-path info/exclude
-        $excludeBefore = if (Test-Path -LiteralPath $infoExclude) { [IO.File]::ReadAllText($infoExclude) }
+        $beginCopy = '# Update-Project.ps1: the project''s .gitignore, in force while Copier updates'
+        $endCopy = '# Update-Project.ps1: end of the .gitignore copy'
+        $excludeBefore = if (Test-Path -LiteralPath $infoExclude) {
+            [regex]::Replace([IO.File]::ReadAllText($infoExclude), "(?s)\n$([regex]::Escape($beginCopy))\n.*?\n$([regex]::Escape($endCopy))\n", '')
+        }
         $projectIgnore = Join-Path $project '.gitignore'
         try {
             if (Test-Path -LiteralPath $projectIgnore) {
                 New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
-                [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$([IO.File]::ReadAllText($projectIgnore))")
+                [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$beginCopy`n$([IO.File]::ReadAllText($projectIgnore))`n$endCopy`n")
             }
             Invoke-Copier @copierArgs
         }

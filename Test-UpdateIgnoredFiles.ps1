@@ -7,7 +7,9 @@
     During an update, Copier overwrites the project's .gitignore with the template's, then passes every path Git
     reports as ignored to one git apply command. A folder only the project ignored, such as node_modules/, is then
     listed file by file, and the command line passes Windows' limit with WinError 206 (the filename or extension is
-    too long). Prints PASS or FAIL per check and exits 1 on any failure.
+    too long). Checks that the update succeeds, that .git/info/exclude ends as it was, without the copy a killed
+    update left behind, and that a later update stopped by a conflict restores it too. Prints PASS or FAIL per check
+    and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-update-ignored-test.
@@ -35,6 +37,12 @@ function Invoke-Copier {
     elseif (Get-Command uvx -ErrorAction SilentlyContinue) { & uvx --from copier copier @args }
     else { throw 'Copier not found. Install it with: uv tool install copier' }
     if ($LASTEXITCODE) { throw "copier $($args[0]) exited with code $LASTEXITCODE." }
+}
+function Edit-File([string]$Path, [string]$Old, [string]$New) {
+    $full = (Resolve-Path -LiteralPath $Path).Path
+    $text = [IO.File]::ReadAllText($full)
+    if (-not $text.Contains($Old)) { throw "'$Old' not found in $full." }
+    [IO.File]::WriteAllText($full, $text.Replace($Old, $New))
 }
 function Invoke-Git {
     git -c user.name=template-test -c user.email=template-test@example.invalid @args
@@ -75,8 +83,13 @@ try {
     [IO.File]::WriteAllText($gitignore, $projectRules)
     Check 'fixture: under the template''s .gitignore alone, the ignored paths overflow a Windows command line' ($length -gt 32767) "$length characters"
 
+    # The project's own line, and the copy an update killed before its cleanup leaves behind. The copy ignores another
+    # folder, so it can't keep node_modules/ ignored and hide the overflow.
     $infoExclude = git rev-parse --path-format=absolute --git-path info/exclude
-    $excludeBefore = if (Test-Path -LiteralPath $infoExclude) { [IO.File]::ReadAllText($infoExclude) }
+    $projectExclude = "# kept by the project`n"
+    $leftover = "`n# Update-Project.ps1: the project's .gitignore, in force while Copier updates`nstale-leftover/`n# Update-Project.ps1: end of the .gitignore copy`n"
+    New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
+    [IO.File]::WriteAllText($infoExclude, "$projectExclude$leftover")
 
     $lines = [Collections.Generic.List[string]]::new()
     try { & (Join-Path $project '.template\Update-Project.ps1') 2>&1 | ForEach-Object { $lines.Add("$_") } } catch { $lines.Add("THROWN: $_") }
@@ -85,9 +98,30 @@ try {
     Check 'update: no WinError 206' (-not $output.Contains('WinError 206')) $output.Trim()
     Check 'update: succeeds with a folder only the project ignores' ($output -match 'Committed "Update from project-template v0\.1\.0"|Already up to date: template v0\.1\.0') $output.Trim()
     Check 'update: nothing left over' (-not (git status --porcelain)) (git status --porcelain | Out-String)
-    $excludeAfter = if (Test-Path -LiteralPath $infoExclude) { [IO.File]::ReadAllText($infoExclude) }
-    Check 'update: info/exclude restored' ($excludeAfter -eq $excludeBefore) "before: '$excludeBefore' after: '$excludeAfter'"
+    $excludeAfter = [IO.File]::ReadAllText($infoExclude)
+    Check 'update: info/exclude keeps the project''s lines and drops a killed update''s copy' ($excludeAfter -eq $projectExclude) "after: '$excludeAfter'"
     Check 'update: node_modules kept' (Test-Path -LiteralPath node_modules/some-fairly-long-package-name-0001/package.json)
+
+    # The project and v0.2.0 change the same .gitignore line, so the next update stops on a conflict.
+    Edit-File .gitignore 'Thumbs.db' 'Thumbs.db # project'
+    Invoke-Git commit -q -am 'Local .gitignore edit'
+}
+finally { Pop-Location }
+Push-Location (Join-Path $tpl 'template')
+try { Edit-File .gitignore.jinja 'Thumbs.db' 'Thumbs.db # template' }
+finally { Pop-Location }
+Push-Location $tpl
+try { Invoke-Git commit -q -am 'Conflicting template change'; Invoke-Git tag v0.2.0 }
+finally { Pop-Location }
+
+Push-Location $project
+try {
+    $lines = [Collections.Generic.List[string]]::new()
+    try { & (Join-Path $project '.template\Update-Project.ps1') 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
+    $output = $lines -join "`n"
+    Check 'conflict: the update stops on the .gitignore conflict' (($exitCode -eq 1) -and $output.Contains('conflict  .gitignore') -and -not $output.Contains('WinError 206')) $output.Trim()
+    $excludeAfter = [IO.File]::ReadAllText($infoExclude)
+    Check 'conflict: info/exclude restored' ($excludeAfter -eq $projectExclude) "after: '$excludeAfter'"
 }
 finally { Pop-Location }
 ''
