@@ -140,6 +140,20 @@ $listProject = Join-Path $Work 'new-project-list'
 & (Join-Path $PSScriptRoot 'New-Project.ps1') -Path $listProject -Template $tpl -Ref v0.1.0 -Defaults -Data @{ project_name = 'List Answer'; stack = 'other'; workflow_tools = 'claude', 'copilot' } | Out-Null
 $listAnswers = [IO.File]::ReadAllText((Join-Path $listProject '.copier-answers.yml')) -replace "`r`n", "`n"
 Check 'New-Project: a list answer in -Data reaches Copier' (($listAnswers -match '(?m)^workflow_tools:\n- claude\n- copilot\n') -and -not (Test-Path (Join-Path $listProject '.github\agents\hybrid-planner.agent.md'))) $listAnswers
+$hooksPath = (git -C $listProject config core.hooksPath) -join ''
+$hookMode = (git -C $listProject ls-files -s .githooks/commit-msg) -join ''
+Check 'New-Project: enables the hooks with an executable commit-msg' (($hooksPath -eq '.githooks') -and $hookMode.StartsWith('100755')) "$hooksPath $hookMode"
+$hookMessage = Join-Path $Work 'hook-message.txt'
+[IO.File]::WriteAllText($hookMessage, "Hook check`n`nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`nClaude-Session: https://claude.ai/code/session_1`nCo-authored-by: Jane Doe <jane@example.com>`n", [Text.UTF8Encoding]::new($false))
+Push-Location $listProject
+try {
+    [IO.File]::WriteAllText((Join-Path $listProject 'hook-check.txt'), "hook check`n", [Text.UTF8Encoding]::new($false))
+    Invoke-Git add hook-check.txt
+    Invoke-Git commit -q -F $hookMessage
+    $hookLog = (git log -1 --format=%B) -join "`n"
+}
+finally { Pop-Location }
+Check 'hooks: commit-msg strips AI agent attribution and keeps people' ($hookLog.Contains('Jane Doe') -and -not $hookLog.Contains('anthropic.com') -and -not $hookLog.Contains('Copilot@') -and -not $hookLog.Contains('Claude-Session')) $hookLog
 
 $workflow = Join-Path $PSScriptRoot 'workflow'
 $fresh = Join-Path $Work 'generated'
@@ -259,6 +273,7 @@ if (-not $SkipUpdate) {
         Check 'update: file added to the template created' ([bool](git ls-files -- $added))
         Check 'update: no conflict markers or .rej files' (-not (git grep -lE '^(<<<<<<<|>>>>>>>) ') -and -not (Get-ChildItem -Recurse -Filter '*.rej' -File))
         Check 'update: answers record v0.2.0' ((Get-Content -LiteralPath .copier-answers.yml -Raw) -match '(?m)^_commit: v0\.2\.0$')
+        Check 'update: enables the hooks in the clone' (((git config core.hooksPath) -join '') -eq '.githooks')
         $head = git rev-parse HEAD
     }
     finally { Pop-Location }
