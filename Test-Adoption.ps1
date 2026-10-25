@@ -91,16 +91,16 @@ $bad = foreach ($name in $others.Keys) {
 Check 'unit: Get-AdoptionAnswers works out other stacks' (-not $bad) ($bad -join ' | ')
 
 $nodes = [ordered]@{
-    'node-yarn'       = @{ Files = @{ 'package.json' = '{"packageManager":"yarn@4.14.1","scripts":{"build":"tsc","test":"vitest run"}}' }; Build = 'yarn run build'; Test = 'yarn run test' }
-    'node-pnpm'       = @{ Files = @{ 'package.json' = '{"scripts":{"test":"vitest run"}}'; 'pnpm-lock.yaml' = "lockfileVersion: '9.0'`n" }; Build = ''; Test = 'pnpm run test' }
-    'node-bun'        = @{ Files = @{ 'package.json' = '{"scripts":{"build":"bun build ./index.ts"}}'; 'bun.lock' = "{}`n" }; Build = 'bun run build'; Test = '' }
-    'node-npm'        = @{ Files = @{ 'package.json' = '{"scripts":{"build":"tsc","test":"echo \"Error: no test specified\" && exit 1"}}' }; Build = 'npm run build'; Test = '' }
-    'node-no-scripts' = @{ Files = @{ 'package.json' = '{"packageManager":"yarn@4.14.1","scripts":{"diagram:export":"echo export"}}'; 'yarn.lock' = "`n" }; Build = ''; Test = '' }
+    'node-yarn'       = @{ Files = @{ 'package.json' = '{"packageManager":"yarn@4.14.1","scripts":{"build":"tsc","test":"vitest run"}}' }; Manager = 'yarn'; Build = 'yarn run build'; Test = 'yarn run test' }
+    'node-pnpm'       = @{ Files = @{ 'package.json' = '{"scripts":{"test":"vitest run"}}'; 'pnpm-lock.yaml' = "lockfileVersion: '9.0'`n" }; Manager = 'pnpm'; Build = ''; Test = 'pnpm run test' }
+    'node-bun'        = @{ Files = @{ 'package.json' = '{"scripts":{"build":"bun build ./index.ts"}}'; 'bun.lock' = "{}`n" }; Manager = 'bun'; Build = 'bun run build'; Test = '' }
+    'node-npm'        = @{ Files = @{ 'package.json' = '{"scripts":{"build":"tsc","test":"echo \"Error: no test specified\" && exit 1"}}' }; Manager = 'npm'; Build = 'npm run build'; Test = '' }
+    'node-no-scripts' = @{ Files = @{ 'package.json' = '{"packageManager":"yarn@4.14.1","scripts":{"diagram:export":"echo export"}}'; 'yarn.lock' = "`n" }; Manager = 'yarn'; Build = ''; Test = '' }
 }
 $bad = foreach ($name in $nodes.Keys) {
     $folder = New-TestFolder $name $nodes[$name].Files
     $a = Get-AdoptionAnswers $folder
-    if (-not ($a.stack -eq 'node' -and $a.git_host -eq 'github' -and $a.project_name -eq $name -and $a.Contains('build_command') -and $a.build_command -eq $nodes[$name].Build -and $a.Contains('test_command') -and $a.test_command -eq $nodes[$name].Test)) {
+    if (-not ($a.stack -eq 'node' -and $a.git_host -eq 'github' -and $a.project_name -eq $name -and $a.package_manager -eq $nodes[$name].Manager -and $a.Contains('build_command') -and $a.build_command -eq $nodes[$name].Build -and $a.Contains('test_command') -and $a.test_command -eq $nodes[$name].Test)) {
         "${name}: $(($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')"
     }
 }
@@ -311,6 +311,7 @@ if (-not $UnitOnly) {
     $notesCi = Get-Content -Raw -LiteralPath (Join-Path $notes '.github\workflows\ci.yml')
     $notesSubject = git -C $notes log -1 --format=%s
     Check 'notes: a Node.js repository without build or test scripts commits without running a command' ($notesSubject -eq 'Adopt project-template v0.1.0' -and $notesAnswers -match '(?m)^stack: node\s*$' -and $notesAnswers -match "(?m)^build_command: ''\s*$" -and $notesAnswers -match "(?m)^test_command: ''\s*$" -and -not $notesOut.Contains('Running ') -and -not $notesCi.Contains('run build') -and -not $notesCi.Contains('npm test')) "$notesSubject | $notesAnswers | $notesOut | $notesCi"
+    Check 'notes: CI installs with the package manager package.json names' ($notesAnswers -match '(?m)^package_manager: yarn\s*$' -and $notesCi.Contains('corepack enable yarn') -and $notesCi.Contains('yarn install') -and -not $notesCi.Contains('npm ci')) "$notesAnswers | $notesCi"
 
     # A later template version changes the merged files.
     Push-Location (Join-Path $tpl 'template')

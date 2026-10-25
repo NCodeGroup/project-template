@@ -123,13 +123,14 @@ An instruction override is the project's word against the template's, so say it 
 | `nuget_package` (.NET only) | Off | The package settings in `build/ProjectTemplate.props` |
 | `package_license` | None; required with `nuget_package` | The SPDX license expression |
 | `package_icon` | Blank | A PNG at the repository root, packed as the icon |
+| `package_manager` (Node.js only) | npm | How CI installs dependencies — `npm ci`; pnpm and Yarn through Corepack, which runs the version `package.json`'s `packageManager` field names; Bun through `oven-sh/setup-bun` on GitHub and the `oven/bun` image on GitLab — Dependabot's ecosystem (`bun` for Bun, else `npm`), and the default build and test commands |
 | `build_command`, `test_command` | By stack, below | `AGENTS.md`, `README.md`, and through them every plan's Context for the executor |
 
 | Stack | Build | Test |
 |---|---|---|
 | .NET | `dotnet build` | `dotnet test` |
 | Python | None | `python -m pytest -q` |
-| Node.js or TypeScript | `npm run build` | `npm test` |
+| Node.js or TypeScript | `<package_manager> run build`, such as `npm run build` | `<package_manager> run test` |
 | PowerShell | `Invoke-ScriptAnalyzer -Path . -Recurse -EnableExit` | `Invoke-Pester -CI` |
 | Other | None | None |
 
@@ -203,7 +204,8 @@ The script works out these answers:
 | `git_host` | `gitlab` if the `origin` remote names GitLab, else `github` |
 | `author_name` (.NET) | `Authors`, else `Company`, in the root `Directory.Build.props` |
 | `build_command`, `test_command` (.NET) | `dotnet build <solution>` and `dotnet test <solution>`, when the only solution isn't at the root |
-| `build_command`, `test_command` (Node.js) | `<manager> run build` and `<manager> run test`, each only when `package.json` has that script and the `test` script isn't the failing placeholder `npm init` writes; else blank. The manager is the one the `packageManager` field names, else the one whose lockfile is at the root (`pnpm-lock.yaml`, `yarn.lock`, `bun.lock` or `bun.lockb`), else npm |
+| `package_manager` (Node.js) | The one the `packageManager` field in `package.json` names, else the one whose lockfile is at the root (`pnpm-lock.yaml`, `yarn.lock`, `bun.lock` or `bun.lockb`), else npm |
+| `build_command`, `test_command` (Node.js) | `<package_manager> run build` and `<package_manager> run test`, each only when `package.json` has that script and the `test` script isn't the failing placeholder `npm init` writes; else blank |
 
 Everything else, including `workflow_tools`, takes the template's default. The script prints the answers, runs `copier copy --overwrite`, and enables the template's Git hooks (`git config core.hooksPath .githooks`) unless the repository already sets its own, as `New-Project.ps1` does ([Commit Attribution](#commit-attribution)).
 
@@ -382,6 +384,7 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 | .NET layer present, or absent | .NET, or every other stack |
 | NuGet package settings in `build/ProjectTemplate.props` only with `nuget_package` | .NET |
 | The CI file for the `git_host` answer, with its `Commit attribution` job, and `.github/dependabot.yml` on GitHub only | Every render |
+| CI sets up and installs with the `package_manager` answer, the default commands run it and no other manager, and Dependabot uses its ecosystem | Node.js with npm, pnpm, Yarn and Bun, on GitHub and GitLab |
 | LF line endings, no leftover Jinja, valid JSON, valid YAML | Every rendered file |
 | Workflow files, editor settings, `.gitignore`, `AGENTS.md`, the template rules and `README.md` only for the chosen `workflow_tools` | Every render |
 | `.copier-answers.yml` records the version | Every render |
@@ -395,7 +398,7 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 | The shipped `.template/Test-CommitAttribution.ps1` passes on a new project's own history | Always |
 | `dotnet new classlib` and `xunit`, added to a root solution, pass the default `dotnet build` and `dotnet test` under `Directory.Build.props` and `global.json` | .NET (skip with `-SkipDotnetBuild`) |
 | A project's own `.template\Update-Project.ps1` hands the update over to the new version's script; it replaces template-owned files, discards and reports an edit to one, and restores a deleted one; merges a merged file, keeping the project's edit, and keeps a deleted one deleted; leaves project-owned files untouched and shows the template's changes to them; deletes and adds files as the template did; makes one commit, and changes nothing on a second run. On a same-line change to a merged file it stops with exit code 1, commits nothing, still replaces the template-owned files, and finishes once the conflict is resolved. The root wrapper updates another project by `-Path` | Python and Node.js projects (skip with `-SkipUpdate`) |
-| `Test-Adoption.ps1`: the adoption functions and legacy adapters on small inputs; adopting a Python repository on GitLab and a .NET repository built on the NCodeGroup scaffold — answers worked out, merged files rebuilt, `AGENTS.md` and `Directory.Build.props` extended, versions moved into `Directory.Packages.props`, follow-ups reported, a failing build committing nothing, a Node.js repository without build or test scripts committing without running a command, a failure after Copier rolling the repository back, the report naming only the follow-ups the repository really has, the package packed with README, icon and license, and a later template update merging cleanly | Always (`-SkipDotnetBuild` skips the .NET build and pack) |
+| `Test-Adoption.ps1`: the adoption functions and legacy adapters on small inputs; adopting a Python repository on GitLab and a .NET repository built on the NCodeGroup scaffold — answers worked out, merged files rebuilt, `AGENTS.md` and `Directory.Build.props` extended, versions moved into `Directory.Packages.props`, follow-ups reported, a failing build committing nothing, a Node.js repository without build or test scripts committing without running a command, with CI installing through the package manager `package.json` names, a failure after Copier rolling the repository back, the report naming only the follow-ups the repository really has, the package packed with README, icon and license, and a later template update merging cleanly | Always (`-SkipDotnetBuild` skips the .NET build and pack) |
 | `Test-UpdateIgnoredFiles.ps1`: a .NET project whose own `.gitignore` ignores a `node_modules` folder that the template's `.gitignore` doesn't updates without overflowing Windows' command line (WinError 206); `.git/info/exclude` ends as it was, without the copy of the project's rules that a killed update left behind, both after a clean update and after one stopped by a conflict | Always |
 | `Test-CommitAttribution.ps1`: the check every project gets fails on a commit authored or committed by an AI agent account, a co-author trailer naming one, a `Claude-Session:` trailer or Claude Code's advertising line, and passes a person's co-author trailer, Dependabot, a prose line that mentions the advertising phrase, and an unknown or empty base | Always |
 | The `Commit attribution` job checks this repository's own new commits with `template/.template/Test-CommitAttribution.ps1` | Every push to `main` and pull request |

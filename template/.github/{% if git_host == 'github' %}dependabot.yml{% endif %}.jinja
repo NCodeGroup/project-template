@@ -33,12 +33,13 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
 {%- elif stack == 'node' %}
-  - package-ecosystem: npm
+{%- set ecosystem = 'bun' if package_manager == 'bun' else 'npm' %}
+  - package-ecosystem: {{ ecosystem }}
     directory: /
     schedule:
       interval: weekly
     groups:
-      npm:
+      {{ ecosystem }}:
         patterns: ["*"]
         update-types: [minor, patch]
 {%- endif %}

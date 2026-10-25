@@ -63,6 +63,7 @@ function Get-AdoptionAnswers([string]$Path) {
         $package = Get-Content -LiteralPath (Join-Path $Path 'package.json') -Raw | ConvertFrom-Json -AsHashtable
         $scripts = if ($package.scripts -is [System.Collections.IDictionary]) { $package.scripts } else { @{} }
         $manager = Get-NodePackageManager $Path $package
+        $answers.package_manager = $manager
         $answers.build_command = if ($scripts['build']) { "$manager run build" } else { '' }
         # npm init writes a test script that only fails.
         $answers.test_command = if ($scripts['test'] -and $scripts['test'] -notmatch 'no test specified') { "$manager run test" } else { '' }

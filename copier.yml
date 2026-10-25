@@ -107,12 +107,23 @@ package_icon:
   when: "{{ stack == 'dotnet' and nuget_package }}"
   validator: '{% if "/" in package_icon or "\\" in package_icon %}A file name at the repository root, without a folder{% endif %}'
 
+package_manager:
+  type: str
+  help: The Node.js package manager, which CI installs dependencies with and the default commands run
+  choices:
+    npm: npm
+    pnpm: pnpm
+    Yarn: yarn
+    Bun: bun
+  default: npm
+  when: "{{ stack == 'node' }}"
+
 build_command:
   type: str
   help: Build command, run from the repository root in PowerShell (blank if there is no build step)
   default: >-
     {%- if stack == 'dotnet' -%}dotnet build
-    {%- elif stack == 'node' -%}npm run build
+    {%- elif stack == 'node' -%}{{ package_manager | default('npm') }} run build
     {%- elif stack == 'powershell' -%}Invoke-ScriptAnalyzer -Path . -Recurse -EnableExit
     {%- endif -%}
 
@@ -122,7 +133,7 @@ test_command:
   default: >-
     {%- if stack == 'dotnet' -%}dotnet test
     {%- elif stack == 'python' -%}python -m pytest -q
-    {%- elif stack == 'node' -%}npm test
+    {%- elif stack == 'node' -%}{{ package_manager | default('npm') }} run test
     {%- elif stack == 'powershell' -%}Invoke-Pester -CI
     {%- endif -%}
 

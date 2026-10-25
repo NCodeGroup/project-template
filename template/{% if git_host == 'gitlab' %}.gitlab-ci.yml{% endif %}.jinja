@@ -17,11 +17,25 @@ build-and-test:
     - if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
     - if [ -f pyproject.toml ]; then python -m pip install -e .; fi
 {%- elif stack == 'node' %}
-  image: node:lts
+  image: {{ 'oven/bun:1' if package_manager == 'bun' else 'node:lts' }}
   rules:
     - exists: ["package.json"]
   before_script:
+{%- if package_manager in ['pnpm', 'yarn'] %}
+    # Corepack runs the version package.json's packageManager field names; Node.js 25 and later don't bundle it.
+    - npm install --global corepack@latest
+    - corepack enable {{ package_manager }}
+{%- endif %}
+{%- if package_manager == 'pnpm' %}
+    - if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; fi
+{%- elif package_manager == 'yarn' %}
+    # Yarn 2 and later install with --immutable on CI.
+    - if [ -f yarn.lock ]; then yarn install; fi
+{%- elif package_manager == 'bun' %}
+    - if [ -f bun.lock ] || [ -f bun.lockb ]; then bun install --frozen-lockfile; fi
+{%- else %}
     - if [ -f package-lock.json ]; then npm ci; fi
+{%- endif %}
 {%- elif stack == 'powershell' %}
   image: mcr.microsoft.com/powershell:lts
   rules:

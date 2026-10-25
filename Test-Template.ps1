@@ -79,6 +79,10 @@ $cases = @(
     @{ Name = 'dotnet-gitlab'; Stack = 'dotnet'; Host = 'gitlab' }
     @{ Name = 'python-gitlab'; Stack = 'python'; Host = 'gitlab' }
     @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
+    @{ Name = 'node-pnpm'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'pnpm' } }
+    @{ Name = 'node-bun'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'bun' } }
+    @{ Name = 'node-yarn-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'yarn' } }
+    @{ Name = 'node-bun-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'bun' } }
     @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
     @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'MIT'; package_icon = 'icon.png' } }
@@ -114,6 +118,19 @@ foreach ($case in $cases) {
     else {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('commit-attribution:') -and $ci.Contains('mcr.microsoft.com/dotnet/sdk:10.0') -and $ci.Contains('GIT_DEPTH: "0"') -and $ci.Contains('.template/Test-CommitAttribution.ps1 -Base'))
+    }
+    if ($case.Stack -eq 'node') {
+        $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }
+        $install = @{ npm = 'npm ci'; pnpm = 'pnpm install --frozen-lockfile'; yarn = 'yarn install'; bun = 'bun install --frozen-lockfile' }[$pm]
+        $setup = @{ npm = ''; pnpm = 'corepack enable pnpm'; yarn = 'corepack enable yarn'; bun = if ($case.Host -eq 'github') { 'oven-sh/setup-bun@' } else { 'image: oven/bun:1' } }[$pm]
+        $otherManagers = @('npm', 'pnpm', 'yarn', 'bun') | Where-Object { $_ -ne $pm }
+        $managerOk = $ci.Contains($install) -and $ci.Contains($setup) -and ($ci.Contains('corepack') -eq ($pm -in 'pnpm', 'yarn')) -and
+            $ci -match "(?<![\w-])$pm run build" -and $ci -match "(?<![\w-])$pm run test" -and -not ($otherManagers | Where-Object { $ci -match "(?<![\w-])$_ (run|ci|install(?! --global))" })
+        if ($case.Host -eq 'github') {
+            $ecosystem = if ($pm -eq 'bun') { 'bun' } else { 'npm' }
+            $managerOk = $managerOk -and (Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw).Contains("package-ecosystem: $ecosystem")
+        }
+        Check "${name}: CI installs and runs with $pm" $managerOk $ci
     }
     $wanted = @($tools | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique)
     $unwanted = @($allTools | Where-Object { $_ -notin $tools } | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique | Where-Object { $_ -notin $wanted })

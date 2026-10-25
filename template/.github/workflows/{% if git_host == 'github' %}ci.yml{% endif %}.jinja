@@ -38,9 +38,31 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
+{%- if package_manager in ['pnpm', 'yarn'] %}
+      # Corepack runs the version package.json's packageManager field names; Node.js 25 and later don't bundle it.
+      - name: Enable {{ package_manager }}
+        run: |
+          npm install --global corepack@latest
+          corepack enable {{ package_manager }}
+{%- elif package_manager == 'bun' %}
+      # Installs the version package.json's packageManager field names, else the latest.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+{%- endif %}
       - name: Install dependencies
+{%- if package_manager == 'pnpm' %}
+        if: hashFiles('pnpm-lock.yaml') != ''
+        run: pnpm install --frozen-lockfile
+{%- elif package_manager == 'yarn' %}
+        if: hashFiles('yarn.lock') != ''
+        # Yarn 2 and later install with --immutable on CI.
+        run: yarn install
+{%- elif package_manager == 'bun' %}
+        if: hashFiles('bun.lock', 'bun.lockb') != ''
+        run: bun install --frozen-lockfile
+{%- else %}
         if: hashFiles('package-lock.json') != ''
         run: npm ci
+{%- endif %}
 {%- elif stack == 'powershell' %}
       - name: Install modules
         if: hashFiles('**/*.ps1', '**/*.psm1') != ''
