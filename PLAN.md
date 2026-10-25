@@ -77,7 +77,7 @@
 - Pattern: the script's existing `try`/`finally` around `Push-Location` (lines 104 and 213-217).
 - Done when: `.\Test-UpdateIgnoredFiles.ps1; exit $LASTEXITCODE`
 
-### [ ] 3. Run the new test in CI
+### [x] 3. Run the new test in CI
 - Files: `.github/workflows/test-template.yml` (edit)
 - Change: after the step `- name: Test adopting existing repositories` / `run: ./Test-Adoption.ps1`, add a step with the same indentation: `- name: Test updating a project that ignores a large folder` with `run: ./Test-UpdateIgnoredFiles.ps1`.
 - Pattern: the existing `Test adopting existing repositories` step.

@@ -29,6 +29,8 @@ jobs:
         run: ./Test-Template.ps1
       - name: Test adopting existing repositories
         run: ./Test-Adoption.ps1
+      - name: Test updating a project that ignores a large folder
+        run: ./Test-UpdateIgnoredFiles.ps1
       - name: Test the commit attribution check
         run: ./Test-CommitAttribution.ps1
 
