@@ -73,6 +73,13 @@ try {
         if ($null -ne $answers[$k]) { "  ${k}: $(ConvertTo-CopierValue $answers[$k])" }
     }
 
+    # Copier overwrites the merged files, so keep the repository's versions to merge back afterwards.
+    $merged = @(Get-CopierList (Join-Path $PSScriptRoot 'copier.yml') '_merged_files')
+    $originals = @{}
+    foreach ($p in $merged + 'AGENTS.md' + 'Directory.Build.props') {
+        if (Test-Path -LiteralPath $p -PathType Leaf) { $originals[$p] = [IO.File]::ReadAllText((Join-Path $project $p)) }
+    }
+
     $copierArgs = @('copy', '--overwrite', '--defaults', '--quiet')
     if ($Ref) { $copierArgs += '--vcs-ref', $Ref }
     foreach ($k in $answers.Keys) {
@@ -80,6 +87,22 @@ try {
     }
     $copierArgs += $Template, $project
     Invoke-Copier @copierArgs
+
+    $utf8 = [Text.UTF8Encoding]::new($false)
+    $report = [Collections.Generic.List[string]]::new()
+    foreach ($p in $merged) {
+        if (-not $originals.ContainsKey($p)) { continue }
+        $full = Join-Path $project $p
+        $result = Merge-AdoptedFile $p $originals[$p] ([IO.File]::ReadAllText($full))
+        [IO.File]::WriteAllText($full, $result.Text, $utf8)
+        $report.Add("  $($result.Strategy) $p" + $(if ($result.Note) { " $([char]0x2014) $($result.Note)" } else { '' }))
+    }
+    if ($originals.ContainsKey('AGENTS.md')) {
+        [IO.File]::WriteAllText((Join-Path $project 'AGENTS.md'), (Add-TemplateIndexEntry $originals['AGENTS.md']), $utf8)
+    }
+    if ($originals.ContainsKey('Directory.Build.props') -and (Test-Path -LiteralPath build\ProjectTemplate.props)) {
+        [IO.File]::WriteAllText((Join-Path $project 'Directory.Build.props'), (Add-ProjectTemplateImport $originals['Directory.Build.props']), $utf8)
+    }
 
     git add -A
     # Executable on Linux and macOS; Windows doesn't record the bit on its own.
@@ -91,6 +114,7 @@ try {
     ''
     "Adopted project-template $version in ${project}:"
     git status --porcelain | ForEach-Object { "  $_" }
+    if ($report.Count) { ''; "Merged with the repository's own files:"; $report }
 
     ''
     $message = "Adopt project-template $version"

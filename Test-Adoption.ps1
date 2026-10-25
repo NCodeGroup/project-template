@@ -33,6 +33,12 @@ $failures = [Collections.Generic.List[string]]::new()
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
+function Edit-File([string]$Path, [string]$Old, [string]$New) {
+    $full = (Resolve-Path -LiteralPath $Path).Path
+    $text = [IO.File]::ReadAllText($full)
+    if (-not $text.Contains($Old)) { throw "'$Old' not found in $full." }
+    [IO.File]::WriteAllText($full, $text.Replace($Old, $New))
+}
 function Invoke-Git {
     git -c user.name=template-test -c user.email=template-test@example.invalid @args
     if ($LASTEXITCODE) { throw "git $($args -join ' ') failed." }
@@ -192,6 +198,34 @@ if (-not $UnitOnly) {
     Check 'plain: workflow files for claude, copilot only' ((Test-Path -LiteralPath (Join-Path $plain 'CLAUDE.md')) -and (Test-Path -LiteralPath (Join-Path $plain '.github\skills\plan-feature\SKILL.md')) -and -not (Test-Path -LiteralPath (Join-Path $plain '.github\agents\hybrid-planner.agent.md'))) ''
     $message = try { & $adopt -Path $plain -Template $tpl -Ref v0.1.0 | Out-Null } catch { $_.Exception.Message }
     Check 'plain: a second run refuses' ("$message".Contains('already uses the project template')) "$message"
+    $gitignore = Get-Content -Raw -LiteralPath (Join-Path $plain '.gitignore')
+    $settingsText = Get-Content -Raw -LiteralPath (Join-Path $plain '.vscode\settings.json')
+    $settings = try { $settingsText | ConvertFrom-Json -AsHashtable } catch { @{} }
+    Check 'plain: merged files are the template plus the repository' ($gitignore.StartsWith('# Operating system and editor files') -and $gitignore.Contains('*.local-test') -and $settings.ContainsKey('files.eol') -and $settings.ContainsKey('editor.rulers')) "$gitignore | $settingsText"
+    $agents = Get-Content -Raw -LiteralPath (Join-Path $plain 'AGENTS.md')
+    $iEntry = $agents.IndexOf('@.github/instructions/project-template.instructions.md')
+    Check 'plain: AGENTS.md gains the template rules' ($iEntry -ge 0 -and $iEntry -lt $agents.IndexOf('## Conventions') -and $agents.Contains('Own rules.')) $agents
+    Check 'plain: CI file kept' ((Get-Content -Raw -LiteralPath (Join-Path $plain '.gitlab-ci.yml')) -eq "test:`n  script: echo hi`n") ''
+
+    # A later template version changes the merged files.
+    Push-Location (Join-Path $tpl 'template')
+    try {
+        Edit-File .gitignore.jinja 'Thumbs.db' "Thumbs.db`ndesktop.ini"
+        Edit-File .vscode/settings.json.jinja '"files.eol": "\n",' ('"editor.formatOnSave": false,' + "`n" + '  "files.eol": "\n",')
+    }
+    finally { Pop-Location }
+    Push-Location $tpl
+    try { Invoke-Git add -A; Invoke-Git commit -q -m 'Template change'; Invoke-Git tag v0.2.0 }
+    finally { Pop-Location }
+    Push-Location $plain
+    try {
+        $updateOut = & (Join-Path $plain '.template\Update-Project.ps1') | Out-String
+        $exitCode = $LASTEXITCODE
+        $gitignore = Get-Content -Raw -LiteralPath .gitignore
+        $settingsText = Get-Content -Raw -LiteralPath .vscode\settings.json
+        Check 'plain: a later template update merges cleanly' ($exitCode -eq 0 -and (git log -1 --format=%s) -eq 'Update from project-template v0.2.0' -and $gitignore.Contains('desktop.ini') -and $gitignore.Contains('*.local-test') -and $settingsText.Contains('editor.formatOnSave') -and $settingsText.Contains('editor.rulers')) "$exitCode | $updateOut | $gitignore | $settingsText"
+    }
+    finally { Pop-Location }
 }
 ''
 if ($failures.Count) { "Adoption tests: FAILED ($($failures.Count))"; exit 1 }
