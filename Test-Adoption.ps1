@@ -85,6 +85,28 @@ $bad = foreach ($name in $others.Keys) {
 }
 Check 'unit: Get-AdoptionAnswers works out other stacks' (-not $bad) ($bad -join ' | ')
 
+$m = Merge-AdoptedFile '.gitignore' "bin/`nmine.log`n" "*.user`nobj/`n"
+Check 'unit: Merge-AdoptedFile appends lines' ($m.Strategy -eq 'Lines' -and $m.Text.StartsWith("*.user`nobj/`n") -and $m.Text.EndsWith("`nbin/`nmine.log`n")) $m.Text
+
+$m = Merge-AdoptedFile '.editorconfig' "root = true`n`n[*.cs]`nindent_size = 4`n" "root = true`n`n[*]`nindent_style = space`n"
+Check 'unit: Merge-AdoptedFile keeps one editorconfig root' (@($m.Text -split "`n" | Where-Object { $_ -match '^\s*root\s*=' }).Count -eq 1 -and $m.Text.Contains('[*.cs]')) $m.Text
+
+$m = Merge-AdoptedFile '.vscode/settings.json' ('{' + "`n" + '  // mine' + "`n" + '  "files.eol": "\r\n", "recommendations": ["a","b"], "editor.rulers": [100]' + "`n" + '}') '{"files.eol":"\n","recommendations":["a"]}'
+$j = $m.Text | ConvertFrom-Json -AsHashtable
+Check 'unit: Merge-AdoptedFile merges JSON' ($m.Strategy -eq 'Json' -and ($j.Keys -join ',') -eq 'files.eol,recommendations,editor.rulers' -and $j['files.eol'] -eq "`r`n" -and ($j.recommendations -join ',') -eq 'a,b' -and $m.Note -like '*comments*') $m.Text
+$m = Merge-AdoptedFile 'x.json' '{"l":["a"]}' '{"l":["a"],"z":1}'
+Check 'unit: Merge-AdoptedFile keeps a single-item JSON list' ($m.Text -match '"l":\s*\[\s*"a"\s*\]') $m.Text
+
+$m = Merge-AdoptedFile 'Directory.Build.props' "<Project>`n  <PropertyGroup><LangVersion>latest</LangVersion></PropertyGroup>`n</Project>`n" "<Project>`n  <PropertyGroup>`n    <Nullable>enable</Nullable>`n  </PropertyGroup>`n</Project>`n"
+$i1 = $m.Text.IndexOf('<Nullable>'); $i2 = $m.Text.IndexOf('<!-- Kept'); $i3 = $m.Text.IndexOf('<LangVersion>')
+Check 'unit: Merge-AdoptedFile appends MSBuild elements' ($m.Strategy -eq 'MSBuild' -and $i1 -ge 0 -and $i1 -lt $i2 -and $i2 -lt $i3 -and $m.Text.EndsWith("</Project>`n")) $m.Text
+
+$m = Merge-AdoptedFile '.github/workflows/ci.yml' "name: mine`n" "name: template`n"
+Check 'unit: Merge-AdoptedFile keeps YAML' ($m.Strategy -eq 'Keep' -and $m.Text -eq "name: mine`n") $m.Strategy
+
+$m = Merge-AdoptedFile '.gitignore' "bin/`n" "bin/`n`n"
+Check 'unit: Merge-AdoptedFile leaves a matching file' ($m.Strategy -eq 'Same') $m.Strategy
+
 ''
 if ($failures.Count) { "Adoption tests: FAILED ($($failures.Count))"; exit 1 }
 'Adoption tests: PASSED'

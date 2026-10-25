@@ -50,4 +50,58 @@ function Get-AdoptionAnswers([string]$Path) {
     $answers
 }
 
-Export-ModuleMember -Function Get-CopierList, Get-MSBuildFile, Get-AdoptionAnswers
+function Merge-JsonValue($Template, $Repository) {
+    if ($Template -is [System.Collections.IDictionary] -and $Repository -is [System.Collections.IDictionary]) {
+        foreach ($key in @($Repository.Keys)) {
+            if ($Template.Contains($key)) { $Template[$key] = Merge-JsonValue $Template[$key] $Repository[$key] }
+            else { $Template[$key] = $Repository[$key] }
+        }
+        return $Template
+    }
+    if ($Template -is [System.Collections.IList] -and $Repository -is [System.Collections.IList]) {
+        $list = [Collections.Generic.List[object]]::new()
+        $seen = [Collections.Generic.HashSet[string]]::new()
+        foreach ($item in $Template) { $list.Add($item); [void]$seen.Add((ConvertTo-Json $item -Compress -Depth 32)) }
+        foreach ($item in $Repository) { if ($seen.Add((ConvertTo-Json $item -Compress -Depth 32))) { $list.Add($item) } }
+        return , ([object[]]$list)
+    }
+    $Repository
+}
+
+function Merge-AdoptedFile([string]$Name, [string]$Original, [string]$Rendered) {
+    $Original = $Original -replace "`r`n", "`n"
+    $Rendered = $Rendered -replace "`r`n", "`n"
+    $leaf = Split-Path -Leaf $Name
+    $keepNote = 'kept as is; a template change to it will stop an update with a conflict: keep your side'
+    $keep = [pscustomobject]@{ Text = $Original; Strategy = 'Keep'; Note = $keepNote }
+    if ($Original.Trim() -eq $Rendered.Trim()) {
+        return [pscustomobject]@{ Text = $Rendered; Strategy = 'Same'; Note = $null }
+    }
+    $marker = "# Kept from this repository's own $leaf when it adopted the project template"
+    if ($Name -in '.gitignore', '.gitattributes', '.editorconfig') {
+        $lines = if ($Name -eq '.editorconfig') { ($Original -split "`n" | Where-Object { $_ -notmatch '^\s*root\s*=' }) -join "`n" } else { $Original }
+        $text = $Rendered.TrimEnd("`n") + "`n`n$marker`n" + $lines.Trim("`n") + "`n"
+        return [pscustomobject]@{ Text = $text; Strategy = 'Lines'; Note = $null }
+    }
+    if ($Name -like '*.json') {
+        try {
+            $template = ConvertFrom-Json $Rendered -AsHashtable
+            $repository = ConvertFrom-Json $Original -AsHashtable
+        }
+        catch { return [pscustomobject]@{ Text = $Original; Strategy = 'Keep'; Note = 'not valid JSON' } }
+        $result = Merge-JsonValue $template $repository
+        $text = (ConvertTo-Json $result -Depth 32) -replace "`r`n", "`n"
+        $note = if ($Original.Contains('//') -or $Original.Contains('/*')) { 'comments dropped' }
+        return [pscustomobject]@{ Text = $text + "`n"; Strategy = 'Json'; Note = $note }
+    }
+    if ($Name -like '*.props') {
+        $end = $Rendered.LastIndexOf('</Project>')
+        if ($Original -match '(?s)<Project\b[^>]*>(.*)</Project>' -and $end -ge 0) {
+            $text = $Rendered.Substring(0, $end).TrimEnd() + "`n`n  <!-- Kept from this repository's own $leaf when it adopted the project template -->`n" + $Matches[1].Trim("`n") + "`n`n</Project>`n"
+            return [pscustomobject]@{ Text = $text; Strategy = 'MSBuild'; Note = $null }
+        }
+    }
+    $keep
+}
+
+Export-ModuleMember -Function Get-CopierList, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile

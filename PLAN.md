@@ -161,7 +161,7 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
 - Pattern: `Test-Template.ps1` for the script shape; `Get-TemplateList` for the list parsing.
 - Done when: `$o = .\Test-Adoption.ps1 -UnitOnly | Out-String; if (-not $o.Contains('Adoption tests: PASSED') -or -not $o.Contains('PASS  unit: Get-AdoptionAnswers works out a .NET repository') -or -not $o.Contains('PASS  unit: Get-AdoptionAnswers works out other stacks')) { exit 1 }`
 
-### [ ] 10. Merge a repository's file into the template's
+### [x] 10. Merge a repository's file into the template's
 - Files: `adopt/Adoption.psm1` (edit), `Test-Adoption.ps1` (edit)
 - Change: export `Merge-AdoptedFile([string]$Name, [string]$Original, [string]$Rendered)` returning `[pscustomobject]@{ Text; Strategy; Note }`. Normalize both inputs to LF. If their `.Trim()` values are equal → `Strategy = 'Same'`, `Text = $Rendered`. Otherwise by `$Name` (a `copier.yml` path such as `.vscode/settings.json`):
   - `.gitignore`, `.gitattributes`, `.editorconfig` → `Lines`: `$Rendered.TrimEnd("`n") + "`n`n# Kept from this repository's own <leaf name> when it adopted the project template`n" + <original, for .editorconfig without lines matching '^\s*root\s*='>.Trim("`n") + "`n"`.
