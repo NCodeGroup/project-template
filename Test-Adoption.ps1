@@ -217,6 +217,7 @@ if (-not $UnitOnly) {
         'README.md'                         = "# NCode.Demo`n"
         'NCodeGroup.png'                    = $png
         '.github/copilot-instructions.md'   = "# Copilot Instructions`n"
+        '.github/instructions/csharp-production.instructions.md' = "---`napplyTo: ""**/*.cs""`n---`n# C#`n"
         '.github/workflows/main.yml'        = "name: main`non: [push]`njobs:`n  build:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n      - run: dotnet build`n"
     } 'https://github.com/NCodeGroup/Demo.git'
     $out = & $adopt -Path $scaffoldRepo -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; test_command = '' } -NoVerify:$SkipDotnetBuild | Out-String
@@ -229,6 +230,7 @@ if (-not $UnitOnly) {
     $editorconfig = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.editorconfig')
     Check 'scaffold: Directory.Build.props imports the template settings' ($props.Contains('build/ProjectTemplate.props') -and $props.Contains('<LangVersion>latest</LangVersion>') -and @($editorconfig -split "`n" | Where-Object { $_ -match '^\s*root\s*=' }).Count -eq 1) "$props | $editorconfig"
     Check 'scaffold: report lists the follow-ups' ($out.Contains('/plan-migration Finish adopting the project template') -and $out.Contains('.github/copilot-instructions.md') -and $out.Contains('.github/workflows/main.yml')) $out
+    Check 'scaffold: reconciles the C# instructions' ($out.Contains('reconcile .github/instructions/csharp.instructions.md with csharp-production.instructions.md')) $out
 
     if (-not $SkipDotnetBuild) {
         $subject = git -C $scaffoldRepo log -1 --format=%s
@@ -258,6 +260,14 @@ if (-not $UnitOnly) {
     $brokenStatus = git -C $broken status --porcelain
     $brokenCount = git -C $broken rev-list --count HEAD
     Check 'broken: a failure after Copier rolls the repository back' ("$brokenMessage".Contains('rolled back') -and -not $brokenStatus -and -not (Test-Path -LiteralPath (Join-Path $broken '.copier-answers.yml')) -and $brokenCount -eq '1') "$brokenMessage | $brokenStatus | $brokenCount"
+
+    $ciExisting = New-Fixture 'ci-existing' @{
+        'README.md'                   = "# Ci Existing`n"
+        '.github/workflows/ci.yml'    = "name: CI`n"
+        '.github/workflows/frontend.yml' = "name: Frontend`n"
+    } 'https://github.com/example/ci-existing.git'
+    $ciOut = & $adopt -Path $ciExisting -Template $tpl -Ref v0.1.0 -NoVerify | Out-String
+    Check 'ci-existing: no reconcile follow-up when the repository already had ci.yml' (-not $ciOut.Contains('reconcile .github/workflows')) $ciOut
 
     $failing = New-Fixture 'failing' @{ 'README.md' = "# Failing`n" } 'https://github.com/example/failing.git'
     $failOut = & $adopt -Path $failing -Template $tpl -Ref v0.1.0 -Data @{ stack = 'other'; build_command = 'exit 3'; test_command = '' } | Out-String

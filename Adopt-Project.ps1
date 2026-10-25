@@ -128,10 +128,15 @@ try {
 
         $followUps = [Collections.Generic.List[string]]::new()
         if (Test-Path -LiteralPath .github/copilot-instructions.md) { $followUps.Add('fold .github/copilot-instructions.md into AGENTS.md or a file it lists') }
-        if (Test-Path -LiteralPath .github/workflows/ci.yml) {
+        # A ci.yml the repository already had was kept, so its other workflows are not in conflict with the template's.
+        if ((Test-Path -LiteralPath .github/workflows/ci.yml) -and -not $originals.ContainsKey('.github/workflows/ci.yml')) {
             foreach ($f in Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Extension -in '.yml', '.yaml' -and $_.Name -ne 'ci.yml' } | Sort-Object Name) {
                 $followUps.Add("reconcile .github/workflows/$($f.Name) with ci.yml")
             }
+        }
+        if ((Get-Answer 'stack') -eq 'dotnet') {
+            $otherInstructions = @(Get-ChildItem -LiteralPath .github/instructions -Filter '*.instructions.md' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin 'csharp.instructions.md', 'project-template.instructions.md' } | Sort-Object Name | ForEach-Object Name)
+            if ($otherInstructions.Count) { $followUps.Add("reconcile .github/instructions/csharp.instructions.md with $($otherInstructions -join ', ')") }
         }
 
         git add -A
