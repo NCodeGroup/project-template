@@ -137,7 +137,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: the VS Code prompt loop in the same file, which also builds `$body` and `$fm` per template.
 - Done when: `$d = Join-Path $env:TEMP 'wt-install-check'; Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue; $null = & .\workflow\Install-HybridWorkflow.ps1 -Repo (New-Item -ItemType Directory -Force $d).FullName; $c = Get-Content -Raw "$d\.claude\commands\plan-feature.md"; $o = Get-Content -Raw "$d\.claude\commands\orchestrate-plan.md"; $r = Get-Content -Raw "$d\.claude\commands\review-code.md"; $s = Get-Content -Raw "$d\.github\skills\plan-feature\SKILL.md"; $e = Get-Content -Raw "$d\.claude\agents\plan-executor.md"; $ok = $c.Contains('## Plan in a worktree of its own') -and $c -match '(?m)^## Task$' -and $o.Contains("## Work in the plan's worktree") -and $o.Contains("the plan's worktree name when several are open") -and -not $r.Contains('EnterWorktree') -and -not $s.Contains('EnterWorktree') -and -not $e.Contains('EnterWorktree'); Remove-Item $d -Recurse -Force; if ($ok) { exit 0 } else { exit 1 }`
 
-### [ ] 5. Regenerate the workflow files
+### [x] 5. Regenerate the workflow files
 - Files: the generated files under `template/.claude/commands` and `.claude/commands` (regenerated, not hand-edited)
 - Change: Run `.\Update-Template.ps1`. Exactly the 13 Claude Code commands that have a `worktree` field change, in both places; every Copilot file and both `plan-executor` agents stay identical. If anything else changes, revert it and escalate.
 - Pattern: none.
