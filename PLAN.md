@@ -207,7 +207,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: the `# Claude Code` section of `template/.gitignore.jinja`; the `ask` list in `template/.claude/settings.json`.
 - Done when: `$a = Get-Content -Raw template\.claude\settings.json | ConvertFrom-Json; $b = Get-Content -Raw .claude\settings.json | ConvertFrom-Json; git check-ignore -q .claude/worktrees/x; if ($LASTEXITCODE -eq 0 -and $a.permissions.allow -contains 'EnterWorktree' -and @($a.permissions.ask).Count -eq 4 -and @($a.permissions.deny).Count -eq 3 -and $b.permissions.allow -contains 'EnterWorktree' -and $b.attribution.sessionUrl -eq $false) { exit 0 } else { exit 1 }`
 
-### [ ] 9. Describe plan worktrees in a project's CLAUDE.md and README
+### [x] 9. Describe plan worktrees in a project's CLAUDE.md and README
 - Files: `template/CLAUDE.md` (edit), `template/README.md.jinja` (edit)
 - Change:
   1. In `template/CLAUDE.md`, replace:
