@@ -250,6 +250,15 @@ if (-not $UnitOnly) {
         Check 'scaffold: verified, committed, and packed with README, icon and license' ($out.Contains('Running dotnet build') -and $subject -eq 'Adopt project-template v0.1.0' -and $nupkg.Count -eq 1 -and 'README.md' -in $entries -and 'NCodeGroup.png' -in $entries -and $nuspec.Contains('<license type="expression">Apache-2.0</license>') -and $snupkg.Count -eq 1) "$subject | $($entries -join ',') | $nuspec | $packOut | $out"
     }
 
+    $broken = New-Fixture 'broken' @{
+        'App.csproj'            = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>'
+        'Directory.Build.props' = 'this is not xml'
+    } 'https://github.com/example/broken.git'
+    $brokenMessage = try { & $adopt -Path $broken -Template $tpl -Ref v0.1.0 -NoVerify | Out-Null } catch { $_.Exception.Message }
+    $brokenStatus = git -C $broken status --porcelain
+    $brokenCount = git -C $broken rev-list --count HEAD
+    Check 'broken: a failure after Copier rolls the repository back' ("$brokenMessage".Contains('rolled back') -and -not $brokenStatus -and -not (Test-Path -LiteralPath (Join-Path $broken '.copier-answers.yml')) -and $brokenCount -eq '1') "$brokenMessage | $brokenStatus | $brokenCount"
+
     $failing = New-Fixture 'failing' @{ 'README.md' = "# Failing`n" } 'https://github.com/example/failing.git'
     $failOut = & $adopt -Path $failing -Template $tpl -Ref v0.1.0 -Data @{ stack = 'other'; build_command = 'exit 3'; test_command = '' } | Out-String
     $failExit = $LASTEXITCODE

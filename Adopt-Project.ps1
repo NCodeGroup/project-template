@@ -12,7 +12,8 @@
     The repository must be the root of a Git repository with no uncommitted changes and no .copier-answers.yml.
     The result is one commit, "Adopt project-template <version>"; -NoCommit stages it instead. Before committing, the
     build and test commands from the answers run in the repository; if one fails, the adoption stays staged and
-    nothing is committed. -NoVerify skips that check.
+    nothing is committed. -NoVerify skips that check. If anything else fails after the template is applied, the
+    repository is reset to where it was.
 
 .EXAMPLE
     .\Adopt-Project.ps1 -Path C:\src\buffers
@@ -90,49 +91,60 @@ try {
         if (Test-Path -LiteralPath $p -PathType Leaf) { $originals[$p] = [IO.File]::ReadAllText((Join-Path $project $p)) }
     }
 
-    $copierArgs = @('copy', '--overwrite', '--defaults', '--quiet')
-    if ($Ref) { $copierArgs += '--vcs-ref', $Ref }
-    foreach ($k in $answers.Keys) {
-        if ($null -ne $answers[$k]) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $answers[$k])" }
-    }
-    $copierArgs += $Template, $project
-    Invoke-Copier @copierArgs
+    # Without a commit to go back to, a failed adoption couldn't be rolled back.
+    $head = git rev-parse HEAD 2>$null
+    if ($LASTEXITCODE -or -not $head) { throw "$project has no commits yet. Make the first commit, then adopt it." }
 
-    $utf8 = [Text.UTF8Encoding]::new($false)
-    $report = [Collections.Generic.List[string]]::new()
-    foreach ($p in $merged) {
-        if (-not $originals.ContainsKey($p)) { continue }
-        $full = Join-Path $project $p
-        $result = Merge-AdoptedFile $p $originals[$p] ([IO.File]::ReadAllText($full))
-        [IO.File]::WriteAllText($full, $result.Text, $utf8)
-        $report.Add("  $($result.Strategy) $p" + $(if ($result.Note) { " $([char]0x2014) $($result.Note)" } else { '' }))
-    }
-    if ($originals.ContainsKey('AGENTS.md')) {
-        [IO.File]::WriteAllText((Join-Path $project 'AGENTS.md'), (Add-TemplateIndexEntry $originals['AGENTS.md']), $utf8)
-    }
-    if ($originals.ContainsKey('Directory.Build.props') -and (Test-Path -LiteralPath build\ProjectTemplate.props)) {
-        [IO.File]::WriteAllText((Join-Path $project 'Directory.Build.props'), (Add-ProjectTemplateImport $originals['Directory.Build.props']), $utf8)
-    }
-    foreach ($adapter in $adapters) {
-        foreach ($line in @(& $adapter.FullName -Path $project -Phase Apply)) { $report.Add("  $line") }
-    }
-    if ((Test-Path -LiteralPath Directory.Packages.props) -and -not $originals.ContainsKey('Directory.Packages.props')) {
-        foreach ($line in @(Move-PackageVersionsToCentral $project)) { $report.Add("  $line") }
-    }
-
-    $followUps = [Collections.Generic.List[string]]::new()
-    if (Test-Path -LiteralPath .github/copilot-instructions.md) { $followUps.Add('fold .github/copilot-instructions.md into AGENTS.md or a file it lists') }
-    if (Test-Path -LiteralPath .github/workflows/ci.yml) {
-        foreach ($f in Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Extension -in '.yml', '.yaml' -and $_.Name -ne 'ci.yml' } | Sort-Object Name) {
-            $followUps.Add("reconcile .github/workflows/$($f.Name) with ci.yml")
+    try {
+        $copierArgs = @('copy', '--overwrite', '--defaults', '--quiet')
+        if ($Ref) { $copierArgs += '--vcs-ref', $Ref }
+        foreach ($k in $answers.Keys) {
+            if ($null -ne $answers[$k]) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $answers[$k])" }
         }
-    }
+        $copierArgs += $Template, $project
+        Invoke-Copier @copierArgs
 
-    git add -A
-    # Executable on Linux and macOS; Windows doesn't record the bit on its own.
-    if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
-    # The template's versioned hooks, unless the repository already uses hooks of its own.
-    if ((Test-Path -LiteralPath .githooks) -and -not (git config --get core.hooksPath)) { git config core.hooksPath .githooks }
+        $utf8 = [Text.UTF8Encoding]::new($false)
+        $report = [Collections.Generic.List[string]]::new()
+        foreach ($p in $merged) {
+            if (-not $originals.ContainsKey($p)) { continue }
+            $full = Join-Path $project $p
+            $result = Merge-AdoptedFile $p $originals[$p] ([IO.File]::ReadAllText($full))
+            [IO.File]::WriteAllText($full, $result.Text, $utf8)
+            $report.Add("  $($result.Strategy) $p" + $(if ($result.Note) { " $([char]0x2014) $($result.Note)" } else { '' }))
+        }
+        if ($originals.ContainsKey('AGENTS.md')) {
+            [IO.File]::WriteAllText((Join-Path $project 'AGENTS.md'), (Add-TemplateIndexEntry $originals['AGENTS.md']), $utf8)
+        }
+        if ($originals.ContainsKey('Directory.Build.props') -and (Test-Path -LiteralPath build\ProjectTemplate.props)) {
+            [IO.File]::WriteAllText((Join-Path $project 'Directory.Build.props'), (Add-ProjectTemplateImport $originals['Directory.Build.props']), $utf8)
+        }
+        foreach ($adapter in $adapters) {
+            foreach ($line in @(& $adapter.FullName -Path $project -Phase Apply)) { $report.Add("  $line") }
+        }
+        if ((Test-Path -LiteralPath Directory.Packages.props) -and -not $originals.ContainsKey('Directory.Packages.props')) {
+            foreach ($line in @(Move-PackageVersionsToCentral $project)) { $report.Add("  $line") }
+        }
+
+        $followUps = [Collections.Generic.List[string]]::new()
+        if (Test-Path -LiteralPath .github/copilot-instructions.md) { $followUps.Add('fold .github/copilot-instructions.md into AGENTS.md or a file it lists') }
+        if (Test-Path -LiteralPath .github/workflows/ci.yml) {
+            foreach ($f in Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Extension -in '.yml', '.yaml' -and $_.Name -ne 'ci.yml' } | Sort-Object Name) {
+                $followUps.Add("reconcile .github/workflows/$($f.Name) with ci.yml")
+            }
+        }
+
+        git add -A
+        # Executable on Linux and macOS; Windows doesn't record the bit on its own.
+        if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
+        # The template's versioned hooks, unless the repository already uses hooks of its own.
+        if ((Test-Path -LiteralPath .githooks) -and -not (git config --get core.hooksPath)) { git config core.hooksPath .githooks }
+    }
+    catch {
+        git reset -q --hard $head
+        git clean -fdq
+        throw "Adopting $project failed and was rolled back: $($_.Exception.Message)"
+    }
 
     $version = Get-Answer '_commit'
     ''
