@@ -91,7 +91,8 @@ function Merge-AdoptedFile([string]$Name, [string]$Original, [string]$Rendered) 
         catch { return [pscustomobject]@{ Text = $Original; Strategy = 'Keep'; Note = 'not valid JSON' } }
         $result = Merge-JsonValue $template $repository
         $text = (ConvertTo-Json $result -Depth 32) -replace "`r`n", "`n"
-        $note = if ($Original.Contains('//') -or $Original.Contains('/*')) { 'comments dropped' }
+        $note = $null
+        try { [System.Text.Json.JsonDocument]::Parse($Original).Dispose() } catch { $note = 'comments dropped' }
         return [pscustomobject]@{ Text = $text + "`n"; Strategy = 'Json'; Note = $note }
     }
     if ($Name -like '*.props') {

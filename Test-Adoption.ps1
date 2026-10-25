@@ -100,6 +100,9 @@ Check 'unit: Merge-AdoptedFile keeps one editorconfig root' (@($m.Text -split "`
 $m = Merge-AdoptedFile '.vscode/settings.json' ('{' + "`n" + '  // mine' + "`n" + '  "files.eol": "\r\n", "recommendations": ["a","b"], "editor.rulers": [100]' + "`n" + '}') '{"files.eol":"\n","recommendations":["a"]}'
 $j = $m.Text | ConvertFrom-Json -AsHashtable
 Check 'unit: Merge-AdoptedFile merges JSON' ($m.Strategy -eq 'Json' -and ($j.Keys -join ',') -eq 'files.eol,recommendations,editor.rulers' -and $j['files.eol'] -eq "`r`n" -and ($j.recommendations -join ',') -eq 'a,b' -and $m.Note -like '*comments*') $m.Text
+$m = Merge-AdoptedFile '.claude/settings.json' '{"$schema":"https://json.schemastore.org/claude-code-settings.json","a":1}' '{"b":2}'
+$j = $m.Text | ConvertFrom-Json -AsHashtable
+Check 'unit: Merge-AdoptedFile does not report comments for a schema URL' ([string]::IsNullOrEmpty($m.Note) -and $j.ContainsKey('a') -and $j.ContainsKey('b')) $m.Note
 $m = Merge-AdoptedFile 'x.json' '{"l":["a"]}' '{"l":["a"],"z":1}'
 Check 'unit: Merge-AdoptedFile keeps a single-item JSON list' ($m.Text -match '"l":\s*\[\s*"a"\s*\]') $m.Text
 
