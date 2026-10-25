@@ -44,7 +44,30 @@ Once per PC, in PowerShell 7, not elevated:
 | Claude Code | `irm https://claude.ai/install.ps1 \| iex` | The `claude` command. This installer keeps it up to date; the WinGet package `Anthropic.ClaudeCode` doesn't |
 | Copilot CLI | `winget install --id GitHub.Copilot -e` | Copilot in a terminal; optional |
 | GitLab CLI | `winget install --id GLab.GLab -e` | GitLab projects only |
-| The stack's toolchain | .NET: `winget install --id Microsoft.DotNet.SDK.10 -e`. Python: `winget install --id Python.Python.3.14 -e`. Node.js: `winget install --id OpenJS.NodeJS.LTS -e` | Building and testing the project |
+| The stack's toolchain | .NET: `winget install --id Microsoft.DotNet.SDK.10 -e`. Python: `winget install --id Python.Python.3.14 -e`. Node.js: nvs, below | Building and testing the project |
+
+For Node.js, install the version manager nvs rather than Node.js itself. It works in both PowerShell and Git Bash:
+
+```powershell
+winget install --id jasongin.nvs -e
+```
+
+Then, in a new terminal:
+
+```powershell
+nvs add lts    # download the current LTS release of Node.js
+nvs link lts   # make it the default
+```
+
+`nvs link` adds the default version to your user PATH, so `node` and `npm` work in every new terminal — PowerShell, Git Bash, Claude Code's Bash tool and the plans' Done-when commands. To move to a newer LTS release later, run both commands again.
+
+The installer sets up the `nvs` command for PowerShell. For Git Bash, run this once in Git Bash:
+
+```bash
+echo '. "$LOCALAPPDATA/nvs/nvs.sh"' >> ~/.bashrc
+```
+
+If the next Git Bash warns that it found `~/.bashrc` but no `~/.bash_profile`, that's expected: Git for Windows then creates a `~/.bash_profile` that loads `~/.bashrc`.
 
 Then the VS Code extensions. A template project also recommends them when you open it.
 
@@ -99,6 +122,7 @@ An organization's Copilot policy can turn off Copilot CLI, or individual models.
 | `copilot`, then `/user` | The account with the Copilot plan |
 | `gh auth status` | The account that owns your projects |
 | `copier --version`, `git config user.email` | A version number; your email |
+| Node.js projects: `nvs use lts`, in PowerShell and in Git Bash | `PATH += …\nvs\node\<version>\x64`, the same version in both |
 | A template project in VS Code, Claude Code panel, type `/` | `/plan-feature`, `/orchestrate-plan`, `/replan-step`, `/review-plan-diff`, … |
 | The same project, Copilot Chat's agent picker | Copilot Planner, Copilot Orchestrator, Hybrid Planner, … |
 
