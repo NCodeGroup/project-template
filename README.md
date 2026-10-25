@@ -2,7 +2,7 @@
 
 Private [Copier](https://copier.readthedocs.io/) template for new repositories set up for plan-then-execute AI coding: Claude Opus plans each change into `PLAN.md`, a cheaper model executes it one verified step at a time, and any step that needs a decision goes back to Opus. Every project works with Claude Code and with GitHub Copilot, and you can switch between them at any time ([Claude Code or GitHub Copilot](#claude-code-or-github-copilot)). The base works for any language; a .NET layer adds shared build settings and C# conventions. Projects live on GitHub by default, or on GitLab. Every project made from it can pull later template improvements with `Update-Project.ps1`.
 
-**Related:** [Configuration G](https://github.com/polewskm/personal-notes/blob/main/ham-radio/shack/shack-pc/local-ai/configuration-g.md) — the accounts, the shack PC, the VS Code tunnel and the daily loop this template is built for. [Plan-and-execute](https://github.com/polewskm/personal-notes/blob/main/ham-radio/shack/shack-pc/local-ai/plan-and-execute.md) — how the workflow works and how to choose between its variants. This repository is the single source of truth for the workflow's templates and scripts ([workflow/](workflow/)); personal-notes and every project consume them.
+**Related:** [Configuration G](https://github.com/polewskm/personal-notes/blob/main/ham-radio/shack/shack-pc/local-ai/configuration-g.md) — the accounts, the shack PC, the VS Code tunnel and the daily loop this template is built for. [Plan-and-execute](https://github.com/polewskm/personal-notes/blob/main/ham-radio/shack/shack-pc/local-ai/plan-and-execute.md) — how the workflow works and how to choose between its variants. This repository is the single source of truth for the workflow's templates and scripts ([workflow/](workflow/)); personal-notes and every project consume them. [USAGE.md](USAGE.md) — setting up a PC for Claude Code and GitHub Copilot, and using and switching between them.
 
 ## Table of Contents
 
@@ -55,7 +55,7 @@ The project edits them freely, and later template changes merge in: an update ke
 | File | Purpose |
 |---|---|
 | `.claude/settings.json` | `git push` always asks for approval, in Bash and PowerShell; `.env` files and `secrets/` can't be read |
-| `.vscode/settings.json`, `.vscode/extensions.json` | LF and final newlines, the Ollama timeout; recommended extensions (Claude Code, Ollama, EditorConfig, and the stack's language extension) |
+| `.vscode/settings.json`, `.vscode/extensions.json` | LF and final newlines, the Ollama timeout; recommended extensions (Claude Code, GitHub Copilot Chat, Ollama, EditorConfig, and the stack's language extension) |
 | `.editorconfig`, `.gitattributes`, `.gitignore` | UTF-8 and LF everywhere, binary types, and ignores for Claude Code's local files and worktrees, secrets and build output |
 | `.github/workflows/ci.yml` or `.gitlab-ci.yml` | CI on GitHub or GitLab, whichever the `git_host` answer names, that runs the build and test commands once code exists; GitHub Actions pinned to commit SHAs |
 | `.github/dependabot.yml` (GitHub only) | [Dependabot](#stay-current), built into GitHub: a weekly pull request for newer CI actions and, by stack, NuGet packages and the .NET SDK, pip or npm packages |
@@ -74,24 +74,9 @@ Written once, when the project is created, and never touched by an update, even 
 
 ## Claude Code or GitHub Copilot
 
-Every project carries the same workflow for both, so you can work on it with your Claude plan or your Copilot plan, and switch whenever you like: open the other panel in VS Code, or run `claude` or `copilot` in a terminal. Nothing in the project needs to change. `PLAN.md` is the only state the tools share, so one can plan and another execute, re-plan or review.
+Every project carries the same workflow for both, so you can work on it with your Claude plan or your Copilot plan, and switch whenever you like: open the other panel in VS Code, or run `claude` or `copilot` in a terminal. Nothing in the project needs to change. `PLAN.md` is the only state the tools share, so one can plan and another execute, re-plan or review. Each request bills the plan of the tool that makes it.
 
-| Phase | Claude Code | Copilot Chat in VS Code | Copilot CLI |
-|---|---|---|---|
-| Plan | `/plan-feature <what to build>` | The Copilot Planner agent on Opus, or `/plan-feature` | `copilot --model claude-opus-5.5`, then `/plan-feature` |
-| Execute | `/orchestrate-plan` | Run all steps with subagents, or Execute next step | `/orchestrate-plan` |
-| Re-plan one step | `/replan-step N` | Re-plan with the planner | `/replan-step N` |
-| Review | `/review-plan-diff` | Review the work | `/review-plan-diff` |
-
-| | Claude Code | GitHub Copilot |
-|---|---|---|
-| Subscription | A Claude plan; it works only in Anthropic's own tools | The Copilot plan of the GitHub account Copilot is signed in with |
-| Sign in | `claude auth login`, once per PC; no `ANTHROPIC_API_KEY` set, or Claude Code bills the API instead | VS Code's Accounts menu, and `copilot login` for Copilot CLI |
-| Reads | `CLAUDE.md` → `AGENTS.md` and each `@` file it lists | `AGENTS.md`, and every `.github/instructions/*.instructions.md` |
-| Executes on | Sonnet, in the `plan-executor` subagent | Auto with the Copilot agents; the shack PC's local model with the Hybrid agents |
-
-Each request bills the subscription of the tool that makes it, so a Copilot plan provided by an employer pays for whatever you run in Copilot. The agents name models such as `Claude Opus 5.5 (copilot)`; when an organization's Copilot policy turns a model off, VS Code runs the agent on the model selected in the picker instead. VS Code lists each command twice — once as a prompt file, once as a Copilot CLI skill — and either runs it.
-
+[USAGE.md](USAGE.md) is the guide: the tools to install, signing in to each, the commands per tool, switching mid-plan, and troubleshooting.
 ## Extend or Override the Template
 
 A project never edits a template-owned file. It adds to the template and overrides it with files of its own, which win where they differ.
@@ -138,7 +123,7 @@ An instruction override is the project's word against the template's, so say it 
 
 ## Create a Project
 
-Needs Git with `user.name` and `user.email` set, Copier (`uv tool install copier`; the scripts fall back to `uvx`), access to this private repository (`gh auth setup-git` once per PC), and for `-CreateRemote` the signed-in `gh` or `glab` CLI.
+Needs Git with `user.name` and `user.email` set, Copier (`uv tool install copier`; the scripts fall back to `uvx`), access to this private repository (`gh auth setup-git` once per PC), and for `-CreateRemote` the signed-in `gh` or `glab` CLI. [USAGE.md](USAGE.md#install-the-tools) sets all of it up, along with Claude Code and GitHub Copilot.
 
 ```powershell
 .\New-Project.ps1 -Path C:\src\qso-viewer                                # asks the questions, then git init and the first commit
@@ -312,6 +297,7 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `Test-Template.ps1` | Render every stack and check the result |
 | `.github/workflows/test-template.yml` | Runs `Test-Template.ps1` on Windows for every push to `main` and every pull request |
 | `.github/dependabot.yml` | Dependabot for the actions in `test-template.yml` |
+| `USAGE.md` | Setting up a PC for Claude Code and GitHub Copilot, and using and switching between them in a project |
 | `.gitattributes` | Keeps every file LF on disk, because Copier copies non-`.jinja` files byte for byte |
 
 ---
