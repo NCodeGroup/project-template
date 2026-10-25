@@ -64,6 +64,7 @@ The four VS Code agent templates are variant-neutral; the installer renders each
 |---|---|
 | [_plan-format.md](_plan-format.md) | The PLAN.md handoff contract: writing rules for a weaker executor plus the exact Markdown structure the step runner parses |
 | [PLAN.example.md](PLAN.example.md) | A complete three-step plan for the demo project that personal-notes' `New-AgentTestRepo.ps1` creates — the format in practice, and the runner's test fixture |
+| [_claude-worktree-create.md](_claude-worktree-create.md), [_claude-worktree-join.md](_claude-worktree-join.md) | The Claude Code plan-worktree sections ([Claude Code Plan Worktrees](#claude-code-plan-worktrees)) |
 
 ## Template Syntax
 
@@ -75,7 +76,7 @@ The four VS Code agent templates are variant-neutral; the installer renders each
 | `{{PLANNER_MODEL}}`, `{{REVIEWER_MODEL}}`, `{{EXECUTOR_MODEL}}`, `{{FAST_EXECUTOR_MODEL}}` | Agent front matter | `-PlannerModel`, `-ReviewerModel`, and `-LocalModel`/`-FastLocalModel` (Local) or `-CopilotExecutorModel`/`-CopilotFastModel` (Copilot) |
 | `{{CLAUDE_EXECUTOR_MODEL}}`, `{{CLI_EXECUTOR_MODEL}}` | `plan-executor` templates | `-ClaudeExecutorModel`, `-CliExecutorModel` |
 
-To add a prompt template, create `<name>.md` with the same four header fields; `New-PlanPrompt.ps1 -List` and the installer pick it up automatically.
+To add a prompt template, create `<name>.md` with the same four header fields, plus `worktree: create` when its Claude Code command writes a new `PLAN.md` or `worktree: join` when it works on one; `New-PlanPrompt.ps1 -List` and the installer pick it up automatically.
 
 New projects get generated copies of these files under `template/` ([What a Project Gets](../../README.md#what-a-project-gets)). After changing a template here, run `Update-Template.ps1` and `Test-Template.ps1` at the repository root, then commit, tag and push a new version; projects pick it up with `Update-Project.ps1`.
 

@@ -262,7 +262,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: the existing tables in the same file.
 - Done when: `$t = Get-Content -Raw workflow\templates\README.md; if ($t.Contains('and optionally') -and $t -match '(?s)### Claude Code Plan Worktrees.*\[_claude-worktree-join\.md\]\(_claude-worktree-join\.md\).*## Agent Templates') { exit 0 } else { exit 1 }`
 
-### [ ] 12. List the worktree sections in the workflow READMEs
+### [x] 12. List the worktree sections in the workflow READMEs
 - Files: `workflow/templates/README.md` (edit), `workflow/README.md` (edit)
 - Change:
   1. In `workflow/templates/README.md`, in the `## Other Files` table, directly after the row that starts `| [PLAN.example.md](PLAN.example.md) |`, insert this row:
