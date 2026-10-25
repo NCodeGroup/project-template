@@ -241,7 +241,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: the `{%- if git_host == 'github' %}` … `{%- endif %}` bullet further down the same section.
 - Done when: `$r = Get-Content -Raw template\.github\instructions\project-template.instructions.md.jinja; if ($r -match '(?m)^\{%- if ''claude'' in workflow_tools %\}\n- In Claude Code, each plan lives in its own git worktree[^\n]*\n\{%- endif %\}$') { exit 0 } else { exit 1 }`
 
-### [ ] 11. Document the worktree field in the templates README
+### [x] 11. Document the worktree field in the templates README
 - Files: `workflow/templates/README.md` (edit)
 - Change:
   1. Replace ``(`description`, `argument-hint`, `role`, `append-format`)`` with ``(`description`, `argument-hint`, `role`, `append-format`, and optionally `worktree`)``.

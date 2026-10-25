@@ -4,7 +4,7 @@ Source templates for the plan-and-execute workflow — the single source of trut
 
 ## Prompt Templates
 
-Each prompt has a small front-matter header (`description`, `argument-hint`, `role`, `append-format`) and a body with one `{{INPUT}}` placeholder for your request. Planning templates with `append-format: true` get [_plan-format.md](_plan-format.md) appended, so every plan comes out in the same parseable shape.
+Each prompt has a small front-matter header (`description`, `argument-hint`, `role`, `append-format`, and optionally `worktree`) and a body with one `{{INPUT}}` placeholder for your request. Planning templates with `append-format: true` get [_plan-format.md](_plan-format.md) appended, so every plan comes out in the same parseable shape.
 
 | Template | Role | Produces | Use it to |
 |---|---|---|---|
@@ -30,6 +30,17 @@ Each prompt has a small front-matter header (`description`, `argument-hint`, `ro
 | planner, analyst, orchestrator | `model: opus`, `effort: high` | Planner model (Opus 5.5) | Session model — start the session on Opus |
 | reviewer | `model: sonnet`, `effort: high` | Reviewer model (Sonnet 5.5) | Session model |
 | executor | `model: inherit` (the session's model) | Copilot executor model (`execute-step`), plus `execute-step-local` on the local model when both variants are installed | Session model |
+
+### Claude Code Plan Worktrees
+
+In Claude Code only, each plan lives in its own git worktree, so several sessions can work on different plans on one machine at once. A template's `worktree` field says what its Claude Code command does with the plan's worktree. The installer puts the matching section before the command's body, followed by a `## Task` heading:
+
+| `worktree` | Section | Templates | The command |
+|---|---|---|---|
+| `create` | [_claude-worktree-create.md](_claude-worktree-create.md) | The `plan-*` templates and `handoff-plan` | Creates `.claude/worktrees/<name>/` with the `EnterWorktree` tool before it researches, plans there, and commits `PLAN.md` as `Plan: <title>` |
+| `join` | [_claude-worktree-join.md](_claude-worktree-join.md) | `orchestrate-plan`, `execute-step`, `replan-step`, `review-plan-diff` | Moves the session into the plan's worktree — the one its arguments name, or the only one — before it starts; with no plan worktree, works on a `PLAN.md` in the current checkout |
+
+A command without the field works where the session is. VS Code prompt files, Copilot CLI skills, the agents and `New-PlanPrompt.ps1` never get a section. The `plan-executor` subagent inherits the orchestrator's worktree; `isolation: worktree` would give it a worktree of its own instead.
 
 ## Agent Templates
 
