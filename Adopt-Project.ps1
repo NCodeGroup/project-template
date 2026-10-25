@@ -134,6 +134,12 @@ try {
                 $followUps.Add("reconcile .github/workflows/$($f.Name) with ci.yml")
             }
         }
+        # A CI file the repository already had was kept, so it lacks the template's commit-attribution job.
+        foreach ($p in '.github/workflows/ci.yml', '.gitlab-ci.yml') {
+            if ($originals.ContainsKey($p) -and -not [IO.File]::ReadAllText((Join-Path $project $p)).Contains('Test-CommitAttribution.ps1')) {
+                $followUps.Add("add the template's commit-attribution job to $p, so CI rejects commits attributed to an AI agent")
+            }
+        }
         if ((Get-Answer 'stack') -eq 'dotnet') {
             $otherInstructions = @(Get-ChildItem -LiteralPath .github/instructions -Filter '*.instructions.md' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin 'csharp.instructions.md', 'project-template.instructions.md' } | Sort-Object Name | ForEach-Object Name)
             if ($otherInstructions.Count) { $followUps.Add("reconcile .github/instructions/csharp.instructions.md with $($otherInstructions -join ', ')") }

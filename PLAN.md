@@ -392,7 +392,7 @@ Steps 29–37 extend the change. Every project, and this repository, gets the se
 - Pattern: the existing steps and rows.
 - Done when: `uv run --quiet --no-project --with pyyaml python -c "import sys, yaml; d = yaml.safe_load(open(sys.argv[1], encoding='utf-8')); assert d['jobs']['commit-attribution']['name'] == 'Commit attribution'; assert any(s.get('run') == './Test-CommitAttribution.ps1' for s in d['jobs']['test']['steps'])" .github/workflows/test-template.yml; $r = Get-Content -Raw README.md; if ($LASTEXITCODE -or -not $r.Contains('`Commit attribution tests: PASSED`') -or -not $r.Contains('| `Test-CommitAttribution.ps1` | Test the commit attribution check') -or -not $r.Contains('passes on a new project''s own history') -or $r.Contains('Both it and `Test-Adoption.ps1`') -or $r.Contains([char]13)) { exit 1 }`
 
-### [ ] 34. Tell an adopter to add the check when the repository kept its own CI file
+### [x] 34. Tell an adopter to add the check when the repository kept its own CI file
 - Files: `Adopt-Project.ps1` (edit), `Test-Adoption.ps1` (edit)
 - Change: in `Adopt-Project.ps1`, where `$followUps` is built (inside the `try`), add: for each of `.github/workflows/ci.yml` and `.gitlab-ci.yml` that is a key of `$originals` (the repository's own file, kept) and whose current text does not contain `Test-CommitAttribution.ps1`, add the follow-up `add the template's commit-attribution job to <that path>, so CI rejects commits attributed to an AI agent`. In `Test-Adoption.ps1`, add three checks:
   - `plain: asks to add the commit attribution job to the kept .gitlab-ci.yml`, directly after `plain: CI file kept`, while `$out` still holds the `plain` adoption's output. The output contains `add the template's commit-attribution job to .gitlab-ci.yml`.

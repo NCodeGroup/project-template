@@ -209,6 +209,7 @@ if (-not $UnitOnly) {
     $iEntry = $agents.IndexOf('@.github/instructions/project-template.instructions.md')
     Check 'plain: AGENTS.md gains the template rules' ($iEntry -ge 0 -and $iEntry -lt $agents.IndexOf('## Conventions') -and $agents.Contains('Own rules.')) $agents
     Check 'plain: CI file kept' ((Get-Content -Raw -LiteralPath (Join-Path $plain '.gitlab-ci.yml')) -eq "test:`n  script: echo hi`n") ''
+    Check 'plain: asks to add the commit attribution job to the kept .gitlab-ci.yml' ($out.Contains("add the template's commit-attribution job to .gitlab-ci.yml")) $out
 
     $scaffoldRepo = New-Fixture 'scaffold' @{
         'NCode.Demo.slnx'                   = "<Solution>`n  <Project Path=""src/NCode.Demo/NCode.Demo.csproj"" />`n</Solution>`n"
@@ -234,6 +235,7 @@ if (-not $UnitOnly) {
     Check 'scaffold: Directory.Build.props imports the template settings' ($props.Contains('build/ProjectTemplate.props') -and $props.Contains('<LangVersion>latest</LangVersion>') -and @($editorconfig -split "`n" | Where-Object { $_ -match '^\s*root\s*=' }).Count -eq 1) "$props | $editorconfig"
     Check 'scaffold: report lists the follow-ups' ($out.Contains('/plan-migration Finish adopting the project template') -and $out.Contains('.github/copilot-instructions.md') -and $out.Contains('.github/workflows/main.yml')) $out
     Check 'scaffold: reconciles the C# instructions' ($out.Contains('reconcile .github/instructions/csharp.instructions.md with csharp-production.instructions.md')) $out
+    Check 'scaffold: no commit attribution follow-up when the template added ci.yml' (-not $out.Contains('commit-attribution job')) $out
 
     if (-not $SkipDotnetBuild) {
         $subject = git -C $scaffoldRepo log -1 --format=%s
@@ -271,6 +273,7 @@ if (-not $UnitOnly) {
     } 'https://github.com/example/ci-existing.git'
     $ciOut = & $adopt -Path $ciExisting -Template $tpl -Ref v0.1.0 -NoVerify | Out-String
     Check 'ci-existing: no reconcile follow-up when the repository already had ci.yml' (-not $ciOut.Contains('reconcile .github/workflows')) $ciOut
+    Check 'ci-existing: asks to add the commit attribution job to the kept ci.yml' ($ciOut.Contains("add the template's commit-attribution job to .github/workflows/ci.yml")) $ciOut
 
     $failing = New-Fixture 'failing' @{ 'README.md' = "# Failing`n" } 'https://github.com/example/failing.git'
     $failOut = & $adopt -Path $failing -Template $tpl -Ref v0.1.0 -Data @{ stack = 'other'; build_command = 'exit 3'; test_command = '' } | Out-String
