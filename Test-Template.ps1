@@ -53,12 +53,17 @@ Push-Location $tpl
 try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
 finally { Pop-Location }
 
-$common = 'AGENTS.md', 'CLAUDE.md', 'README.md', '.copier-answers.yml', '.gitignore', '.gitattributes', '.editorconfig',
-    '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
-    '.claude\commands\orchestrate-plan.md', '.claude\commands\replan-step.md', '.claude\commands\review-plan-diff.md',
-    '.github\agents\local-implementer.agent.md', '.github\agents\copilot-planner.agent.md', '.github\agents\plan-executor.agent.md',
-    '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-local.prompt.md', '.github\skills\plan-feature\SKILL.md',
+$common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.gitignore', '.gitattributes', '.editorconfig',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.vscode\settings.json', '.vscode\extensions.json'
+$allTools = 'claude', 'copilot', 'local'
+$toolFiles = @{
+    claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
+        '.claude\commands\orchestrate-plan.md', '.claude\commands\replan-step.md', '.claude\commands\review-plan-diff.md'
+    copilot = '.github\agents\copilot-planner.agent.md', '.github\agents\plan-executor.agent.md',
+        '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step.prompt.md', '.github\skills\plan-feature\SKILL.md'
+    local = '.github\agents\local-implementer.agent.md', '.github\agents\hybrid-planner.agent.md',
+        '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-local.prompt.md'
+}
 $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'Directory.Packages.props', 'global.json', '.claude\rules\csharp.md',
     '.github\instructions\csharp.instructions.md'
 $hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml'; gitlab = @('.gitlab-ci.yml') }
@@ -73,13 +78,16 @@ $cases = @(
     @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
     @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
     @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
+    @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot' }
+    @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
 )
 $yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
 
 foreach ($case in $cases) {
     $name = $case.Name
     $dest = Join-Path $Work $name
-    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $name" --data "stack=$($case.Stack)" --data "git_host=$($case.Host)" $tpl $dest
+    $tools = if ($case.Tools) { @($case.Tools) } else { $allTools }
+    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $name" --data "stack=$($case.Stack)" --data "git_host=$($case.Host)" --data "workflow_tools=[$($tools -join ', ')]" $tpl $dest
 
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
@@ -89,6 +97,10 @@ foreach ($case in $cases) {
     $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
     $wrong = @($hostOnly[$case.Host] | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($hostOnly[$otherHost] | Where-Object { Test-Path (Join-Path $dest $_) })
     Check "${name}: $($case.Host) files only" (-not $wrong) ($wrong -join ', ')
+    $wanted = @($tools | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique)
+    $unwanted = @($allTools | Where-Object { $_ -notin $tools } | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique | Where-Object { $_ -notin $wanted })
+    $wrong = @($wanted | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($unwanted | Where-Object { Test-Path (Join-Path $dest $_) })
+    Check "${name}: workflow files for $($tools -join ', ') only" (-not $wrong) ($wrong -join ', ')
 
     $files = Get-ChildItem -LiteralPath $dest -Recurse -File -Force
     $crlf = $files | Where-Object { $_.Extension -notin '.cmd', '.bat' -and [IO.File]::ReadAllText($_.FullName).Contains("`r") } | ForEach-Object Name

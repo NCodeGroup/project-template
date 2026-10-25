@@ -56,7 +56,7 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
 - Pattern: the existing `$promptModels` lines.
 - Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or (Test-Path template\.github\prompts\execute-step-copilot.prompt.md) -or (Test-Path .github\prompts\execute-step-copilot.prompt.md) -or -not (Select-String -LiteralPath template\.github\prompts\execute-step.prompt.md -SimpleMatch 'Auto (copilot)' -Quiet) -or -not (Select-String -LiteralPath template\.github\prompts\execute-step-local.prompt.md -SimpleMatch 'ollama-models' -Quiet)) { exit 1 }`
 
-### [ ] 2. Add the workflow_tools question and leave out unused tools
+### [x] 2. Add the workflow_tools question and leave out unused tools
 - Files: `copier.yml` (edit), `Test-Template.ps1` (edit)
 - Change: in `copier.yml`, after the `_skip_if_exists`/`_merged_files` block, add `_exclude` with a one-line comment ("The workflow files of tools the project doesn't use; an empty pattern excludes nothing.") and these patterns, each a double-quoted string of the form `"{% if 'claude' not in workflow_tools %}CLAUDE.md{% endif %}"`: claude → `CLAUDE.md`, `.claude`; copilot → `.github/agents/copilot-*.agent.md`, `.github/agents/plan-executor.agent.md`, `.github/skills`, `.github/prompts/execute-step.prompt.md`; local → `.github/agents/hybrid-*.agent.md`, `.github/agents/local-implementer.agent.md`, `.github/prompts/execute-step-local.prompt.md`; and `"{% if 'copilot' not in workflow_tools and 'local' not in workflow_tools %}.github/prompts{% endif %}"`. After the `git_host` question add:
   ```yaml

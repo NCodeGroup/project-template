@@ -28,6 +28,19 @@ _merged_files:
   - Directory.Packages.props
   - global.json
 
+# The workflow files of tools the project doesn't use; an empty pattern excludes nothing.
+_exclude:
+  - "{% if 'claude' not in workflow_tools %}CLAUDE.md{% endif %}"
+  - "{% if 'claude' not in workflow_tools %}.claude{% endif %}"
+  - "{% if 'copilot' not in workflow_tools %}.github/agents/copilot-*.agent.md{% endif %}"
+  - "{% if 'copilot' not in workflow_tools %}.github/agents/plan-executor.agent.md{% endif %}"
+  - "{% if 'copilot' not in workflow_tools %}.github/skills{% endif %}"
+  - "{% if 'copilot' not in workflow_tools %}.github/prompts/execute-step.prompt.md{% endif %}"
+  - "{% if 'local' not in workflow_tools %}.github/agents/hybrid-*.agent.md{% endif %}"
+  - "{% if 'local' not in workflow_tools %}.github/agents/local-implementer.agent.md{% endif %}"
+  - "{% if 'local' not in workflow_tools %}.github/prompts/execute-step-local.prompt.md{% endif %}"
+  - "{% if 'copilot' not in workflow_tools and 'local' not in workflow_tools %}.github/prompts{% endif %}"
+
 project_name:
   type: str
   help: Project name, used in headings (for example QSO Log Viewer)
@@ -56,6 +69,17 @@ git_host:
     GitHub: github
     GitLab: gitlab
   default: github
+
+workflow_tools:
+  type: str
+  help: The AI tools to set the workflow up for
+  multiselect: true
+  choices:
+    Claude Code: claude
+    GitHub Copilot (Copilot Chat and Copilot CLI): copilot
+    Hybrid agents on the shack PC's local model (personal; leave out of shared repositories): local
+  default: [claude, copilot, local]
+  validator: "{% if not workflow_tools %}Choose at least one tool{% endif %}"
 
 author_name:
   type: str
