@@ -40,7 +40,7 @@ Replaced on every update. A project never edits them; an edit is discarded by th
 |---|---|
 | `.github/instructions/project-template.instructions.md` | The plan-then-execute rules and base conventions, for every agent: Copilot loads it on its own; Claude Code imports it through the first entry in `AGENTS.md` |
 | `CLAUDE.md` | Imports `AGENTS.md` for Claude Code and adds Claude-specific notes |
-| `.claude/commands/` (16), `.claude/agents/plan-executor.md` | Claude Code: `/plan-feature`, `/plan-bugfix`, `/orchestrate-plan`, `/replan-step`, `/review-plan-diff`, … and the Sonnet subagent that executes steps — generated |
+| `.claude/commands/` (16), `.claude/agents/plan-executor.md` | Claude Code: `/plan-feature`, `/plan-bugfix`, `/orchestrate-plan`, `/replan-step`, `/review-plan-diff`, … and the Sonnet subagent that executes steps; each plan runs in its own git worktree, so several sessions work at once — generated |
 | `.github/agents/` (8 + 1), `.github/prompts/` (17) | Copilot Chat in VS Code: the Copilot agents (planner, implementer on Claude Sonnet 5.5, reviewer, orchestrator), the Hybrid agents (the same, with the Local Implementer on the shack PC's model), and the same commands as prompt files — generated |
 | `.github/skills/` (16), `.github/agents/plan-executor.agent.md` | Copilot CLI: the same commands as skills, and the agent `/orchestrate-plan` delegates to — generated |
 | `build/ProjectTemplate.props` (.NET) | Latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata; `*.Tests` projects aren't packable and skip XML docs; with `nuget_package`, the license expression, README and icon in each package, Source Link with untracked sources, symbol packages and XML documentation |
@@ -61,7 +61,7 @@ The project edits them freely, and later template changes merge in: an update ke
 
 | File | Purpose |
 |---|---|
-| `.claude/settings.json` | Commit and pull request attribution off; `git push` always asks for approval, in Bash and PowerShell; `.env` files and `secrets/` can't be read |
+| `.claude/settings.json` | Commit and pull request attribution off; `git push` always asks for approval, in Bash and PowerShell; `.env` files and `secrets/` can't be read; entering a plan's worktree doesn't ask |
 | `.vscode/settings.json`, `.vscode/extensions.json` | LF and final newlines, `git.addAICoAuthor` off, the Ollama timeout (only with the local model); recommended extensions (Claude Code, GitHub Copilot Chat, Ollama, EditorConfig, and the stack's language extension; the Ollama extension only with the local model) |
 | `.editorconfig`, `.gitattributes`, `.gitignore` | UTF-8 and LF everywhere, binary types, and ignores for Claude Code's local files and worktrees, secrets and build output |
 | `.github/workflows/ci.yml` or `.gitlab-ci.yml` | CI on GitHub or GitLab, whichever the `git_host` answer names: a job that runs the build and test commands once code exists, and a `Commit attribution` job that runs `.template/Test-CommitAttribution.ps1`; on GitHub it also runs in a merge queue, with actions pinned to commit SHAs |
@@ -81,7 +81,7 @@ Written once, when the project is created, and never touched by an update, even 
 
 ## Claude Code or GitHub Copilot
 
-Every project carries the same workflow for both, so you can work on it with your Claude plan or your Copilot plan, and switch whenever you like: open the other panel in VS Code, or run `claude` or `copilot` in a terminal. Nothing in the project needs to change. `PLAN.md` is the only state the tools share, so one can plan and another execute, re-plan or review. Each request bills the plan of the tool that makes it.
+Every project carries the same workflow for both, so you can work on it with your Claude plan or your Copilot plan, and switch whenever you like: open the other panel in VS Code, or run `claude` or `copilot` in a terminal. Nothing in the project needs to change. `PLAN.md` is the only state the tools share, so one can plan and another execute, re-plan or review. In Claude Code each plan lives in its own git worktree, so several sessions can work on different plans at once; open that folder to continue the plan in Copilot. Each request bills the plan of the tool that makes it.
 
 [USAGE.md](USAGE.md) is the guide: the tools to install, signing in to each, the commands per tool, switching mid-plan, and troubleshooting.
 ## Extend or Override the Template
@@ -373,7 +373,7 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 3. Run `.\Test-Template.ps1`, `.\Test-Adoption.ps1` and `.\Test-CommitAttribution.ps1`, and confirm their last lines read `Template tests: PASSED`, `Adoption tests: PASSED` and `Commit attribution tests: PASSED`.
 4. Commit, tag the next version, and push with tags: `git tag v0.2.0` and `git push origin main --tags`.
 
-`Test-Template.ps1` works on a tagged snapshot of the working tree in `%TEMP%`. It, `Test-Adoption.ps1` and `Test-CommitAttribution.ps1` run on every push to `main` and every pull request through `.github/workflows/test-template.yml`:
+`Test-Template.ps1` works on a tagged snapshot of the working tree, without Claude Code's worktrees, in `%TEMP%`. It, `Test-Adoption.ps1` and `Test-CommitAttribution.ps1` run on every push to `main` and every pull request through `.github/workflows/test-template.yml`:
 
 | Check | For |
 |---|---|
@@ -388,6 +388,7 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 | Generated workflow files, under `template/` and at the repository root, match a fresh run of `workflow\Install-HybridWorkflow.ps1` | Always, including CI |
 | The installer writes both variants for every tool; `New-PlanPrompt.ps1` composes a prompt; `Invoke-PlanSteps.ps1 -DryRun` parses the example plan | Always |
 | Every executor — the Copilot Implementer, the `execute-step` prompt, and the Copilot CLI and Claude Code `plan-executor` agents — runs on Claude Sonnet 5.5 | Always |
+| Claude Code's planning commands create the plan's worktree, and the commands that execute, re-plan or review a plan move into it; no Copilot file, `plan-executor` subagent or analysis command enters a worktree | Always |
 | `New-Project.ps1` passes a list answer in `-Data` to Copier | Always |
 | `New-Project.ps1` and `Update-Project.ps1` enable `.githooks`, with `commit-msg` executable; the hook strips Claude and Copilot attribution and keeps a person's co-author trailer, and keeps a prose line that mentions the advertising phrase | Always; the update check with the update tests |
 | The shipped `.template/Test-CommitAttribution.ps1` passes on a new project's own history | Always |
@@ -423,7 +424,7 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `Update-Project.ps1` | Update a project by `-Path` from this clone: a wrapper around `template\.template\Update-Project.ps1`, the update script every project carries |
 | `workflow/` | The single source of the workflow: prompt and agent templates, the installer, the prompt composer and the step runner ([workflow/README.md](workflow/README.md)) |
 | `Update-Template.ps1` | Regenerate the workflow files under `template/` and at the repository root from `workflow/templates` |
-| `AGENTS.md`, `.claude/settings.json`, `.vscode/settings.json` | This repository's own agent instructions and settings: no AI attribution in commits ([Commit Attribution](#commit-attribution)) |
+| `AGENTS.md`, `.claude/settings.json`, `.vscode/settings.json`, `.gitignore` | This repository's own agent instructions and settings: no AI attribution in commits ([Commit Attribution](#commit-attribution)), and Claude Code's worktrees ignored |
 | `.claude/`, `.github/agents/`, `.github/prompts/`, `.github/skills/` | This repository's own workflow: the same generated files as `template/` gets, committed so that working on the template with Claude Code or Copilot has `/plan-feature`, `/orchestrate-plan` and the rest on any PC that clones it. Never edit them; `Update-Template.ps1` regenerates them |
 | `Test-Template.ps1` | Render every stack and check the result |
 | `Test-Adoption.ps1` | Check the adoption functions and legacy adapters, then adopt small test repositories |

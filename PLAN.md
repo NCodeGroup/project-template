@@ -316,7 +316,7 @@ In Claude Code, each plan gets its own git worktree. A planning command (`/plan-
 - Pattern: the neighboring rows and sentences.
 - Done when: `$t = Get-Content -Raw USAGE.md; if ($t.Contains('A Claude Code plan is in its worktree') -and $t.Contains("| A plan written in Claude Code | Open its worktree's folder") -and $t.Contains('with no plan worktree open, they work on') -and $t.Contains('lists plans and asks which one') -and $t.Contains('In Claude Code each plan has its own git worktree')) { exit 0 } else { exit 1 }`
 
-### [ ] 15. Document plan worktrees in README.md
+### [x] 15. Document plan worktrees in README.md
 - Files: `README.md` (edit)
 - Change:
   1. Replace ``and the Sonnet subagent that executes steps — generated |`` with ``and the Sonnet subagent that executes steps; each plan runs in its own git worktree, so several sessions work at once — generated |``
