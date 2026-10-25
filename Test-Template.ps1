@@ -129,6 +129,11 @@ foreach ($case in $cases) {
     Check "${name}: answers record v0.1.0" ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -match '(?m)^_commit: v0\.1\.0$')
 }
 
+$listProject = Join-Path $Work 'new-project-list'
+& (Join-Path $PSScriptRoot 'New-Project.ps1') -Path $listProject -Template $tpl -Ref v0.1.0 -Defaults -Data @{ project_name = 'List Answer'; stack = 'other'; workflow_tools = 'claude', 'copilot' } | Out-Null
+$listAnswers = [IO.File]::ReadAllText((Join-Path $listProject '.copier-answers.yml')) -replace "`r`n", "`n"
+Check 'New-Project: a list answer in -Data reaches Copier' (($listAnswers -match '(?m)^workflow_tools:\n- claude\n- copilot\n') -and -not (Test-Path (Join-Path $listProject '.github\agents\hybrid-planner.agent.md'))) $listAnswers
+
 $workflow = Join-Path $PSScriptRoot 'workflow'
 $fresh = Join-Path $Work 'generated'
 New-Item -ItemType Directory -Force $fresh | Out-Null

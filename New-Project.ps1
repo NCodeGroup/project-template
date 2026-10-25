@@ -42,6 +42,11 @@ function Invoke-Copier {
     if ($LASTEXITCODE) { throw "copier exited with code $LASTEXITCODE." }
 }
 
+# Copier reads --data values as YAML, so a list answer goes as a flow sequence: [claude, copilot].
+function ConvertTo-CopierValue($Value) {
+    if ($Value -is [Collections.IList]) { '[' + ($Value -join ', ') + ']' } else { "$Value" }
+}
+
 function Get-Answer([string[]]$Lines, [string]$Key) {
     $match = $Lines | Select-String "^${Key}:\s*(\S+)" | Select-Object -First 1
     if ($match) { $match.Matches[0].Groups[1].Value }
@@ -57,7 +62,7 @@ if ($Template -eq '.') { $Template = $PSScriptRoot }
 $copierArgs = @('copy')
 if ($Ref) { $copierArgs += '--vcs-ref', $Ref }
 if ($Defaults) { $copierArgs += '--defaults' }
-foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$($Data[$k])" }
+foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
 $copierArgs += $Template, $Path
 Invoke-Copier @copierArgs
 

@@ -132,7 +132,7 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
 - Pattern: the `{%- if %}` blocks from step 4.
 - Done when: `$o = .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate | Out-String; if (-not $o.Contains('Template tests: PASSED') -or -not $o.Contains('PASS  python-copilot: README for the chosen tools') -or -not $o.Contains('PASS  python: README for the chosen tools')) { exit 1 }`
 
-### [ ] 7. Pass list answers given in -Data to Copier
+### [x] 7. Pass list answers given in -Data to Copier
 - Files: `New-Project.ps1` (edit), `template/.template/Update-Project.ps1` (edit), `Test-Template.ps1` (edit)
 - Change: add this helper after `Invoke-Copier` in both scripts, and use it where each builds `--data` arguments (`"$k=$(ConvertTo-CopierValue $Data[$k])"`):
   ```powershell

@@ -55,6 +55,11 @@ function Invoke-Copier {
     if ($LASTEXITCODE) { throw "copier $($args[0]) exited with code $LASTEXITCODE." }
 }
 
+# Copier reads --data values as YAML, so a list answer goes as a flow sequence: [claude, copilot].
+function ConvertTo-CopierValue($Value) {
+    if ($Value -is [Collections.IList]) { '[' + ($Value -join ', ') + ']' } else { "$Value" }
+}
+
 function Get-Answer([string]$Key) {
     $match = Select-String -LiteralPath .copier-answers.yml -Pattern "^${Key}:\s*(.+?)\s*$" | Select-Object -First 1
     if ($match) { $match.Matches[0].Groups[1].Value.Trim("'", '"') }
@@ -136,7 +141,7 @@ try {
         if ($resetCommitted) { git add -A; git commit -q --no-verify -m 'Reset template-owned files'; if ($LASTEXITCODE) { throw 'Committing the reset failed.' } }
 
         $copierArgs = @('update', '--defaults', '--quiet', '--vcs-ref', $to)
-        foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$($Data[$k])" }
+        foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
         foreach ($file in $deleted) { $copierArgs += '--exclude', $file }
