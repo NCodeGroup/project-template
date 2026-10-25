@@ -57,7 +57,7 @@ $common = 'AGENTS.md', 'CLAUDE.md', 'README.md', '.copier-answers.yml', '.gitign
     '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
     '.claude\commands\orchestrate-plan.md', '.claude\commands\replan-step.md', '.claude\commands\review-plan-diff.md',
     '.github\agents\local-implementer.agent.md', '.github\agents\copilot-planner.agent.md', '.github\agents\plan-executor.agent.md',
-    '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-copilot.prompt.md', '.github\skills\plan-feature\SKILL.md',
+    '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-local.prompt.md', '.github\skills\plan-feature\SKILL.md',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.vscode\settings.json', '.vscode\extensions.json'
 $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'Directory.Packages.props', 'global.json', '.claude\rules\csharp.md',
     '.github\instructions\csharp.instructions.md'

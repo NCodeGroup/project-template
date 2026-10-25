@@ -45,7 +45,7 @@ Existing repositories — about 13 NCodeGroup libraries built on the `NCode.Proj
 
 ## Steps
 
-### [ ] 1. Name the Copilot execute-step prompt like its skill
+### [x] 1. Name the Copilot execute-step prompt like its skill
 - Files: `workflow/Install-HybridWorkflow.ps1` (edit), `Test-Template.ps1` (edit); regenerated files under `template/` and at the repository root (by running `.\Update-Template.ps1`)
 - Change: in `Install-HybridWorkflow.ps1`, in the `else` branch for executor templates inside the `$d.Prompts` loop, replace the two `$promptModels.Add(...)` lines so the Copilot prompt has no suffix and the local one is suffixed when both variants are installed:
   ```powershell

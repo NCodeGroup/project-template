@@ -121,8 +121,8 @@ foreach ($d in $dest) {
                 $promptModels = [Collections.Generic.List[object]]::new()
                 if ($t.Role -ne 'executor') { $promptModels.Add([pscustomobject]@{ Suffix = ''; Model = $vscodeModel[$t.Role] }) }
                 else {
-                    if ($variants.Local) { $promptModels.Add([pscustomobject]@{ Suffix = ''; Model = $LocalModel }) }
-                    if ($variants.Copilot) { $promptModels.Add([pscustomobject]@{ Suffix = $(if ($variants.Local) { '-copilot' } else { '' }); Model = $CopilotExecutorModel }) }
+                    if ($variants.Copilot) { $promptModels.Add([pscustomobject]@{ Suffix = ''; Model = $CopilotExecutorModel }) }
+                    if ($variants.Local) { $promptModels.Add([pscustomobject]@{ Suffix = $(if ($variants.Copilot) { '-local' } else { '' }); Model = $LocalModel }) }
                 }
                 foreach ($m in $promptModels) {
                     $body = Get-HybridPromptText -Name $t.Name -Placeholder "`${input:details:$($t.ArgumentHint)}"
