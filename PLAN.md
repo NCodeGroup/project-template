@@ -84,7 +84,7 @@
 - Pattern: the existing `Test adopting existing repositories` step.
 - Done when: `$y = Get-Content .github/workflows/test-template.yml -Raw; if ($y -match '(?s)run: \./Test-Adoption\.ps1\s+- name: Test updating a project that ignores a large folder\s+run: \./Test-UpdateIgnoredFiles\.ps1') { exit 0 } else { exit 1 }`
 
-### [ ] 4. Document the new test in README.md
+### [x] 4. Document the new test in README.md
 - Files: `README.md` (edit)
 - Change, five edits in "Change the Template" and "Repository Layout":
   1. Step 3 of the numbered list (starts "3. Run `.\Test-Template.ps1`"): list `.\Test-UpdateIgnoredFiles.ps1` after `.\Test-Adoption.ps1`, and `Update ignored-files tests: PASSED` after `Adoption tests: PASSED`, keeping the sentence's "X, Y and Z" form.
