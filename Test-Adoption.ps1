@@ -120,6 +120,19 @@ Check 'unit: Add-TemplateIndexEntry once' ((Add-TemplateIndexEntry $r) -eq $r) '
 $x = "<?xml version=""1.0""?>`n<Project>`n  <PropertyGroup>`n    <A>1</A>`n  </PropertyGroup>`n</Project>`n"
 $r = Add-ProjectTemplateImport $x
 Check 'unit: Add-ProjectTemplateImport' ($r.StartsWith("<?xml version=""1.0""?>`n<Project>`n") -and $r.Contains('<Import Project="$(MSBuildThisFileDirectory)build/ProjectTemplate.props" />') -and $r.IndexOf('<Import') -lt $r.IndexOf('<PropertyGroup>') -and (Add-ProjectTemplateImport $r) -eq $r) $r
+$central = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "template\{% if stack == 'dotnet' %}Directory.Packages.props{% endif %}")
+$folder = New-TestFolder 'central' @{
+    'Directory.Packages.props' = $central
+    'A/A.csproj'               = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <ItemGroup>`n    <PackageReference Include=""Foo"" Version=""1.0.0"" />`n  </ItemGroup>`n</Project>`n"
+    'B/B.csproj'               = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <ItemGroup>`n    <PackageReference Version=""1.2.0"" Include=""Foo"" />`n    <PackageReference Include=""Bar"" Version=""2.0.0"" PrivateAssets=""all"" />`n  </ItemGroup>`n</Project>`n"
+}
+$report = @(Move-PackageVersionsToCentral $folder)
+$pa = Get-Content -Raw -LiteralPath (Join-Path $folder 'A/A.csproj')
+$pb = Get-Content -Raw -LiteralPath (Join-Path $folder 'B/B.csproj')
+$pp = Get-Content -Raw -LiteralPath (Join-Path $folder 'Directory.Packages.props')
+$iBar = $pp.IndexOf('<PackageVersion Include="Bar" Version="2.0.0" />')
+$iFoo = $pp.IndexOf('<PackageVersion Include="Foo" Version="1.2.0" />')
+Check 'unit: Move-PackageVersionsToCentral' (-not $pa.Contains('Version="') -and -not $pb.Contains('Version="') -and $pb.Contains('PrivateAssets="all"') -and $iBar -ge 0 -and $iBar -lt $iFoo -and 'Foo: 1.0.0, 1.2.0 -> 1.2.0' -in $report) "$pa | $pb | $pp | $($report -join ' / ')"
 ''
 if ($failures.Count) { "Adoption tests: FAILED ($($failures.Count))"; exit 1 }
 'Adoption tests: PASSED'

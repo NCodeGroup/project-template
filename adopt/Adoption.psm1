@@ -145,4 +145,61 @@ function Add-ProjectTemplateImport([string]$Text) {
     $regex.Replace($Text, $evaluator, 1)
 }
 
-Export-ModuleMember -Function Get-CopierList, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport
+function Move-PackageVersionsToCentral([string]$Path) {
+    $pairs = [Collections.Generic.List[object]]::new()
+    $changes = [Collections.Generic.List[object]]::new()
+    $tagRegex = [regex]::new('<PackageReference\b[^>]*>')
+    foreach ($file in Get-MSBuildFile $Path) {
+        $text = [IO.File]::ReadAllText($file.FullName)
+        $found = $pairs
+        $evaluator = [Text.RegularExpressions.MatchEvaluator] {
+            param($m)
+            $tag = $m.Value
+            $include = [regex]::Match($tag, '\sInclude="([^"]+)"')
+            $version = [regex]::Match($tag, '\sVersion="([^"]*)"')
+            if (-not $include.Success -or -not $version.Success) { return $tag }
+            $found.Add([pscustomobject]@{ Include = $include.Groups[1].Value; Version = $version.Groups[1].Value })
+            $tag.Remove($version.Index, $version.Length)
+        }
+        $new = $tagRegex.Replace($text, $evaluator)
+        if ($new -ne $text) { $changes.Add([pscustomobject]@{ File = $file.FullName; Text = $new }) }
+    }
+    if ($pairs.Count -eq 0) { return }
+
+    $central = Join-Path $Path 'Directory.Packages.props'
+    $centralText = [IO.File]::ReadAllText($central)
+    $itemGroup = [regex]::new('(?s)  <ItemGroup>\s*</ItemGroup>')
+    if (-not $itemGroup.IsMatch($centralText)) { throw "No empty <ItemGroup> found in $central." }
+
+    $lines = [Collections.Generic.List[string]]::new()
+    $chosenLines = [Collections.Generic.List[string]]::new()
+    $packages = @($pairs | Group-Object Include | Sort-Object Name -CaseSensitive)
+    foreach ($package in $packages) {
+        $versions = @($package.Group.Version | Select-Object -Unique)
+        $chosen = $versions[0]
+        $best = $null
+        foreach ($v in $versions) {
+            $parsed = $null
+            if (-not [System.Management.Automation.SemanticVersion]::TryParse($v, [ref]$parsed)) { $parsed = [System.Management.Automation.SemanticVersion]::new(0, 0, 0) }
+            if ($null -eq $best -or $parsed -gt $best) { $best = $parsed; $chosen = $v }
+        }
+        $chosenLines.Add("    <PackageVersion Include=""$($package.Name)"" Version=""$chosen"" />")
+        if ($versions.Count -gt 1) { $lines.Add("$($package.Name): $($versions -join ', ') -> $chosen") }
+    }
+
+    $nl = if ($centralText.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $block = '  <ItemGroup>' + $nl + ($chosenLines -join $nl) + $nl + '  </ItemGroup>'
+    $replacement = $block
+    $evaluator = [Text.RegularExpressions.MatchEvaluator] { param($m) $replacement }
+
+    foreach ($change in $changes) {
+        if ($change.File -ne (Resolve-Path -LiteralPath $central).Path) { [IO.File]::WriteAllText($change.File, $change.Text, [Text.UTF8Encoding]::new($false)) }
+    }
+    $centralText = [IO.File]::ReadAllText($central)
+    [IO.File]::WriteAllText($central, $itemGroup.Replace($centralText, $evaluator, 1), [Text.UTF8Encoding]::new($false))
+
+    "Directory.Packages.props: moved the versions of $($packages.Count) packages out of the project files"
+    $lines
+}
+
+Export-ModuleMember -Function Get-CopierList, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral
