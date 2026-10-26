@@ -1,0 +1,10 @@
+# This repository's own files; projects get template/.editorconfig.jinja.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+
+[*.{cmd,bat}]
+end_of_line = crlf
