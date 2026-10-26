@@ -82,6 +82,8 @@ $others = [ordered]@{
     'only-other'  = @{ Files = @('main.tf'); Stack = 'other' }
     'tofu-helper' = @{ Files = @('modules/net/main.tf', 'live/dev/main.tf', 'build/helper.ps1', 'build/tests/helper.tests.ps1'); Stack = 'other' }
     'tofu-script' = @{ Files = @('main.tofu', 'tests/main.tftest.hcl', 'deploy.ps1'); Stack = 'other' }
+    'go-helper' = @{ Files = @('go.mod', 'scripts/build.ps1', '.github/scripts/release.ps1', 'tools/lint.psm1'); Stack = 'other' }
+    'ps-module' = @{ Files = @('src/Demo/Demo.psd1', 'src/Demo/Demo.psm1', 'build/build.ps1'); Stack = 'powershell' }
 }
 $bad = foreach ($name in $others.Keys) {
     $files = @{}
