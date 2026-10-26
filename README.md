@@ -47,6 +47,7 @@ Replaced on every update. A project never edits them; an edit is discarded by th
 | `.github/instructions/csharp.instructions.md` (.NET) | C# conventions — test layout and naming, regions, xUnit and Moq, collection expressions, `const`, UTF-8 literals — applied by Copilot to `*.cs` |
 | `.claude/rules/csharp.md` (.NET) | Points Claude Code at the same conventions whenever it touches a `*.cs` file |
 | `.copier-answers.yml` | Copier's: the answers and template version that `Update-Project.ps1` reads |
+| `.template-version` | The template version the project is on, one line such as `v0.6.0`: Copier writes `_commit` from `.copier-answers.yml` here, for people and scripts to read. A repository with only the workflow installed gets the same file from `workflow\Install-HybridWorkflow.ps1` |
 | `.template/Update-Project.ps1` | The [update script](#update-a-project): run in the project, it pulls in the newest template version and updates itself |
 | `.githooks/commit-msg` | Strips AI agent attribution from every commit message — `Co-authored-by:` trailers for Copilot and Claude, `Claude-Session:` trailers, "Generated with Claude Code" lines — whichever tool commits ([Commit Attribution](#commit-attribution)) |
 | `.template/Test-CommitAttribution.ps1` | Fails CI on a commit attributed to an AI agent ([Commit Attribution](#commit-attribution)) |
@@ -283,7 +284,7 @@ The script needs no template clone: it clones the template from the address in `
 | Template-owned | Replaced by the new version; files the template added are created, and files it removed are deleted. A local edit is discarded and a deleted file restored, and the script lists both, so the change can move into a project file |
 | Merged | The template's changes since the project's version merge with the project's edits. Only the same lines changed on both sides conflict. A merged file the project deleted stays deleted |
 | Project-owned | Never touched, even if the project deleted it. When the template changed one since the project's version, the script shows the template's change; copy over what you want |
-| `.copier-answers.yml` | Records the new version |
+| `.copier-answers.yml`, `.template-version` | Record the new version |
 
 Without a conflict the result is one commit, `Update from project-template v0.2.0`:
 
@@ -357,13 +358,14 @@ The check fails with the commits it found and the command that fixes them: `git 
 
 ## Stay Current
 
-A project pins exact versions so that a build today matches a build next month: each package, each CI action (by commit SHA), the .NET SDK in `global.json`, and the template version in `.copier-answers.yml`. Pinned versions never update themselves; something has to notice each new upstream release and change the pin.
+A project pins exact versions so that a build today matches a build next month: each package, each CI action (by commit SHA), the .NET SDK in `global.json`, and the template version in `.template-version` (from `_commit` in `.copier-answers.yml`). Pinned versions never update themselves; something has to notice each new upstream release and change the pin.
 
 | What goes stale | How it's kept current |
 |---|---|
 | A GitHub project's CI actions, packages and .NET SDK | Dependabot, built into GitHub: `.github/dependabot.yml` turns it on, with nothing to install or sign up for. Each week it opens a pull request for newer versions — minor and patch updates of one kind together — which CI tests and you merge. Moving the target frameworks to a new .NET major version is a planned migration: `/plan-migration` |
 | A GitLab project's packages | By hand; GitLab has no free built-in equivalent. Its CI images use floating tags such as `python:3`, so they follow upstream on their own |
 | A project's template-owned files | [`.template\Update-Project.ps1`](#update-a-project), run in the project. `copier check-update`, run there too, tells whether a newer tag exists |
+| A repository or user profile with only the workflow installed (`workflow\Install-HybridWorkflow.ps1 -Repo` or `-User`) | By hand: re-run the installer from a clone at the newest tag. The version it has is in `.template-version` — at the repository root, or in `~\.claude\` and `~\.copilot\` for the profile |
 | This template's generated workflow files | `Update-Template.ps1` regenerates them from `workflow/templates`; `Test-Template.ps1` fails when they're behind |
 | This template's own CI actions, in `.github/workflows/test-template.yml` | Dependabot in this repository |
 
@@ -387,10 +389,11 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 | CI sets up and installs with the `package_manager` answer, the default commands run it and no other manager, and Dependabot uses its ecosystem | Node.js with npm, pnpm, Yarn and Bun, on GitHub and GitLab |
 | LF line endings, no leftover Jinja, valid JSON, valid YAML | Every rendered file |
 | Workflow files, editor settings, `.gitignore`, `AGENTS.md`, the template rules and `README.md` only for the chosen `workflow_tools` | Every render |
-| `.copier-answers.yml` records the version | Every render |
+| `.copier-answers.yml` and `.template-version` record the version | Every render |
 | Every `_exclude` pattern excludes nothing when `workflow_tools` is missing | Always |
 | Generated workflow files, under `template/` and at the repository root, match a fresh run of `workflow\Install-HybridWorkflow.ps1` | Always, including CI |
 | The installer writes both variants for every tool; `New-PlanPrompt.ps1` composes a prompt; `Invoke-PlanSteps.ps1 -DryRun` parses the example plan | Always |
+| The installer writes the template version to `.template-version` at the repository root; `template/` and this repository's root have no installer-written copy | Always |
 | Every executor — the Copilot Implementer, the `execute-step` prompt, and the Copilot CLI and Claude Code `plan-executor` agents — runs on Claude Sonnet 5.5 | Always |
 | Claude Code's planning commands create the plan's worktree, and the commands that execute, re-plan or review a plan move into it; no Copilot file, `plan-executor` subagent or analysis command enters a worktree | Always |
 | `New-Project.ps1` passes a list answer in `-Data` to Copier | Always |
