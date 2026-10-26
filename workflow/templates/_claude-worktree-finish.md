@@ -1,0 +1,12 @@
+## Finish the plan's worktree
+
+Each plan lives in its own git worktree under `.claude/worktrees/<name>/`, on the branch `worktree-<name>`. This command also removes that worktree, so the task below runs in two places: its steps 1 to 3 in the worktree, and its steps 4 and 5 in the main checkout.
+
+1. Find the worktree. Run `git rev-parse --show-toplevel`: when the path contains `/.claude/worktrees/`, this session is in it. Otherwise run `git worktree list --porcelain` and keep each `worktree` path under `.claude/worktrees/`; choose the one whose folder name the command's arguments give, else the only one. With several and none named, list them with their branches and stop to ask which one. With none, do the whole task where this session is.
+2. Do the task's steps 1 to 3 in the worktree: in it, as written; from the main checkout, with `git -C <worktree path>`, deleting `<worktree path>/PLAN.md`. Never switch into the worktree with the `EnterWorktree` tool: Claude Code doesn't remove a worktree entered that way. The plan's branch is `worktree-<name>`, even when `git branch --show-current` prints nothing.
+3. Then remove the worktree. In it: call the `ExitWorktree` tool with `action: "remove"` and `discard_changes: true`, because the task's checks showed nothing is lost and the tool can't check that itself; it returns the session to the main checkout even when it says it kept the worktree. From the main checkout: run `git worktree remove <worktree path>`.
+4. When git says the worktree is locked by `claude session <name> (pid <N>)`, check whether that process runs (`Get-Process -Id <N>`). When it runs, stop and ask me to end that session. When it doesn't, run `git worktree unlock <worktree path>` and remove the worktree again. When removing fails with "Permission denied", "Access is denied" or a folder in use, stop and ask me to close the terminals, editors and sessions open in that folder, then run this command again.
+5. In the main checkout, run `git worktree prune`. When the worktree's folder is still there and empty, delete it; when it still holds files, stop and list them.
+6. Do the task's steps 4 and 5 in the main checkout. When it isn't on the default branch, run `git fetch origin <default branch>:<default branch>` instead of switching and pulling: it only fast-forwards, and leaves the work checked out there alone. Delete `worktree-<name>` only after that fast-forward; when `ExitWorktree` already deleted it, skip that.
+
+From here on, never run commands in the removed worktree's folder.
