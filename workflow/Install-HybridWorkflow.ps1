@@ -19,6 +19,12 @@
       CopilotCli  -Repo: .github\skills\<template>\SKILL.md, .github\agents\plan-executor.agent.md
                   -User: ~\.copilot\skills, ~\.copilot\agents
 
+    Version file: records the template version it installed in .template-version, one line: git describe of this
+    clone (the newest v* tag, -<n>-g<sha> past it, -dirty with uncommitted changes), or "unknown" outside a Git
+    checkout. -Repo writes it at the repository root; -User writes it in ~\.claude\ (Claude) and ~\.copilot\
+    (VSCode, CopilotCli). -NoVersionMarker skips it, as Update-Template.ps1 does, because a project made from the
+    template renders its own .template-version from .copier-answers.yml.
+
     Claude Code commands of templates with a "worktree" field start with a section that puts the plan in a git worktree of its own (create) or moves the session into it (join): templates\_claude-worktree-*.md.
 
     VS Code model names use "<model name> (<vendor>)"; the Settings dropdown for
@@ -42,7 +48,8 @@ param(
     [string]$CopilotExecutorModel = 'Claude Sonnet 5.5 (copilot)',
     [string]$CopilotFastModel = 'Claude Haiku 5.5 (copilot)',
     [string]$ClaudeExecutorModel = 'claude-sonnet-5-5',
-    [string]$CliExecutorModel = 'claude-sonnet-5.5'
+    [string]$CliExecutorModel = 'claude-sonnet-5.5',
+    [switch]$NoVersionMarker
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'HybridWorkflow.psm1') -Force
@@ -65,6 +72,13 @@ function Expand-Token([string]$Text, [hashtable]$Tokens) {
 function Get-RenderedFile([string]$Path, [hashtable]$Tokens) {
     $f = Read-HybridTemplateFile $Path
     Expand-Token "---`n$($f.FrontMatter)`n---`n$(Expand-HybridInclude $f.Body)" $Tokens
+}
+# The template version of this clone: the newest v* tag, -<n>-g<sha> past it, -dirty with uncommitted changes.
+function Get-TemplateVersion {
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return 'unknown' }
+    $version = git -C $PSScriptRoot describe --tags --always --dirty --match 'v[0-9]*' 2>$null
+    if ($LASTEXITCODE -or -not $version) { return 'unknown' }
+    "$version".Trim()
 }
 
 $variants = [ordered]@{}
@@ -110,12 +124,13 @@ $agentTemplates = Get-ChildItem $templateDir -Filter '*.agent.md' -File
 $dest = @()
 if ($Repo) {
     $root = (Resolve-Path $Repo).Path
-    $dest += [pscustomobject]@{ Scope = 'repo'; Agents = "$root\.github\agents"; Prompts = "$root\.github\prompts"; Skills = "$root\.github\skills"; ClaudeCommands = "$root\.claude\commands"; ClaudeAgents = "$root\.claude\agents" }
+    $dest += [pscustomobject]@{ Scope = 'repo'; Agents = "$root\.github\agents"; Prompts = "$root\.github\prompts"; Skills = "$root\.github\skills"; ClaudeCommands = "$root\.claude\commands"; ClaudeAgents = "$root\.claude\agents"; CopilotVersionFile = "$root\.template-version"; ClaudeVersionFile = "$root\.template-version" }
 }
 if ($User) {
-    $dest += [pscustomobject]@{ Scope = 'user'; Agents = "$HOME\.copilot\agents"; Prompts = $null; Skills = "$HOME\.copilot\skills"; ClaudeCommands = "$HOME\.claude\commands"; ClaudeAgents = "$HOME\.claude\agents" }
+    $dest += [pscustomobject]@{ Scope = 'user'; Agents = "$HOME\.copilot\agents"; Prompts = $null; Skills = "$HOME\.copilot\skills"; ClaudeCommands = "$HOME\.claude\commands"; ClaudeAgents = "$HOME\.claude\agents"; CopilotVersionFile = "$HOME\.copilot\.template-version"; ClaudeVersionFile = "$HOME\.claude\.template-version" }
 }
 
+$version = if (-not $NoVersionMarker) { Get-TemplateVersion }
 foreach ($d in $dest) {
     if ('VSCode' -in $Target) {
         foreach ($v in $variants.Values) {
@@ -158,6 +173,13 @@ foreach ($d in $dest) {
             Write-Generated (Join-Path $d.Skills "$($t.Name)\SKILL.md") ($fm + $body)
         }
         Write-Generated (Join-Path $d.Agents 'plan-executor.agent.md') (Get-RenderedFile "$templateDir\plan-executor.cli.md" @{ CLI_EXECUTOR_MODEL = $CliExecutorModel })
+    }
+    if ($version) {
+        $versionFiles = @(
+            if ('VSCode' -in $Target -or 'CopilotCli' -in $Target) { $d.CopilotVersionFile }
+            if ('Claude' -in $Target) { $d.ClaudeVersionFile }
+        ) | Select-Object -Unique
+        foreach ($file in $versionFiles) { Write-Generated $file $version }
     }
 }
 
