@@ -260,6 +260,21 @@ $coordinatorMissing = @(
     if (-not [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'template\.claude\commands\orchestrate-plan.md')).Contains('a check the subagent made instead does not count')) { 'template\.claude\commands\orchestrate-plan.md' }
 )
 Check 'workflow: an executor that cannot run the Done-when command leaves the check to the coordinator' (-not $coordinatorMissing) ($coordinatorMissing -join ', ')
+# Each issue fix's text in the files it must reach: "<path>: <text>" for each one missing.
+function Get-MissingText([string[]]$Path, [string[]]$Text) {
+    foreach ($p in $Path) {
+        $content = [IO.File]::ReadAllText((Join-Path $PSScriptRoot $p))
+        foreach ($t in $Text) { if (-not $content.Contains($t)) { "${p}: $t" } }
+    }
+}
+$m = @(Get-MissingText 'template\.claude\agents\plan-executor.md' ('tools: Read, Edit, Write, Bash, PowerShell, Grep, Glob', 'with the PowerShell tool'))
+Check 'workflow: the Claude Code plan-executor has the PowerShell tool and runs commands with it' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.claude\commands\finish-plan.md', 'template\.github\prompts\finish-plan.prompt.md', 'template\.github\skills\finish-plan\SKILL.md') ('gh pr list --head', 'glab mr list --source-branch'))
+Check 'workflow: finish-plan treats a merged pull request as upstream' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText 'template\.claude\commands\finish-plan.md' ('Filename too long', 'git config --global core.longpaths true'))
+Check 'workflow: finish-plan deletes what a path too long for Windows left behind' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText 'USAGE.md' 'git config --global core.longpaths true')
+Check 'USAGE.md: the Git setup turns on core.longpaths' (-not $m) ($m -join '; ')
 $worktreeKinds = [ordered]@{
     create = 'plan-feature', 'plan-bugfix', 'plan-refactor', 'plan-tests', 'plan-migration', 'plan-performance', 'plan-security', 'plan-docs', 'handoff-plan'
     join   = 'orchestrate-plan', 'execute-step', 'replan-step', 'review-plan-diff'
