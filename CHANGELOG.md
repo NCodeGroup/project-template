@@ -5,7 +5,7 @@ What each template version changes for the projects made from it. A project move
 ## v0.17.0
 
 - `.githooks/commit-msg` starts with `#!/usr/bin/env sh` instead of `#!/bin/sh`, so pre-commit on Windows can run it as a `language: script` hook. Before, it failed with "Executable `/bin/sh` not found". Git runs it through `core.hooksPath` as before.
-- `Update-Project.ps1` no longer sets `core.hooksPath` in a clone that uses pre-commit (its hooks in `.git/hooks` are pre-commit's, or it has `.pre-commit-config.yaml`), because `pre-commit install` refuses to run while `core.hooksPath` is set. It prints a `repo: local` hook to add to `.pre-commit-config.yaml` and `pre-commit install --hook-type commit-msg`, and prints nothing once that file runs `.githooks/commit-msg`. A clone where an earlier update set `core.hooksPath` keeps it: run `git config --unset core.hooksPath` before `pre-commit install`.
+- `Update-Project.ps1` and `Adopt-Project.ps1` no longer set `core.hooksPath` in a clone that uses pre-commit (its hooks in `.git/hooks` are pre-commit's, or it has `.pre-commit-config.yaml`), because `pre-commit install` refuses to run while `core.hooksPath` is set. They print a `repo: local` hook to add to `.pre-commit-config.yaml` and `pre-commit install --hook-type commit-msg`, and print nothing once that file runs `.githooks/commit-msg`. A clone where an earlier update or adoption set `core.hooksPath` keeps it: run `git config --unset core.hooksPath` before `pre-commit install`.
 
 ## v0.16.0
 

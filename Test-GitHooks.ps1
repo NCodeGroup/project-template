@@ -4,7 +4,10 @@
 
 .DESCRIPTION
     Builds a fixture repository that runs .githooks/commit-msg as a pre-commit script hook and checks that the hook
-    strips the agent attribution from a commit message. Prints PASS or FAIL per check and exits 1 on any failure.
+    strips the agent attribution from a commit message. Then checks, for the copy of Get-GitHooksSetup in
+    .template\Update-Project.ps1 and the one in adopt\Adoption.psm1, whether .githooks is enabled and which note is printed in
+    a clone with other hooks, with pre-commit's hooks or config, and with none. Prints PASS or FAIL per check and exits 1 on any
+    failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-hooks-test.
