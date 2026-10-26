@@ -15,11 +15,16 @@
 .EXAMPLE
     .\Test-Template.ps1
     .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate
+    .\Test-Template.ps1 -SkipDotnetBuild -Only python, node
+
+.PARAMETER Only
+    Render only these cases, by name; the update tests need python and node.
 #>
 [CmdletBinding()]
 param(
     [switch]$SkipDotnetBuild,
     [switch]$SkipUpdate,
+    [string[]]$Only,
     [string]$Work = (Join-Path $env:TEMP 'project-template-test')
 )
 $ErrorActionPreference = 'Stop'
@@ -55,8 +60,12 @@ Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '.claude') -Force | Where-Ob
 Push-Location $tpl
 try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
 finally { Pop-Location }
+# Serve the snapshot as a host does: over a URL with partial clones allowed, so a --filter=blob:none clone really is blob-filtered; Git ignores the filter for a plain path.
+Invoke-Git -C $tpl config uploadpack.allowFilter true
+Invoke-Git -C $tpl config uploadpack.allowAnySHA1InWant true
+$tplUrl = 'file:///' + ($tpl -replace '\\', '/') + '/.git'
 
-$common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
+$common ='AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.vscode\settings.json', '.vscode\extensions.json'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
@@ -88,14 +97,15 @@ $cases = @(
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'MIT'; package_icon = 'icon.png' } }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
 )
-$yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
+if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
+$yamlCheck ='import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
 
 foreach ($case in $cases) {
     $name = $case.Name
     $dest = Join-Path $Work $name
     $tools = if ($case.Tools) { @($case.Tools) } else { $allTools }
     $extraData = foreach ($k in $case.Data.Keys) { '--data'; "$k=$($case.Data[$k])" }
-    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $name" --data "stack=$($case.Stack)" --data "git_host=$($case.Host)" --data "workflow_tools=[$($tools -join ', ')]" @extraData $tpl $dest
+    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $name" --data "stack=$($case.Stack)" --data "git_host=$($case.Host)" --data "workflow_tools=[$($tools -join ', ')]" @extraData $tplUrl $dest
 
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
@@ -377,7 +387,7 @@ if (-not $SkipUpdate) {
     $output = & $updateProject | Out-String
     Push-Location $project
     try {
-        Check 'update: the project''s copy hands the update over to the new version''s script' ($output.Contains('Handing the update over to the v0.2.0 version') -and $output.Contains($handoffMarker) -and (Select-String -LiteralPath .template/Update-Project.ps1 -SimpleMatch $handoffMarker -Quiet)) $output.Trim()
+        Check 'update: hands over to the v0.2.0 script through a blob-filtered clone' ($output.Contains('Handing the update over to the v0.2.0 version') -and $output.Contains($handoffMarker) -and (Select-String -LiteralPath .template/Update-Project.ps1 -SimpleMatch $handoffMarker -Quiet)) $output.Trim()
         Check 'update: one commit, nothing left over' (((git log -1 --format=%s) -eq 'Update from project-template v0.2.0') -and ((git rev-list --count HEAD) -eq 3) -and -not (git status --porcelain)) $output.Trim()
         Check 'update: project-owned files untouched' (((Get-FileHash -LiteralPath AGENTS.md, README.md).Hash -join ',') -eq $projectOwnedHashes)
         Check 'update: the template''s changes to project-owned files shown' ($output -match '(?m)^  AGENTS\.md, from template/AGENTS\.md\.jinja:' -and $output.Contains('+## Conventions, Updated') -and $output -match '(?m)^  README\.md, from template/README\.md\.jinja:')
