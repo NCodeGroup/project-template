@@ -408,6 +408,8 @@ if (-not $SkipUpdate) {
     try {
         Check 'update: hands over to the v0.2.0 script through a blob-filtered clone' ($output.Contains('Handing the update over to the v0.2.0 version') -and $output.Contains($handoffMarker) -and (Select-String -LiteralPath .template/Update-Project.ps1 -SimpleMatch $handoffMarker -Quiet)) $output.Trim()
         Check 'update: one commit, nothing left over' (((git log -1 --format=%s) -eq 'Update from project-template v0.2.0') -and ((git rev-list --count HEAD) -eq 3) -and -not (git status --porcelain)) $output.Trim()
+        $gitVersion = [version]((git version) -replace '^git version (\d+\.\d+\.\d+).*$', '$1')
+        Check 'update: replaces the false Git version warning from Copier' (-not $output.Contains('installed to improve updates') -and ($gitVersion -lt [version]'2.55' -or $output.Contains('copier-org/copier#2759'))) $output.Trim()
         Check 'update: project-owned files untouched' (((Get-FileHash -LiteralPath AGENTS.md, README.md).Hash -join ',') -eq $projectOwnedHashes)
         Check 'update: the template''s changes to project-owned files shown' ($output -match '(?m)^  AGENTS\.md, from template/AGENTS\.md\.jinja:' -and $output.Contains('+## Conventions, Updated') -and $output -match '(?m)^  README\.md, from template/README\.md\.jinja:')
         $gitignore = Get-Content -LiteralPath .gitignore -Raw

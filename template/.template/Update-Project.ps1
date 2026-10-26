@@ -48,10 +48,16 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+# Copier says "Make sure Git >= 2.24 is installed" whenever Git rejects `diff-tree --inter-hunk-context=-1`,
+# which Git 2.55 and later always do (copier-org/copier#2759), so the filter swaps in an accurate note.
 function Invoke-Copier {
-    if (Get-Command copier -ErrorAction SilentlyContinue) { & copier @args }
-    elseif (Get-Command uvx -ErrorAction SilentlyContinue) { & uvx --from copier copier @args }
+    $gitNote = 'Copier''s "Make sure Git >= 2.24 is installed" is a false alarm: Git 2.55 and later reject an option its update uses, so Copier falls back, and nearby changes to a merged file may conflict as one block (copier-org/copier#2759).'
+    $ErrorActionPreference = 'Continue'   # Copier's stderr lines arrive as error records through 2>&1
+    $prefix = @()
+    $command = if (Get-Command copier -ErrorAction SilentlyContinue) { 'copier' }
+    elseif (Get-Command uvx -ErrorAction SilentlyContinue) { $prefix = '--from', 'copier', 'copier'; 'uvx' }
     else { throw 'Copier not found. Install it with: uv tool install copier' }
+    & $command @prefix @args 2>&1 | ForEach-Object { if ("$_" -match 'Make sure Git >= 2\.24 is installed') { $gitNote } else { "$_" } }
     if ($LASTEXITCODE) { throw "copier $($args[0]) exited with code $LASTEXITCODE." }
 }
 
