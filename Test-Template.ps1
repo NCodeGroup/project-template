@@ -185,6 +185,9 @@ Check 'New-Project: a list answer in -Data reaches Copier' (($listAnswers -match
 $hooksPath = (git -C $listProject config core.hooksPath) -join ''
 $hookMode = (git -C $listProject ls-files -s .githooks/commit-msg) -join ''
 Check 'New-Project: enables the hooks with an executable commit-msg' (($hooksPath -eq '.githooks') -and $hookMode.StartsWith('100755')) "$hooksPath $hookMode"
+$secretsIgnored = @(foreach ($p in 'secrets/key.txt', 'src/secrets/x.cs', 'src/Secrets/New.cs') { git -C $listProject check-ignore -q --no-index $p; $LASTEXITCODE }) -join ','
+$secretsDeny = @((Get-Content -LiteralPath (Join-Path $listProject '.claude\settings.json') -Raw | ConvertFrom-Json).permissions.deny)
+Check 'project: only the root secrets/ folder is gitignored and denied to Claude Code' (($secretsIgnored -eq '0,1,1') -and ('Read(/secrets/**)' -in $secretsDeny) -and ('Read(./secrets/**)' -notin $secretsDeny)) "check-ignore exit codes $secretsIgnored; deny $($secretsDeny -join ', ')"
 $hookMessage = Join-Path $Work 'hook-message.txt'
 [IO.File]::WriteAllText($hookMessage, "Hook check`n`nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`nClaude-Session: https://claude.ai/code/session_1`n$([char]::ConvertFromUtf32(0x1F916)) Generated with [Claude Code](https://claude.com/claude-code)`nCo-authored-by: Jane Doe <jane@example.com>`n", [Text.UTF8Encoding]::new($false))
 $proseMessage = Join-Path $Work 'hook-prose-message.txt'
