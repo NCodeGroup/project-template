@@ -83,6 +83,7 @@ code --install-extension Ollama.ollama           # only for the Hybrid agents an
 ```powershell
 git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
+git config --global core.longpaths true    # paths over Windows' 260 characters, which a plan's worktree under .claude/worktrees/ reaches
 gh auth login        # the GitHub account that owns your projects and this template
 gh auth setup-git    # lets Git, and so Copier, read the private template
 ```
@@ -146,7 +147,7 @@ Create one with `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote` ([README](
 - **Copilot Chat:** use Session Target Local, where the agents and their buttons live; the buttons switch both the agent and the model. The Copilot agents execute on Claude Sonnet 5.5; the Hybrid agents execute on the shack PC's local model. Each command also appears as a Copilot CLI skill, so it's listed twice; either runs it.
 - **Copilot CLI:** `/orchestrate-plan` hands each step to the `plan-executor` agent and re-plans escalations on the session's model, so start the session on Opus.
 
-Each finished step is a commit, `Plan step N: <title>`, and each re-plan an empty one, `Re-plan step N: <title>`; `PLAN.md` is never committed, because it is gitignored. When the review is clean, ask the agent to push: once every step is `[x]`, it deletes `PLAN.md` first, so no finished plan is left in the checkout. In Claude Code the commits are on the worktree's branch, `worktree-<name>`: push it and open a pull request, or merge it into the default branch and push. Once the work is upstream, run `/finish-plan` — in the plan's session, or `/finish-plan <name>` from a session in the main checkout: it checks every step is done and every commit reached the default branch upstream, deletes `PLAN.md`, removes the worktree, fast-forwards the default branch and deletes `worktree-<name>`. It never pushes, and stops to ask when a commit isn't upstream, such as after a squash-merged pull request, or when Windows can't delete the folder because a terminal or VS Code window still has it open. To pull in template improvements, run `.\.template\Update-Project.ps1` ([README](README.md#update-a-project)).
+Each finished step is a commit, `Plan step N: <title>`, and each re-plan an empty one, `Re-plan step N: <title>`; `PLAN.md` is never committed, because it is gitignored. When the review is clean, ask the agent to push: once every step is `[x]`, it deletes `PLAN.md` first, so no finished plan is left in the checkout. In Claude Code the commits are on the worktree's branch, `worktree-<name>`: push it and open a pull request, or merge it into the default branch and push. Once the work is upstream, run `/finish-plan` — in the plan's session, or `/finish-plan <name>` from a session in the main checkout: it checks every step is done and every commit reached the default branch upstream, deletes `PLAN.md`, removes the worktree, fast-forwards the default branch and deletes `worktree-<name>`. It never pushes. When a commit isn't on the default branch upstream, it asks the host, with `gh` or `glab`, for a merged pull request from the plan's branch that landed there, so a squash-merged pull request needs no answer; without one it stops to ask. It also stops when Windows can't delete the folder because a terminal or VS Code window still has it open. To pull in template improvements, run `.\.template\Update-Project.ps1` ([README](README.md#update-a-project)).
 
 ## Switch Between Claude and Copilot
 
@@ -196,6 +197,7 @@ The Hybrid agents, and the `execute-step-local` prompt file, execute on `qwen3.6
 | `New-Project.ps1` or `Update-Project.ps1` can't read the template | Git has no credentials for it | `gh auth setup-git` |
 | Claude Code stops with a limit message | The 5-hour or weekly limit is reached | Continue in Copilot, or wait for the reset `/usage` shows |
 | `/orchestrate-plan` lists plans and asks which one | Several plan worktrees are open | Name the plan's worktree: `/orchestrate-plan <name>`; `git worktree list` shows them |
+| `git worktree remove`, `/finish-plan` or a clone reports "Filename too long" | A path passes Windows' 260-character limit; a plan's worktree under `.claude/worktrees/` lengthens every path | `git config --global core.longpaths true`, then run the command again |
 
 ---
 
