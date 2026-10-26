@@ -19,6 +19,8 @@ Investigate before planning:
 
 Write the result to `PLAN.md` in the repository root. Change no other file.
 
+`PLAN.md` is a local working file: never commit or push it, and never stage it. If `git check-ignore -q PLAN.md` exits non-zero, append the line `PLAN.md` to `info/exclude` in the folder that `git rev-parse --path-format=absolute --git-common-dir` prints, so no `git add -A` can pick it up.
+
 A smaller, cheaper model — a local model or a lower-cost Copilot model — will execute this plan one step at a time. It sees only `PLAN.md` and the files it opens — not this conversation, not your research. It follows instructions literally, loses track in long or vague steps, and cannot make design decisions. Write for that reader:
 
 - Resolve every design decision here, in the plan. A step must never say "decide", "choose", "consider" or "as appropriate".

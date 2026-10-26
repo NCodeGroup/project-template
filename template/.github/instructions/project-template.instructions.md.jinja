@@ -11,16 +11,16 @@ These rules come from the project template. Template updates replace this file, 
 
 Work in this repository is planned by a frontier model and executed by cheaper ones, one verified step at a time.
 
-- `PLAN.md` at the repository root is the handoff between them. The planning commands (`/plan-feature`, `/plan-bugfix`, …) write it in a fixed shape: Goal, Context for the executor, Decisions, Out of scope, Steps and Review checklist.
+- `PLAN.md` at the repository root is the handoff between them. The planning commands (`/plan-feature`, `/plan-bugfix`, …) write it in a fixed shape: Goal, Context for the executor, Decisions, Out of scope, Steps and Review checklist. It is a local working file, gitignored: never commit, stage or push it.
 {%- if 'claude' in workflow_tools %}
-- In Claude Code, each plan lives in its own git worktree, so several sessions can work on different plans at once: the planning command creates `.claude/worktrees/<name>/` on the branch `worktree-<name>` and commits `PLAN.md` there, and the commands that execute, re-plan or review the plan work in that worktree. Its root is the plan's repository root. To continue the plan in another tool, open that folder.
+- In Claude Code, each plan lives in its own git worktree, so several sessions can work on different plans at once: the planning command creates `.claude/worktrees/<name>/` on the branch `worktree-<name>` and keeps `PLAN.md` there, untracked, and the commands that execute, re-plan or review the plan work in that worktree. Its root is the plan's repository root. To continue the plan in another tool, open that folder.
 {%- endif %}
 - Each step is a `### [ ] N. Title` heading with Files, Change, Pattern and `- Done when:` lines. Markers: `[ ]` pending, `[x]` done, `[?]` escalated, `[!]` failed.
 - A Done-when command is one PowerShell command, run from the repository root, that exits 0 only when its step is done. The build and test commands are in `AGENTS.md`.
 - An executor changes only the files its step lists, runs the step's Done-when command, and marks the step `[x]` when it passes. When a step needs a decision the plan didn't make, it reverts its partial edits, marks the step `[?]`, adds an `- Escalation:` line and stops — it never improvises a design.
-- A finished step is committed as `Plan step N: <title>`; a re-planned step as `Re-plan step N: <title>`.
+- A finished step is committed as `Plan step N: <title>`, staging only the files the step lists (never `git add -A`, never `PLAN.md`); a re-planned step is recorded as an empty commit, `Re-plan step N: <title>`.
 - The workflow commands are in {% if 'claude' in workflow_tools %}Claude Code (`.claude/commands/`){% if 'copilot' in workflow_tools %}, {% elif 'local' in workflow_tools %} and {% endif %}{% endif %}{% if 'copilot' in workflow_tools or 'local' in workflow_tools %}VS Code's Copilot Chat (`.github/prompts/` and `.github/agents/`){% endif %}{% if 'copilot' in workflow_tools %} and Copilot CLI (`.github/skills/`){% endif %}, and `PLAN.md` is the only state they share: any of them can plan, execute, re-plan or review the same plan, whichever wrote the steps before.
-- Never push, force-push or open a pull request unless asked. `git push` always asks for approval.
+- Never push, force-push or open a pull request unless asked. `git push` always asks for approval. Before a push you were asked for, list what the unpushed commits contain (`git log --stat @{u}..`) and stop on anything unexpected, such as `PLAN.md`, secrets or large files.
 {%- if git_host == 'github' %}
 - Dependabot opens a pull request each week for newer versions of dependencies and CI actions; CI tests it, and a person reviews and merges it.
 {%- endif %}

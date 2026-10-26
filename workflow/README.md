@@ -7,7 +7,7 @@ The single source of truth for the plan-and-execute workflow: the prompt and age
 | [templates/](templates/) | The 16 prompt templates, the 4 VS Code agent templates, the `plan-executor` subagent templates, the Claude Code plan-worktree sections, the `PLAN.md` format and an example plan ([templates/README.md](templates/README.md)) |
 | [Install-HybridWorkflow.ps1](Install-HybridWorkflow.ps1) | Generate Claude Code commands and the `plan-executor` subagent, VS Code prompt files and agents (Local and Copilot variants), and Copilot CLI skills and agent from `templates/` into a repository (`-Repo`) or the user profile (`-User`). Re-running overwrites what it generated |
 | [New-PlanPrompt.ps1](New-PlanPrompt.ps1) | Compose a template and a request into one prompt for any chat (`-List`, `-Copy`) |
-| [Invoke-PlanSteps.ps1](Invoke-PlanSteps.ps1) | Execute `PLAN.md` step by step (local or Copilot executor); verifies each Done-when command itself, commits per step, detects `[?]` escalations, and re-plans automatically with `-Replan claude\|copilot\|local` |
+| [Invoke-PlanSteps.ps1](Invoke-PlanSteps.ps1) | Execute `PLAN.md` step by step (local or Copilot executor); verifies each Done-when command itself, commits per step (never `PLAN.md`), detects `[?]` escalations, and re-plans automatically with `-Replan claude\|copilot\|local` |
 | [HybridWorkflow.psm1](HybridWorkflow.psm1) | Shared template reader used by the three scripts above |
 
 ```powershell

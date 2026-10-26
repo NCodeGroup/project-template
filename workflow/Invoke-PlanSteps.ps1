@@ -14,10 +14,10 @@
          Pass: marks [x] and commits "Plan step N: Title". Fail: retries with the error (-MaxAttempts),
          then marks [!].
       4. Re-plan: with -Replan claude|copilot|local, the planner model runs the replan-step prompt on the
-         [?] or [!] step, the result is committed as "Re-plan step N", and the loop continues — up to
+         [?] or [!] step, the result is recorded as an empty "Re-plan step N" commit, and the loop continues — up to
          -MaxReplans per step. With -Replan none (default), the runner stops so you can re-plan by hand.
     Edits the executor makes to PLAN.md are discarded, except step markers and escalation notes the runner
-    applies itself. Logs: %TEMP%\plan-runs\<repo>\.
+    applies itself. The plan is a local working file: commits never include it. Logs: %TEMP%\plan-runs\<repo>\.
 
     Exit codes: 0 all done · 1 a step failed ([!]) · 2 a step needs re-planning ([?]) ·
                 3 re-planning limit reached or the planner left the step unresolved.
@@ -145,11 +145,15 @@ function Invoke-Planner([string]$Prompt, [string]$LogFile) {
     }
 }
 
-function Save-Commit([string]$Message) {
+function Save-Commit([string]$Message, [switch]$AllowEmpty) {
     if ($NoCommit) { return }
-    git -C $repo add -A | Out-Null
-    if (-not (git -C $repo status --porcelain)) { return }
-    git -C $repo commit -q -m $Message | Out-Null
+    # The plan is a local working file: never stage it, whatever the repository's .gitignore says.
+    git -C $repo add -A -- . ":(exclude)$planRel" | Out-Null
+    git -C $repo diff --cached --quiet
+    if ($LASTEXITCODE -eq 0 -and -not $AllowEmpty) { return }
+    $commit = @('commit', '-q', '-m', $Message)
+    if ($AllowEmpty) { $commit += '--allow-empty' }
+    git -C $repo @commit | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "git commit failed (exit $LASTEXITCODE): $Message" }
 }
 
@@ -251,7 +255,7 @@ while ($true) {
         $afterPlan.Marker = ' '
         Write-Host "The planner revised step $($s.Number) and cleared its escalation; handing it back as [ ]." -ForegroundColor Cyan
     }
-    Save-Commit "Re-plan step $($s.Number): $($s.Title)"
+    Save-Commit "Re-plan step $($s.Number): $($s.Title)" -AllowEmpty
     $results.Add([pscustomobject]@{ Step = $s.Number; Result = "re-planned ($Replan)"; Attempts = 1; Seconds = [int]$sw.Elapsed.TotalSeconds; Title = $(if ($afterPlan) { $afterPlan.Title } else { '(removed)' }) })
     if ($afterPlan -and $afterPlan.Marker -in '?', '!') {
         Write-Host "The planner left step $($s.Number) marked [$($afterPlan.Marker)]; it needs you." -ForegroundColor Red

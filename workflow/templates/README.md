@@ -37,7 +37,7 @@ In Claude Code only, each plan lives in its own git worktree, so several session
 
 | `worktree` | Section | Templates | The command |
 |---|---|---|---|
-| `create` | [_claude-worktree-create.md](_claude-worktree-create.md) | The `plan-*` templates and `handoff-plan` | Creates `.claude/worktrees/<name>/` with the `EnterWorktree` tool before it researches, plans there, and commits `PLAN.md` as `Plan: <title>` |
+| `create` | [_claude-worktree-create.md](_claude-worktree-create.md) | The `plan-*` templates and `handoff-plan` | Creates `.claude/worktrees/<name>/` with the `EnterWorktree` tool before it researches, plans there, keeps `PLAN.md` untracked, and marks the worktree with an empty `Plan: <title>` commit so Claude Code asks before removing it |
 | `join` | [_claude-worktree-join.md](_claude-worktree-join.md) | `orchestrate-plan`, `execute-step`, `replan-step`, `review-plan-diff` | Moves the session into the plan's worktree — the one its arguments name, or the only one — before it starts; with no plan worktree, works on a `PLAN.md` in the current checkout |
 
 A command without the field works where the session is. VS Code prompt files, Copilot CLI skills, the agents and `New-PlanPrompt.ps1` never get a section. The `plan-executor` subagent inherits the orchestrator's worktree; `isolation: worktree` would give it a worktree of its own instead.

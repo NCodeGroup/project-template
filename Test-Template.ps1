@@ -157,6 +157,7 @@ foreach ($case in $cases) {
     $ignore = Get-Content -LiteralPath (Join-Path $dest '.gitignore') -Raw
     $claude = 'claude' -in $tools
     Check "${name}: AGENTS.md and .gitignore for the chosen tools" (($agents.Contains('CLAUDE.md') -eq $claude) -and ($ignore.Contains('CLAUDE.local.md') -eq $claude))
+    Check "${name}: .gitignore ignores the plan" ($ignore -match '(?m)^PLAN\.md\r?$')
     $rules = Get-Content -LiteralPath (Join-Path $dest '.github\instructions\project-template.instructions.md') -Raw
     Check "${name}: template rules for the chosen tools" (($rules.Contains('.claude/') -eq $claude) -and ($rules.Contains('.github/skills/') -eq ('copilot' -in $tools)))
     $readme = Get-Content -LiteralPath (Join-Path $dest 'README.md') -Raw
@@ -267,6 +268,37 @@ try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Pl
 finally { Pop-Location }
 $dryRun = & (Join-Path $workflow 'Invoke-PlanSteps.ps1') -Plan (Join-Path $runnerRepo 'PLAN.md') -DryRun *>&1 | Out-String
 Check 'workflow: Invoke-PlanSteps parses the example plan' ($dryRun.Contains('Add divide with zero-divisor validation') -and $dryRun.Contains('--- Prompt for step 1 ---')) $dryRun.Trim()
+$stagesPlan = @(
+    foreach ($dir in 'template\.github', 'template\.claude') {
+        Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot $dir) -Recurse -File -Force |
+            Where-Object { $t = [IO.File]::ReadAllText($_.FullName); $t.Contains('run `git add -A`') -or $t.Contains('`git add PLAN.md`') } | ForEach-Object Name
+    }
+)
+Check 'workflow: no generated command, agent or skill stages everything with git add -A or commits PLAN.md' (-not $stagesPlan) ($stagesPlan -join ', ')
+$commitRepo = Join-Path $Work 'runner-commit'
+New-Item -ItemType Directory -Force $commitRepo | Out-Null
+$saveCommit = [Management.Automation.Language.Parser]::ParseFile((Join-Path $workflow 'Invoke-PlanSteps.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Save-Commit' }, $true) | Select-Object -First 1
+Push-Location $commitRepo
+try {
+    Invoke-Git init -q -b main; Invoke-Git config user.name template-test; Invoke-Git config user.email template-test@example.invalid
+    Set-Content a.txt 'one'; Invoke-Git add a.txt; Invoke-Git commit -q -m 'Start'
+    # The plan is untracked and not ignored here, so only the runner's own exclusion keeps it out of the commits.
+    Set-Content PLAN.md '# Plan: x'; Set-Content a.txt 'two'; Set-Content b.txt 'new'
+    & {
+        $repo = $commitRepo; $planRel = 'PLAN.md'; $NoCommit = $false
+        . ([scriptblock]::Create($saveCommit.Extent.Text))
+        Save-Commit 'Plan step 1: x'
+        Add-Content PLAN.md 'edit'
+        Save-Commit 'Plan step 2: nothing changed'
+        Save-Commit 'Re-plan step 2: x' -AllowEmpty
+    }
+    $subjects = @(git log --format=%s) -join '|'
+    $tracked = @(git ls-files) -join ','
+    $stepFiles = @(git show --name-only --format= HEAD~1) -join ','
+    $replanFiles = @(git show --name-only --format= HEAD) -join ','
+}
+finally { Pop-Location }
+Check 'workflow: Invoke-PlanSteps commits step files, records a re-plan as an empty commit, and never commits the plan' ($subjects -eq 'Re-plan step 2: x|Plan step 1: x|Start' -and $tracked -eq 'a.txt,b.txt' -and $stepFiles -eq 'a.txt,b.txt' -and -not $replanFiles) "$subjects | $tracked | $stepFiles | $replanFiles"
 
 if (-not $SkipDotnetBuild) {
     Push-Location (Join-Path $Work 'dotnet')

@@ -16,7 +16,7 @@ Each plan lives in its own git worktree, so several Claude Code sessions can pla
 
 From here on, the repository root is the worktree's root: read, write and run commands only there, never in the main checkout.
 
-After writing `PLAN.md`, commit it in the worktree: `git add PLAN.md`, then `git commit -m "Plan: <the plan's title>"`. End your reply with the worktree's name and branch, and how to continue: `/orchestrate-plan` in this session; from a new session, `/orchestrate-plan <name>`; or from a terminal, `claude --worktree <name>` and then `/orchestrate-plan`. If Claude Code asks on exit whether to keep the worktree, keep it.
+`PLAN.md` stays untracked in the worktree and is never committed or pushed. After writing it, run `git commit --allow-empty -m "Plan: <the plan's title>"` in the worktree: the commit makes Claude Code treat the worktree as holding work, so it asks before removing it on exit. End your reply with the worktree's name and branch, and how to continue: `/orchestrate-plan` in this session; from a new session, `/orchestrate-plan <name>`; or from a terminal, `claude --worktree <name>` and then `/orchestrate-plan`. If Claude Code asks on exit whether to keep the worktree, keep it.
 
 ## Task
 
@@ -36,6 +36,8 @@ Research first, then design:
 ## Output: PLAN.md for the executor model
 
 Write the result to `PLAN.md` in the repository root. Change no other file.
+
+`PLAN.md` is a local working file: never commit or push it, and never stage it. If `git check-ignore -q PLAN.md` exits non-zero, append the line `PLAN.md` to `info/exclude` in the folder that `git rev-parse --path-format=absolute --git-common-dir` prints, so no `git add -A` can pick it up.
 
 A smaller, cheaper model — a local model or a lower-cost Copilot model — will execute this plan one step at a time. It sees only `PLAN.md` and the files it opens — not this conversation, not your research. It follows instructions literally, loses track in long or vague steps, and cannot make design decisions. Write for that reader:
 
