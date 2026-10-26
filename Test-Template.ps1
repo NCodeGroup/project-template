@@ -317,7 +317,7 @@ $results = if ($testHunk) {
 }
 Check 'update: a project-owned change the project already has is recognized, one it lacks is not' ((@($results) -join ',') -eq 'True,False') (@($results) -join ',')
 $worktreeKinds = [ordered]@{
-    create = 'plan-feature', 'plan-bugfix', 'plan-refactor', 'plan-tests', 'plan-migration', 'plan-performance', 'plan-security', 'plan-docs', 'handoff-plan'
+    create = 'plan-feature', 'plan-bugfix', 'plan-refactor', 'plan-tests', 'plan-migration', 'plan-performance', 'plan-security', 'plan-docs', 'handoff-plan', 'plan-issue'
     join   = 'orchestrate-plan', 'execute-step', 'replan-step', 'review-plan-diff'
     finish = 'finish-plan'
 }
@@ -330,7 +330,7 @@ $worktreeMissing = @(
 $worktreeLeaked = @(
     Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'template\.github'), (Join-Path $PSScriptRoot 'template\.claude\agents') -Recurse -File |
         Where-Object { $text = [IO.File]::ReadAllText($_.FullName); $text.Contains('EnterWorktree') -or $text -match '(?m)^isolation:' } | ForEach-Object Name
-    'analyze-architecture', 'analyze-decision', 'review-code' | Where-Object { [IO.File]::ReadAllText((Join-Path $PSScriptRoot "template\.claude\commands\$_.md")).Contains('EnterWorktree') }
+    'analyze-architecture', 'analyze-decision', 'review-code', 'triage-issues' | Where-Object { [IO.File]::ReadAllText((Join-Path $PSScriptRoot "template\.claude\commands\$_.md")).Contains('EnterWorktree') }
 )
 Check 'workflow: Claude Code planning commands create the plan''s worktree, and the commands that work on a plan move into it' (-not $worktreeMissing) ($worktreeMissing -join ', ')
 Check 'workflow: no Copilot file, plan-executor subagent or analysis command enters a worktree' (-not $worktreeLeaked) ($worktreeLeaked -join ', ')
