@@ -18,6 +18,7 @@ Each prompt has a small front-matter header (`description`, `argument-hint`, `ro
 | [plan-docs.md](plan-docs.md) | planner | `PLAN.md` | Supply the facts so the executor writes the docs |
 | [handoff-plan.md](handoff-plan.md) | planner | `PLAN.md` | Convert a plan already discussed in chat (plan mode, the Plan agent) into the handoff |
 | [plan-issue.md](plan-issue.md) | planner | `PLAN.md` | Plan one GitHub or GitLab issue: read it and its comments, check that it's ready, pick the kind of plan from its labels, and plan it with that kind's checklist |
+| [plan-template-update.md](plan-template-update.md) | planner | `PLAN.md` | Update the project to a newer template version: read the release notes, try `Update-Project.ps1` on a clone, and plan the pinned update, the checks, the project files that still describe the old template, and the gate |
 | [replan-step.md](replan-step.md) | planner | Updated `PLAN.md` | Re-plan a step the executor escalated (`[?]`) or failed (`[!]`), then hand it back |
 | [orchestrate-plan.md](orchestrate-plan.md) | orchestrator | Commits, updated `PLAN.md` | Run the whole plan in one session: the strong model verifies and re-plans, a cheaper subagent executes |
 | [analyze-architecture.md](analyze-architecture.md) | analyst | `ANALYSIS.md` | Explain a codebase or subsystem with evidence, risks and follow-ups |
@@ -88,4 +89,4 @@ New projects get generated copies of these files under `template/` ([What a Proj
 
 ---
 
-**TL;DR:** Nineteen prompts (planning, issue triage, analysis, review, orchestration, re-planning, execution, finishing) and four variant-neutral VS Code agents, written once and installed into Claude Code, VS Code and Copilot CLI by `Install-HybridWorkflow.ps1`. Every planning prompt ends with the same PLAN.md contract, and the executor prompt escalates with `[?]` instead of improvising, so any planner and any executor can be combined.
+**TL;DR:** Twenty prompts (planning, issue triage, template updates, analysis, review, orchestration, re-planning, execution, finishing) and four variant-neutral VS Code agents, written once and installed into Claude Code, VS Code and Copilot CLI by `Install-HybridWorkflow.ps1`. Every planning prompt ends with the same PLAN.md contract, and the executor prompt escalates with `[?]` instead of improvising, so any planner and any executor can be combined.
