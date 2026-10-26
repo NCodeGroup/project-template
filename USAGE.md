@@ -176,7 +176,7 @@ To get the commands and skills in every repository, run:
 .\workflow\Install-HybridWorkflow.ps1 -User     # Claude Code commands and Copilot CLI skills for every repository, in your user profile
 ```
 
-`-Repo` installs only the workflow files into one repository, without template updates. Re-run the installer after the template's workflow changes; it overwrites what it wrote. [workflow/README.md](workflow/README.md) lists its options.
+`-Repo` installs only the workflow files into one repository, without template updates. Re-run the installer after the template's workflow changes; it overwrites what it wrote. Each run records the template version it installed in `.template-version` — at the repository root, or in `~\.claude\` and `~\.copilot\` — so you can tell which version a repository or your profile has. [workflow/README.md](workflow/README.md) lists its options.
 
 ## The Shack PC's Local Model
 
