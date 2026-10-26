@@ -9,6 +9,8 @@
     subagent; both sets of VS Code agents (Copilot executes, or the shack PC's local model does) and their prompt
     files; and the Copilot CLI skills and plan-executor agent. It writes them into template/, for projects, and
     into the repository root, so this repository is worked on with the same workflow on any PC that clones it.
+    It passes -NoVersionMarker: a project renders its .template-version from template\.template-version.jinja, and
+    this repository records no installed version.
     Review the diff, run Test-Template.ps1, then commit, tag a new version and push; projects pick the change up
     with their .template\Update-Project.ps1.
 
@@ -29,6 +31,6 @@ foreach ($root in (Join-Path $PSScriptRoot 'template'), $PSScriptRoot) {
         $dir = Join-Path $root $generated
         if (Test-Path $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
     }
-    & $installer -Repo $root -Variant Both -Target VSCode, Claude, CopilotCli @InstallerArgs | Select-Object -First 1
+    & $installer -Repo $root -Variant Both -Target VSCode, Claude, CopilotCli -NoVersionMarker @InstallerArgs | Select-Object -First 1
 }
 git -C $PSScriptRoot status --short -- template $generatedDirs.Replace('\', '/')
