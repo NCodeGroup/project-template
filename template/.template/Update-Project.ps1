@@ -19,7 +19,7 @@
                       both sides conflict.
       Project-owned   Written once, never touched again (copier.yml's _skip_if_exists). When the template changed
                       one since the project's version, the script shows the template's change, rendered with
-                      the project's answers.
+                      the project's answers, leaving out what the project's file already has.
 
     The update runs `copier recopy` at the project's current template version, which resets the template-owned
     files and shows any local edits, then `copier update --defaults` to the newest version (or -Ref), which merges
@@ -261,7 +261,17 @@ try {
                 $diff = git -C $TemplateClone diff --no-color --unified=1 $from $to -- $changed.Source
                 $title = "  $($changed.File), from the template source $($changed.Source), which Copier couldn't render with this project's answers:"
             }
-            $hunk = @($diff | Where-Object { $_ -is [string] } | ForEach-Object -Begin { $inHunk = $false } -Process { if ($_.StartsWith('@@')) { $inHunk = $true }; if ($inHunk) { "    $_" } })
+            # Leave out a hunk the project's file already has; a file left with none isn't shown.
+            $hunk = @(
+                $current = @()
+                foreach ($line in @($diff | Where-Object { $_ -is [string] }) + '@@') {
+                    if ($line.StartsWith('@@')) {
+                        if ($current -and -not ($rendered -and (Test-HunkApplied $changed.File $current $scratch))) { $current | ForEach-Object { "    $_" } }
+                        $current = @()
+                    }
+                    if ($current -or $line.StartsWith('@@')) { $current += $line }
+                }
+            )
             if ($hunk) { [pscustomobject]@{ Title = $title; Lines = $hunk } }
         }
         if ($shown) {
