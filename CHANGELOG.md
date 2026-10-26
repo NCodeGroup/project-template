@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.15.0
+
+- `.gitignore` ignores only the `secrets/` folder at the repository root (`/secrets/`), and `.claude/settings.json` denies Claude Code reading only that folder (`Read(/secrets/**)`). Before, both matched a `secrets/` folder at any depth, and on Windows also `Secrets/`, so new source files in a folder such as `src/App/Endpoints/Secrets/` were silently left out of commits and agents couldn't read them. `.env` files are still ignored and denied at any depth. Both files are merged on update. A project that keeps secret files in a nested `secrets/` folder should move them to the root `secrets/` folder, or add that folder's path to `.gitignore`, before updating, because the update stops ignoring it.
+
 ## v0.14.1
 
 - `Adopt-Project.ps1` no longer names a project after the Claude Code worktree it runs in. Without a single solution, `project_name` is the `origin` remote's repository name, else the main checkout's folder name, else the folder name. A project adopted from a plan worktree before this release has the worktree's name in `.copier-answers.yml`; correct it there and run `.\.template\Update-Project.ps1`.
