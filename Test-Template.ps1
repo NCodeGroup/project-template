@@ -321,7 +321,7 @@ $results = if ($testHunk) {
 }
 Check 'update: a project-owned change the project already has is recognized, one it lacks is not' ((@($results) -join ',') -eq 'True,False') (@($results) -join ',')
 $worktreeKinds = [ordered]@{
-    create = 'plan-feature', 'plan-bugfix', 'plan-refactor', 'plan-tests', 'plan-migration', 'plan-performance', 'plan-security', 'plan-docs', 'handoff-plan', 'plan-issue'
+    create = 'plan-feature', 'plan-bugfix', 'plan-refactor', 'plan-tests', 'plan-migration', 'plan-performance', 'plan-security', 'plan-docs', 'handoff-plan', 'plan-issue', 'plan-template-update'
     join   = 'orchestrate-plan', 'execute-step', 'replan-step', 'review-plan-diff'
     finish = 'finish-plan'
 }
