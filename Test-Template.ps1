@@ -56,7 +56,7 @@ Push-Location $tpl
 try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
 finally { Pop-Location }
 
-$common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.gitignore', '.gitattributes', '.editorconfig',
+$common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.vscode\settings.json', '.vscode\extensions.json'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
@@ -163,6 +163,7 @@ foreach ($case in $cases) {
     $readme = Get-Content -LiteralPath (Join-Path $dest 'README.md') -Raw
     Check "${name}: README for the chosen tools" (($readme.Contains('| Claude Code |') -eq $claude) -and ($readme.Contains('| Copilot CLI |') -eq ('copilot' -in $tools)) -and ($readme.Contains('Hybrid Planner') -eq $local))
     Check "${name}: answers record v0.1.0" ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -match '(?m)^_commit: v0\.1\.0$')
+    Check "${name}: .template-version records v0.1.0" ((Get-Content -LiteralPath (Join-Path $dest '.template-version') -Raw) -eq "v0.1.0`n")
 }
 
 $listProject = Join-Path $Work 'new-project-list'
@@ -385,6 +386,7 @@ if (-not $SkipUpdate) {
         Check 'update: file added to the template created' ([bool](git ls-files -- $added))
         Check 'update: no conflict markers or .rej files' (-not (git grep -lE '^(<<<<<<<|>>>>>>>) ') -and -not (Get-ChildItem -Recurse -Filter '*.rej' -File))
         Check 'update: answers record v0.2.0' ((Get-Content -LiteralPath .copier-answers.yml -Raw) -match '(?m)^_commit: v0\.2\.0$')
+        Check 'update: .template-version records v0.2.0' ((Get-Content -LiteralPath .template-version -Raw) -eq "v0.2.0`n")
         Check 'update: enables the hooks in the clone' (((git config core.hooksPath) -join '') -eq '.githooks')
         $head = git rev-parse HEAD
     }
