@@ -25,7 +25,7 @@
     (VSCode, CopilotCli). -NoVersionMarker skips it, as Update-Template.ps1 does, because a project made from the
     template renders its own .template-version from .copier-answers.yml.
 
-    Claude Code commands of templates with a "worktree" field start with a section that puts the plan in a git worktree of its own (create) or moves the session into it (join): templates\_claude-worktree-*.md.
+    Claude Code commands of templates with a "worktree" field start with a section that puts the plan in a git worktree of its own (create), moves the session into it (join), or removes it once the work is pushed (finish): templates\_claude-worktree-*.md.
 
     VS Code model names use "<model name> (<vendor>)"; the Settings dropdown for
     chat.planAgent.defaultModel lists the exact names. Copilot CLI uses model IDs such as
@@ -109,10 +109,10 @@ $claudeRole = @{
     reviewer     = "model: sonnet`neffort: high"
     executor     = 'model: inherit'
 }
-# Claude Code only: the section that puts a plan in a worktree of its own (create) or moves the session to it (join).
+# Claude Code only: the section that puts a plan in a worktree of its own (create), moves the session to it (join), or removes it (finish).
 function Get-ClaudeWorktreeSection([string]$Kind) {
     $path = Join-Path $templateDir "_claude-worktree-$Kind.md"
-    if (-not (Test-Path -LiteralPath $path)) { throw "Unknown worktree value '$Kind'; use create or join." }
+    if (-not (Test-Path -LiteralPath $path)) { throw "Unknown worktree value '$Kind'; use create, join or finish." }
     (Read-HybridTemplateFile $path).Body.TrimEnd()
 }
 $vscodeModel = @{ planner = $PlannerModel; analyst = $PlannerModel; orchestrator = $PlannerModel; reviewer = $ReviewerModel }
@@ -160,7 +160,7 @@ foreach ($d in $dest) {
             $body = Get-HybridPromptText -Name $t.Name -Placeholder '$ARGUMENTS'
             $hint = $t.ArgumentHint
             if ($t.Worktree) { $body = (Get-ClaudeWorktreeSection $t.Worktree) + "`n`n## Task`n`n" + $body }
-            if ($t.Worktree -eq 'join') { $hint += "; the plan's worktree name when several are open" }
+            if ($t.Worktree -in 'join', 'finish') { $hint += "; the plan's worktree name when several are open" }
             $fm = "---`ndescription: $(Q $t.Description)`nargument-hint: $(Q "[$hint]")`n$($claudeRole[$t.Role])`ndisable-model-invocation: true`n---`n"
             Write-Generated (Join-Path $d.ClaudeCommands "$($t.Name).md") ($fm + $body)
         }
