@@ -119,6 +119,12 @@ try {
     $to = if ($Ref) { $Ref } else { Get-NewestTag $TemplateClone }
     if (-not $to) { throw "The template at $src has no version tags." }
 
+    # The update commits, and the default branch may accept changes only through pull requests.
+    $branch = git branch --show-current
+    $defaultRef = git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>$null
+    $default = if ($defaultRef) { $defaultRef -replace '^origin/' } elseif ($branch -in 'main', 'master' -and (git rev-parse --quiet --verify "refs/remotes/origin/$branch" 2>$null)) { $branch }
+    if ($branch -and $branch -eq $default -and -not $NoCommit) { throw "$project is on $branch, its default branch, and the update commits. Update on a branch of its own: git switch -c build/project-template-$to — or stage the update here with -NoCommit." }
+
     # Hand over to the target version's copy of this script when it differs, so the newest update logic runs.
     # git show, not git checkout: checkout doesn't fetch the file in a blob-filtered clone, but show does.
     if (-not $HandedOff) {

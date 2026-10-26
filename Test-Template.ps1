@@ -390,6 +390,19 @@ if (-not $SkipUpdate) {
     try { Invoke-Git add -A; Invoke-Git commit -q -m 'Template change'; Invoke-Git tag v0.2.0 }
     finally { Pop-Location }
 
+    # On the default branch the update refuses before it changes anything.
+    Push-Location $project
+    try {
+        Invoke-Git update-ref refs/remotes/origin/main HEAD
+        Invoke-Git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+        $before = git rev-parse HEAD
+        $refusal = try { & $updateProject | Out-Null; 'no refusal' } catch { $_.Exception.Message }
+        Check 'update: refuses to commit on the default branch' ($refusal.Contains('git switch -c build/project-template-v0.2.0') -and (git rev-parse HEAD) -eq $before -and -not (git status --porcelain)) $refusal
+        Invoke-Git symbolic-ref --delete refs/remotes/origin/HEAD
+        Invoke-Git update-ref -d refs/remotes/origin/main
+    }
+    finally { Pop-Location }
+
     $output = & $updateProject | Out-String
     Push-Location $project
     try {
