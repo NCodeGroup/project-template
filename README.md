@@ -294,6 +294,7 @@ Template v0.1.0 -> v0.2.0:
   added     .claude/commands/plan-release.md
   modified  .github/instructions/project-template.instructions.md
   modified  .gitignore
+  modified  .template-version
   modified  .template/Update-Project.ps1
   modified  CLAUDE.md
 
@@ -320,6 +321,7 @@ When the template and the project changed the same lines of a merged file, the s
 ```text
 Template v0.2.0 -> v0.3.0:
   conflict  .gitignore
+  modified  .template-version
   modified  CLAUDE.md
 
 1 file(s) conflict: the template and this project changed the same lines. In each, keep the right lines and delete the <<<<<<<, ======= and >>>>>>> marker lines. Then:
