@@ -253,6 +253,13 @@ $executorAuto = @(
     }
 )
 Check 'workflow: every executor runs on Claude Sonnet 5.5' (-not $executorMissing -and -not $executorAuto) ((@($executorMissing) + @($executorAuto)) -join ', ')
+$coordinatorMissing = @(
+    foreach ($p in 'template\.claude\agents\plan-executor.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\skills\execute-step\SKILL.md') {
+        if (-not [IO.File]::ReadAllText((Join-Path $PSScriptRoot $p)).Contains('never substitute a check of your own')) { $p }
+    }
+    if (-not [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'template\.claude\commands\orchestrate-plan.md')).Contains('a check the subagent made instead does not count')) { 'template\.claude\commands\orchestrate-plan.md' }
+)
+Check 'workflow: an executor that cannot run the Done-when command leaves the check to the coordinator' (-not $coordinatorMissing) ($coordinatorMissing -join ', ')
 $worktreeKinds = [ordered]@{
     create = 'plan-feature', 'plan-bugfix', 'plan-refactor', 'plan-tests', 'plan-migration', 'plan-performance', 'plan-security', 'plan-docs', 'handoff-plan'
     join   = 'orchestrate-plan', 'execute-step', 'replan-step', 'review-plan-diff'
