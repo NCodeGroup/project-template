@@ -153,13 +153,12 @@ try {
         git add -A
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
         if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
-        # The template's versioned hooks, unless the repository already uses hooks of its own:
-        # a hooks path, or hooks in .git/hooks, which a hooks path would turn off.
+        # The template's versioned hooks, unless the repository already runs hooks another way (Get-GitHooksSetup).
         $hooksNote = $null
         if ((Test-Path -LiteralPath .githooks) -and -not (git config --get core.hooksPath)) {
-            $ownHooks = @(Get-ChildItem -LiteralPath (git rev-parse --path-format=absolute --git-path hooks) -File -ErrorAction SilentlyContinue | Where-Object Extension -NE '.sample' | ForEach-Object Name)
-            if ($ownHooks) { $hooksNote = "Git hooks: .githooks not enabled. This clone has hooks of its own in .git/hooks ($($ownHooks -join ', ')), and core.hooksPath would turn them off. To run both, call .githooks/commit-msg from your commit-msg hook, or move your hooks into .githooks and run: git config core.hooksPath .githooks" }
-            else { git config core.hooksPath .githooks }
+            $hooksSetup = Get-GitHooksSetup
+            if ($hooksSetup.HooksPath) { git config core.hooksPath .githooks }
+            else { $hooksNote = $hooksSetup.Note }
         }
     }
     catch {
