@@ -2,6 +2,11 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.12.0
+
+- A plan can name the issue it implements. When the request names one (`#42`, `owner/repo#42` or its URL), the planning commands put it on an `Issue:` line under the plan's title and post the finished plan to the issue once, as a collapsed comment, with `gh` or `glab`. A re-plan that changes the Decisions or adds or removes steps posts a short follow-up. Only the planning session posts; executors never call `gh` or `glab`. A plan for no issue is unchanged.
+- `review-plan-diff` and the push rules in `.github/instructions/project-template.instructions.md` put `Closes <issue>` and a short summary of the plan in the pull request description, so the issue's timeline holds the problem, the plan and the pull request that closed it.
+
 ## v0.11.0
 
 - `/finish-plan` asks GitHub (`gh`) or GitLab (`glab`) whether the plan's branch has a merged pull request. It counts the work as upstream when that pull request's merge commit is on the default branch and its head matches the plan's branch, so a squash-merged or merge-queued pull request no longer stops it. Without the CLI, or without such a pull request, it still stops to ask.
