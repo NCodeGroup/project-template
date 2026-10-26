@@ -408,7 +408,7 @@ if (-not $SkipUpdate) {
     finally { Pop-Location }
 
     $output = & $updateProject | Out-String
-    Check 'update: second run changes nothing' ($output.Contains('Already up to date') -and ((git -C $project rev-parse HEAD) -eq $head) -and -not (git -C $project status --porcelain)) $output.Trim()
+    Check 'update: second run changes nothing' ($output.Contains('Already up to date') -and -not $output.Contains('Handing the update over') -and((git -C $project rev-parse HEAD) -eq $head) -and -not (git -C $project status --porcelain)) $output.Trim()
 
     # v0.3.0 changes the .gitignore line the project changed too, and CLAUDE.md, which the project edited again: one conflict.
     Push-Location $project

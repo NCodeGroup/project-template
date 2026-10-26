@@ -99,6 +99,7 @@ function Get-Change {
 
 $project = (Resolve-Path -LiteralPath $Path).Path
 $ownClone = -not $TemplateClone
+$scratch = Join-Path ([IO.Path]::GetTempPath()) "project-template-update-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
 $outputEncoding = [Console]::OutputEncoding
 Push-Location -LiteralPath $project
 try {
@@ -119,11 +120,13 @@ try {
     if (-not $to) { throw "The template at $src has no version tags." }
 
     # Hand over to the target version's copy of this script when it differs, so the newest update logic runs.
+    # git show, not git checkout: checkout doesn't fetch the file in a blob-filtered clone, but show does.
     if (-not $HandedOff) {
-        git -C $TemplateClone checkout --quiet $to -- template/.template/Update-Project.ps1 2>$null
-        $next = Join-Path $TemplateClone 'template\.template\Update-Project.ps1'
-        if (-not $LASTEXITCODE -and (Test-Path -LiteralPath $next) -and
-            [IO.File]::ReadAllText($next).Replace("`r`n", "`n") -ne [IO.File]::ReadAllText($PSCommandPath).Replace("`r`n", "`n")) {
+        $nextText = (git -C $TemplateClone show "${to}:template/.template/Update-Project.ps1" 2>$null) -join "`n"
+        if (-not $LASTEXITCODE -and $nextText -and $nextText.TrimEnd() -ne [IO.File]::ReadAllText($PSCommandPath).Replace("`r`n", "`n").TrimEnd()) {
+            New-Item -ItemType Directory -Force $scratch | Out-Null
+            $next = Join-Path $scratch 'Update-Project.ps1'
+            [IO.File]::WriteAllText($next, "$nextText`n", [Text.UTF8Encoding]::new($false))
             "Handing the update over to the $to version of Update-Project.ps1."
             & $next -Path $project -Ref $to -Data $Data -NoCommit:$NoCommit -TemplateClone $TemplateClone -HandedOff
             exit $LASTEXITCODE
@@ -235,4 +238,5 @@ finally {
     Pop-Location
     try { [Console]::OutputEncoding = $outputEncoding } catch { }
     if ($ownClone -and $TemplateClone -and (Test-Path -LiteralPath $TemplateClone)) { Remove-Item -LiteralPath $TemplateClone -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path -LiteralPath $scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue }
 }
