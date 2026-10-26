@@ -1,6 +1,6 @@
 # Project Template
 
-Instructions for coding agents working on this repository: the project template itself, not a project made from it. [README.md](README.md) explains the repository. `PLAN.md`, when there is one, is the plan in progress. It is gitignored: never commit, stage or push it, and never use `git add -A`; stage the files a step lists.
+Instructions for coding agents working on this repository: the project template itself, not a project made from it. [README.md](README.md) explains the repository. `PLAN.md`, when there is one, is the plan in progress. It is gitignored: never commit, stage or push it, and never use `git add -A`; stage the files a step lists. Before a push you were asked for, delete `PLAN.md` once every step is marked `[x]`; when a step is still open, keep it and say which steps remain.
 
 ## Commits
 
