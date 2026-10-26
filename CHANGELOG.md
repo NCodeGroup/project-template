@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.16.0
+
+- Both `actions/checkout` steps in `.github/workflows/ci.yml` set `persist-credentials: false`, so the job's `GITHUB_TOKEN` is no longer written to `.git/config`, where later steps could read it (zizmor's `artipacked` finding). Neither job pushes. In a project whose Dependabot has moved the `actions/checkout` pin, `Update-Project.ps1` stops with a conflict on these lines: keep the project's pin and add the new `with:` and `persist-credentials: false` lines. A project whose build or test steps run git commands that need the token, such as a push, sets `persist-credentials: true` on that checkout in its own `ci.yml`, which is a merged file, so later updates keep it.
+
 ## v0.15.0
 
 - `.gitignore` ignores only the `secrets/` folder at the repository root (`/secrets/`), and `.claude/settings.json` denies Claude Code reading only that folder (`Read(/secrets/**)`). Before, both matched a `secrets/` folder at any depth, and on Windows also `Secrets/`, so new source files in a folder such as `src/App/Endpoints/Secrets/` were silently left out of commits and agents couldn't read them. `.env` files are still ignored and denied at any depth. Both files are merged on update. A project that keeps secret files in a nested `secrets/` folder should move them to the root `secrets/` folder, or add that folder's path to `.gitignore`, before updating, because the update stops ignoring it.
