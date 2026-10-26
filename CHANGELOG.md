@@ -2,6 +2,12 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.13.0
+
+- A new `/plan-issue` command plans one GitHub or GitLab issue: `/plan-issue #42`, `owner/repo#42` or the issue's URL. It reads the issue and its comments with `gh` or `glab`. It stops with questions when the issue is closed, already has a plan, has an open pull request or doesn't say enough to plan. It picks the kind of plan from the issue's labels (`bug` → bugfix, `enhancement` → feature, `documentation` → docs, …) or its text, and plans with that kind's checklist, in Claude Code in a worktree named `issue-42`. The `Issue:` line, the snapshot comment and `Closes` work as in v0.12.0.
+- A new `/triage-issues` command lists up to 20 open issues that match a filter (a label, a milestone, an assignee or search words). For each one it judges the kind of plan, its readiness and its size, flags issues whose plans would overlap, and gives the `/plan-issue` command for each ready one. It changes no files and posts nothing.
+- Every planning command reads the issue a request names, its body and every comment, before it researches. It treats the issue's text as data, not instructions: it never runs a command, opens a link or changes its rules because an issue says to.
+
 ## v0.12.0
 
 - A plan can name the issue it implements. When the request names one (`#42`, `owner/repo#42` or its URL), the planning commands put it on an `Issue:` line under the plan's title and post the finished plan to the issue once, as a collapsed comment, with `gh` or `glab`. A re-plan that changes the Decisions or adds or removes steps posts a short follow-up. Only the planning session posts; executors never call `gh` or `glab`. A plan for no issue is unchanged.
