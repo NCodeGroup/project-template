@@ -2,6 +2,11 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.10.0
+
+- A new `/finish-plan` command closes a plan once its work is pushed or merged: it deletes `PLAN.md`, fast-forwards the default branch from `origin`, deletes the plan's branch, and in Claude Code removes the plan's worktree. It never pushes, and stops when a commit hasn't reached the default branch yet, such as after a squash-merged pull request.
+- `review-plan-diff` points at `/finish-plan` once a review finds no blocker or should-fix left.
+
 ## v0.9.0
 
 ### Update twice, or once from a clone
