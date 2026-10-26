@@ -150,6 +150,8 @@ foreach ($case in $cases) {
     $files = Get-ChildItem -LiteralPath $dest -Recurse -File -Force
     $crlf = $files | Where-Object { $_.Extension -notin '.cmd', '.bat' -and [IO.File]::ReadAllText($_.FullName).Contains("`r") } | ForEach-Object Name
     Check "${name}: LF line endings" (-not $crlf) ($crlf -join ', ')
+    $badEnd = $files | Where-Object { $b = [IO.File]::ReadAllBytes($_.FullName); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.FullName.Substring($dest.Length).TrimStart('\', '/') }
+    Check "${name}: every text file ends with exactly one newline" (-not $badEnd) ($badEnd -join ', ')
     $jinja = $files | Where-Object { Select-String -LiteralPath $_.FullName -Pattern '(?<!\$)\{\{|\{%' -Quiet } | ForEach-Object Name
     Check "${name}: no leftover Jinja" (-not $jinja) ($jinja -join ', ')
     $badJson = $files | Where-Object Extension -EQ '.json' | Where-Object {
@@ -228,6 +230,10 @@ $stale = @(Get-StaleWorkflowFile (Join-Path $PSScriptRoot 'template') | Select-O
 Check 'generated workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) ($stale -join ', ')
 $stale = @(Get-StaleWorkflowFile $PSScriptRoot | Select-Object -Unique)
 Check 'this repository''s own workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) ($stale -join ', ')
+# Text files Git tracks with LF endings; binary files are left out.
+$ownFiles = git -C $PSScriptRoot -c core.quotePath=false ls-files --eol | Where-Object { $_ -match '^i/lf\s' } | ForEach-Object { Join-Path $PSScriptRoot (($_ -split "`t", 2)[1]) }
+$badEnd = $ownFiles | Where-Object { $b = [IO.File]::ReadAllBytes($_); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.Substring($PSScriptRoot.Length).TrimStart('\', '/') }
+Check 'repository: every text file ends with exactly one newline' (-not $badEnd) ($badEnd -join ', ')
 $excludeCheck = 'import sys, yaml, jinja2; c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); e = jinja2.Environment(); bad = [p for p in c["_exclude"] if e.from_string(p).render().strip()]; print("; ".join(bad)); sys.exit(1 if bad else 0)'
 $excludeOutput = uv run --quiet --no-project --with pyyaml --with jinja2 python -c $excludeCheck (Join-Path $PSScriptRoot 'copier.yml') 2>&1 | Out-String
 Check 'copier.yml: _exclude patterns exclude nothing when workflow_tools is missing' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()
