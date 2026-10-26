@@ -18,7 +18,8 @@
                       changes are merged with the project's edits, like a Git merge; the same lines changed on
                       both sides conflict.
       Project-owned   Written once, never touched again (copier.yml's _skip_if_exists). When the template changed
-                      one since the project's version, the script shows the template's change.
+                      one since the project's version, the script shows the template's change, rendered with
+                      the project's answers.
 
     The update runs `copier recopy` at the project's current template version, which resets the template-owned
     files and shows any local edits, then `copier update --defaults` to the newest version (or -Ref), which merges
@@ -27,6 +28,10 @@
     Without conflicts the result is one commit, "Update from project-template <version>"; -NoCommit stages it
     instead. With a conflict it commits nothing, says how to finish or abandon the update, and exits 1. On any
     other failure the project is reset to where it was.
+
+    On the default branch (the branch origin/HEAD names) it refuses to run unless -NoCommit is given, because it
+    commits. It enables the template's hooks (core.hooksPath .githooks) unless the clone already has a hooks path or
+    hooks in .git/hooks.
 
     Every version of this script accepts -Path, -Ref, -Data, -NoCommit, -TemplateClone and -HandedOff, so any
     version can hand over to any later one.

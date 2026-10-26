@@ -208,7 +208,7 @@ The script works out these answers:
 | `package_manager` (Node.js) | The one the `packageManager` field in `package.json` names, else the one whose lockfile is at the root (`pnpm-lock.yaml`, `yarn.lock`, `bun.lock` or `bun.lockb`), else npm |
 | `build_command`, `test_command` (Node.js) | `<package_manager> run build` and `<package_manager> run test`, each only when `package.json` has that script and the `test` script isn't the failing placeholder `npm init` writes; else blank |
 
-Everything else, including `workflow_tools`, takes the template's default. The script prints the answers, runs `copier copy --overwrite`, and enables the template's Git hooks (`git config core.hooksPath .githooks`) unless the repository already sets its own, as `New-Project.ps1` does ([Commit Attribution](#commit-attribution)).
+Everything else, including `workflow_tools`, takes the template's default. The script prints the answers, runs `copier copy --overwrite`, and enables the template's Git hooks (`git config core.hooksPath .githooks`) unless the repository already sets its own or has hooks in `.git/hooks`, which a hooks path would turn off ([Commit Attribution](#commit-attribution)).
 
 What it does with a file the repository already has depends on the file's owner ([What a Project Gets](#what-a-project-gets)):
 
@@ -277,13 +277,13 @@ From this repository's clone, `.\Update-Project.ps1 -Path C:\src\qso-viewer` doe
 | `-Data` | None | Answers to change: `-Data @{ author_name = 'K0MTP' }`. Template-owned and merged files follow the new answer; project-owned files don't |
 | `-NoCommit` | Off | Stage the update instead of committing it |
 
-The script needs no template clone: it clones the template from the address in `.copier-answers.yml` into a temporary folder, with the Git access Copier needs anyway, and deletes it afterwards. The script is template-owned, so it updates itself: when the target version's copy differs from the running one, it hands the update over to that copy, and the newest update logic always does the update. Every version accepts the same parameters, so any version can hand over to any later one.
+The script needs no template clone: it clones the template from the address in `.copier-answers.yml` into a temporary folder, with the Git access Copier needs anyway, and deletes it afterwards. The script is template-owned, so it updates itself: when the target version's copy differs from the running one, it hands the update over to that copy, and the newest update logic always does the update. Every version accepts the same parameters, so any version can hand over to any later one. It refuses to run on the default branch (the branch `origin/HEAD` names), because it commits: run it on a branch of its own, such as `git switch -c build/project-template-v0.2.0`, or pass `-NoCommit`.
 
 | File | On update |
 |---|---|
 | Template-owned | Replaced by the new version; files the template added are created, and files it removed are deleted. A local edit is discarded and a deleted file restored, and the script lists both, so the change can move into a project file |
 | Merged | The template's changes since the project's version merge with the project's edits. Only the same lines changed on both sides conflict. A merged file the project deleted stays deleted |
-| Project-owned | Never touched, even if the project deleted it. When the template changed one since the project's version, the script shows the template's change; copy over what you want |
+| Project-owned | Never touched, even if the project deleted it. When the template changed one since the project's version, the script shows the template's change, rendered with the project's answers; copy over what you want |
 | `.copier-answers.yml`, `.template-version` | Record the new version |
 
 Without a conflict the result is one commit, `Update from project-template v0.2.0`:
@@ -303,7 +303,7 @@ Local edits discarded — these files are the template's; make the change in a p
 
 The template changed these project-owned files since v0.1.0. They weren't touched; copy over what you want:
 
-  AGENTS.md, from template/AGENTS.md.jinja:
+  AGENTS.md:
     @@ -23,3 +23,3 @@ Run from the repository root in PowerShell 7.
 
     -## Conventions
@@ -351,7 +351,7 @@ A commit records the people who wrote it. AI tools add their own attribution by 
 | `attribution` in `.claude/settings.json`: `commit` and `pr` empty, `sessionUrl` off | Claude Code's trailers and pull request text |
 | `git.addAICoAuthor` off in `.vscode/settings.json` | VS Code's own Copilot trailer when you commit from Source Control |
 | The rule in `.github/instructions/project-template.instructions.md` (here, `AGENTS.md`) | Agents that write the commit message themselves, such as Copilot's |
-| `.githooks/commit-msg` (here, `template/.githooks/commit-msg`) | Anything that slips through, from any tool. Git runs a hook only once a clone enables it: `New-Project.ps1` and `Update-Project.ps1` run `git config core.hooksPath .githooks`; in a fresh clone of a project, run it yourself or update the project. In a clone of this repository, run `git config core.hooksPath template/.githooks` |
+| `.githooks/commit-msg` (here, `template/.githooks/commit-msg`) | Anything that slips through, from any tool. Git runs a hook only once a clone enables it: `New-Project.ps1` and `Update-Project.ps1` run `git config core.hooksPath .githooks` unless the clone already has hooks in `.git/hooks`, which a hooks path would turn off, and then say how to run both; in a fresh clone of a project, run it yourself or update the project. In a clone of this repository, run `git config core.hooksPath template/.githooks` |
 | `.template/Test-CommitAttribution.ps1` (here, `template/.template/`), run by the `Commit attribution` job in `ci.yml` or `.gitlab-ci.yml` | A commit authored, committed or co-authored by an AI agent, whoever made it and however: on every pull request, merge queue entry and push to the default branch. It reports; to make it block a merge, require the Commit attribution check in the repository's branch rules on GitHub, or turn on "Pipelines must succeed" on GitLab |
 
 The hook removes only agent lines: `Co-authored-by:` trailers naming Copilot or an `@anthropic.com` or `Copilot@users.noreply.github.com` address, `Claude-Session:` trailers, and "Generated with Claude Code" lines. A person's co-author trailer stays. To clean commits that already have them, before pushing, enable the hook and amend every unpushed commit through it: `git rebase origin/main --exec "git commit --amend --no-edit --allow-empty"`.
@@ -378,7 +378,7 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 1. Edit the base files under `template/`: `*.jinja` files are rendered with the answers, every other file is copied as is. A file name such as `{% if stack == 'dotnet' %}global.json{% endif %}` makes the file conditional. A new file is template-owned unless `copier.yml` lists it under `_merged_files` or `_skip_if_exists`. Keep a file template-owned whenever its tool can include a second, project-owned file; list it under `_merged_files` when it can't. A question that a later version adds must be read through a default wherever `copier.yml` uses it before the question is answered — the `_exclude` patterns read `workflow_tools | default([...])` — because an update renders the old version's files with the new `copier.yml` before the project has that answer; without the default an old project's update stops with conflicts. `Test-Template.ps1` fails an `_exclude` pattern that excludes anything without the answer.
 2. For the workflow commands, agents and prompts, edit the source templates in [workflow/templates](workflow/templates/), then run `.\Update-Template.ps1` to regenerate their copies under `template/` and at the repository root.
 3. Run `.\Test-Template.ps1`, `.\Test-Adoption.ps1`, `.\Test-UpdateIgnoredFiles.ps1` and `.\Test-CommitAttribution.ps1`, and confirm their last lines read `Template tests: PASSED`, `Adoption tests: PASSED`, `Update ignored-files tests: PASSED` and `Commit attribution tests: PASSED`.
-4. Commit, tag the next version, and push with tags: `git tag v0.2.0` and `git push origin main --tags`.
+4. Add the version's notes to `CHANGELOG.md`, commit, tag the version and push with tags: `git tag -a v0.2.0 -m v0.2.0` and `git push origin main --tags`. Then publish the notes: `gh release create v0.2.0 --verify-tag --title v0.2.0 --notes-file <a file with the version's CHANGELOG.md section>`.
 
 `Test-Template.ps1` works on a tagged snapshot of the working tree, without Claude Code's worktrees, in `%TEMP%`. It, `Test-Adoption.ps1`, `Test-UpdateIgnoredFiles.ps1` and `Test-CommitAttribution.ps1` run on every push to `main` and every pull request through `.github/workflows/test-template.yml`:
 
