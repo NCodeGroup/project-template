@@ -530,3 +530,4 @@ if (-not $SkipUpdate) {
 ''
 if ($failures.Count) { "Template tests: FAILED ($($failures.Count))"; exit 1 }
 'Template tests: PASSED'
+exit 0
