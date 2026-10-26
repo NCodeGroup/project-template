@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.18.1
+
+- `Adopt-Project.ps1` answers `stack: other` for an OpenTofu or Terraform repository (a `.tf`, `.tofu` or `.tftest.hcl` file within two folders of the root), even when it has PowerShell scripts. PowerShell files under the root's `build/`, `eng/`, `scripts/`, `tools/`, `.github/` and `.gitlab/` folders no longer make a repository `powershell`. Before, such a repository got `Invoke-ScriptAnalyzer` and `Invoke-Pester` as its build and test commands, and the adoption stopped staged, not committed, when those modules weren't installed. A PowerShell project whose only PowerShell files are in those folders now gets `other`, so pass `-Data @{ stack = 'powershell' }`. A project adopted before this release with the wrong stack corrects `stack`, `build_command` and `test_command` in `.copier-answers.yml` and runs `.\.template\Update-Project.ps1`.
+
 ## v0.18.0
 
 - `Adopt-Project.ps1` works out `workflow_tools` from the repository's own files instead of always taking the default: `claude`, plus `copilot` when it has `.github/agents/copilot-*.agent.md`, `.github/skills/` or `.github/prompts/`, plus `local` only when it has `.github/agents/hybrid-*.agent.md`. `-Data` still wins. Before, a repository with only Copilot agents got the Hybrid agents and `local-implementer.agent.md`, which use the shack PC's private model, `.github/prompts/execute-step-local.prompt.md`, the only prompt file without a matching skill, and `"ollama.inferenceTimeoutMinutes"` in `.vscode/settings.json`. A repository with none of these files still gets the default, and the script prints a line saying it included `local` and how to leave it out. A project adopted before this release that shouldn't have the local model's files removes them with `.\.template\Update-Project.ps1 -Data @{ workflow_tools = 'claude', 'copilot' }`.
