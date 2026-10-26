@@ -201,7 +201,7 @@ The script works out these answers:
 | Answer | Worked out from |
 |---|---|
 | `stack` | `dotnet` if there is a solution or a C#, F# or VB project within two folders of the root; else `node` if `package.json` is at the root; else `python` if `pyproject.toml`, `requirements.txt` or `setup.py` is; else `powershell` if there is a `.ps1`, `.psm1` or `.psd1` file; else `other` |
-| `project_name` | The only solution's name, else the folder name |
+| `project_name` | The only solution's name, else the `origin` remote's repository name, else the main checkout's folder name, so a Claude Code worktree doesn't name the project after itself |
 | `git_host` | `gitlab` if the `origin` remote names GitLab, else `github` |
 | `author_name` (.NET) | `Authors`, else `Company`, in the root `Directory.Build.props` |
 | `build_command`, `test_command` (.NET) | `dotnet build <solution>` and `dotnet test <solution>`, when the only solution isn't at the root |
