@@ -34,3 +34,39 @@ Read the issue first, before you read any code or set up a plan worktree: an iss
 {{PROMPT:_issue-kinds}}
 
 When the kind is still unclear, ask me. Say in your reply which kind you chose and why.
+
+## Instructions for Each Kind
+
+Follow only the section for the kind you chose. In it, "the issue above" means the issue you read in step 1.
+
+### Feature
+
+{{BODY:plan-feature|the issue above}}
+
+### Bugfix
+
+{{BODY:plan-bugfix|the issue above}}
+
+### Refactor
+
+{{BODY:plan-refactor|the issue above}}
+
+### Tests
+
+{{BODY:plan-tests|the issue above}}
+
+### Migration
+
+{{BODY:plan-migration|the issue above}}
+
+### Performance
+
+{{BODY:plan-performance|the issue above}}
+
+### Security
+
+{{BODY:plan-security|the issue above}}
+
+### Docs
+
+{{BODY:plan-docs|the issue above}}
