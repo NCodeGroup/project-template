@@ -88,7 +88,7 @@ gh auth login        # the GitHub account that owns your projects and this templ
 gh auth setup-git    # lets Git, and so Copier, read the private template
 ```
 
-In a fresh clone of a project, run `git config core.hooksPath .githooks` once, so its hook strips AI agent attribution from commit messages; `New-Project.ps1` and `.template\Update-Project.ps1` do it for you, unless the clone already has hooks in `.git/hooks`. In a clone of this template, it's `git config core.hooksPath template/.githooks`.
+In a fresh clone of a project, run `git config core.hooksPath .githooks` once, so its hook strips AI agent attribution from commit messages; `New-Project.ps1` and `.template\Update-Project.ps1` do it for you, unless the clone already has hooks in `.git/hooks` or uses pre-commit, and then print how to run the hook alongside them. With pre-commit, add it to `.pre-commit-config.yaml` as a `repo: local` hook with `entry: .githooks/commit-msg`, `language: script` and `stages: [commit-msg]`, then run `pre-commit install --hook-type commit-msg`. In a clone of this template, it's `git config core.hooksPath template/.githooks`.
 
 If your Copilot plan is on another GitHub account — an employer's, for example — leave `gh` and Git on the account that owns your projects; Copilot signs in on its own, below. Don't export `GH_TOKEN` or `GITHUB_TOKEN` from your PowerShell profile: Copilot CLI would use that token's account instead of the one you sign it in with.
 
