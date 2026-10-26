@@ -115,6 +115,14 @@ function Get-Change {
     }
 }
 
+# True when the project's file already has a hunk of the template's change: the hunk applies to it in reverse.
+function Test-HunkApplied([string]$File, [string[]]$Hunk, [string]$Folder) {
+    $patch = Join-Path $Folder 'hunk.patch'
+    [IO.File]::WriteAllText($patch, ((@("--- a/$File", "+++ b/$File") + $Hunk) -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+    git apply --check --reverse -- $patch 2>$null
+    -not $LASTEXITCODE
+}
+
 $project = (Resolve-Path -LiteralPath $Path).Path
 $ownClone = -not $TemplateClone
 $scratch = Join-Path ([IO.Path]::GetTempPath()) "project-template-update-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
