@@ -106,6 +106,22 @@ $bad = foreach ($name in $nodes.Keys) {
 }
 Check 'unit: Get-AdoptionAnswers works out Node.js commands from package.json' (-not $bad) ($bad -join ' | ')
 
+# A Claude Code plan worktree, .claude/worktrees/<name>, is named after the plan, not the repository.
+$wtRemote = New-TestFolder 'wt-remote' @{ 'README.md' = "# x`n" }
+$wtLocal = New-TestFolder 'wt-local' @{ 'README.md' = "# x`n" }
+foreach ($folder in $wtRemote, $wtLocal) {
+    Invoke-Git -C $folder init -q -b main
+    Invoke-Git -C $folder add -A
+    Invoke-Git -C $folder commit -q -m Initial
+    Invoke-Git -C $folder worktree add -q (Join-Path $folder '.claude/worktrees/adopt-project-template') -b adopt
+}
+Invoke-Git -C $wtRemote remote add origin https://github.com/example/identity-platform.git
+$n1 = (Get-AdoptionAnswers $wtRemote).project_name
+$n2 = (Get-AdoptionAnswers (Join-Path $wtRemote '.claude/worktrees/adopt-project-template')).project_name
+Check 'unit: Get-AdoptionAnswers names the project after the origin remote, in a worktree too' (($n1 -eq 'identity-platform') -and ($n2 -eq 'identity-platform')) "$n1 | $n2"
+$n3 = (Get-AdoptionAnswers (Join-Path $wtLocal '.claude/worktrees/adopt-project-template')).project_name
+Check 'unit: Get-AdoptionAnswers names a worktree without a remote after the main checkout' ($n3 -eq 'wt-local') $n3
+
 $m = Merge-AdoptedFile '.gitignore' "bin/`nmine.log`n" "*.user`nobj/`n"
 Check 'unit: Merge-AdoptedFile appends lines' ($m.Strategy -eq 'Lines' -and $m.Text.StartsWith("*.user`nobj/`n") -and $m.Text.EndsWith("`nbin/`nmine.log`n")) $m.Text
 
