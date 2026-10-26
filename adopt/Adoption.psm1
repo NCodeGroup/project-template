@@ -27,6 +27,15 @@ function Get-NodePackageManager([string]$Path, $Package) {
     'npm'
 }
 
+# The repository's name: the origin remote's last path segment, else the main checkout's folder, so a Claude Code
+# worktree (.claude/worktrees/<name>) doesn't name the project after itself, else the folder's.
+function Get-RepositoryName([string]$Path, [string]$Remote) {
+    if ($Remote -match '[\\/:]([^\\/:]+?)(?:\.git)?/?$') { return $Matches[1] }
+    $common = "$(git -C $Path rev-parse --path-format=absolute --git-common-dir 2>$null)"
+    if ($common -and (Split-Path -Leaf $common) -eq '.git') { return Split-Path -Leaf (Split-Path -Parent $common) }
+    Split-Path -Leaf $Path
+}
+
 function Get-AdoptionAnswers([string]$Path) {
     $Path = (Resolve-Path -LiteralPath $Path).Path
     $found = @(Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Include '*.sln', '*.slnx', '*.csproj', '*.fsproj', '*.vbproj' |
@@ -41,7 +50,7 @@ function Get-AdoptionAnswers([string]$Path) {
     $remote = "$(git -C $Path remote get-url origin 2>$null)"
     $answers = [ordered]@{
         stack        = $stack
-        project_name = if ($solutions.Count -eq 1) { $solutions[0].BaseName } else { Split-Path -Leaf $Path }
+        project_name = if ($solutions.Count -eq 1) { $solutions[0].BaseName } else { Get-RepositoryName $Path $remote }
         git_host     = if ($remote -match 'gitlab') { 'gitlab' } else { 'github' }
     }
     if ($stack -eq 'dotnet') {
