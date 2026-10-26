@@ -33,6 +33,8 @@ jobs:
         run: ./Test-Adoption.ps1
       - name: Test updating a project that ignores a large folder
         run: ./Test-UpdateIgnoredFiles.ps1
+      - name: Test the update's exit code
+        run: ./Test-UpdateExitCode.ps1
       - name: Test the commit attribution check
         run: ./Test-CommitAttribution.ps1
       - name: Test the Git hooks
