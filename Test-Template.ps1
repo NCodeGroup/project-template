@@ -65,7 +65,7 @@ Invoke-Git -C $tpl config uploadpack.allowFilter true
 Invoke-Git -C $tpl config uploadpack.allowAnySHA1InWant true
 $tplUrl = 'file:///' + ($tpl -replace '\\', '/') + '/.git'
 
-$common ='AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
+$common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.vscode\settings.json', '.vscode\extensions.json'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
@@ -98,7 +98,7 @@ $cases = @(
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
 )
 if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
-$yamlCheck ='import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
+$yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
 
 foreach ($case in $cases) {
     $name = $case.Name
@@ -437,7 +437,7 @@ if (-not $SkipUpdate) {
     finally { Pop-Location }
 
     $output = & $updateProject | Out-String
-    Check 'update: second run changes nothing' ($output.Contains('Already up to date') -and -not $output.Contains('Handing the update over') -and((git -C $project rev-parse HEAD) -eq $head) -and -not (git -C $project status --porcelain)) $output.Trim()
+    Check 'update: second run changes nothing' ($output.Contains('Already up to date') -and -not $output.Contains('Handing the update over') -and ((git -C $project rev-parse HEAD) -eq $head) -and -not (git -C $project status --porcelain)) $output.Trim()
 
     # v0.3.0 changes the .gitignore line the project changed too, and CLAUDE.md, which the project edited again: one conflict.
     Push-Location $project
