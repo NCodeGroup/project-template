@@ -1,6 +1,8 @@
 # Functions Adopt-Project.ps1 uses to bring an existing repository under the template.
 
 $script:SkipPath = '[\\/](bin|obj|node_modules|\.git)[\\/]'
+# Folders at the root whose PowerShell files are build or CI helpers, not the project's code.
+$script:HelperPath = '^(\.github|\.gitlab|build|eng|scripts|tools)[\\/]'
 
 function Get-CopierList([string]$CopierYml, [string]$Key) {
     $inList = $false
@@ -59,7 +61,7 @@ function Get-AdoptionAnswers([string]$Path) {
     elseif (Test-Path -LiteralPath (Join-Path $Path 'package.json')) { 'node' }
     elseif ('pyproject.toml', 'requirements.txt', 'setup.py' | Where-Object { Test-Path -LiteralPath (Join-Path $Path $_) }) { 'python' }
     elseif (Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Include '*.tf', '*.tofu', '*.tftest.hcl' | Where-Object { $_.FullName -notmatch $script:SkipPath }) { 'other' }
-    elseif (Get-ChildItem -LiteralPath $Path -Recurse -File -Include '*.ps1', '*.psm1', '*.psd1' | Where-Object { $_.FullName -notmatch $script:SkipPath }) { 'powershell' }
+    elseif (Get-ChildItem -LiteralPath $Path -Recurse -File -Include '*.ps1', '*.psm1', '*.psd1' | Where-Object { $_.FullName -notmatch $script:SkipPath -and [IO.Path]::GetRelativePath($Path, $_.FullName) -notmatch $script:HelperPath }) { 'powershell' }
     else { 'other' }
 
     $remote = "$(git -C $Path remote get-url origin 2>$null)"
