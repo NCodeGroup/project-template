@@ -124,6 +124,8 @@ foreach ($case in $cases) {
     if ($case.Host -eq 'github') {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD') -and $ci.Contains('merge_group:') -and $ci.Contains('${{ github.event.pull_request.base.sha'))
+        $checkouts = [regex]::Matches($ci, '(?m)^\s+- uses: actions/checkout@').Count
+        Check "${name}: CI checkouts set persist-credentials false" ($checkouts -gt 0 -and [regex]::Matches($ci, '(?m)^\s+persist-credentials: false\r?$').Count -eq $checkouts) $ci
     }
     else {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
