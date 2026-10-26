@@ -331,6 +331,18 @@ if (-not $UnitOnly) {
     Check 'ci-existing: asks to add the commit attribution job to the kept ci.yml' ($ciOut.Contains("add the template's commit-attribution job to .github/workflows/ci.yml")) $ciOut
     Check 'ci-existing: says it included local and how to leave it out' ($ciOut.Contains("workflow_tools: [claude, copilot, local], the template's default") -and $ciOut.Contains("-Data @{ workflow_tools = 'claude', 'copilot' }")) $ciOut
 
+    # Copilot agents and no Hybrid ones, like a public repository: the adoption leaves out the local model's files.
+    $copilotOnly = New-Fixture 'copilot-only' @{
+        'README.md'                                   = "# Copilot Only`n"
+        '.github/agents/copilot-implementer.agent.md' = "old`n"
+        '.github/agents/plan-executor.agent.md'       = "old`n"
+    } 'https://github.com/example/copilot-only.git'
+    $coOut = & $adopt -Path $copilotOnly -Template $tpl -Ref v0.1.0 -NoVerify | Out-String
+    $coAnswers = Get-Content -Raw -LiteralPath (Join-Path $copilotOnly '.copier-answers.yml')
+    $coSettings = Get-Content -Raw -LiteralPath (Join-Path $copilotOnly '.vscode\settings.json')
+    $coLocal = @('.github\agents\hybrid-planner.agent.md', '.github\agents\local-implementer.agent.md', '.github\prompts\execute-step-local.prompt.md' | Where-Object { Test-Path -LiteralPath (Join-Path $copilotOnly $_) })
+    Check 'copilot-only: works out workflow_tools without local' ($coAnswers -match '(?m)^workflow_tools:\r?\n- claude\r?\n- copilot\r?\n(?!- )' -and -not $coLocal -and -not $coSettings.Contains('ollama') -and (Test-Path -LiteralPath (Join-Path $copilotOnly '.github\skills\plan-feature\SKILL.md')) -and -not $coOut.Contains("the template's default")) "$coAnswers | $($coLocal -join ', ') | $coOut"
+
     $failing = New-Fixture 'failing' @{ 'README.md' = "# Failing`n" } 'https://github.com/example/failing.git'
     $failOut = & $adopt -Path $failing -Template $tpl -Ref v0.1.0 -Data @{ stack = 'other'; build_command = 'exit 3'; test_command = '' } | Out-String
     $failExit = $LASTEXITCODE
