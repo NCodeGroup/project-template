@@ -172,7 +172,7 @@ To bring an existing repository under the template, use [Adopt-Project.ps1](#ado
 
 ```powershell
 .\Adopt-Project.ps1 -Path C:\src\buffers                                                    # works out the answers, adopts, verifies, commits
-.\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot' }    # for a public or shared repository: no Hybrid agents, which use the shack PC's private model
+.\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot' }    # for a public or shared repository with no Copilot or Hybrid agent files: no Hybrid agents, which use the shack PC's private model
 .\Adopt-Project.ps1 -Path C:\src\buffers -NoCommit                                          # stages the result for review instead
 ```
 
@@ -207,8 +207,9 @@ The script works out these answers:
 | `build_command`, `test_command` (.NET) | `dotnet build <solution>` and `dotnet test <solution>`, when the only solution isn't at the root |
 | `package_manager` (Node.js) | The one the `packageManager` field in `package.json` names, else the one whose lockfile is at the root (`pnpm-lock.yaml`, `yarn.lock`, `bun.lock` or `bun.lockb`), else npm |
 | `build_command`, `test_command` (Node.js) | `<package_manager> run build` and `<package_manager> run test`, each only when `package.json` has that script and the `test` script isn't the failing placeholder `npm init` writes; else blank |
+| `workflow_tools` | `claude`, plus `copilot` if `.github/agents/copilot-*.agent.md`, `.github/skills/` or `.github/prompts/` exists, plus `local` if `.github/agents/hybrid-*.agent.md` exists; with none of these, the template's default, and the script prints a line saying it included `local` and how to leave it out |
 
-Everything else, including `workflow_tools`, takes the template's default. The script prints the answers, runs `copier copy --overwrite`, and enables the template's Git hooks (`git config core.hooksPath .githooks`) unless the repository already sets its own, has hooks in `.git/hooks`, which a hooks path would turn off, or uses pre-commit, which won't install while a hooks path is set ([Commit Attribution](#commit-attribution)).
+Everything else takes the template's default. The script prints the answers, runs `copier copy --overwrite`, and enables the template's Git hooks (`git config core.hooksPath .githooks`) unless the repository already sets its own, has hooks in `.git/hooks`, which a hooks path would turn off, or uses pre-commit, which won't install while a hooks path is set ([Commit Attribution](#commit-attribution)).
 
 What it does with a file the repository already has depends on the file's owner ([What a Project Gets](#what-a-project-gets)):
 

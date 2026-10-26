@@ -172,7 +172,7 @@ Adopt one from this repository's clone. See [Adopt an existing repository](READM
 .\Adopt-Project.ps1 -Path C:\src\other
 ```
 
-For a public or shared repository, add `-Data @{ workflow_tools = 'claude', 'copilot' }`.
+`Adopt-Project.ps1` works out `workflow_tools` from the repository's Copilot and Hybrid agent files. For a public or shared repository that has neither, add `-Data @{ workflow_tools = 'claude', 'copilot' }`; otherwise it gets the Hybrid agents, which use the shack PC's private model.
 
 To get the commands and skills in every repository, run:
 
