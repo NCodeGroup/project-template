@@ -77,12 +77,16 @@ $detail = ($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -joi
 Check 'unit: Get-AdoptionAnswers works out a .NET repository' (($a.stack -eq 'dotnet') -and ($a.project_name -eq 'NCode.Demo') -and ($a.git_host -eq 'gitlab') -and ($a.author_name -eq 'NCode Group') -and ($a.build_command -eq 'dotnet build src/NCode.Demo.slnx') -and ($a.test_command -eq 'dotnet test src/NCode.Demo.slnx')) $detail
 
 $others = [ordered]@{
-    'only-python' = @{ File = 'pyproject.toml'; Stack = 'python' }
-    'only-ps'     = @{ File = 'tool.ps1'; Stack = 'powershell' }
-    'only-other'  = @{ File = 'main.tf'; Stack = 'other' }
+    'only-python' = @{ Files = @('pyproject.toml'); Stack = 'python' }
+    'only-ps'     = @{ Files = @('tool.ps1'); Stack = 'powershell' }
+    'only-other'  = @{ Files = @('main.tf'); Stack = 'other' }
+    'tofu-helper' = @{ Files = @('modules/net/main.tf', 'live/dev/main.tf', 'build/helper.ps1', 'build/tests/helper.tests.ps1'); Stack = 'other' }
+    'tofu-script' = @{ Files = @('main.tofu', 'tests/main.tftest.hcl', 'deploy.ps1'); Stack = 'other' }
 }
 $bad = foreach ($name in $others.Keys) {
-    $folder = New-TestFolder $name @{ $others[$name].File = "x`n" }
+    $files = @{}
+    foreach ($file in $others[$name].Files) { $files[$file] = "x`n" }
+    $folder = New-TestFolder $name $files
     $a = Get-AdoptionAnswers $folder
     if (-not ($a.stack -eq $others[$name].Stack -and $a.git_host -eq 'github' -and $a.project_name -eq $name -and -not $a.Contains('build_command'))) {
         "${name}: $(($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')"
