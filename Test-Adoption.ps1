@@ -329,6 +329,7 @@ if (-not $UnitOnly) {
     $ciOut = & $adopt -Path $ciExisting -Template $tpl -Ref v0.1.0 -NoVerify | Out-String
     Check 'ci-existing: no reconcile follow-up when the repository already had ci.yml' (-not $ciOut.Contains('reconcile .github/workflows')) $ciOut
     Check 'ci-existing: asks to add the commit attribution job to the kept ci.yml' ($ciOut.Contains("add the template's commit-attribution job to .github/workflows/ci.yml")) $ciOut
+    Check 'ci-existing: says it included local and how to leave it out' ($ciOut.Contains("workflow_tools: [claude, copilot, local], the template's default") -and $ciOut.Contains("-Data @{ workflow_tools = 'claude', 'copilot' }")) $ciOut
 
     $failing = New-Fixture 'failing' @{ 'README.md' = "# Failing`n" } 'https://github.com/example/failing.git'
     $failOut = & $adopt -Path $failing -Template $tpl -Ref v0.1.0 -Data @{ stack = 'other'; build_command = 'exit 3'; test_command = '' } | Out-String

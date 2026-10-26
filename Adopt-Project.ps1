@@ -4,7 +4,7 @@
     apply the template, and commit the result.
 
 .DESCRIPTION
-    Works out the template's answers from what the repository already has (stack, project name, git host, authors,
+    Works out the template's answers from what the repository already has (stack, project name, git host, workflow tools, authors,
     build and test commands), applies -Data over them, and runs `copier copy --overwrite --defaults` into the
     repository (Copier from PATH, or through uvx). The answers are recorded in .copier-answers.yml, so the project
     can update itself with .\.template\Update-Project.ps1 afterwards.
@@ -83,6 +83,7 @@ try {
     foreach ($k in $answers.Keys) {
         if ($null -ne $answers[$k]) { "  ${k}: $(ConvertTo-CopierValue $answers[$k])" }
     }
+    if (-not $answers.Contains('workflow_tools')) { "  workflow_tools: [claude, copilot, local], the template's default: the repository has no Copilot or Hybrid agent files. The Hybrid agents use the shack PC's private model; for a public or shared repository, leave them out with -Data @{ workflow_tools = 'claude', 'copilot' }" }
 
     # Copier overwrites the merged files, so keep the repository's versions to merge back afterwards.
     $merged = @(Get-CopierList (Join-Path $PSScriptRoot 'copier.yml') '_merged_files')
