@@ -54,9 +54,11 @@ function Get-AdoptionAnswers([string]$Path) {
     $found = @(Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Include '*.sln', '*.slnx', '*.csproj', '*.fsproj', '*.vbproj' |
         Where-Object { $_.FullName -notmatch $script:SkipPath })
     $solutions = @($found | Where-Object Extension -In '.sln', '.slnx')
+    # An OpenTofu or Terraform repository is 'other' even when it has PowerShell helper scripts.
     $stack = if ($found) { 'dotnet' }
     elseif (Test-Path -LiteralPath (Join-Path $Path 'package.json')) { 'node' }
     elseif ('pyproject.toml', 'requirements.txt', 'setup.py' | Where-Object { Test-Path -LiteralPath (Join-Path $Path $_) }) { 'python' }
+    elseif (Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Include '*.tf', '*.tofu', '*.tftest.hcl' | Where-Object { $_.FullName -notmatch $script:SkipPath }) { 'other' }
     elseif (Get-ChildItem -LiteralPath $Path -Recurse -File -Include '*.ps1', '*.psm1', '*.psd1' | Where-Object { $_.FullName -notmatch $script:SkipPath }) { 'powershell' }
     else { 'other' }
 
