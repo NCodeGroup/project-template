@@ -275,6 +275,25 @@ $m = @(Get-MissingText 'template\.claude\commands\finish-plan.md' ('Filename too
 Check 'workflow: finish-plan deletes what a path too long for Windows left behind' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText 'USAGE.md' 'git config --global core.longpaths true')
 Check 'USAGE.md: the Git setup turns on core.longpaths' (-not $m) ($m -join '; ')
+$testHunk = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-HunkApplied' }, $true) | Select-Object -First 1
+$results = if ($testHunk) {
+    & {
+        $hunkRepo = Join-Path $Work 'hunk-applied'
+        New-Item -ItemType Directory -Force $hunkRepo | Out-Null
+        Push-Location $hunkRepo
+        try {
+            Invoke-Git init -q
+            . ([scriptblock]::Create($testHunk.Extent.Text))
+            $hunk = '@@ -1,2 +1,2 @@', ' <Project>', '-</Project>', '\ No newline at end of file', '+</Project>'
+            [IO.File]::WriteAllText((Join-Path $hunkRepo 'Directory.Build.props'), "<Project>`n</Project>`n")
+            Test-HunkApplied 'Directory.Build.props' $hunk $Work
+            [IO.File]::WriteAllText((Join-Path $hunkRepo 'Directory.Build.props'), "<Project>`n</Project>")
+            Test-HunkApplied 'Directory.Build.props' $hunk $Work
+        }
+        finally { Pop-Location }
+    }
+}
+Check 'update: a project-owned change the project already has is recognized, one it lacks is not' ((@($results) -join ',') -eq 'True,False') (@($results) -join ',')
 $worktreeKinds = [ordered]@{
     create = 'plan-feature', 'plan-bugfix', 'plan-refactor', 'plan-tests', 'plan-migration', 'plan-performance', 'plan-security', 'plan-docs', 'handoff-plan'
     join   = 'orchestrate-plan', 'execute-step', 'replan-step', 'review-plan-diff'
