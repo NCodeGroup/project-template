@@ -205,8 +205,13 @@ try {
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
         if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
     }
-    # Enable the template's versioned hooks in this clone, unless it already uses hooks of its own.
-    if ((Test-Path -LiteralPath .githooks) -and -not (git config --get core.hooksPath)) { git config core.hooksPath .githooks }
+    # Enable the template's versioned hooks in this clone, unless it already uses hooks of its own:
+    # a hooks path, or hooks in .git/hooks, which a hooks path would turn off.
+    if ((Test-Path -LiteralPath .githooks) -and -not (git config --get core.hooksPath)) {
+        $ownHooks = @(Get-ChildItem -LiteralPath (git rev-parse --path-format=absolute --git-path hooks) -File -ErrorAction SilentlyContinue | Where-Object Extension -NE '.sample' | ForEach-Object Name)
+        if ($ownHooks) { "Git hooks: .githooks not enabled. This clone has hooks of its own in .git/hooks ($($ownHooks -join ', ')), and core.hooksPath would turn them off. To run both, call .githooks/commit-msg from your commit-msg hook, or move your hooks into .githooks and run: git config core.hooksPath .githooks"; '' }
+        else { git config core.hooksPath .githooks }
+    }
     $changes = @(Get-Change)
     $jinjaTag = '\{' + '%.*?%' + '\}'
     $projectOwnedChanged = @(if ($from -ne $to) {

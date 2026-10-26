@@ -466,10 +466,12 @@ if (-not $SkipUpdate) {
     # The repository root's wrapper updates another project from this clone, handing over to the newest script.
     $other = Join-Path $Work 'node'
     Push-Location $other
-    try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project' }
+    try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'; [IO.File]::WriteAllText((Join-Path $other '.git\hooks\pre-commit'), "#!/bin/sh`n") }
     finally { Pop-Location }
     $output = & (Join-Path $PSScriptRoot 'Update-Project.ps1') -Path $other | Out-String
-    Check 'update: the root wrapper updates a project by -Path' (($LASTEXITCODE -eq 0) -and $output.Contains('Handing the update over to the v0.3.0 version') -and ((git -C $other log -1 --format=%s) -eq 'Update from project-template v0.3.0') -and -not (git -C $other status --porcelain)) $output.Trim()}
+    Check 'update: the root wrapper updates a project by -Path' (($LASTEXITCODE -eq 0) -and $output.Contains('Handing the update over to the v0.3.0 version') -and ((git -C $other log -1 --format=%s) -eq 'Update from project-template v0.3.0') -and -not (git -C $other status --porcelain)) $output.Trim()
+    Check 'update: leaves core.hooksPath alone when the clone has hooks in .git/hooks' (-not (git -C $other config core.hooksPath) -and $output.Contains('has hooks of its own in .git/hooks (pre-commit)')) $output.Trim()
+}
 ''
 if ($failures.Count) { "Template tests: FAILED ($($failures.Count))"; exit 1 }
 'Template tests: PASSED'
