@@ -66,6 +66,13 @@ function ConvertTo-CopierValue($Value) {
     if ($Value -is [Collections.IList]) { '[' + ($Value -join ', ') + ']' } else { "$Value" }
 }
 
+# Render the template at a version into a folder with the project's answers; false when Copier can't.
+function Invoke-TemplateRender([string]$Version, [string]$Folder) {
+    $renderArgs = @('copy', '--defaults', '--quiet', '--vcs-ref', $Version, '--data-file', (Join-Path $project '.copier-answers.yml'))
+    foreach ($k in $Data.Keys) { $renderArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
+    try { Invoke-Copier @renderArgs $TemplateClone $Folder | Out-Null; $true } catch { $false }
+}
+
 function Get-Answer([string]$Key) {
     $match = Select-String -LiteralPath .copier-answers.yml -Pattern "^${Key}:\s*(.+?)\s*$" | Select-Object -First 1
     if ($match) { $match.Matches[0].Groups[1].Value.Trim("'", '"') }
@@ -119,7 +126,8 @@ try {
 
     if ($ownClone) {
         $TemplateClone = Join-Path ([IO.Path]::GetTempPath()) "project-template-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
-        git clone --quiet --no-checkout --filter=blob:none -- $src $TemplateClone 2>$null
+        # A full clone: Copier renders versions from it and can't clone a blob-filtered clone; the template is small.
+        git clone --quiet --no-checkout -- $src $TemplateClone 2>$null
         if ($LASTEXITCODE) { throw "Can't read the project template at $src. Updating needs read access to it; for its owner, Git's credentials (gh auth setup-git). Without access the project still works as it is: only template updates are unavailable." }
     }
     $to = if ($Ref) { $Ref } else { Get-NewestTag $TemplateClone }
@@ -217,16 +225,31 @@ try {
     if ($edited) { ''; 'Local edits discarded — these files are the template''s; make the change in a project file instead:'; $edited | ForEach-Object { "  $_" } }
     if ($restored) { ''; 'Restored — these files are the template''s, so the project can''t delete them:'; $restored | ForEach-Object { "  $_" } }
     if ($projectOwnedChanged) {
-        ''
-        "The template changed these project-owned files since ${from}. They weren't touched; copy over what you want:"
-        foreach ($changed in $projectOwnedChanged) {
-            ''
-            "  $($changed.File), from $($changed.Source):"
-            $inHunk = $false
-            foreach ($line in git -C $TemplateClone diff --no-color --unified=1 $from $to -- $changed.Source) {
-                if ($line.StartsWith('@@')) { $inHunk = $true }
-                if ($inHunk) { "    $line" }
+        # Render both versions with the project's answers, so the diffs show what the project would get, not Jinja.
+        New-Item -ItemType Directory -Force $scratch | Out-Null
+        $renderedFrom = Join-Path $scratch 'rendered\from'
+        $renderedTo = Join-Path $scratch 'rendered\to'
+        $rendered = (Invoke-TemplateRender $from $renderedFrom) -and (Invoke-TemplateRender $to $renderedTo)
+        $empty = Join-Path $scratch 'empty'
+        [IO.File]::WriteAllText($empty, '')
+        $shown = foreach ($changed in $projectOwnedChanged) {
+            if ($rendered) {
+                $old = Join-Path $renderedFrom $changed.File
+                $new = Join-Path $renderedTo $changed.File
+                $diff = git diff --no-index --no-color --unified=1 -- $(if (Test-Path -LiteralPath $old) { $old } else { $empty }) $(if (Test-Path -LiteralPath $new) { $new } else { $empty })
+                $title = "  $($changed.File):"
             }
+            else {
+                $diff = git -C $TemplateClone diff --no-color --unified=1 $from $to -- $changed.Source
+                $title = "  $($changed.File), from the template source $($changed.Source), which Copier couldn't render with this project's answers:"
+            }
+            $hunk = @($diff | Where-Object { $_ -is [string] } | ForEach-Object -Begin { $inHunk = $false } -Process { if ($_.StartsWith('@@')) { $inHunk = $true }; if ($inHunk) { "    $_" } })
+            if ($hunk) { [pscustomobject]@{ Title = $title; Lines = $hunk } }
+        }
+        if ($shown) {
+            ''
+            "The template changed these project-owned files since ${from}. They weren't touched; copy over what you want:"
+            foreach ($file in $shown) { ''; $file.Title; $file.Lines }
         }
     }
 
