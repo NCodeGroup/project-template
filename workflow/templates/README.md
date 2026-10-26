@@ -17,10 +17,12 @@ Each prompt has a small front-matter header (`description`, `argument-hint`, `ro
 | [plan-security.md](plan-security.md) | planner | `PLAN.md` | Find weaknesses and harden with proof tests |
 | [plan-docs.md](plan-docs.md) | planner | `PLAN.md` | Supply the facts so the executor writes the docs |
 | [handoff-plan.md](handoff-plan.md) | planner | `PLAN.md` | Convert a plan already discussed in chat (plan mode, the Plan agent) into the handoff |
+| [plan-issue.md](plan-issue.md) | planner | `PLAN.md` | Plan one GitHub or GitLab issue: read it and its comments, check that it's ready, pick the kind of plan from its labels, and plan it with that kind's checklist |
 | [replan-step.md](replan-step.md) | planner | Updated `PLAN.md` | Re-plan a step the executor escalated (`[?]`) or failed (`[!]`), then hand it back |
 | [orchestrate-plan.md](orchestrate-plan.md) | orchestrator | Commits, updated `PLAN.md` | Run the whole plan in one session: the strong model verifies and re-plans, a cheaper subagent executes |
 | [analyze-architecture.md](analyze-architecture.md) | analyst | `ANALYSIS.md` | Explain a codebase or subsystem with evidence, risks and follow-ups |
 | [analyze-decision.md](analyze-decision.md) | analyst | ADR file | Compare options for a design decision and record it |
+| [triage-issues.md](triage-issues.md) | analyst | Findings in chat | List a set of open issues (a label, a milestone, a search), judge which are ready to plan, and give the `/plan-issue` command for each |
 | [review-code.md](review-code.md) | reviewer | Findings in chat | Review a branch, PR or folder in depth |
 | [review-plan-diff.md](review-plan-diff.md) | reviewer | Fix steps in `PLAN.md` | Check the executor's work against the plan |
 | [finish-plan.md](finish-plan.md) | reviewer | Deleted `PLAN.md`, a fast-forwarded default branch | Close a plan whose work is pushed or merged: retire it, update the default branch, delete its branch and, in Claude Code, its worktree |
@@ -65,6 +67,7 @@ The four VS Code agent templates are variant-neutral; the installer renders each
 | File | Purpose |
 |---|---|
 | [_plan-format.md](_plan-format.md) | The PLAN.md handoff contract: writing rules for a weaker executor plus the exact Markdown structure the step runner parses |
+| [_issue-kinds.md](_issue-kinds.md) | The table that maps an issue's labels to a kind of plan, included in `plan-issue` and `triage-issues` |
 | [PLAN.example.md](PLAN.example.md) | A complete three-step plan for the demo project that personal-notes' `New-AgentTestRepo.ps1` creates — the format in practice, and the runner's test fixture |
 | [_claude-worktree-create.md](_claude-worktree-create.md), [_claude-worktree-join.md](_claude-worktree-join.md), [_claude-worktree-finish.md](_claude-worktree-finish.md) | The Claude Code plan-worktree sections ([Claude Code Plan Worktrees](#claude-code-plan-worktrees)) |
 
@@ -74,6 +77,7 @@ The four VS Code agent templates are variant-neutral; the installer renders each
 |---|---|---|
 | `{{INPUT}}` | Prompt bodies | Your request; `$ARGUMENTS` in Claude Code commands; `${input:details:<hint>}` in VS Code prompt files; a description of the command's argument in Copilot CLI skills |
 | `{{PROMPT:name\|input}}` | Agent bodies | The body of prompt `name` with `{{INPUT}}` set to `input` |
+| `{{BODY:name\|input}}` | Prompt bodies | The body of prompt `name` with `{{INPUT}}` set to `input`, without the plan format; `plan-issue` uses it to include each `plan-*` checklist |
 | `{{PLANNER_AGENT}}`, `{{IMPLEMENTER_AGENT}}`, `{{REVIEWER_AGENT}}`, `{{ORCHESTRATOR_AGENT}}`, `{{EXECUTOR_LABEL}}` | Agent templates | Agent names and the executor description for the variant being installed |
 | `{{PLANNER_MODEL}}`, `{{REVIEWER_MODEL}}`, `{{EXECUTOR_MODEL}}`, `{{FAST_EXECUTOR_MODEL}}` | Agent front matter | `-PlannerModel`, `-ReviewerModel`, and `-LocalModel`/`-FastLocalModel` (Local) or `-CopilotExecutorModel`/`-CopilotFastModel` (Copilot) |
 | `{{CLAUDE_EXECUTOR_MODEL}}`, `{{CLI_EXECUTOR_MODEL}}` | `plan-executor` templates | `-ClaudeExecutorModel`, `-CliExecutorModel` |
@@ -84,4 +88,4 @@ New projects get generated copies of these files under `template/` ([What a Proj
 
 ---
 
-**TL;DR:** Seventeen prompts (planning, analysis, review, orchestration, re-planning, execution, finishing) and four variant-neutral VS Code agents, written once and installed into Claude Code, VS Code and Copilot CLI by `Install-HybridWorkflow.ps1`. Every planning prompt ends with the same PLAN.md contract, and the executor prompt escalates with `[?]` instead of improvising, so any planner and any executor can be combined.
+**TL;DR:** Nineteen prompts (planning, issue triage, analysis, review, orchestration, re-planning, execution, finishing) and four variant-neutral VS Code agents, written once and installed into Claude Code, VS Code and Copilot CLI by `Install-HybridWorkflow.ps1`. Every planning prompt ends with the same PLAN.md contract, and the executor prompt escalates with `[?]` instead of improvising, so any planner and any executor can be combined.
