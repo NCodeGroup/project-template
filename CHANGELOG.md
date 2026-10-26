@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.14.1
+
+- `Adopt-Project.ps1` no longer names a project after the Claude Code worktree it runs in. Without a single solution, `project_name` is the `origin` remote's repository name, else the main checkout's folder name, else the folder name. A project adopted from a plan worktree before this release has the worktree's name in `.copier-answers.yml`; correct it there and run `.\.template\Update-Project.ps1`.
+
 ## v0.14.0
 
 - A new `/plan-template-update` command plans a project's update to the newest template version, or to one it names (`/plan-template-update v0.14.0`), and can change an answer on the way. It reads the release notes since the project's version and runs `Update-Project.ps1 -NoCommit` on a clone of the project to see what the update does. Its plan runs the update as a step, pinned with `-Ref` and staged with `-NoCommit`, so the update is committed as `Plan step 1` and a result that differs from the trial escalates. Then it runs the project's checks, fixes each project file that still describes the old template, and ends with the project's tests, each judged by its exit code. It files an issue in the template repository for each gap the trial shows. In Claude Code it plans in a worktree, or, when the project's `plan-executor` subagent lacks the PowerShell tool (before v0.11.0), on a `build/project-template-<version>` branch in the current checkout.
