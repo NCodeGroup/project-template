@@ -240,6 +240,7 @@ Check 'workflow: every executor runs on Claude Sonnet 5.5' (-not $executorMissin
 $worktreeKinds = [ordered]@{
     create = 'plan-feature', 'plan-bugfix', 'plan-refactor', 'plan-tests', 'plan-migration', 'plan-performance', 'plan-security', 'plan-docs', 'handoff-plan'
     join   = 'orchestrate-plan', 'execute-step', 'replan-step', 'review-plan-diff'
+    finish = 'finish-plan'
 }
 $worktreeMissing = @(
     foreach ($kind in $worktreeKinds.Keys) {
