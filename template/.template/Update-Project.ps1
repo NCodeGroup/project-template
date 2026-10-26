@@ -26,8 +26,9 @@
     the merged files and adds and deletes template files as the template did. Copier runs from PATH or through uvx.
 
     Without conflicts the result is one commit, "Update from project-template <version>"; -NoCommit stages it
-    instead. With a conflict it commits nothing, says how to finish or abandon the update, and exits 1. On any
-    other failure the project is reset to where it was.
+    instead. Either way it exits 0, as it does when there is nothing to update. With a conflict it commits nothing,
+    says how to finish or abandon the update, and exits 1. On any other failure the project is reset to where it
+    was.
 
     On the default branch (the branch origin/HEAD names) it refuses to run unless -NoCommit is given, because it
     commits. It enables the template's hooks (core.hooksPath .githooks) unless the clone already has a hooks path,
@@ -251,7 +252,8 @@ try {
             }
         })
 
-    if (-not (git status --porcelain)) { "Already up to date: template $to."; return }
+    # A success ends with exit 0, not return, which would hand a caller that runs this with & the exit code of the last git command, such as git apply --check's 1 for a hunk the project lacks.
+    if (-not (git status --porcelain)) { "Already up to date: template $to."; exit 0 }
     "Template $from -> ${to}:"
     $changes | Sort-Object Kind, File | ForEach-Object { '  {0,-9} {1}' -f $_.Kind, $_.File }
     $edited = @($reset | Where-Object Kind -NE 'added' | ForEach-Object File)
@@ -307,11 +309,12 @@ try {
         'To abandon the update instead: git reset --hard; git clean -fd'
         exit 1
     }
-    if ($NoCommit) { ''; "Staged for review: git diff --cached, then git commit -m `"$message`""; return }
+    if ($NoCommit) { ''; "Staged for review: git diff --cached, then git commit -m `"$message`""; exit 0 }
     git commit -q -m $message
     if ($LASTEXITCODE) { throw 'The commit failed.' }
     ''
     "Committed `"$message`". Review it with: git show --stat"
+    exit 0
 }
 finally {
     Pop-Location
