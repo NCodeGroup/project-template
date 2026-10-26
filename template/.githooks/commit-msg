@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 #
 # commit-msg - strip AI agent attribution from the commit message.
 #
@@ -15,6 +15,11 @@
 # Git runs it once it is enabled in a clone; New-Project.ps1 and
 # Update-Project.ps1 do that:
 #     git config core.hooksPath .githooks
+# A clone that uses pre-commit runs it as a local hook instead, with
+# `entry: .githooks/commit-msg`, `language: script` and
+# `stages: [commit-msg]`; Update-Project.ps1 prints the hook to add.
+# env finds sh on PATH: pre-commit on Windows takes a shebang's path
+# literally, and Windows has no /bin/sh.
 
 set -eu
 
