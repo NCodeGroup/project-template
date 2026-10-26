@@ -62,7 +62,7 @@ The project edits them freely, and later template changes merge in: an update ke
 
 | File | Purpose |
 |---|---|
-| `.claude/settings.json` | Commit and pull request attribution off; `git push` always asks for approval, in Bash and PowerShell; `.env` files and `secrets/` can't be read; entering a plan's worktree doesn't ask |
+| `.claude/settings.json` | Commit and pull request attribution off; `git push` always asks for approval, in Bash and PowerShell; `.env` files and the root `secrets/` folder can't be read; entering a plan's worktree doesn't ask |
 | `.vscode/settings.json`, `.vscode/extensions.json` | LF and final newlines, `git.addAICoAuthor` off, the Ollama timeout (only with the local model); recommended extensions (Claude Code, GitHub Copilot Chat, Ollama, EditorConfig, and the stack's language extension; the Ollama extension only with the local model) |
 | `.editorconfig`, `.gitattributes`, `.gitignore` | UTF-8 and LF everywhere, binary types, and ignores for Claude Code's local files and worktrees, the plan in progress (`PLAN.md`), secrets and build output |
 | `.github/workflows/ci.yml` or `.gitlab-ci.yml` | CI on GitHub or GitLab, whichever the `git_host` answer names: a job that runs the build and test commands once code exists, and a `Commit attribution` job that runs `.template/Test-CommitAttribution.ps1`; on GitHub it also runs in a merge queue, with actions pinned to commit SHAs |
