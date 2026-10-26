@@ -1,0 +1,23 @@
+---
+description: Plan this project's update to a newer version of its project template, from a trial run of the update
+argument-hint: Optional template version, such as v0.14.0, and any answers to change
+role: planner
+append-format: true
+worktree: create
+---
+Plan this project's update to a newer version of the project template it was made from:
+
+{{INPUT}}
+
+The request may name a template version, such as `v0.14.0`, and answers to change, such as `workflow_tools`. Without a version, the target is the template's newest version tag.
+
+Read these two files first, before any other file. Where these instructions start by setting up a plan worktree, do that after step 1 below instead of first: step 1 reads only the template, and the second file decides whether there is a worktree at all. Name the worktree `template-update-<tag>`, such as `template-update-v0.14.0`, instead of a name made from the request.
+
+- `.copier-answers.yml`. `_commit` is the project's template version, `_src_path` the template's address, and `build_command` and `test_command` the project's commands. When `_commit` isn't a tag, such as `v0.12.0-3-gabc1234`, the version is the part before the first dash. Without the file, the project wasn't made from the template: stop and say so.
+- `.claude/agents/plan-executor.md`, when it exists. When its `tools:` line doesn't list `PowerShell`, as before template v0.11.0, Claude Code refuses to let that executor run `pwsh` in a plan's worktree, and every step of this plan runs PowerShell. Then set up no worktree and make no `Plan:` commit. Plan in the current checkout instead, on a branch of its own, `git switch -c build/project-template-<tag>`, and end your reply with that branch and `/orchestrate-plan`.
+
+Clone into a scratch folder outside the repository, `$scratch = Join-Path ([IO.Path]::GetTempPath()) "template-update-$([guid]::NewGuid().ToString('N').Substring(0, 8))"`, and delete it before you reply.
+
+1. **Research.** Clone the template: `git clone --quiet --no-checkout -- <_src_path> $scratch\template`. The target is the version the request names, or else the newest tag, as `Update-Project.ps1` picks it: `git -C $scratch\template tag --list --sort=-version:refname | Where-Object { $_ -match '^v?\d+(\.\d+){0,3}$' } | Select-Object -First 1`. When the target is the project's version and the request changes no answer, the project is up to date: stop and say so. Read `git -C $scratch\template show <tag>:CHANGELOG.md`, every section after the project's version up to and including the target, and list each change that reaches a project: commands added, renamed or removed, changed rules and conventions, files added, moved or removed, new answers, and anything the notes say a project must do.
+2. **Trial run.** Clone the project and branch from the commit the plan starts from: `git clone --quiet -- (git rev-parse --show-toplevel) $scratch\project`, then `git -C $scratch\project switch --quiet -c template-trial (git rev-parse HEAD)`. Run the clone's update script with the target, adding `-Data @{ <answer> = <value> }` for the answers the request changes: `& $scratch\project\.template\Update-Project.ps1 -Ref <tag> -NoCommit *>&1 | Tee-Object $scratch\trial.txt`. Run it with `&`, not `pwsh -File`, which can't pass `-Data`. From its output, record each file under `Template <from> -> <to>:` with its kind, each conflict, the files under `Local edits discarded` and `Restored`, and each project-owned file the template changed, with its diff. Then, in the clone, run the project's `build_command` and each check its `AGENTS.md` names, such as a lint or customization check, and record each failure.
+3. **Project files that describe the old template.** The template owns each file it renders, except those its `copier.yml` lists under `_skip_if_exists`, which are the project's, and `_merged_files`, which updates merge. List the files it renders with `git -C $scratch\template ls-tree -r --name-only <tag> -- template/`, named as `Update-Project.ps1` names them: without `template/`, without each Jinja tag and without a `.jinja` suffix. Every other tracked file is the project's own, and so is each `_skip_if_exists` file. For each change from step 1, search the project's own files, such as `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, ADRs, `.claude/rules/` and project instruction files, for text that still describes the old behavior, and plan its exact replacement. Leave text that records history, such as a past changelog entry, as it is. For each project-owned file the trial showed a template change for, decide which of its hunks the project takes, and plan them the same way.
