@@ -243,6 +243,7 @@ if (-not $UnitOnly) {
         '.github/copilot-instructions.md'   = "# Copilot Instructions`n"
         '.github/instructions/csharp-production.instructions.md' = "---`napplyTo: ""**/*.cs""`n---`n# C#`n"
         '.github/workflows/main.yml'        = "name: main`non: [push]`njobs:`n  build:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n      - run: dotnet build`n"
+        '.dockerignore'                     = "*`n!src/`n!Directory.Build.props`n"
     } 'https://github.com/NCodeGroup/Demo.git'
     $out = & $adopt -Path $scaffoldRepo -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; test_command = '' } -NoVerify:$SkipDotnetBuild | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.copier-answers.yml')
@@ -254,6 +255,7 @@ if (-not $UnitOnly) {
     $editorconfig = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.editorconfig')
     Check 'scaffold: Directory.Build.props imports the template settings' ($props.Contains('build/ProjectTemplate.props') -and $props.Contains('<LangVersion>latest</LangVersion>') -and @($editorconfig -split "`n" | Where-Object { $_ -match '^\s*root\s*=' }).Count -eq 1) "$props | $editorconfig"
     Check 'scaffold: report lists the follow-ups' ($out.Contains('/plan-migration Finish adopting the project template') -and $out.Contains('.github/copilot-instructions.md') -and $out.Contains('.github/workflows/main.yml')) $out
+    Check 'scaffold: asks to re-admit the imported build files in .dockerignore' ($out.Contains("re-admit Directory.Build.props and build/ProjectTemplate.props, which it imports, in each list of the build's files: .dockerignore")) $out
     Check 'scaffold: reconciles the C# instructions' ($out.Contains('reconcile .github/instructions/csharp.instructions.md with csharp-production.instructions.md')) $out
     Check 'scaffold: no commit attribution follow-up when the template added ci.yml' (-not $out.Contains('commit-attribution job')) $out
     Check 'scaffold: enables the template hooks' (((git -C $scaffoldRepo config core.hooksPath) -join '') -eq '.githooks') ''

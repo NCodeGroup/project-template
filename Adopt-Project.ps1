@@ -143,6 +143,11 @@ try {
         if ((Get-Answer 'stack') -eq 'dotnet') {
             $otherInstructions = @(Get-ChildItem -LiteralPath .github/instructions -Filter '*.instructions.md' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin 'csharp.instructions.md', 'project-template.instructions.md' } | Sort-Object Name | ForEach-Object Name)
             if ($otherInstructions.Count) { $followUps.Add("reconcile .github/instructions/csharp.instructions.md with $($otherInstructions -join ', ')") }
+            # The template's build settings are a new import, so each list of the build's files must admit them.
+            if (Test-Path -LiteralPath build/ProjectTemplate.props) {
+                $buildLists = @(Get-BuildFileList $project)
+                if ($buildLists.Count) { $followUps.Add("re-admit Directory.Build.props and build/ProjectTemplate.props, which it imports, in each list of the build's files: $($buildLists -join ', ')") }
+            }
         }
 
         git add -A
