@@ -2,6 +2,14 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.11.0
+
+- `/finish-plan` asks GitHub (`gh`) or GitLab (`glab`) whether the plan's branch has a merged pull request. It counts the work as upstream when that pull request's merge commit is on the default branch and its head matches the plan's branch, so a squash-merged or merge-queued pull request no longer stops it. Without the CLI, or without such a pull request, it still stops to ask.
+- In Claude Code, `/finish-plan` deletes what's left of a plan's worktree when Windows' 260-character path limit stops `git worktree remove` with "Filename too long", and says to turn on `core.longpaths`. USAGE.md's Git setup now does: `git config --global core.longpaths true`.
+- The Claude Code `plan-executor` subagent has the PowerShell tool and runs Done-when commands and a step's commands with it. Through Bash, Claude Code refused every `pwsh` command in a plan's worktree.
+- `Update-Project.ps1` leaves out of its listing of the template's changes to project-owned files each change the project's file already has, and a file that has them all.
+- README.md's "Update a Project" says that a project on v0.8.0 or earlier runs its own, older update logic on its first update, and how to run the newest logic from a clone instead.
+
 ## v0.10.0
 
 - A new `/finish-plan` command closes a plan once its work is pushed or merged: it deletes `PLAN.md`, fast-forwards the default branch from `origin`, deletes the plan's branch, and in Claude Code removes the plan's worktree. It never pushes, and stops when a commit hasn't reached the default branch yet, such as after a squash-merged pull request.
