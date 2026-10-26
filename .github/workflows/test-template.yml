@@ -35,6 +35,8 @@ jobs:
         run: ./Test-UpdateIgnoredFiles.ps1
       - name: Test the commit attribution check
         run: ./Test-CommitAttribution.ps1
+      - name: Test the Git hooks
+        run: ./Test-GitHooks.ps1
 
   commit-attribution:
     name: Commit attribution
