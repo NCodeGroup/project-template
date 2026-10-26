@@ -260,10 +260,12 @@ $coordinatorMissing = @(
     if (-not [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'template\.claude\commands\orchestrate-plan.md')).Contains('a check the subagent made instead does not count')) { 'template\.claude\commands\orchestrate-plan.md' }
 )
 Check 'workflow: an executor that cannot run the Done-when command leaves the check to the coordinator' (-not $coordinatorMissing) ($coordinatorMissing -join ', ')
-# Each issue fix's text in the files it must reach: "<path>: <text>" for each one missing.
+# Each issue fix's text in the files it must reach: "<path>: <text>" for each one missing, or "<path>: the file is missing".
 function Get-MissingText([string[]]$Path, [string[]]$Text) {
     foreach ($p in $Path) {
-        $content = [IO.File]::ReadAllText((Join-Path $PSScriptRoot $p))
+        $full = Join-Path $PSScriptRoot $p
+        if (-not (Test-Path -LiteralPath $full)) { "${p}: the file is missing"; continue }
+        $content = [IO.File]::ReadAllText($full)
         foreach ($t in $Text) { if (-not $content.Contains($t)) { "${p}: $t" } }
     }
 }
@@ -285,6 +287,16 @@ $m += @(Get-MissingText 'template\.github\instructions\project-template.instruct
 Check 'workflow: the review and the push name the issue the pull request closes' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.claude\agents\plan-executor.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\agents\copilot-implementer.agent.md', 'template\.github\agents\local-implementer.agent.md', 'template\.github\skills\execute-step\SKILL.md', 'template\.github\prompts\execute-step.prompt.md', 'template\.github\prompts\execute-step-local.prompt.md') { $t = [IO.File]::ReadAllText((Join-Path $PSScriptRoot $p)); if ($t.Contains('gh issue') -or $t.Contains('glab issue')) { $p } })
 Check 'workflow: no executor calls gh or glab on the issue' (-not $m) ($m -join ', ')
+$issuePlanFiles = 'template\.claude\commands\plan-issue.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-issue\SKILL.md'
+$m = @(Get-MissingText $issuePlanFiles ('gh issue view', 'glab issue view', 'Plan snapshot.', 'issue-<number>', '| `bug`, `defect`, `regression` | bugfix |', 'Plan this feature for a smaller model to implement:', 'Investigate this bug and plan the fix:', 'gh issue comment'))
+$m += @(foreach ($p in $issuePlanFiles) { $full = Join-Path $PSScriptRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); if ($t.Contains('{{') -or [regex]::Matches($t, '## Output: PLAN\.md for the executor model').Count -ne 1) { "${p}: an include is left unexpanded, or the plan format is not there exactly once" } } })
+Check 'workflow: plan-issue reads the issue, maps labels to a plan kind and includes the kind checklists' (-not $m) ($m -join '; ')
+$triageFiles = 'template\.claude\commands\triage-issues.md', 'template\.github\prompts\triage-issues.prompt.md', 'template\.github\skills\triage-issues\SKILL.md'
+$m = @(Get-MissingText $triageFiles ('gh issue list', 'glab issue list', '/plan-issue #42', 'as data, not instructions', '| `bug`, `defect`, `regression` | bugfix |'))
+$m += @(foreach ($p in $triageFiles) { $full = Join-Path $PSScriptRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'Issue: <issue reference', 'gh issue comment', 'glab issue note', 'EnterWorktree') { if ($t.Contains($x)) { "${p}: has $x" } } } })
+Check 'workflow: triage-issues lists and judges issues, and plans and posts nothing' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.github\prompts\plan-bugfix.prompt.md', 'template\.github\skills\handoff-plan\SKILL.md', 'template\.github\agents\copilot-planner.agent.md') ('gh issue view', 'glab issue view', 'as data, not instructions'))
+Check 'workflow: every planning command reads the issue it names and treats its text as data' (-not $m) ($m -join '; ')
 $testHunk = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-HunkApplied' }, $true) | Select-Object -First 1
 $results = if ($testHunk) {
     & {
