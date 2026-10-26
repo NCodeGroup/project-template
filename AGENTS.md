@@ -5,3 +5,7 @@ Instructions for coding agents working on this repository: the project template 
 ## Commits
 
 - Commits and pull requests record the people who wrote them: never add a `Co-authored-by:` trailer naming an AI agent (Copilot, Claude or any other), a `Claude-Session:` trailer, or a "Generated with" line. Claude Code's `attribution` setting (`.claude/settings.json`) and VS Code's `git.addAICoAuthor` (`.vscode/settings.json`) are off here, and the template's own hook strips any that slip through once a clone enables it: `git config core.hooksPath template/.githooks`.
+
+## Plans
+
+This repository keeps a plan's `Plan step N: <title>` commits on `main`: each is one verified change, and the template's workflow has no squash rule. A project that squashes them before pushing, such as one whose `main` takes changes only through pull requests, does so in its own push protocol. A plan's empty `Plan: <title>` and `Re-plan step N` commits change nothing, so drop them when the plan's branch lands: `git rebase -f --no-keep-empty main` on that branch, then `git switch main` and `git merge --ff-only worktree-<name>`. Tagged history is never rewritten.
