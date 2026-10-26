@@ -36,6 +36,19 @@ function Get-RepositoryName([string]$Path, [string]$Remote) {
     Split-Path -Leaf $Path
 }
 
+# The workflow tools a repository already has files for, in copier.yml's order: claude always, copilot for Copilot
+# agents, skills or prompt files, local for Hybrid agents. Nothing when it has neither, so the template's default applies.
+function Get-WorkflowTools([string]$Path) {
+    $github = Join-Path $Path '.github'
+    $copilot = [bool](Get-ChildItem -LiteralPath (Join-Path $github 'agents') -Filter 'copilot-*.agent.md' -File -ErrorAction SilentlyContinue) -or
+        (Test-Path -LiteralPath (Join-Path $github 'skills') -PathType Container) -or (Test-Path -LiteralPath (Join-Path $github 'prompts') -PathType Container)
+    $local = [bool](Get-ChildItem -LiteralPath (Join-Path $github 'agents') -Filter 'hybrid-*.agent.md' -File -ErrorAction SilentlyContinue)
+    if (-not ($copilot -or $local)) { return }
+    'claude'
+    if ($copilot) { 'copilot' }
+    if ($local) { 'local' }
+}
+
 function Get-AdoptionAnswers([string]$Path) {
     $Path = (Resolve-Path -LiteralPath $Path).Path
     $found = @(Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Include '*.sln', '*.slnx', '*.csproj', '*.fsproj', '*.vbproj' |
@@ -53,6 +66,8 @@ function Get-AdoptionAnswers([string]$Path) {
         project_name = if ($solutions.Count -eq 1) { $solutions[0].BaseName } else { Get-RepositoryName $Path $remote }
         git_host     = if ($remote -match 'gitlab') { 'gitlab' } else { 'github' }
     }
+    $tools = @(Get-WorkflowTools $Path)
+    if ($tools.Count) { $answers.workflow_tools = $tools }
     if ($stack -eq 'dotnet') {
         $props = Join-Path $Path 'Directory.Build.props'
         if (Test-Path -LiteralPath $props) {

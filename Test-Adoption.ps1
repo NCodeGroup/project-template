@@ -106,6 +106,22 @@ $bad = foreach ($name in $nodes.Keys) {
 }
 Check 'unit: Get-AdoptionAnswers works out Node.js commands from package.json' (-not $bad) ($bad -join ' | ')
 
+$toolCases = [ordered]@{
+    'tools-copilot' = @{ Files = @{ '.github/agents/copilot-implementer.agent.md' = "x`n"; '.github/agents/plan-executor.agent.md' = "x`n" }; Tools = 'claude,copilot' }
+    'tools-skills'  = @{ Files = @{ '.github/skills/a/SKILL.md' = "x`n" }; Tools = 'claude,copilot' }
+    'tools-prompts' = @{ Files = @{ '.github/prompts/a.prompt.md' = "x`n" }; Tools = 'claude,copilot' }
+    'tools-hybrid'  = @{ Files = @{ '.github/agents/hybrid-planner.agent.md' = "x`n" }; Tools = 'claude,local' }
+    'tools-all'     = @{ Files = @{ '.github/agents/copilot-planner.agent.md' = "x`n"; '.github/agents/hybrid-planner.agent.md' = "x`n" }; Tools = 'claude,copilot,local' }
+    'tools-none'    = @{ Files = @{ '.github/agents/reviewer.agent.md' = "x`n"; '.github/workflows/ci.yml' = "x`n" }; Tools = '' }
+}
+$bad = foreach ($name in $toolCases.Keys) {
+    $a = Get-AdoptionAnswers (New-TestFolder $name $toolCases[$name].Files)
+    $expected = $toolCases[$name].Tools
+    $ok = if ($expected) { $a.workflow_tools -is [array] -and ($a.workflow_tools -join ',') -eq $expected } else { -not $a.Contains('workflow_tools') }
+    if (-not $ok) { "${name}: $($a.workflow_tools -join ',')" }
+}
+Check 'unit: Get-AdoptionAnswers works out workflow_tools from the agent files' (-not $bad) ($bad -join ' | ')
+
 # A Claude Code plan worktree, .claude/worktrees/<name>, is named after the plan, not the repository.
 $wtRemote = New-TestFolder 'wt-remote' @{ 'README.md' = "# x`n" }
 $wtLocal = New-TestFolder 'wt-local' @{ 'README.md' = "# x`n" }
