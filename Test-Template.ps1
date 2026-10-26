@@ -9,7 +9,7 @@
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in %TEMP%\project-template-test, so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab and checks YAML with
     PyYAML through uv. Also checks that the generated workflow files under template/ and at the repository root
-    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, and that the workflow scripts run. Prints PASS or FAIL
+    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, and that the workflow scripts run. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
 .EXAMPLE
@@ -204,7 +204,7 @@ Check 'project: the shipped commit attribution check passes on its own history' 
 $workflow = Join-Path $PSScriptRoot 'workflow'
 $fresh = Join-Path $Work 'generated'
 New-Item -ItemType Directory -Force $fresh | Out-Null
-& (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $fresh -Variant Both -Target VSCode, Claude, CopilotCli | Out-Null
+& (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $fresh -Variant Both -Target VSCode, Claude, CopilotCli -NoVersionMarker | Out-Null
 # Generated files under $Root that differ from a fresh install, or are missing or extra.
 function Get-StaleWorkflowFile([string]$Root) {
     foreach ($dir in '.claude\commands', '.claude\agents', '.github\agents', '.github\prompts', '.github\skills') {
@@ -258,6 +258,11 @@ $both = Join-Path $Work 'installed-both'
 New-Item -ItemType Directory -Force $both | Out-Null
 $installed = & (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $both | Out-String
 Check 'workflow: installer writes both variants for every tool' ($installed -match 'Wrote (\d+) files' -and [int]$Matches[1] -gt 37 -and (Test-Path (Join-Path $both '.github\agents\copilot-planner.agent.md')) -and (Test-Path (Join-Path $both '.github\skills\plan-feature\SKILL.md')))
+$templateVersion = git -C $PSScriptRoot describe --tags --always --dirty --match 'v[0-9]*'
+$installedVersion = Join-Path $both '.template-version'
+Check 'workflow: installer records the template version in .template-version' ((Test-Path -LiteralPath $installedVersion) -and ([IO.File]::ReadAllText($installedVersion) -eq "$templateVersion`n")) $templateVersion
+$versionLeaked = @('template\.template-version', '.template-version' | Where-Object { Test-Path -LiteralPath (Join-Path $PSScriptRoot $_) })
+Check 'workflow: template/ and this repository have no installer-written .template-version' (-not $versionLeaked) ($versionLeaked -join ', ')
 $list = & (Join-Path $workflow 'New-PlanPrompt.ps1') -List | Out-String
 $prompt = & (Join-Path $workflow 'New-PlanPrompt.ps1') plan-feature 'Add CSV export' | Out-String
 Check 'workflow: New-PlanPrompt lists the templates and composes a prompt' ($list.Contains('execute-step') -and $prompt.Contains('Add CSV export') -and $prompt.Contains('### [ ] 1.'))
