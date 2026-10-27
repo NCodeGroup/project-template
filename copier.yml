@@ -142,7 +142,7 @@ project_owned_files:
   type: yaml
   help: "Merged files the project owns, such as [.github/workflows/ci.yml]: updates leave them alone and show the template's changes to them"
   default: []
-  # Not asked when the project is created; recorded only when -Data gives a list that isn't empty.
+  # Not asked when the project is created; recorded only when -Data supplies it.
   when: "{{ project_owned_files | default([]) | length > 0 }}"
   validator: "{% if project_owned_files is string %}A list, such as [.github/workflows/ci.yml]{% endif %}"
 

@@ -87,6 +87,16 @@ function Get-Answer([string]$Key) {
     if ($match) { $match.Matches[0].Groups[1].Value.Trim("'", '"') }
 }
 
+# A list answer from .copier-answers.yml, which Copier writes as "key:" and then one "- item" line each.
+function Get-AnswerList([string]$Key) {
+    $inList = $false
+    foreach ($line in Get-Content -LiteralPath .copier-answers.yml) {
+        if ($line -match "^${Key}:\s*$") { $inList = $true; continue }
+        if ($inList -and $line -match '^\s*-\s+(.+?)\s*$') { $Matches[1].Trim("'", '"') }
+        elseif ($inList) { break }
+    }
+}
+
 # A file list from the template's copier.yml at a version, or at the clone's HEAD when that version isn't in it.
 function Get-TemplateList([string]$Repo, [string]$Version, [string]$Key) {
     $yaml = git -C $Repo show "${Version}:copier.yml" 2>$null
@@ -188,6 +198,12 @@ try {
 
     $projectOwned = @(Get-TemplateList $TemplateClone $from '_skip_if_exists')
     $merged = @(Get-TemplateList $TemplateClone $from '_merged_files')
+    # Merged files the project owns (its project_owned_files answer): updates leave them alone and show the template's change, as for project-owned files.
+    # -Data wins, because this update records it, and a single file becomes the list the answer must be.
+    if ($Data.ContainsKey('project_owned_files')) { $Data['project_owned_files'] = @($Data['project_owned_files'] | Where-Object { $_ }) }
+    $ownedMerged = @(if ($Data.ContainsKey('project_owned_files')) { $Data['project_owned_files'] } else { Get-AnswerList 'project_owned_files' })
+    $notMerged = @($ownedMerged | Where-Object { $_ -notin $merged })
+    if ($notMerged) { throw "project_owned_files names $($notMerged -join ', '), which isn't a merged file. It can name only these: $($merged -join ', ')." }
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here.
         $exclude = foreach ($file in $projectOwned + $merged) { '--exclude', $file }
@@ -197,7 +213,7 @@ try {
         # Copier merges, so a template change to the file's last lines can't conflict with them or take them into its conflict.
         $keptLines = @{}
         foreach ($file in '.gitignore', '.gitattributes', '.editorconfig') {
-            if ($file -notin $merged -or -not (Test-Path -LiteralPath $file)) { continue }
+            if ($file -notin $merged -or $file -in $ownedMerged -or -not (Test-Path -LiteralPath $file)) { continue }
             $text = [IO.File]::ReadAllText((Join-Path $project $file))
             $match = [regex]::Match($text, "(?m)^# Kept from this repository's own \S+ when it adopted the project template\r?$")
             if (-not $match.Success) { continue }
@@ -213,6 +229,8 @@ try {
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
         foreach ($file in $deleted) { $copierArgs += '--exclude', $file }
+        # A merged file the project owns stays as it is; its template change is shown below.
+        foreach ($file in $ownedMerged) { $copierArgs += '--exclude', $file }
         # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes
         # every path Git reports as ignored to one `git apply` command. Keep the project's rules in force meanwhile, or a
         # folder only they ignore, such as node_modules/, is listed file by file and overflows Windows' command line.
@@ -265,7 +283,7 @@ try {
     $changes = @(Get-Change)
     $jinjaTag = '\{' + '%.*?%' + '\}'
     $projectOwnedChanged = @(if ($from -ne $to) {
-            $owned = @(Get-TemplateList $TemplateClone $to '_skip_if_exists')
+            $owned = @(Get-TemplateList $TemplateClone $to '_skip_if_exists') + $ownedMerged
             foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
                 $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
                 if ($file -in $owned -and (Test-Path -LiteralPath $file)) { [pscustomobject]@{ File = $file; Source = $source } }

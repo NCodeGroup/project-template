@@ -103,7 +103,7 @@ try {
 
     $r = Invoke-Update @{ project_owned_files = @() }
     $text = [IO.File]::ReadAllText($answers)
-    Check 'clear: an empty list gives the file back and removes the answer' (($r.ExitCode -eq 0) -and -not $text.Contains('project_owned_files') -and ([IO.File]::ReadAllText($ci) -eq $ownCi)) "exit $($r.ExitCode)`n$($r.Output.Trim())`n$text"
+    Check 'clear: an empty list gives the file back and leaves the answer empty' (($r.ExitCode -eq 0) -and $text -match '(?m)^project_owned_files: \[\]\r?$' -and ([IO.File]::ReadAllText($ci) -eq $ownCi)) "exit $($r.ExitCode)`n$($r.Output.Trim())`n$text"
 }
 finally { Pop-Location }
 ''
