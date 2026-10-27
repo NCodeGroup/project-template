@@ -11,26 +11,27 @@
     into the repository root, so this repository is worked on with the same workflow on any PC that clones it.
     It passes -NoVersionMarker: a project renders its .template-version from template\.template-version.jinja, and
     this repository records no installed version.
-    Review the diff, run Test-Template.ps1, then commit, tag a new version and push; projects pick the change up
+    Review the diff, run tests\Test-Template.ps1, then commit, tag a new version and push; projects pick the change up
     with their .template\Update-Project.ps1.
 
 .EXAMPLE
-    .\Update-Template.ps1
-    .\Update-Template.ps1 -InstallerArgs @{ FastLocalModel = 'DeepSeek V4.1 Flash (DeepInfra)' }
+    .\tools\Update-Template.ps1
+    .\tools\Update-Template.ps1 -InstallerArgs @{ FastLocalModel = 'DeepSeek V4.1 Flash (DeepInfra)' }
 #>
 [CmdletBinding()]
 param(
     [hashtable]$InstallerArgs = @{}
 )
 $ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
 
-$installer = Join-Path $PSScriptRoot 'workflow\Install-HybridWorkflow.ps1'
+$installer = Join-Path $repoRoot 'workflow\Install-HybridWorkflow.ps1'
 $generatedDirs = '.claude\commands', '.claude\agents', '.github\agents', '.github\prompts', '.github\skills'
-foreach ($root in (Join-Path $PSScriptRoot 'template'), $PSScriptRoot) {
+foreach ($root in (Join-Path $repoRoot 'template'), $repoRoot) {
     foreach ($generated in $generatedDirs) {
         $dir = Join-Path $root $generated
         if (Test-Path $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
     }
     & $installer -Repo $root -Variant Both -Target VSCode, Claude, CopilotCli -NoVersionMarker @InstallerArgs | Select-Object -First 1
 }
-git -C $PSScriptRoot status --short -- template $generatedDirs.Replace('\', '/')
+git -C $repoRoot status --short -- template $generatedDirs.Replace('\', '/')

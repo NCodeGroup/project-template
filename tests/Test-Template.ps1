@@ -233,9 +233,9 @@ function Get-StaleWorkflowFile([string]$Root) {
     }
 }
 $stale = @(Get-StaleWorkflowFile (Join-Path $repoRoot 'template') | Select-Object -Unique)
-Check 'generated workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) ($stale -join ', ')
+Check 'generated workflow files match workflow/templates (else run tools\Update-Template.ps1)' (-not $stale) ($stale -join ', ')
 $stale = @(Get-StaleWorkflowFile $repoRoot | Select-Object -Unique)
-Check 'this repository''s own workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) ($stale -join ', ')
+Check 'this repository''s own workflow files match workflow/templates (else run tools\Update-Template.ps1)' (-not $stale) ($stale -join ', ')
 # Text files Git tracks with LF endings; binary files are left out.
 $ownFiles = git -C $repoRoot -c core.quotePath=false ls-files --eol | Where-Object { $_ -match '^i/lf\s' } | ForEach-Object { Join-Path $repoRoot (($_ -split "`t", 2)[1]) }
 $badEnd = $ownFiles | Where-Object { $b = [IO.File]::ReadAllBytes($_); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.Substring($repoRoot.Length).TrimStart('\', '/') }
@@ -318,7 +318,7 @@ $m = @(foreach ($p in 'template\.template\Get-PlanState.ps1', '.template\Get-Pla
     $full = Join-Path $repoRoot $p
     if (-not (Test-Path -LiteralPath $full) -or [IO.File]::ReadAllText($full) -ne [IO.File]::ReadAllText((Join-Path $repoRoot 'workflow\Get-PlanState.ps1'))) { $p }
 })
-Check 'workflow: the generated Get-PlanState.ps1 copies match workflow/Get-PlanState.ps1 (else run Update-Template.ps1)' (-not $m) ($m -join ', ')
+Check 'workflow: the generated Get-PlanState.ps1 copies match workflow/Get-PlanState.ps1 (else run tools\Update-Template.ps1)' (-not $m) ($m -join ', ')
 $testHunk = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-HunkApplied' }, $true) | Select-Object -First 1
 $results = if ($testHunk) {
     & {
