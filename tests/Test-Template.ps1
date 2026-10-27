@@ -344,6 +344,8 @@ $m = @(Get-MissingText $runFiles ('its top-level comments and its review summari
 Check 'workflow: run-issues reads and answers my top-level pull request comments and review summaries, not only review threads' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $runFiles ('Then refresh the pull request description', 'gh pr edit <number> --body-file <file>', 'glab mr update <number> --description (Get-Content -Raw <file>)'))
 Check 'workflow: run-issues refreshes the pull request description after a review round adds fix steps' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $runFiles ('First take a `wait:<hours>` word', 'It sets the wait limit', 'for up to the wait limit, in hours, with nothing to answer'))
+Check 'workflow: run-issues waits for a merge no longer than the wait limit, 24 hours unless wait:<hours> sets it, then stops the entry' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('open it as a draft', '--draft', 'has `- protect: hook` and `integrate` is `direct`', 'or the `landing` line says `draft=yes`', 'Stop when `draft` is neither'))
 $m += @(if (-not ((git -C $repoRoot ls-files -s template/.githooks/pre-push) -join '').StartsWith('100755')) { 'template/.githooks/pre-push: not executable in the index' })
 Check 'workflow: ship-plan opens a draft pull request when asked or when the Landing section says draft: yes, and the pre-push hook is executable' (-not $m) ($m -join '; ')

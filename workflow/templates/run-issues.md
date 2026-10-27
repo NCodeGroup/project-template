@@ -1,6 +1,6 @@
 ---
 description: Take open issues from plan to landing in one session — plan, execute, review and open a draft pull request for each in turn, answer my review threads and comments, and land it once I merge
-argument-hint: Issues to run, such as #42 #43, or a filter such as label:bug, a milestone or search words
+argument-hint: Issues to run, such as #42 #43, or a filter such as label:bug, a milestone or search words, and wait:<hours> to change the 24-hour wait for each merge
 role: orchestrator
 append-format: false
 targets: Claude
@@ -31,11 +31,12 @@ You coordinate. Each stage runs as the workflow's own command does: read that co
 
    When none holds, stop. Say to require pull requests into `<default>` with a branch protection rule or ruleset, or, where the host can't, to add `- protect: hook` to the Landing section and run `git config core.hooksPath .githooks`, or, in a clone that uses pre-commit or hooks of its own, to save `#!/usr/bin/env sh` and `exec .githooks/pre-push "$@"` as `.git/hooks/pre-push`, or as `.git/hooks/pre-push.legacy` when pre-commit installed its pre-push hook.
 4. Build the queue:
+   - First take a `wait:<hours>` word, such as `wait:72`, out of the request. It sets the wait limit: how long Review the Pull Request waits for a merge with nothing to answer, 24 hours when the request has no such word. The bullets below read the rest of the request.
    - When the request names issues, such as `#42` or `#42 #43`, the queue is those issues in that order, one entry each. Leave out an issue in another repository, such as `owner/repo#42`, and say so: this command lands only this repository's issues.
    - Otherwise delegate `triage-issues` to a subagent with `model: opus` and the request as its arguments. The queue has one entry per `/plan-issue` line it returns, in that order, holding the issues that line names.
    - Leave out an entry when the folder `.claude/worktrees/issue-<number>` already exists for any of its issues: it holds a plan in progress, which `/continue-plan issue-<number>` shows.
    - Keep the first five entries. When the queue is empty, say so and stop.
-5. Show the run summary, then ask me once whether to go ahead, and wait for my answer. The summary lists the queue, each entry with its issues (number, title, and the kind and size when triage gave them); that each issue gets a plan snapshot comment, a draft pull request that waits for my review and merge, and, after the merge, the tag, the release, a closing comment on each issue, and an issue labelled with the `landing` line's `follow-up-label` for each follow-up its plan lists, in this repository or in the one the `landing` line's `follow-ups` names, unless I answer that I want none filed, or, when that line says `follow-ups=none`, the follow-ups listed in the report instead; when the run stops an issue; and the cost: each issue takes about one plan-issue run on Opus, one orchestrate-plan run, up to three reviews, and one more round for each set of review comments I post. `git push` may still ask for its own approval.
+5. Show the run summary, then ask me once whether to go ahead, and wait for my answer. The summary lists the queue, each entry with its issues (number, title, and the kind and size when triage gave them); that each issue gets a plan snapshot comment, a draft pull request that waits for my review and merge, for up to the wait limit, in hours, with nothing to answer, and, after the merge, the tag, the release, a closing comment on each issue, and an issue labelled with the `landing` line's `follow-up-label` for each follow-up its plan lists, in this repository or in the one the `landing` line's `follow-ups` names, unless I answer that I want none filed, or, when that line says `follow-ups=none`, the follow-ups listed in the report instead; when the run stops an issue; and the cost: each issue takes about one plan-issue run on Opus, one orchestrate-plan run, up to three reviews, and one more round for each set of review comments I post. `git push` may still ask for its own approval.
 
 ## Run Each Issue
 
