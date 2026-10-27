@@ -25,7 +25,7 @@
     (VSCode, CopilotCli). -NoVersionMarker skips it, as Update-Template.ps1 does, because a project made from the
     template renders its own .template-version from .copier-answers.yml.
 
-    The installer also writes Get-PlanState.ps1, which /ship-plan and /continue-plan run, to .template\ (-Repo), or to ~\.claude\ and ~\.copilot\ (-User).
+    The installer also writes Get-PlanState.ps1, which /ship-plan, /continue-plan and /finish-plan run, to .template\ (-Repo), or to ~\.claude\ and ~\.copilot\ (-User).
 
     Claude Code commands of templates with a "worktree" field start with a section that puts the plan in a git worktree of its own (create), moves the session into it (join), or removes it once the work is pushed (finish): templates\_claude-worktree-*.md.
 

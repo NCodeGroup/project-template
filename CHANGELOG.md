@@ -2,9 +2,15 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
-## v0.21.1
+## v0.22.1
 
 - No change for projects made from the template. This repository's own scripts moved: the nine `Test-*.ps1` tests into `tests/` and `Update-Template.ps1` into `tools/`, so the root holds only `New-Project.ps1`, `Adopt-Project.ps1` and `Update-Project.ps1`, the scripts people run. Run them as `.\tests\Test-Template.ps1` and `.\tools\Update-Template.ps1`. The scripts, their checks and CI are otherwise the same.
+
+## v0.22.0
+
+- `/finish-plan` now runs `.template/Get-PlanState.ps1` and reads `landed`, `dirty` and `steps` from it instead of running its own git, `gh` and `glab` checks, so the script is the one tested copy of the "is the work upstream" rule.
+
+- The script's `landed` now counts a merged pull request or merge request only when its merge commit is on the default branch and its head holds the branch's `HEAD` or has the same tree. Before, any merged pull request counted, so `/ship-plan` and `/continue-plan` could call a branch landed after commits were added to it once its pull request merged. Such a branch's `next` now says to land those commits from a new branch, and `/ship-plan` stops on it. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## v0.21.0
 

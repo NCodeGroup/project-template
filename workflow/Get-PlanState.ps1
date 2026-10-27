@@ -6,7 +6,9 @@
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, ahead, behind, landed,
     pr, tag, published, issue-state, dirty, plans and next. A fact that does not apply prints "-". With an origin
-    remote, the script first fetches it, ignoring a failure, unless -NoFetch is given.
+    remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is yes when HEAD is on
+    the default branch, or when the branch's merged pull request or merge request has its merge commit there and its
+    head holds HEAD or has HEAD's tree.
 
 .PARAMETER Path
     A folder inside the repository. Defaults to the current folder.
@@ -130,13 +132,13 @@ try {
     }
 
     # Pull request or merge request
-    $pr = '-'; $prNumber = ''; $prState = ''
+    $pr = '-'; $prNumber = ''; $prState = ''; $prMerge = ''; $prHead = ''
     if ($hostName -in 'github', 'gitlab' -and $branch -ne '-' -and $branch -ne $default) {
         $cli = if ($hostName -eq 'github') { 'gh' } else { 'glab' }
         $pr = 'unknown'
         if (Get-Command $cli -ErrorAction SilentlyContinue) {
             $json = if ($hostName -eq 'github') {
-                & gh pr list --head $branch --state all --limit 1 --json number,state 2>$null | Out-String
+                & gh pr list --head $branch --state all --limit 1 --json number,state,mergeCommit,headRefOid 2>$null | Out-String
             }
             else {
                 & glab mr list --source-branch $branch --all --output json 2>$null | Out-String
@@ -147,19 +149,31 @@ try {
                     if ($items.Count -eq 0) { $pr = '-' }
                     elseif ($hostName -eq 'github') {
                         $prNumber = "$($items[0].number)"; $prState = "$($items[0].state)".ToUpperInvariant()
+                        $prMerge = "$($items[0].mergeCommit.oid)"; $prHead = "$($items[0].headRefOid)"
                         $pr = "$prNumber $prState"
                     }
                     else {
                         $prNumber = "$($items[0].iid)"
                         $prState = switch ("$($items[0].state)") { 'opened' { 'OPEN' } 'merged' { 'MERGED' } 'closed' { 'CLOSED' } default { "$($items[0].state)".ToUpperInvariant() } }
+                        $prMerge = "$($items[0].merge_commit_sha)"
+                        if (-not $prMerge) { $prMerge = "$($items[0].squash_commit_sha)" }
+                        $prHead = "$($items[0].sha)"
                         $pr = "$prNumber $prState"
                     }
                 }
-                catch { $pr = 'unknown'; $prNumber = ''; $prState = '' }
+                catch { $pr = 'unknown'; $prNumber = ''; $prState = ''; $prMerge = ''; $prHead = '' }
             }
         }
     }
-    if ($prState -eq 'MERGED') { $landed = 'yes' }
+    if ($prState -eq 'MERGED' -and $landed -eq 'no' -and $prMerge -and $prHead) {
+        & git merge-base --is-ancestor $prMerge "origin/$default" 2>$null | Out-Null
+        $mergeOnDefault = ($LASTEXITCODE -eq 0)
+        & git merge-base --is-ancestor HEAD $prHead 2>$null | Out-Null
+        $headInPr = ($LASTEXITCODE -eq 0)
+        $prTree = (& git rev-parse -q --verify "${prHead}^{tree}" 2>$null | Out-String).Trim()
+        $headTreeNow = (& git rev-parse -q --verify 'HEAD^{tree}' 2>$null | Out-String).Trim()
+        if ($mergeOnDefault -and ($headInPr -or ($prTree -and $headTreeNow -and $prTree -eq $headTreeNow))) { $landed = 'yes' }
+    }
 
     # Release published on the host
     $published = '-'
@@ -239,6 +253,7 @@ try {
         elseif ($landed -ne 'yes') {
             if ($hostName -eq 'none') { $next = 'none no origin remote to land on' }
             elseif ($prState -eq 'OPEN') { $next = "wait pull request #$prNumber is open: run ship-plan again once it merges" }
+            elseif ($prState -eq 'MERGED') { $next = "none pull request #$prNumber merged without this branch's HEAD: land the commits after it from a new branch" }
             else { $next = 'ship-plan' }
         }
         elseif (($releasePolicy -ne 'none' -and $tag -eq 'absent') -or $published -eq 'no' -or $issueState -eq 'OPEN') { $next = 'ship-plan' }

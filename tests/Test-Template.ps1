@@ -277,8 +277,8 @@ function Get-MissingText([string[]]$Path, [string[]]$Text) {
 }
 $m = @(Get-MissingText 'template\.claude\agents\plan-executor.md' ('tools: Read, Edit, Write, Bash, PowerShell, Grep, Glob', 'with the PowerShell tool'))
 Check 'workflow: the Claude Code plan-executor has the PowerShell tool and runs commands with it' (-not $m) ($m -join '; ')
-$m = @(Get-MissingText ('template\.claude\commands\finish-plan.md', 'template\.github\prompts\finish-plan.prompt.md', 'template\.github\skills\finish-plan\SKILL.md') ('gh pr list --head', 'glab mr list --source-branch'))
-Check 'workflow: finish-plan treats a merged pull request as upstream' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.claude\commands\finish-plan.md', 'template\.github\prompts\finish-plan.prompt.md', 'template\.github\skills\finish-plan\SKILL.md') ('pwsh -NoProfile -File .template/Get-PlanState.ps1', '`landed`'))
+Check 'workflow: finish-plan reads whether the work landed from .template/Get-PlanState.ps1' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText 'template\.claude\commands\finish-plan.md' ('Filename too long', 'git config --global core.longpaths true'))
 Check 'workflow: finish-plan deletes what a path too long for Windows left behind' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText 'USAGE.md' 'git config --global core.longpaths true')
