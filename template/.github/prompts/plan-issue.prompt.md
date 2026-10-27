@@ -172,12 +172,15 @@ A smaller, cheaper model — a local model or a lower-cost Copilot model — wil
 - Every step ends with one PowerShell command, run from the repository root, that exits 0 only when the step is done and finishes in under two minutes. Prefer a check that fails until the step is done — run the step's new test by name, or assert the new output — over a suite that already passes.
 - Keep each step under about 25 lines. Split anything bigger.
 - Expect escalations: when a step needs a decision the plan didn't make, the executor stops, marks it `[?]` with an `- Escalation:` note, and the step comes back to you for re-planning. Every escalation costs a round trip, so settle decisions now.
+- When `AGENTS.md`'s `## Landing` section sets `release` to `tag` or `tag+release`, add the `Release:` line. Use the newest version tag (the first `git tag --list --sort=-version:refname` entry shaped like `v1.2.3` or `1.2.3`; `v0.1.0` when there is none), raised by one patch version for a bugfix, docs, tests or refactor plan, or by one minor version, with the patch set to 0, for any other plan. When the change breaks how existing users work, ask me which version to use. Make the last step add that version's section at the top of the changelog the Landing section names (`changelog`, default `CHANGELOG.md`), in the style of the entries below it.
+- Under `## Follow-ups`, list work you found that this plan doesn't do. `/ship-plan` offers to file each one as an issue.
 
 Use exactly this structure; the step runner parses the `### [ ] N.` headings and the `- Done when:` lines:
 
 ```markdown
 # Plan: <title, 2-10 words>
 Issue: <issue reference, such as #42; only when the request names an issue>
+Release: <version, such as v1.4.0; only when AGENTS.md's Landing section releases>
 
 ## Goal
 <What changes for the user or system, and why. 2-4 sentences.>
@@ -207,6 +210,9 @@ Issue: <issue reference, such as #42; only when the request names an issue>
 
 ## Review checklist
 - <What the reviewer must confirm beyond the Done-when checks: behavior, edge cases, compatibility, performance.>
+
+## Follow-ups
+- <Work found while planning that this plan doesn't do, one line each; leave the section out when there is none.>
 ```
 
 ## When the Request Names an Issue
