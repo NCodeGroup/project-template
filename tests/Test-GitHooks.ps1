@@ -103,6 +103,7 @@ $cases = [ordered]@{
     'protect: none with pre-commit gets no pre-push note'                        = @{ Hook = $preCommitHook; Config = $config; Agents = $protectAgents.Replace('- protect: hook', '- protect: none'); HooksPath = $false; Note = @() }
     'other hooks with protect: hook get the pre-push wrapper to add'             = @{ Hook = "#!/bin/sh`n"; Agents = $protectAgents; HooksPath = $false; Note = @('has hooks of its own in .git/hooks (pre-commit)', 'exec .githooks/pre-push "$@"') }
     'an own pre-push hook with protect: hook gets the call to add'               = @{ PushHook = "#!/bin/sh`n"; Agents = $protectAgents; HooksPath = $false; Note = @('Call .githooks/pre-push from .git/hooks/pre-push') }
+    'protect: hook with pre-commit and an own pre-push.legacy gets the call to add' = @{ Hook = $preCommitHook; Config = $config; Agents = $protectAgents; PushHook = $preCommitHook; LegacyHook = "#!/bin/sh`n"; HooksPath = $false; Note = @('Call .githooks/pre-push from .git/hooks/pre-push.legacy') }
 }
 $n = 0
 foreach ($name in $cases.Keys) {
@@ -117,6 +118,7 @@ foreach ($name in $cases.Keys) {
         if ($case.Config) { [IO.File]::WriteAllText((Join-Path $folder '.pre-commit-config.yaml'), $case.Config, [Text.UTF8Encoding]::new($false)) }
         if ($case.Agents) { [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), $case.Agents, [Text.UTF8Encoding]::new($false)) }
         if ($case.PushHook) { [IO.File]::WriteAllText((Join-Path $folder '.git\hooks\pre-push'), $case.PushHook, [Text.UTF8Encoding]::new($false)) }
+        if ($case.LegacyHook) { [IO.File]::WriteAllText((Join-Path $folder '.git\hooks\pre-push.legacy'), $case.LegacyHook, [Text.UTF8Encoding]::new($false)) }
         foreach ($source in $sources.Keys) {
             $setup = & $sources[$source]
             $note = "$($setup.Note)"
