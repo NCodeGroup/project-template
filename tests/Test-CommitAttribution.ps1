@@ -10,13 +10,14 @@
     The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-attribution-test.
 
 .EXAMPLE
-    .\Test-CommitAttribution.ps1
+    .\tests\Test-CommitAttribution.ps1
 #>
 [CmdletBinding()]
 param(
     [string]$Work = (Join-Path $env:TEMP 'project-template-attribution-test')
 )
 $ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
@@ -61,7 +62,7 @@ function Assert-Attribution([string]$Name, [string]$Base, [string]$Head, [int]$E
     Check $Name (($code -eq $ExitCode) -and -not $missing -and -not $unwanted) "exit $code, expected $ExitCode; missing: $($missing -join ' | '); unexpected: $($unwanted -join ' | '); output: $output"
 }
 
-$checker = Join-Path $PSScriptRoot 'template\.template\Test-CommitAttribution.ps1'
+$checker = Join-Path $repoRoot 'template\.template\Test-CommitAttribution.ps1'
 $repository = Join-Path $Work 'repository'
 $hooks = Join-Path $Work 'hooks'
 $messageFile = Join-Path $Work 'message.txt'
