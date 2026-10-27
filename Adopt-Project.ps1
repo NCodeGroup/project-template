@@ -154,6 +154,7 @@ try {
         git add -A
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
         if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
+        if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
         # The template's versioned hooks, unless the repository already runs hooks another way (Get-GitHooksSetup).
         $hooksNote = $null
         if ((Test-Path -LiteralPath .githooks) -and -not (git config --get core.hooksPath)) {

@@ -29,6 +29,8 @@
 
     Claude Code commands of templates with a "worktree" field start with a section that puts the plan in a git worktree of its own (create), moves the session into it (join), or removes it once the work is pushed (finish): templates\_claude-worktree-*.md.
 
+    A template's "targets" field limits it to the targets it names, such as "targets: Claude" for run-issues, which only Claude Code gets; without it a template goes to every target.
+
     VS Code model names use "<model name> (<vendor>)"; the Settings dropdown for
     chat.planAgent.defaultModel lists the exact names. Copilot CLI uses model IDs such as
     claude-sonnet-5.5 (see `copilot help config`); Claude Code uses aliases such as sonnet or full model IDs such as claude-sonnet-5-5.
@@ -143,6 +145,7 @@ foreach ($d in $dest) {
         }
         if ($d.Prompts) {
             foreach ($t in $templates) {
+                if ('VSCode' -notin $t.Targets) { continue }
                 $promptModels = [Collections.Generic.List[object]]::new()
                 if ($t.Role -ne 'executor') { $promptModels.Add([pscustomobject]@{ Suffix = ''; Model = $vscodeModel[$t.Role] }) }
                 else {
@@ -159,6 +162,7 @@ foreach ($d in $dest) {
     }
     if ('Claude' -in $Target) {
         foreach ($t in $templates) {
+            if ('Claude' -notin $t.Targets) { continue }
             $body = Get-HybridPromptText -Name $t.Name -Placeholder '$ARGUMENTS' -StateScript $d.ClaudeStateScript
             $hint = $t.ArgumentHint
             if ($t.Worktree) { $body = (Get-ClaudeWorktreeSection $t.Worktree) + "`n`n## Task`n`n" + $body }
@@ -170,6 +174,7 @@ foreach ($d in $dest) {
     }
     if ('CopilotCli' -in $Target) {
         foreach ($t in $templates) {
+            if ('CopilotCli' -notin $t.Targets) { continue }
             $body = Get-HybridPromptText -Name $t.Name -Placeholder $skillInput -StateScript $d.CopilotStateScript
             $fm = "---`nname: $($t.Name)`ndescription: $(Q $t.Description)`n---`n"
             Write-Generated (Join-Path $d.Skills "$($t.Name)\SKILL.md") ($fm + $body)

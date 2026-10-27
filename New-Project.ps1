@@ -76,6 +76,7 @@ try {
     git add -A
     # Executable on Linux and macOS; Windows doesn't record the bit on its own.
     if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
+    if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
     git commit -q -m $message
     if ($LASTEXITCODE) { throw 'The first commit failed.' }
     "Committed the new project in $((Get-Location).Path)."

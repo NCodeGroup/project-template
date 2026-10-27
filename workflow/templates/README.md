@@ -4,7 +4,7 @@ Source templates for the plan-and-execute workflow — the single source of trut
 
 ## Prompt Templates
 
-Each prompt has a small front-matter header (`description`, `argument-hint`, `role`, `append-format`, and optionally `worktree`) and a body with one `{{INPUT}}` placeholder for your request. Planning templates with `append-format: true` get [_plan-format.md](_plan-format.md) appended, so every plan comes out in the same parseable shape.
+Each prompt has a small front-matter header (`description`, `argument-hint`, `role`, `append-format`, and optionally `worktree` and `targets`) and a body with one `{{INPUT}}` placeholder for your request. Planning templates with `append-format: true` get [_plan-format.md](_plan-format.md) appended, so every plan comes out in the same parseable shape. `targets: Claude` limits a template to the installer targets it names, comma-separated from `VSCode`, `Claude` and `CopilotCli`; without it a template goes to all three.
 
 | Template | Role | Produces | Use it to |
 |---|---|---|---|
@@ -21,6 +21,7 @@ Each prompt has a small front-matter header (`description`, `argument-hint`, `ro
 | [plan-template-update.md](plan-template-update.md) | planner | `PLAN.md` | Update the project to a newer template version: read the release notes, try `Update-Project.ps1` on a clone, and plan the pinned update, the checks, the project files that still describe the old template, and the gate |
 | [replan-step.md](replan-step.md) | planner | Updated `PLAN.md` | Re-plan a step the executor escalated (`[?]`) or failed (`[!]`), then hand it back |
 | [orchestrate-plan.md](orchestrate-plan.md) | orchestrator | Commits, updated `PLAN.md` | Run the whole plan in one session: the strong model verifies and re-plans, a cheaper subagent executes |
+| [run-issues.md](run-issues.md) | orchestrator | Draft pull requests, replies to review threads, landed plans, a table in chat | Claude Code only: take the issues a request names, or the ready ones a filter finds, from plan to landing one at a time — plan, execute, review, open a draft pull request, answer my review threads, and land it once I merge; runs only when the default branch takes changes through pull requests alone |
 | [analyze-architecture.md](analyze-architecture.md) | analyst | `ANALYSIS.md` | Explain a codebase or subsystem with evidence, risks and follow-ups |
 | [analyze-decision.md](analyze-decision.md) | analyst | ADR file | Compare options for a design decision and record it |
 | [triage-issues.md](triage-issues.md) | analyst | Findings in chat | List a set of open issues (a label, a milestone, a search), judge which are ready to plan, and give the `/plan-issue` command for each |
@@ -47,7 +48,7 @@ In Claude Code only, each plan lives in its own git worktree, so several session
 | `join` | [_claude-worktree-join.md](_claude-worktree-join.md) | `orchestrate-plan`, `execute-step`, `replan-step`, `review-plan-diff`, `ship-plan` | Moves the session into the plan's worktree — the one its arguments name, or the only one — before it starts; with no plan worktree, works on a `PLAN.md` in the current checkout |
 | `finish` | [_claude-worktree-finish.md](_claude-worktree-finish.md) | `finish-plan` | Finds the plan's worktree — the session's own, the one its arguments name, or the only one — without entering it, removes it with the `ExitWorktree` tool or `git worktree remove`, clears a stale lock or a leftover folder, including one Windows' path limit left behind, and fast-forwards the default branch in the main checkout |
 
-A command without the field works where the session is. VS Code prompt files, Copilot CLI skills, the agents and `New-PlanPrompt.ps1` never get a section. The `plan-executor` subagent inherits the orchestrator's worktree; `isolation: worktree` would give it a worktree of its own instead.
+A command without the field works where the session is. `run-issues` has no field: it makes each issue's worktree itself with `git worktree add`, enters it with `EnterWorktree` and its `path`, and removes it through `finish-plan`. VS Code prompt files, Copilot CLI skills, the agents and `New-PlanPrompt.ps1` never get a section. The `plan-executor` subagent inherits the orchestrator's worktree; `isolation: worktree` would give it a worktree of its own instead.
 
 ## Agent Templates
 
@@ -92,4 +93,4 @@ New projects get generated copies of these files under `template/` ([What a Proj
 
 ---
 
-**TL;DR:** Twenty prompts (planning, issue triage, template updates, analysis, review, orchestration, re-planning, execution, finishing) and four variant-neutral VS Code agents, written once and installed into Claude Code, VS Code and Copilot CLI by `Install-HybridWorkflow.ps1`. Every planning prompt ends with the same PLAN.md contract, and the executor prompt escalates with `[?]` instead of improvising, so any planner and any executor can be combined.
+**TL;DR:** Twenty-three prompts (planning, issue triage, template updates, analysis, review, orchestration, autopilot, re-planning, execution, finishing) and four variant-neutral VS Code agents, written once and installed into Claude Code, VS Code and Copilot CLI by `Install-HybridWorkflow.ps1`. Every planning prompt ends with the same PLAN.md contract, and the executor prompt escalates with `[?]` instead of improvising, so any planner and any executor can be combined.

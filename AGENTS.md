@@ -8,12 +8,13 @@ Instructions for coding agents working on this repository: the project template 
 
 ## Plans
 
-This repository keeps a plan's `Plan step N: <title>` commits on `main`: each is one verified change, and the template's workflow has no squash rule. A project that squashes them before pushing, such as one whose `main` takes changes only through pull requests, does so in its own push protocol. A plan's empty `Plan: <title>` and `Re-plan step N` commits change nothing, so drop them when the plan's branch lands. `/ship-plan` does this before it pushes: `git rebase -f --no-keep-empty` onto the branch's merge base with `origin/main`. By hand: `git rebase -f --no-keep-empty main` on that branch, then, in the main checkout, `git merge --ff-only worktree-<name>`. Tagged history is never rewritten.
+This repository keeps a plan's `Plan step N: <title>` commits on `main`: each is one verified change, and the template's workflow has no squash rule. A project that squashes them before pushing, such as one whose `main` takes changes only through pull requests, does so in its own push protocol. A plan's empty `Plan: <title>` and `Re-plan step N` commits change nothing, so drop them when the plan's branch lands. `/ship-plan` does this before it pushes: `git rebase -f --no-keep-empty` onto the branch's merge base with `origin/main`. By hand: `git rebase -f --no-keep-empty main` on that branch, then push it and open a pull request. Tagged history is never rewritten.
 
 ## Landing
 
-`/ship-plan` pushes a reviewed plan's commits straight to `main` together with its version tag, publishes the GitHub release from that version's `CHANGELOG.md` section, and comments on and closes the plan's issue. A plan's `Release:` line names the version, and its last step writes the changelog section.
+`/ship-plan` pushes a reviewed plan's branch and opens a pull request into `main`, with `Closes` for the plan's issue. Merge it with a merge commit or by rebasing, not by squashing, so the plan's step commits stay on `main`. Running `/ship-plan` again after the merge tags the commit it merged as with the plan's version and publishes the GitHub release from that version's `CHANGELOG.md` section. A plan's `Release:` line names the version, and its last step writes the changelog section. This repository is private on GitHub Free, which can't protect a branch, so `protect: hook` has the template's `pre-push` hook refuse every push to `main` once a clone runs `git config core.hooksPath template/.githooks`. Never bypass it with `--no-verify`.
 
-- integrate: direct
+- integrate: pull-request
 - release: tag+release
 - changelog: CHANGELOG.md
+- protect: hook

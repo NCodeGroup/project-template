@@ -2,6 +2,18 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.23.0
+
+- `/run-issues` (Claude Code only) takes the issues a request names, or the ready ones a filter finds through `/triage-issues`, from plan to landing in one session, up to five, one at a time: it plans each issue, executes and reviews it, opens a draft pull request, fixes what each review thread you start asks for and replies with `Autopilot:` (you resolve the thread), and once you mark the pull request ready and it merges, tags, releases, closes and finishes it before starting the next. It asks once, at the start, never merges, marks ready, turns on auto-merge or resolves a thread, and stops an issue that needs a decision, keeping its worktree for `/continue-plan`.
+
+- `/run-issues` runs only when `AGENTS.md`'s Landing section says `integrate: pull-request` and the default branch takes changes through pull requests alone: a GitHub ruleset or branch protection rule that requires them, a GitLab protected branch nobody pushes to, or the new `protect: hook`.
+
+- New Landing key `protect`: `hook` turns on the new `.githooks/pre-push`, which refuses any push to the default branch, for a host that can't require pull requests, such as a private repository on GitHub Free. A project without the key sees no change. New projects get `- protect: none`. `New-Project.ps1`, `Adopt-Project.ps1` and `Update-Project.ps1` mark the hook executable. Projects get it with `.\.template\Update-Project.ps1`.
+
+- `/ship-plan` opens a draft pull request when its extra instructions say `draft`, and stops when `protect: hook` is set with `integrate: direct`.
+
+- This repository now lands through pull requests, guarded by `protect: hook`: run `git config core.hooksPath template/.githooks` in each clone. `Install-HybridWorkflow.ps1` reads a new template field, `targets`, that limits a template to the tools it names.
+
 ## v0.22.1
 
 - No change for projects made from the template. This repository's own scripts moved: the nine `Test-*.ps1` tests into `tests/` and `Update-Template.ps1` into `tools/`, so the root holds only `New-Project.ps1`, `Adopt-Project.ps1` and `Update-Project.ps1`, the scripts people run. Run them as `.\tests\Test-Template.ps1` and `.\tools\Update-Template.ps1`. The scripts, their checks and CI are otherwise the same.
