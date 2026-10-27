@@ -2,6 +2,14 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.19.0
+
+- `/ship-plan` lands a reviewed plan by the new `## Landing` section of `AGENTS.md`: `integrate` (`pull-request`, the default, or `direct`), `release` (`none`, the default, `tag` or `tag+release`) and `changelog` (default `CHANGELOG.md`). It shows what it will push, tag, publish, post and file, and asks once. It drops the empty `Plan:` and `Re-plan step` commits from a branch that was never pushed, pushes the commits and tag atomically or opens the pull request with `Closes`, publishes the release from the changelog section, comments on and closes the issue, and files the follow-ups you pick. Every stage skips what's already done, so it can run again after a pull request merges. A project without a Landing section keeps today's behavior: a pull request and no release. New projects get the section with those defaults, and a project adds it to its own `AGENTS.md` to change them.
+
+- `/continue-plan` shows where each open plan stands (steps, review, landing, pull request) and the one command to run next. Both commands run `.template/Get-PlanState.ps1`, a new template-owned script that `Install-HybridWorkflow.ps1` also installs with the commands, in `.template\` with `-Repo` or in `~\.claude\` and `~\.copilot\` with `-User`.
+
+- Plans gain a `Release:` line, which the planner sets from the kind of plan when the Landing section releases (a patch for bugfix, docs, tests and refactor plans, a minor for others), with a last step that writes that version's changelog section, and a `## Follow-ups` section. A clean `/review-plan-diff` records the commit it reviewed on a `Reviewed:` line, and `/ship-plan` lands only work that matches it. `/orchestrate-plan` and `/review-plan-diff` end with the exact next command.
+
 ## v0.18.3
 
 - `Update-Project.ps1` sets aside the lines an adopted project kept from its own `.gitignore`, `.gitattributes` or `.editorconfig` (the block under `# Kept from this repository's own <file> when it adopted the project template`, which `Adopt-Project.ps1` puts at the end of the file) while Copier merges, then puts them back at the end. Before, a template change to the file's last line, such as v0.15.0's `secrets/` → `/secrets/` in a `stack: other` project, stopped the update with a conflict that held the project's whole kept block, so taking the template's side deleted every rule the project kept. A conflict in the template's lines now ends before the kept block. A project gets the fix with its update to this version or later, because its current script hands the update over to this version's script. An update pinned with `-Ref` to an earlier version runs that version's script and still conflicts: see v0.15.0.
