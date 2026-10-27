@@ -28,7 +28,7 @@ jobs:
           git config --global user.name "template-test"
           git config --global user.email "template-test@example.invalid"
       - name: Test the template
-        run: ./Test-Template.ps1
+        run: ./tests/Test-Template.ps1
       - name: Test adopting existing repositories
         run: ./tests/Test-Adoption.ps1
       - name: Test updating a project that ignores a large folder

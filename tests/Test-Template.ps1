@@ -13,9 +13,9 @@
     per check and exits 1 on any failure.
 
 .EXAMPLE
-    .\Test-Template.ps1
-    .\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate
-    .\Test-Template.ps1 -SkipDotnetBuild -Only python, node
+    .\tests\Test-Template.ps1
+    .\tests\Test-Template.ps1 -SkipDotnetBuild -SkipUpdate
+    .\tests\Test-Template.ps1 -SkipDotnetBuild -Only python, node
 
 .PARAMETER Only
     Render only these cases, by name; the update tests need python and node.
@@ -28,6 +28,7 @@ param(
     [string]$Work = (Join-Path $env:TEMP 'project-template-test')
 )
 $ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
@@ -53,10 +54,10 @@ function Invoke-Git {
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 $tpl = Join-Path $Work 'template-repo'
 New-Item -ItemType Directory -Force $tpl | Out-Null
-Get-ChildItem -LiteralPath $PSScriptRoot -Force | Where-Object Name -NotIn '.git', '.claude' | Copy-Item -Destination $tpl -Recurse -Force
+Get-ChildItem -LiteralPath $repoRoot -Force | Where-Object Name -NotIn '.git', '.claude' | Copy-Item -Destination $tpl -Recurse -Force
 # Claude Code's plan worktrees are other checkouts, not part of the snapshot.
 $claudeCopy = New-Item -ItemType Directory -Force (Join-Path $tpl '.claude')
-Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '.claude') -Force | Where-Object Name -NE 'worktrees' | Copy-Item -Destination $claudeCopy.FullName -Recurse -Force
+Get-ChildItem -LiteralPath (Join-Path $repoRoot '.claude') -Force | Where-Object Name -NE 'worktrees' | Copy-Item -Destination $claudeCopy.FullName -Recurse -Force
 Push-Location $tpl
 try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
 finally { Pop-Location }
@@ -181,7 +182,7 @@ foreach ($case in $cases) {
 }
 
 $listProject = Join-Path $Work 'new-project-list'
-& (Join-Path $PSScriptRoot 'New-Project.ps1') -Path $listProject -Template $tpl -Ref v0.1.0 -Defaults -Data @{ project_name = 'List Answer'; stack = 'other'; workflow_tools = 'claude', 'copilot' } | Out-Null
+& (Join-Path $repoRoot 'New-Project.ps1') -Path $listProject -Template $tpl -Ref v0.1.0 -Defaults -Data @{ project_name = 'List Answer'; stack = 'other'; workflow_tools = 'claude', 'copilot' } | Out-Null
 $listAnswers = [IO.File]::ReadAllText((Join-Path $listProject '.copier-answers.yml')) -replace "`r`n", "`n"
 Check 'New-Project: a list answer in -Data reaches Copier' (($listAnswers -match '(?m)^workflow_tools:\n- claude\n- copilot\n') -and -not (Test-Path (Join-Path $listProject '.github\agents\hybrid-planner.agent.md'))) $listAnswers
 $hooksPath = (git -C $listProject config core.hooksPath) -join ''
@@ -218,7 +219,7 @@ $attributionBase = (git -C $listProject rev-list --max-parents=0 HEAD) -join ''
 $attributionOutput = & pwsh -NoProfile -File (Join-Path $listProject '.template\Test-CommitAttribution.ps1') -Base $attributionBase -Head HEAD 2>&1 | Out-String
 Check 'project: the shipped commit attribution check passes on its own history' (($LASTEXITCODE -eq 0) -and $attributionOutput.Contains('none is attributed to an AI agent')) $attributionOutput
 
-$workflow = Join-Path $PSScriptRoot 'workflow'
+$workflow = Join-Path $repoRoot 'workflow'
 $fresh = Join-Path $Work 'generated'
 New-Item -ItemType Directory -Force $fresh | Out-Null
 & (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $fresh -Variant Both -Target VSCode, Claude, CopilotCli -NoVersionMarker | Out-Null
@@ -231,16 +232,16 @@ function Get-StaleWorkflowFile([string]$Root) {
         @($a | Where-Object { $_ -notin $b }) + @($b | Where-Object { $_ -notin $a }) | ForEach-Object { ($_ -split ' ')[0] }
     }
 }
-$stale = @(Get-StaleWorkflowFile (Join-Path $PSScriptRoot 'template') | Select-Object -Unique)
+$stale = @(Get-StaleWorkflowFile (Join-Path $repoRoot 'template') | Select-Object -Unique)
 Check 'generated workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) ($stale -join ', ')
-$stale = @(Get-StaleWorkflowFile $PSScriptRoot | Select-Object -Unique)
+$stale = @(Get-StaleWorkflowFile $repoRoot | Select-Object -Unique)
 Check 'this repository''s own workflow files match workflow/templates (else run Update-Template.ps1)' (-not $stale) ($stale -join ', ')
 # Text files Git tracks with LF endings; binary files are left out.
-$ownFiles = git -C $PSScriptRoot -c core.quotePath=false ls-files --eol | Where-Object { $_ -match '^i/lf\s' } | ForEach-Object { Join-Path $PSScriptRoot (($_ -split "`t", 2)[1]) }
-$badEnd = $ownFiles | Where-Object { $b = [IO.File]::ReadAllBytes($_); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.Substring($PSScriptRoot.Length).TrimStart('\', '/') }
+$ownFiles = git -C $repoRoot -c core.quotePath=false ls-files --eol | Where-Object { $_ -match '^i/lf\s' } | ForEach-Object { Join-Path $repoRoot (($_ -split "`t", 2)[1]) }
+$badEnd = $ownFiles | Where-Object { $b = [IO.File]::ReadAllBytes($_); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.Substring($repoRoot.Length).TrimStart('\', '/') }
 Check 'repository: every text file ends with exactly one newline' (-not $badEnd) ($badEnd -join ', ')
 $excludeCheck = 'import sys, yaml, jinja2; c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); e = jinja2.Environment(); bad = [p for p in c["_exclude"] if e.from_string(p).render().strip()]; print("; ".join(bad)); sys.exit(1 if bad else 0)'
-$excludeOutput = uv run --quiet --no-project --with pyyaml --with jinja2 python -c $excludeCheck (Join-Path $PSScriptRoot 'copier.yml') 2>&1 | Out-String
+$excludeOutput = uv run --quiet --no-project --with pyyaml --with jinja2 python -c $excludeCheck (Join-Path $repoRoot 'copier.yml') 2>&1 | Out-String
 Check 'copier.yml: _exclude patterns exclude nothing when workflow_tools is missing' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()
 $executorChecks = @(
     @{ Path = 'template\.github\agents\copilot-implementer.agent.md'; Text = "model: 'Claude Sonnet 5.5 (copilot)'" }
@@ -248,10 +249,10 @@ $executorChecks = @(
     @{ Path = 'template\.claude\agents\plan-executor.md'; Text = 'model: claude-sonnet-5-5' }
     @{ Path = 'template\.github\prompts\execute-step.prompt.md'; Text = 'Claude Sonnet 5.5 (copilot)' }
 )
-$executorMissing = @($executorChecks | Where-Object { -not [IO.File]::ReadAllText((Join-Path $PSScriptRoot $_.Path)).Contains($_.Text) } | ForEach-Object Path)
+$executorMissing = @($executorChecks | Where-Object { -not [IO.File]::ReadAllText((Join-Path $repoRoot $_.Path)).Contains($_.Text) } | ForEach-Object Path)
 $executorAuto = @(
     foreach ($dir in 'template\.github', 'template\.claude') {
-        Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot $dir) -Recurse -File -Force | Where-Object {
+        Get-ChildItem -LiteralPath (Join-Path $repoRoot $dir) -Recurse -File -Force | Where-Object {
             $t = [IO.File]::ReadAllText($_.FullName)
             $t.Contains('Auto (copilot)') -or $t -match '(?m)^\s*model:\s*[''"]?auto[''"]?\s*$'
         } | ForEach-Object Name
@@ -260,15 +261,15 @@ $executorAuto = @(
 Check 'workflow: every executor runs on Claude Sonnet 5.5' (-not $executorMissing -and -not $executorAuto) ((@($executorMissing) + @($executorAuto)) -join ', ')
 $coordinatorMissing = @(
     foreach ($p in 'template\.claude\agents\plan-executor.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\skills\execute-step\SKILL.md') {
-        if (-not [IO.File]::ReadAllText((Join-Path $PSScriptRoot $p)).Contains('never substitute a check of your own')) { $p }
+        if (-not [IO.File]::ReadAllText((Join-Path $repoRoot $p)).Contains('never substitute a check of your own')) { $p }
     }
-    if (-not [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'template\.claude\commands\orchestrate-plan.md')).Contains('a check the subagent made instead does not count')) { 'template\.claude\commands\orchestrate-plan.md' }
+    if (-not [IO.File]::ReadAllText((Join-Path $repoRoot 'template\.claude\commands\orchestrate-plan.md')).Contains('a check the subagent made instead does not count')) { 'template\.claude\commands\orchestrate-plan.md' }
 )
 Check 'workflow: an executor that cannot run the Done-when command leaves the check to the coordinator' (-not $coordinatorMissing) ($coordinatorMissing -join ', ')
 # Each issue fix's text in the files it must reach: "<path>: <text>" for each one missing, or "<path>: the file is missing".
 function Get-MissingText([string[]]$Path, [string[]]$Text) {
     foreach ($p in $Path) {
-        $full = Join-Path $PSScriptRoot $p
+        $full = Join-Path $repoRoot $p
         if (-not (Test-Path -LiteralPath $full)) { "${p}: the file is missing"; continue }
         $content = [IO.File]::ReadAllText($full)
         foreach ($t in $Text) { if (-not $content.Contains($t)) { "${p}: $t" } }
@@ -290,35 +291,35 @@ Check 'workflow: a re-plan that changes the plan posts what changed to its issue
 $m = @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\instructions\project-template.instructions.md.jinja') 'Closes <issue reference>')
 $m += @(Get-MissingText 'template\.github\instructions\project-template.instructions.md.jinja' 'Only the planning session calls')
 Check 'workflow: the review and the push name the issue the pull request closes' (-not $m) ($m -join '; ')
-$m = @(foreach ($p in 'template\.claude\agents\plan-executor.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\agents\copilot-implementer.agent.md', 'template\.github\agents\local-implementer.agent.md', 'template\.github\skills\execute-step\SKILL.md', 'template\.github\prompts\execute-step.prompt.md', 'template\.github\prompts\execute-step-local.prompt.md') { $t = [IO.File]::ReadAllText((Join-Path $PSScriptRoot $p)); if ($t.Contains('gh issue') -or $t.Contains('glab issue')) { $p } })
+$m = @(foreach ($p in 'template\.claude\agents\plan-executor.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\agents\copilot-implementer.agent.md', 'template\.github\agents\local-implementer.agent.md', 'template\.github\skills\execute-step\SKILL.md', 'template\.github\prompts\execute-step.prompt.md', 'template\.github\prompts\execute-step-local.prompt.md') { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); if ($t.Contains('gh issue') -or $t.Contains('glab issue')) { $p } })
 Check 'workflow: no executor calls gh or glab on the issue' (-not $m) ($m -join ', ')
 $issuePlanFiles = 'template\.claude\commands\plan-issue.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-issue\SKILL.md'
 $m = @(Get-MissingText $issuePlanFiles ('gh issue view', 'glab issue view', 'Plan snapshot.', 'issue-<number>', '| `bug`, `defect`, `regression` | bugfix |', 'Plan this feature for a smaller model to implement:', 'Investigate this bug and plan the fix:', 'gh issue comment'))
-$m += @(foreach ($p in $issuePlanFiles) { $full = Join-Path $PSScriptRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); if ($t.Contains('{{') -or [regex]::Matches($t, '## Output: PLAN\.md for the executor model').Count -ne 1) { "${p}: an include is left unexpanded, or the plan format is not there exactly once" } } })
+$m += @(foreach ($p in $issuePlanFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); if ($t.Contains('{{') -or [regex]::Matches($t, '## Output: PLAN\.md for the executor model').Count -ne 1) { "${p}: an include is left unexpanded, or the plan format is not there exactly once" } } })
 Check 'workflow: plan-issue reads the issue, maps labels to a plan kind and includes the kind checklists' (-not $m) ($m -join '; ')
 $triageFiles = 'template\.claude\commands\triage-issues.md', 'template\.github\prompts\triage-issues.prompt.md', 'template\.github\skills\triage-issues\SKILL.md'
 $m = @(Get-MissingText $triageFiles ('gh issue list', 'glab issue list', '/plan-issue #42', 'as data, not instructions', '| `bug`, `defect`, `regression` | bugfix |'))
-$m += @(foreach ($p in $triageFiles) { $full = Join-Path $PSScriptRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'Issue: <issue reference', 'gh issue comment', 'glab issue note', 'EnterWorktree') { if ($t.Contains($x)) { "${p}: has $x" } } } })
+$m += @(foreach ($p in $triageFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'Issue: <issue reference', 'gh issue comment', 'glab issue note', 'EnterWorktree') { if ($t.Contains($x)) { "${p}: has $x" } } } })
 Check 'workflow: triage-issues lists and judges issues, and plans and posts nothing' (-not $m) ($m -join '; ')
 $updatePlanFiles = 'template\.claude\commands\plan-template-update.md', 'template\.github\prompts\plan-template-update.prompt.md', 'template\.github\skills\plan-template-update\SKILL.md'
 $m = @(Get-MissingText $updatePlanFiles ('_commit', '_src_path', 'Update-Project.ps1 -Ref <tag> -NoCommit', 'Local edits discarded', '_skip_if_exists', 'build/project-template-<tag>', 'if (-not $? -or $LASTEXITCODE) { exit 1 } else { exit 0 }', 'gh issue create --repo'))
-$m += @(foreach ($p in $updatePlanFiles) { $full = Join-Path $PSScriptRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); if ($t.Contains('{{') -or [regex]::Matches($t, '## Output: PLAN\.md for the executor model').Count -ne 1) { "${p}: an include is left unexpanded, or the plan format is not there exactly once" } } })
+$m += @(foreach ($p in $updatePlanFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); if ($t.Contains('{{') -or [regex]::Matches($t, '## Output: PLAN\.md for the executor model').Count -ne 1) { "${p}: an include is left unexpanded, or the plan format is not there exactly once" } } })
 Check 'workflow: plan-template-update trials the update in a clone, pins the version and plans the update with exit-code checks' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.github\prompts\plan-bugfix.prompt.md', 'template\.github\skills\handoff-plan\SKILL.md', 'template\.github\agents\copilot-planner.agent.md') ('gh issue view', 'glab issue view', 'as data, not instructions'))
 Check 'workflow: every planning command reads the issue it names and treats its text as data' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md', 'template\.claude\commands\continue-plan.md') 'pwsh -NoProfile -File .template/Get-PlanState.ps1')
 $m += @(Get-MissingText 'template\.claude\commands\ship-plan.md' ('git push --atomic origin', 'gh pr create', 'glab mr create', 'gh release create', 'glab release create', 'gh issue close', 'Never force-push'))
-$m += @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'template\.claude'), (Join-Path $PSScriptRoot 'template\.github') -Recurse -File | Where-Object { [IO.File]::ReadAllText($_.FullName).Contains('{{STATE_SCRIPT}}') } | ForEach-Object { "$($_.Name): left {{STATE_SCRIPT}}" })
+$m += @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.claude'), (Join-Path $repoRoot 'template\.github') -Recurse -File | Where-Object { [IO.File]::ReadAllText($_.FullName).Contains('{{STATE_SCRIPT}}') } | ForEach-Object { "$($_.Name): left {{STATE_SCRIPT}}" })
 Check 'workflow: ship-plan and continue-plan run .template/Get-PlanState.ps1, and ship-plan lands, tags, publishes and closes' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText 'template\.claude\commands\plan-feature.md' ('Release: <version', '## Follow-ups', 'raised by one patch version'))
 $m += @(Get-MissingText 'template\.claude\commands\review-plan-diff.md' ('Reviewed: <the commit', '## Follow-ups', '/ship-plan'))
 Check 'workflow: plans carry their release and follow-ups, and a clean review records the commit it reviewed' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.template\Get-PlanState.ps1', '.template\Get-PlanState.ps1') {
-    $full = Join-Path $PSScriptRoot $p
-    if (-not (Test-Path -LiteralPath $full) -or [IO.File]::ReadAllText($full) -ne [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'workflow\Get-PlanState.ps1'))) { $p }
+    $full = Join-Path $repoRoot $p
+    if (-not (Test-Path -LiteralPath $full) -or [IO.File]::ReadAllText($full) -ne [IO.File]::ReadAllText((Join-Path $repoRoot 'workflow\Get-PlanState.ps1'))) { $p }
 })
 Check 'workflow: the generated Get-PlanState.ps1 copies match workflow/Get-PlanState.ps1 (else run Update-Template.ps1)' (-not $m) ($m -join ', ')
-$testHunk = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-HunkApplied' }, $true) | Select-Object -First 1
+$testHunk = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-HunkApplied' }, $true) | Select-Object -First 1
 $results = if ($testHunk) {
     & {
         $hunkRepo = Join-Path $Work 'hunk-applied'
@@ -345,13 +346,13 @@ $worktreeKinds = [ordered]@{
 $worktreeMissing = @(
     foreach ($kind in $worktreeKinds.Keys) {
         $section = [IO.File]::ReadAllText((Join-Path $workflow "templates\_claude-worktree-$kind.md")).Replace("`r`n", "`n").Trim()
-        $worktreeKinds[$kind] | Where-Object { -not [IO.File]::ReadAllText((Join-Path $PSScriptRoot "template\.claude\commands\$_.md")).Contains($section) }
+        $worktreeKinds[$kind] | Where-Object { -not [IO.File]::ReadAllText((Join-Path $repoRoot "template\.claude\commands\$_.md")).Contains($section) }
     }
 )
 $worktreeLeaked = @(
-    Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'template\.github'), (Join-Path $PSScriptRoot 'template\.claude\agents') -Recurse -File |
+    Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.github'), (Join-Path $repoRoot 'template\.claude\agents') -Recurse -File |
         Where-Object { $text = [IO.File]::ReadAllText($_.FullName); $text.Contains('EnterWorktree') -or $text -match '(?m)^isolation:' } | ForEach-Object Name
-    'analyze-architecture', 'analyze-decision', 'review-code', 'triage-issues', 'continue-plan' | Where-Object { [IO.File]::ReadAllText((Join-Path $PSScriptRoot "template\.claude\commands\$_.md")).Contains('EnterWorktree') }
+    'analyze-architecture', 'analyze-decision', 'review-code', 'triage-issues', 'continue-plan' | Where-Object { [IO.File]::ReadAllText((Join-Path $repoRoot "template\.claude\commands\$_.md")).Contains('EnterWorktree') }
 )
 Check 'workflow: Claude Code planning commands create the plan''s worktree, and the commands that work on a plan move into it' (-not $worktreeMissing) ($worktreeMissing -join ', ')
 Check 'workflow: no Copilot file, plan-executor subagent or analysis command enters a worktree' (-not $worktreeLeaked) ($worktreeLeaked -join ', ')
@@ -359,10 +360,10 @@ $both = Join-Path $Work 'installed-both'
 New-Item -ItemType Directory -Force $both | Out-Null
 $installed = & (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $both | Out-String
 Check 'workflow: installer writes both variants for every tool' ($installed -match 'Wrote (\d+) files' -and [int]$Matches[1] -gt 37 -and (Test-Path (Join-Path $both '.github\agents\copilot-planner.agent.md')) -and (Test-Path (Join-Path $both '.github\skills\plan-feature\SKILL.md')))
-$templateVersion = git -C $PSScriptRoot describe --tags --always --dirty --match 'v[0-9]*'
+$templateVersion = git -C $repoRoot describe --tags --always --dirty --match 'v[0-9]*'
 $installedVersion = Join-Path $both '.template-version'
 Check 'workflow: installer records the template version in .template-version' ((Test-Path -LiteralPath $installedVersion) -and ([IO.File]::ReadAllText($installedVersion) -eq "$templateVersion`n")) $templateVersion
-$versionLeaked = @('template\.template-version', '.template-version' | Where-Object { Test-Path -LiteralPath (Join-Path $PSScriptRoot $_) })
+$versionLeaked = @('template\.template-version', '.template-version' | Where-Object { Test-Path -LiteralPath (Join-Path $repoRoot $_) })
 Check 'workflow: template/ and this repository have no installer-written .template-version' (-not $versionLeaked) ($versionLeaked -join ', ')
 $list = & (Join-Path $workflow 'New-PlanPrompt.ps1') -List | Out-String
 $prompt = & (Join-Path $workflow 'New-PlanPrompt.ps1') plan-feature 'Add CSV export' | Out-String
@@ -377,7 +378,7 @@ $dryRun = & (Join-Path $workflow 'Invoke-PlanSteps.ps1') -Plan (Join-Path $runne
 Check 'workflow: Invoke-PlanSteps parses the example plan' ($dryRun.Contains('Add divide with zero-divisor validation') -and $dryRun.Contains('--- Prompt for step 1 ---')) $dryRun.Trim()
 $stagesPlan = @(
     foreach ($dir in 'template\.github', 'template\.claude') {
-        Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot $dir) -Recurse -File -Force |
+        Get-ChildItem -LiteralPath (Join-Path $repoRoot $dir) -Recurse -File -Force |
             Where-Object { $t = [IO.File]::ReadAllText($_.FullName); $t.Contains('run `git add -A`') -or $t.Contains('`git add PLAN.md`') } | ForEach-Object Name
     }
 )
@@ -556,7 +557,7 @@ if (-not $SkipUpdate) {
     Push-Location $other
     try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'; [IO.File]::WriteAllText((Join-Path $other '.git\hooks\pre-commit'), "#!/bin/sh`n") }
     finally { Pop-Location }
-    $output = & (Join-Path $PSScriptRoot 'Update-Project.ps1') -Path $other | Out-String
+    $output = & (Join-Path $repoRoot 'Update-Project.ps1') -Path $other | Out-String
     Check 'update: the root wrapper updates a project by -Path' (($LASTEXITCODE -eq 0) -and $output.Contains('Handing the update over to the v0.3.0 version') -and ((git -C $other log -1 --format=%s) -eq 'Update from project-template v0.3.0') -and -not (git -C $other status --porcelain)) $output.Trim()
     Check 'update: leaves core.hooksPath alone when the clone has hooks in .git/hooks' (-not (git -C $other config core.hooksPath) -and $output.Contains('has hooks of its own in .git/hooks (pre-commit)')) $output.Trim()
 }
