@@ -330,7 +330,7 @@ Check 'workflow: ship-plan and continue-plan run .template/Get-PlanState.ps1, an
 $m = @(Get-MissingText 'template\.claude\commands\plan-feature.md' ('Release: <version', '## Follow-ups', 'raised by one patch version'))
 $m += @(Get-MissingText 'template\.claude\commands\review-plan-diff.md' ('Reviewed: <the commit', '## Follow-ups', '/ship-plan'))
 Check 'workflow: plans carry their release and follow-ups, and a clean review records the commit it reviewed' (-not $m) ($m -join '; ')
-$m = @(Get-MissingText 'template\.claude\commands\ship-plan.md' ('gh label create follow-up', 'glab label create --name follow-up', 'filed as #<number>', 'already tracked as #<number>', 'unless I name it as one to drop'))
+$m = @(Get-MissingText 'template\.claude\commands\ship-plan.md' ('gh label create follow-up', 'glab label create --name follow-up', 'filed as #<number>', 'already tracked as #<number>', 'unless I name it as one to drop', 'unless `follow-ups` is `none`', '`<repo args>` is `--repo <owner/repo>`'))
 $m += @(Get-MissingText 'template\.claude\commands\run-issues.md' ('unless I answer that I want none filed', 'Unless I said at the start that I want none filed'))
 $m += @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\review-plan-diff.md') 'as an issue')
 Check 'workflow: ship-plan files the follow-ups as labelled issues unless dropped or already tracked, run-issues files them by default, and planners list only work worth an issue' (-not $m) ($m -join '; ')
