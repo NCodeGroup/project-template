@@ -15,6 +15,10 @@
 # Git runs it once it is enabled in a clone; New-Project.ps1 and
 # .template/Update-Project.ps1 do that:
 #     git config core.hooksPath .githooks
+# A clone that uses pre-commit, or has hooks of its own, runs it from
+# .git/hooks/pre-push instead, or from .git/hooks/pre-push.legacy when
+# pre-commit installed its pre-push hook, with `exec .githooks/pre-push "$@"`;
+# Update-Project.ps1 prints the lines to add.
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -f "$root/AGENTS.md" ] || exit 0
