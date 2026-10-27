@@ -134,7 +134,7 @@ Check 'next: finished steps without a review run review-plan-diff' $r.Ok $r.Deta
 
 # 5. Reviewed at the current HEAD, with no AGENTS.md.
 Write-Text $planFile (New-PlanText 'x' (Get-Head $repo))
-$r = Test-State (Get-State $repo) @{ landing = 'integrate=pull-request release=none changelog=CHANGELOG.md draft=no' }
+$r = Test-State (Get-State $repo) @{ landing = 'integrate=pull-request release=none changelog=CHANGELOG.md draft=no follow-ups=issues' }
 Check 'local: the default landing policy applies without AGENTS.md' $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ reviewed = 'current'; pr = '-'; merge = '-'; next = 'ship-plan' }
 Check 'next: a reviewed plan is shipped' $r.Ok $r.Detail
@@ -154,6 +154,7 @@ Write-Text (Join-Path $repo 'AGENTS.md') @'
 - release: tag+release
 - changelog: docs/CHANGES.md
 - draft: `yes`
+- follow-ups: owner/backlog
 '@
 Push-Location $repo
 try { Invoke-Git add AGENTS.md; Invoke-Git commit -q -m 'Add AGENTS.md' }
@@ -162,7 +163,7 @@ Write-Text $planFile (New-PlanText 'x' (Get-Head $repo))
 Push-Location $repo
 try { Invoke-Git commit -q --allow-empty -m 'Re-plan step 2: B' }
 finally { Pop-Location }
-$r = Test-State (Get-State $repo) @{ landing = 'integrate=direct release=tag+release changelog=docs/CHANGES.md draft=yes' }
+$r = Test-State (Get-State $repo) @{ landing = 'integrate=direct release=tag+release changelog=docs/CHANGES.md draft=yes follow-ups=owner/backlog' }
 Check 'local: reads the Landing section of AGENTS.md' $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ reviewed = 'current'; next = 'ship-plan' }
 Check 'next: an empty commit after the review keeps it current' $r.Ok $r.Detail
