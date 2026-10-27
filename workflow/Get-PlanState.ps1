@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
-    folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, ahead, behind, landed,
+    folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, protected, ahead, behind, landed,
     pr, merge, tag, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
     "-". With an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
@@ -15,6 +15,9 @@
     landing gives each key of AGENTS.md's Landing section that the workflow reads as key=value, with its default when
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
     gate is the command /ship-plan runs before it pushes, or none.
+    protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
+    requests into the default branch, no when it does not, unknown when the host or its CLI cannot say, and - without
+    a default branch.
 
 .PARAMETER Path
     A folder inside the repository. Defaults to the current folder.
@@ -80,6 +83,37 @@ function Test-RequestLanded([string]$Merge, [string]$Head, [string]$Default) {
     $prTree = (& git rev-parse -q --verify "${Head}^{tree}" 2>$null | Out-String).Trim()
     $headTreeNow = (& git rev-parse -q --verify 'HEAD^{tree}' 2>$null | Out-String).Trim()
     $mergeOnDefault -and ($headInPr -or ($prTree -and $headTreeNow -and $prTree -eq $headTreeNow))
+}
+
+function Get-Protected([string]$HostName, [string]$Default, [string]$Protect) {
+    if ($Protect -eq 'hook') {
+        $h = (& git rev-parse --git-path hooks 2>$null | Out-String).Trim()
+        if ($h -and ((((Split-Path -Leaf $h) -eq '.githooks') -and (Test-Path -LiteralPath "$h/pre-push")) -or [bool]('pre-push', 'pre-push.legacy' | Where-Object { Select-String -LiteralPath "$h/$_" -SimpleMatch '.githooks/pre-push' -Quiet -ErrorAction Ignore }))) { return 'hook' }
+    }
+    if ($Default -eq '-') { return '-' }
+    if ($HostName -notin 'github', 'gitlab') { return 'unknown' }
+    $cli = if ($HostName -eq 'github') { 'gh' } else { 'glab' }
+    if (-not (Get-Command $cli -ErrorAction SilentlyContinue)) { return 'unknown' }
+    if ($HostName -eq 'github') {
+        $out = & gh api "repos/{owner}/{repo}/rules/branches/$Default" 2>$null | Out-String
+        if ($LASTEXITCODE -eq 0) {
+            try {
+                if (@($out | ConvertFrom-Json -ErrorAction Stop | Where-Object { $_.type -eq 'pull_request' }).Count -gt 0) { return 'host' }
+            }
+            catch { }
+        }
+        & gh api "repos/{owner}/{repo}/branches/$Default/protection/required_pull_request_reviews" 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { return 'host' }
+        return 'no'
+    }
+    $out = & glab api "projects/:id/protected_branches/$Default" 2>$null | Out-String
+    if ($LASTEXITCODE -eq 0) {
+        try {
+            if (@(($out | ConvertFrom-Json -ErrorAction Stop).push_access_levels | Where-Object { $_.access_level -ne 0 }).Count -eq 0) { return 'host' }
+        }
+        catch { }
+    }
+    'no'
 }
 
 Push-Location -LiteralPath $Path
@@ -148,7 +182,7 @@ try {
 
     # Landing policy from AGENTS.md
     # Each key the workflow reads, with its default, in the order the landing line prints them.
-    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up'; gate = 'none' }
+    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up'; gate = 'none'; protect = 'none' }
     $spacedKeys = @('follow-up-label', 'gate')   # keys whose value keeps its spaces
     $agents = Join-Path $folder 'AGENTS.md'
     if (Test-Path -LiteralPath $agents) {
@@ -163,6 +197,7 @@ try {
     }
     $integrate = $policy['integrate']; $releasePolicy = $policy['release']
     $landing = @(foreach ($key in $policy.Keys) { if ($policy[$key] -match '\s') { "$key=`"$($policy[$key])`"" } else { "$key=$($policy[$key])" } }) -join ' '
+    $protected = Get-Protected $hostName $default $policy['protect']
 
     # Position against the default branch
     $ahead = '-'; $behind = '-'; $landed = '-'
@@ -315,6 +350,7 @@ try {
     Write-Output "steps: $steps"
     Write-Output "reviewed: $reviewed"
     Write-Output "landing: $landing"
+    Write-Output "protected: $protected"
     Write-Output "ahead: $ahead"
     Write-Output "behind: $behind"
     Write-Output "landed: $landed"
