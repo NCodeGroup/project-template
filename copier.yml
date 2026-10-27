@@ -11,6 +11,7 @@ _answers_file: .copier-answers.yml
 # - Merged (_merged_files): files whose tools can't include a second file. Updates merge the template's changes
 #   with the project's edits, like a Git merge. .template\Update-Project.ps1 reads this list; Copier ignores it.
 # - Template-owned: every other file. Updates replace it, discarding any edit.
+# A project that replaced a merged file makes it project-owned with the project_owned_files answer; .template\Update-Project.ps1 enforces it.
 _skip_if_exists:
   - AGENTS.md
   - README.md
@@ -136,6 +137,14 @@ test_command:
     {%- elif stack == 'node' -%}{{ package_manager | default('npm') }} run test
     {%- elif stack == 'powershell' -%}Invoke-Pester -CI
     {%- endif -%}
+
+project_owned_files:
+  type: yaml
+  help: "Merged files the project owns, such as [.github/workflows/ci.yml]: updates leave them alone and show the template's changes to them"
+  default: []
+  # Not asked when the project is created; recorded only when -Data gives a list that isn't empty.
+  when: "{{ project_owned_files | default([]) | length > 0 }}"
+  validator: "{% if project_owned_files is string %}A list, such as [.github/workflows/ci.yml]{% endif %}"
 
 _message_after_copy: |
   Created {{ project_name }}. Next: open it through the shack PC's VS Code tunnel, review AGENTS.md, and plan the first change with /plan-feature in the Claude Code panel.
