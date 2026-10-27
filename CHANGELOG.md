@@ -2,6 +2,12 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.29.0
+
+- `/run-issues` now reads your top-level pull request comments and review summaries, not only review threads, fixes what they ask for, and answers each with a top-level comment that starts with `Autopilot:` and names the comment's link. A top-level comment counts as answered once such a comment names it, and a new comment from you starts a new round. Projects get it with `.\.template\Update-Project.ps1`.
+- After a review round adds fix steps and pushes them, `/run-issues` rewrites the pull request description the way `/ship-plan` writes it, a short summary of the plan's steps and Decisions and a `Closes` line per issue, so it matches the plan that lands. Projects get it with `.\.template\Update-Project.ps1`.
+- `/run-issues` waits for each merge for up to 24 hours with nothing to answer, counted again from each check that finds a comment of yours, then stops the entry and keeps its worktree and draft pull request for `/continue-plan`. `wait:<hours>` in the request, such as `/run-issues #42 wait:72`, changes the limit. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.28.0
 
 - `/ship-plan` now opens the pull request as a draft when the Landing section of `AGENTS.md` says `- draft: yes`, as `/ship-plan draft` does. `.template/Get-PlanState.ps1`'s `landing` line now gives every Landing key the workflow reads, with its default, and prints a value with a space in double quotes. Template updates don't change a project's `AGENTS.md`, so a project adds the keys to its Landing section itself; without them it lands as before. Projects get it with `.\.template\Update-Project.ps1`.
