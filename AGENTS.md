@@ -8,7 +8,7 @@ Instructions for coding agents working on this repository: the project template 
 
 ## Plans
 
-This repository keeps a plan's `Plan step N: <title>` commits on `main`: each is one verified change, and the template's workflow has no squash rule. A project that squashes them before pushing, such as one whose `main` takes changes only through pull requests, does so in its own push protocol. A plan's empty `Plan: <title>` and `Re-plan step N` commits change nothing, so drop them when the plan's branch lands. `/ship-plan` does this before it pushes: `git rebase -f --no-keep-empty` onto the branch's merge base with `origin/main`. By hand: `git rebase -f --no-keep-empty main` on that branch, then push it and open a pull request. Tagged history is never rewritten.
+This repository keeps a plan's `Plan step N: <title>` commits on `main`: each is one verified change, and the template's workflow has no squash rule. A project that squashes them, such as one that merges its pull requests by squashing, does so in its own push protocol; taking changes only through pull requests doesn't require it, and this repository's `main` takes changes only through pull requests and keeps the step commits by merging with a merge commit or by rebasing. A plan's empty `Plan: <title>` and `Re-plan step N` commits change nothing, so drop them when the plan's branch lands. `/ship-plan` does this before it pushes: `git rebase -f --no-keep-empty` onto the branch's merge base with `origin/main`. By hand: `git rebase -f --no-keep-empty main` on that branch, then push it and open a pull request. Tagged history is never rewritten.
 
 ## Landing
 
