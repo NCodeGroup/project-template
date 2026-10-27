@@ -141,6 +141,24 @@ function Test-HunkApplied([string]$File, [string[]]$Hunk, [string]$Folder) {
     -not $LASTEXITCODE
 }
 
+# The fraction of the project file's distinct, trimmed, non-blank lines that the template's file also has; 1 for a file with none.
+function Get-SharedLineFraction([string]$Project, [string]$Template) {
+    $templateLines = [Collections.Generic.HashSet[string]]::new([string[]]@($Template -split '\r?\n' | ForEach-Object Trim | Where-Object { $_ }))
+    $projectLines = @($Project -split '\r?\n' | ForEach-Object Trim | Where-Object { $_ } | Select-Object -Unique)
+    if (-not $projectLines.Count) { return 1.0 }
+    [double]@($projectLines | Where-Object { $templateLines.Contains($_) }).Count / $projectLines.Count
+}
+
+# The files, of those given, that share less than half their lines with the template's render of them in $Folder, leaving out the lines an adopted file keeps under its "# Kept from" comment.
+function Get-RewrittenFile([string[]]$Files, [string]$Folder) {
+    foreach ($file in $Files) {
+        $rendered = Join-Path $Folder $file
+        if (-not (Test-Path -LiteralPath $rendered -PathType Leaf)) { continue }
+        $text = [regex]::Split([IO.File]::ReadAllText((Join-Path $project $file)), "(?m)^# Kept from this repository's own \S+ when it adopted the project template\r?$")[0]
+        if ((Get-SharedLineFraction $text ([IO.File]::ReadAllText($rendered))) -lt 0.5) { $file }
+    }
+}
+
 # How to run the template's .githooks in this clone: HooksPath when core.hooksPath can point at it, otherwise the
 # Note to print. A hooks path turns off the hooks in .git/hooks, and pre-commit won't install while one is set, so
 # a clone that uses pre-commit gets a local pre-commit hook to add instead, and no note once its config runs it.
