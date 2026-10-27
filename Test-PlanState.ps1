@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes. After each move it runs
+    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, read through stand-ins for gh and glab. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -230,6 +230,79 @@ Check 'next: a landed branch without a plan is finished' $r.Ok $r.Detail
 Write-Text (Join-Path $repo 'scratch.txt') "scratch`n"
 $state = Get-State $repo
 Check 'next: uncommitted changes stop everything' (($state['dirty'] -eq 'yes') -and ($state['next'] -like 'none *')) "dirty='$($state['dirty'])' next='$($state['next'])' expected dirty 'yes' and next 'none *'"
+
+# Stand-ins for gh and glab: both print the contents of pr.json for a 'pr list' or 'mr list' call and fail otherwise.
+$bin = Join-Path $Work 'bin'
+New-Item -ItemType Directory -Force $bin | Out-Null
+foreach ($cli in 'gh', 'glab') {
+    Write-Text (Join-Path $bin "$cli.ps1") @'
+if ($args[1] -eq 'list' -and $args[0] -in 'pr', 'mr') { [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0 }
+exit 1
+'@
+}
+function Set-MergedRequest([string]$Merge, [string]$Head, [switch]$GitHub) {
+    $item = if ($GitHub) {
+        @{ number = 6; state = 'MERGED'; mergeCommit = @{ oid = $Merge }; headRefOid = $Head }
+    }
+    else {
+        @{ iid = 5; state = 'merged'; merge_commit_sha = $null; squash_commit_sha = $Merge; sha = $Head }
+    }
+    Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject @($item) -Depth 3)
+}
+function New-MergedClone([string]$Dir) {
+    New-Item -ItemType Directory -Force $Dir | Out-Null
+    $repoDir = Join-Path $Dir 'repo'
+    Push-Location $Dir
+    try {
+        Invoke-Git init -q --bare -b main (Join-Path $Dir 'origin.git')
+        Invoke-Git clone -q (Join-Path $Dir 'origin.git') $repoDir
+    }
+    finally { Pop-Location }
+    [IO.File]::AppendAllText((Join-Path $repoDir '.git/info/exclude'), "PLAN.md`n")
+    Add-Commit $repoDir 'README.md' 'Add README'
+    Push-Location $repoDir
+    try {
+        Invoke-Git push -q origin HEAD:refs/heads/main
+        Invoke-Git switch -q -c worktree-merged
+    }
+    finally { Pop-Location }
+    Add-Commit $repoDir 'e.txt' 'Plan step 1: E'
+    $head = Get-Head $repoDir
+    Push-Location $repoDir
+    try {
+        $squash = (Invoke-Git commit-tree 'HEAD^{tree}' -p origin/main -m 'E (squashed)' | Out-String).Trim()
+        Invoke-Git push -q origin "${squash}:refs/heads/main"
+        $twin = (Invoke-Git commit-tree 'HEAD^{tree}' -m 'E (rebased)' | Out-String).Trim()
+    }
+    finally { Pop-Location }
+    [pscustomobject]@{ Repo = $repoDir; Head = $head; Squash = $squash; Twin = $twin }
+}
+
+$savedPath = $env:PATH
+$env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+try {
+    # 14. A merged merge request on a GitLab origin.
+    $gl = New-MergedClone (Join-Path $Work 'gitlab')
+
+    Set-MergedRequest $gl.Squash $gl.Head
+    $r = Test-State (Get-State $gl.Repo) @{ host = 'gitlab'; pr = '5 MERGED'; ahead = '1'; landed = 'yes'; next = 'finish-plan' }
+    Check 'local: a squash-merged merge request that holds HEAD is landed' $r.Ok $r.Detail
+
+    Set-MergedRequest $gl.Squash $gl.Twin
+    $r = Test-State (Get-State $gl.Repo) @{ landed = 'yes' }
+    Check 'local: a merged head with the same tree as HEAD is landed' $r.Ok $r.Detail
+
+    Set-MergedRequest $gl.Twin $gl.Head
+    $r = Test-State (Get-State $gl.Repo) @{ landed = 'no' }
+    Check 'local: a merge commit missing from the default branch is not landed' $r.Ok $r.Detail
+
+    Set-MergedRequest $gl.Squash $gl.Head
+    Add-Commit $gl.Repo 'f.txt' 'Plan step 2: F'
+    Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo))
+    $state = Get-State $gl.Repo
+    Check 'next: commits after a merged merge request need a new branch' (($state['landed'] -eq 'no') -and ($state['next'] -like 'none pull request #5 merged*')) "landed='$($state['landed'])' next='$($state['next'])' expected landed 'no' and next 'none pull request #5 merged*'"
+}
+finally { $env:PATH = $savedPath }
 
 ''
 if ($failures.Count) { "Plan state tests: FAILED ($($failures.Count))"; exit 1 }
