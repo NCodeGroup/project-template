@@ -45,6 +45,8 @@ jobs:
         run: ./tests/Test-CommitAttribution.ps1
       - name: Test the Git hooks
         run: ./tests/Test-GitHooks.ps1
+      - name: Test the test runner
+        run: ./tests/Test-InvokeAllTests.ps1
 
   commit-attribution:
     name: Commit attribution
