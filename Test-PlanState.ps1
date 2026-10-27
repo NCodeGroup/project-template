@@ -301,6 +301,17 @@ try {
     Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo))
     $state = Get-State $gl.Repo
     Check 'next: commits after a merged merge request need a new branch' (($state['landed'] -eq 'no') -and ($state['next'] -like 'none pull request #5 merged*')) "landed='$($state['landed'])' next='$($state['next'])' expected landed 'no' and next 'none pull request #5 merged*'"
+
+    # 15. A merged pull request on a GitHub origin.
+    $gh = New-MergedClone (Join-Path $Work 'github.com')
+
+    Set-MergedRequest $gh.Squash $gh.Head -GitHub
+    $r = Test-State (Get-State $gh.Repo) @{ host = 'github'; pr = '6 MERGED'; landed = 'yes' }
+    Check 'local: a merged GitHub pull request that holds HEAD is landed' $r.Ok $r.Detail
+
+    Set-MergedRequest $gh.Twin $gh.Head -GitHub
+    $r = Test-State (Get-State $gh.Repo) @{ landed = 'no' }
+    Check 'local: a GitHub merge commit missing from the default branch is not landed' $r.Ok $r.Detail
 }
 finally { $env:PATH = $savedPath }
 
