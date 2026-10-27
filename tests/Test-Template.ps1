@@ -9,7 +9,7 @@
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in %TEMP%\project-template-test, so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab and checks YAML with
     PyYAML through uv. Also checks that the generated workflow files under template/ and at the repository root
-    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, and that the workflow scripts run. Prints PASS or FAIL
+    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that run-issues reaches only Claude Code, and that the workflow scripts run. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
 .EXAMPLE
@@ -187,7 +187,8 @@ $listAnswers = [IO.File]::ReadAllText((Join-Path $listProject '.copier-answers.y
 Check 'New-Project: a list answer in -Data reaches Copier' (($listAnswers -match '(?m)^workflow_tools:\n- claude\n- copilot\n') -and -not (Test-Path (Join-Path $listProject '.github\agents\hybrid-planner.agent.md'))) $listAnswers
 $hooksPath = (git -C $listProject config core.hooksPath) -join ''
 $hookMode = (git -C $listProject ls-files -s .githooks/commit-msg) -join ''
-Check 'New-Project: enables the hooks with an executable commit-msg' (($hooksPath -eq '.githooks') -and $hookMode.StartsWith('100755')) "$hooksPath $hookMode"
+$pushMode = (git -C $listProject ls-files -s .githooks/pre-push) -join ''
+Check 'New-Project: enables the hooks with an executable commit-msg and pre-push' (($hooksPath -eq '.githooks') -and $hookMode.StartsWith('100755') -and $pushMode.StartsWith('100755')) "$hooksPath $hookMode $pushMode"
 $secretsIgnored = @(foreach ($p in 'secrets/key.txt', 'src/secrets/x.cs', 'src/Secrets/New.cs') { git -C $listProject check-ignore -q --no-index $p; $LASTEXITCODE }) -join ','
 $secretsDeny = @((Get-Content -LiteralPath (Join-Path $listProject '.claude\settings.json') -Raw | ConvertFrom-Json).permissions.deny)
 Check 'project: only the root secrets/ folder is gitignored and denied to Claude Code' (($secretsIgnored -eq '0,1,1') -and ('Read(/secrets/**)' -in $secretsDeny) -and ('Read(./secrets/**)' -notin $secretsDeny)) "check-ignore exit codes $secretsIgnored; deny $($secretsDeny -join ', ')"
@@ -314,6 +315,14 @@ Check 'workflow: ship-plan and continue-plan run .template/Get-PlanState.ps1, an
 $m = @(Get-MissingText 'template\.claude\commands\plan-feature.md' ('Release: <version', '## Follow-ups', 'raised by one patch version'))
 $m += @(Get-MissingText 'template\.claude\commands\review-plan-diff.md' ('Reviewed: <the commit', '## Follow-ups', '/ship-plan'))
 Check 'workflow: plans carry their release and follow-ups, and a clean review records the commit it reviewed' (-not $m) ($m -join '; ')
+$runFiles = 'template\.claude\commands\run-issues.md', '.claude\commands\run-issues.md'
+$m = @(Get-MissingText $runFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'required_pull_request_reviews', 'has `- protect: hook`', 'git worktree add .claude/worktrees/issue-<number>', 'plan-executor', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'ExitWorktree'))
+$m += @(foreach ($p in $runFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and ([regex]::Matches([IO.File]::ReadAllText($full), [regex]::Escape('$ARGUMENTS')).Count -ne 1 -or [IO.File]::ReadAllText($full).Contains('{{'))) { "${p}: the arguments placeholder is not there exactly once, or a template token is left" } })
+$m += @('template\.github\prompts\run-issues.prompt.md', 'template\.github\skills\run-issues', '.github\prompts\run-issues.prompt.md', '.github\skills\run-issues' | Where-Object { Test-Path -LiteralPath (Join-Path $repoRoot $_) } | ForEach-Object { "${_}: a Claude Code-only command reached Copilot" })
+Check 'workflow: run-issues is a Claude Code command that gates on pull requests, plans, executes, reviews and lands each issue, and no Copilot file has it' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('open it as a draft', '--draft', 'has `- protect: hook` and `integrate` is `direct`'))
+$m += @(if (-not ((git -C $repoRoot ls-files -s template/.githooks/pre-push) -join '').StartsWith('100755')) { 'template/.githooks/pre-push: not executable in the index' })
+Check 'workflow: ship-plan opens a draft pull request when asked, and the pre-push hook is executable' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.template\Get-PlanState.ps1', '.template\Get-PlanState.ps1') {
     $full = Join-Path $repoRoot $p
     if (-not (Test-Path -LiteralPath $full) -or [IO.File]::ReadAllText($full) -ne [IO.File]::ReadAllText((Join-Path $repoRoot 'workflow\Get-PlanState.ps1'))) { $p }
