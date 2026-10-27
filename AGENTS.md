@@ -1,6 +1,6 @@
 # Project Template
 
-Instructions for coding agents working on this repository: the project template itself, not a project made from it. [README.md](README.md) explains the repository. `PLAN.md`, when there is one, is the plan in progress. It is gitignored: never commit, stage or push it, and never use `git add -A`; stage the files a step lists. Before a push you were asked for, delete `PLAN.md` once every step is marked `[x]`; when a step is still open, keep it and say which steps remain.
+Instructions for coding agents working on this repository: the project template itself, not a project made from it. [README.md](README.md) explains the repository. `PLAN.md`, when there is one, is the plan in progress. It is gitignored: never commit, stage or push it, and never use `git add -A`; stage the files a step lists. `/ship-plan` lands a reviewed plan by the Landing section below and keeps `PLAN.md` for `/finish-plan`, which deletes it. Before a push you were asked for and make without `/ship-plan`, delete `PLAN.md` once every step is marked `[x]`; when a step is still open, keep it and say which steps remain.
 
 ## Commits
 
@@ -8,4 +8,12 @@ Instructions for coding agents working on this repository: the project template 
 
 ## Plans
 
-This repository keeps a plan's `Plan step N: <title>` commits on `main`: each is one verified change, and the template's workflow has no squash rule. A project that squashes them before pushing, such as one whose `main` takes changes only through pull requests, does so in its own push protocol. A plan's empty `Plan: <title>` and `Re-plan step N` commits change nothing, so drop them when the plan's branch lands: `git rebase -f --no-keep-empty main` on that branch, then, in the main checkout, `git merge --ff-only worktree-<name>`. Tagged history is never rewritten.
+This repository keeps a plan's `Plan step N: <title>` commits on `main`: each is one verified change, and the template's workflow has no squash rule. A project that squashes them before pushing, such as one whose `main` takes changes only through pull requests, does so in its own push protocol. A plan's empty `Plan: <title>` and `Re-plan step N` commits change nothing, so drop them when the plan's branch lands. `/ship-plan` does this before it pushes: `git rebase -f --no-keep-empty` onto the branch's merge base with `origin/main`. By hand: `git rebase -f --no-keep-empty main` on that branch, then, in the main checkout, `git merge --ff-only worktree-<name>`. Tagged history is never rewritten.
+
+## Landing
+
+`/ship-plan` pushes a reviewed plan's commits straight to `main` together with its version tag, publishes the GitHub release from that version's `CHANGELOG.md` section, and comments on and closes the plan's issue. A plan's `Release:` line names the version, and its last step writes the changelog section.
+
+- integrate: direct
+- release: tag+release
+- changelog: CHANGELOG.md
