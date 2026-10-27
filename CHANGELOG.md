@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.24.0
+
+- No change for projects made from the template. `workflow/New-PlanPrompt.ps1 -List` now shows each template's targets, the installer targets its `targets` field names (all three without it), so Claude Code-only templates such as `run-issues` stand out.
+
 ## v0.23.2
 
 - No change for projects made from the template. This repository's `AGENTS.md` no longer gives a project whose `main` takes changes only through pull requests as one that squashes plan step commits: since v0.23.0 this repository lands through pull requests and keeps them, by merge commit or rebase.
