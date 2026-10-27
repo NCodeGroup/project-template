@@ -7,8 +7,8 @@
     folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, ahead, behind, landed,
     pr, tag, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints "-". With
     an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is yes when
-    HEAD is on the default branch, or when the branch's merged pull request or merge request has its merge commit
-    there and its head holds HEAD or has HEAD's tree. issue is the plan's Issue: line, which names one issue or up to
+    HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its merge
+    commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one. issue is the plan's Issue: line, which names one issue or up to
     three separated by spaces; issue-states gives each one's state as <reference>=<state>, and issue-state is OPEN
     while any of them is open, CLOSED when all are closed, and unknown otherwise.
 
@@ -59,6 +59,16 @@ function Get-IssueState([string]$Ref, [string]$HostName) {
         }
     }
     $issueState
+}
+
+function Test-RequestLanded([string]$Merge, [string]$Head, [string]$Default) {
+    & git merge-base --is-ancestor $Merge "origin/$Default" 2>$null | Out-Null
+    $mergeOnDefault = ($LASTEXITCODE -eq 0)
+    & git merge-base --is-ancestor HEAD $Head 2>$null | Out-Null
+    $headInPr = ($LASTEXITCODE -eq 0)
+    $prTree = (& git rev-parse -q --verify "${Head}^{tree}" 2>$null | Out-String).Trim()
+    $headTreeNow = (& git rev-parse -q --verify 'HEAD^{tree}' 2>$null | Out-String).Trim()
+    $mergeOnDefault -and ($headInPr -or ($prTree -and $headTreeNow -and $prTree -eq $headTreeNow))
 }
 
 Push-Location -LiteralPath $Path
@@ -168,7 +178,7 @@ try {
         $pr = 'unknown'
         if (Get-Command $cli -ErrorAction SilentlyContinue) {
             $json = if ($hostName -eq 'github') {
-                & gh pr list --head $branch --state all --limit 1 --json number,state,mergeCommit,headRefOid 2>$null | Out-String
+                & gh pr list --head $branch --state all --limit 100 --json number,state,mergeCommit,headRefOid 2>$null | Out-String
             }
             else {
                 & glab mr list --source-branch $branch --all --output json 2>$null | Out-String
@@ -176,33 +186,38 @@ try {
             if ($LASTEXITCODE -eq 0) {
                 try {
                     $items = @($json | ConvertFrom-Json -ErrorAction Stop)
-                    if ($items.Count -eq 0) { $pr = '-' }
-                    elseif ($hostName -eq 'github') {
-                        $prNumber = "$($items[0].number)"; $prState = "$($items[0].state)".ToUpperInvariant()
-                        $prMerge = "$($items[0].mergeCommit.oid)"; $prHead = "$($items[0].headRefOid)"
-                        $pr = "$prNumber $prState"
-                    }
+                    $requests = @(foreach ($item in $items) {
+                        if ($hostName -eq 'github') {
+                            [pscustomobject]@{
+                                Number = "$($item.number)"; State = "$($item.state)".ToUpperInvariant()
+                                Merge = "$($item.mergeCommit.oid)"; Head = "$($item.headRefOid)"
+                            }
+                        }
+                        else {
+                            $mergeSha = "$($item.merge_commit_sha)"
+                            if (-not $mergeSha) { $mergeSha = "$($item.squash_commit_sha)" }
+                            [pscustomobject]@{
+                                Number = "$($item.iid)"
+                                State = switch ("$($item.state)") { 'opened' { 'OPEN' } 'merged' { 'MERGED' } 'closed' { 'CLOSED' } default { "$($item.state)".ToUpperInvariant() } }
+                                Merge = $mergeSha; Head = "$($item.sha)"
+                            }
+                        }
+                    })
+                    if ($requests.Count -eq 0) { $pr = '-' }
                     else {
-                        $prNumber = "$($items[0].iid)"
-                        $prState = switch ("$($items[0].state)") { 'opened' { 'OPEN' } 'merged' { 'MERGED' } 'closed' { 'CLOSED' } default { "$($items[0].state)".ToUpperInvariant() } }
-                        $prMerge = "$($items[0].merge_commit_sha)"
-                        if (-not $prMerge) { $prMerge = "$($items[0].squash_commit_sha)" }
-                        $prHead = "$($items[0].sha)"
+                        $chosen = $requests[0]
+                        if ($landed -eq 'no') {
+                            foreach ($request in $requests) {
+                                if ($request.State -eq 'MERGED' -and $request.Merge -and $request.Head -and (Test-RequestLanded $request.Merge $request.Head $default)) { $landed = 'yes'; $chosen = $request; break }
+                            }
+                        }
+                        $prNumber = $chosen.Number; $prState = $chosen.State; $prMerge = $chosen.Merge; $prHead = $chosen.Head
                         $pr = "$prNumber $prState"
                     }
                 }
                 catch { $pr = 'unknown'; $prNumber = ''; $prState = ''; $prMerge = ''; $prHead = '' }
             }
         }
-    }
-    if ($prState -eq 'MERGED' -and $landed -eq 'no' -and $prMerge -and $prHead) {
-        & git merge-base --is-ancestor $prMerge "origin/$default" 2>$null | Out-Null
-        $mergeOnDefault = ($LASTEXITCODE -eq 0)
-        & git merge-base --is-ancestor HEAD $prHead 2>$null | Out-Null
-        $headInPr = ($LASTEXITCODE -eq 0)
-        $prTree = (& git rev-parse -q --verify "${prHead}^{tree}" 2>$null | Out-String).Trim()
-        $headTreeNow = (& git rev-parse -q --verify 'HEAD^{tree}' 2>$null | Out-String).Trim()
-        if ($mergeOnDefault -and ($headInPr -or ($prTree -and $headTreeNow -and $prTree -eq $headTreeNow))) { $landed = 'yes' }
     }
 
     # Release published on the host
