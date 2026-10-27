@@ -21,6 +21,14 @@ Run from the repository root in PowerShell 7.
 - Build: {% if build_command %}`{{ build_command }}`{% else %}none{% endif %}
 - Test: {% if test_command %}`{{ test_command }}`{% else %}none yet — add one before the first plan{% endif %}
 
+## Landing
+
+How `/ship-plan` lands a reviewed plan. `integrate`: `pull-request` pushes the plan's branch and opens a pull request; `direct` pushes to the default branch. `release`: `none`; `tag` tags the plan's `Release:` version; `tag+release` also publishes a release from that version's section of `changelog`.
+
+- integrate: pull-request
+- release: none
+- changelog: CHANGELOG.md
+
 ## Conventions
 
 - (Add the project's conventions here, and any template rule this project overrides.)

@@ -20,17 +20,17 @@ This repository is set up for plan-then-execute coding: Claude Opus plans each c
 Work in Claude Code or GitHub Copilot, and switch whenever you like: both have the same commands, and `PLAN.md` is the only state they share, so one can plan and the other execute. Each bills its own subscription.
 {%- endif %}
 
-| Tool | Plan | Execute | Re-plan one step | Review | Finish |
+| Tool | Plan | Execute | Re-plan one step | Review | Land, then finish |
 |---|---|---|---|---|---|
 {%- if 'claude' in workflow_tools %}
-| Claude Code | `/plan-feature <what to build>` (or `/plan-bugfix`, `/plan-refactor`, `/plan-tests`, …), or `/plan-issue #42` for an issue, then review `PLAN.md` | `/orchestrate-plan` | `/replan-step N` | `/review-plan-diff` | `/finish-plan` |
+| Claude Code | `/plan-feature <what to build>` (or `/plan-bugfix`, `/plan-refactor`, `/plan-tests`, …), or `/plan-issue #42` for an issue, then review `PLAN.md` | `/orchestrate-plan` | `/replan-step N` | `/review-plan-diff` | `/ship-plan`, then `/finish-plan` |
 {%- endif %}
 {%- if 'copilot' in workflow_tools %}
-| Copilot Chat in VS Code | The Copilot Planner agent on Opus, or `/plan-feature` or `/plan-issue #42` | Run all steps with subagents, or Execute next step | Re-plan with the planner | Review the work | `/finish-plan` |
-| Copilot CLI | `copilot --model claude-opus-5.5`, then `/plan-feature` or `/plan-issue #42` | `/orchestrate-plan` | `/replan-step N` | `/review-plan-diff` | `/finish-plan` |
+| Copilot Chat in VS Code | The Copilot Planner agent on Opus, or `/plan-feature` or `/plan-issue #42` | Run all steps with subagents, or Execute next step | Re-plan with the planner | Review the work | `/ship-plan`, then `/finish-plan` |
+| Copilot CLI | `copilot --model claude-opus-5.5`, then `/plan-feature` or `/plan-issue #42` | `/orchestrate-plan` | `/replan-step N` | `/review-plan-diff` | `/ship-plan`, then `/finish-plan` |
 {%- endif %}
 {%- if 'local' in workflow_tools %}
-| Copilot Chat on the local model | The Hybrid Planner agent on Opus | Run all steps with subagents, or Execute next step, on the shack PC's local model | Re-plan with the planner | Review the work | `/finish-plan` |
+| Copilot Chat on the local model | The Hybrid Planner agent on Opus | Run all steps with subagents, or Execute next step, on the shack PC's local model | Re-plan with the planner | Review the work | `/ship-plan`, then `/finish-plan` |
 {%- endif %}
 
 {%- if 'claude' in workflow_tools %}
