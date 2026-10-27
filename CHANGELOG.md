@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.24.3
+
+- With `protect: hook`, `/run-issues` accepted any `pre-push` hook as protection, so in a pre-commit clone pre-commit's own `pre-push` hook passed its check although nothing ran `.githooks/pre-push`. It now runs only when `core.hooksPath` names the `.githooks` folder, or the clone's `pre-push` or `pre-push.legacy` calls `.githooks/pre-push`, and says how to add the wrapper otherwise. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.24.2
 
 - In a clone that uses pre-commit or has hooks of its own, `Update-Project.ps1` and `Adopt-Project.ps1` left `.githooks/pre-push` unrun and said nothing, so `protect: hook` protected nothing. Under `protect: hook` they now print a two-line wrapper to save as `.git/hooks/pre-push` (or `pre-push.legacy` when pre-commit installed its pre-push hook), or say to call it from the clone's own pre-push hook. A pre-commit `stages: [pre-push]` hook isn't enough, because pre-commit's pre-push stage checks only one ref of a push. Projects get it with `.\.template\Update-Project.ps1`.
