@@ -22,8 +22,8 @@
     Version file: records the template version it installed in .template-version, one line: git describe of this
     clone (the newest v* tag, -<n>-g<sha> past it, -dirty with uncommitted changes), or "unknown" outside a Git
     checkout. -Repo writes it at the repository root; -User writes it in ~\.claude\ (Claude) and ~\.copilot\
-    (VSCode, CopilotCli). -NoVersionMarker skips it, as Update-Template.ps1 does, because a project made from the
-    template renders its own .template-version from .copier-answers.yml.
+    (VSCode, CopilotCli). -NoVersionMarker skips it, as tools\Update-Template.ps1 does, because a project made
+    from the template renders its own .template-version from .copier-answers.yml.
 
     The installer also writes Get-PlanState.ps1, which /ship-plan, /continue-plan and /finish-plan run, to .template\ (-Repo), or to ~\.claude\ and ~\.copilot\ (-User).
 

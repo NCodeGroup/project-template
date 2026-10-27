@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.23.1
+
+- No change for projects made from the template. The help of `workflow/Install-HybridWorkflow.ps1` now names `tools\Update-Template.ps1`, where v0.22.1 moved the script, as the one that passes `-NoVersionMarker`.
+
 ## v0.23.0
 
 - `/run-issues` (Claude Code only) takes the issues a request names, or the ready ones a filter finds through `/triage-issues`, from plan to landing in one session, up to five, one at a time: it plans each issue, executes and reviews it, opens a draft pull request, fixes what each review thread you start asks for and replies with `Autopilot:` (you resolve the thread), and once you mark the pull request ready and it merges, tags, releases, closes and finishes it before starting the next. It asks once, at the start, never merges, marks ready, turns on auto-merge or resolves a thread, and stops an issue that needs a decision, keeping its worktree for `/continue-plan`.
