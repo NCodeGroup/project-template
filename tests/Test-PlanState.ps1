@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, read through stand-ins for gh and glab. After each move it runs
+    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, read through stand-ins for gh and glab. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -57,12 +57,12 @@ function Get-Head([string]$Dir) {
     try { (git rev-parse HEAD).Trim() }
     finally { Pop-Location }
 }
-function New-PlanText([string]$Step2, [string]$Reviewed = '') {
+function New-PlanText([string]$Step2, [string]$Reviewed = '', [string]$Issue = '#7') {
     $reviewedLine = if ($Reviewed) { "Reviewed: $Reviewed`n" } else { '' }
     $text = @'
 # Plan: Demo plan
 
-Issue: #7
+Issue: @@ISSUE@@
 Release: v0.2.0
 @@REVIEWED@@
 ## Steps
@@ -79,7 +79,7 @@ Release: v0.2.0
 
 - Check the steps.
 '@
-    $text.Replace("@@REVIEWED@@`n", $reviewedLine).Replace('@@STEP2@@', $Step2).Replace("`r`n", "`n") + "`n"
+    $text.Replace("@@REVIEWED@@`n", $reviewedLine).Replace('@@STEP2@@', $Step2).Replace('@@ISSUE@@', $Issue).Replace("`r`n", "`n") + "`n"
 }
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
@@ -238,6 +238,18 @@ New-Item -ItemType Directory -Force $bin | Out-Null
 foreach ($cli in 'gh', 'glab') {
     Write-Text (Join-Path $bin "$cli.ps1") @'
 if ($args[1] -eq 'list' -and $args[0] -in 'pr', 'mr') { [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0 }
+if ($args[0] -eq 'issue' -and $args[1] -eq 'view') {
+    $file = Join-Path $PSScriptRoot 'issues.json'
+    if (-not (Test-Path $file)) { exit 1 }
+    $issues = [IO.File]::ReadAllText($file) | ConvertFrom-Json
+    $property = $issues.PSObject.Properties["$($args[2])"]
+    if (-not $property) { exit 1 }
+    if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1') {
+        ConvertTo-Json @{ state = $(if ($property.Value -eq 'OPEN') { 'opened' } else { 'closed' }) }
+    }
+    else { $property.Value }
+    exit 0
+}
 exit 1
 '@
 }
@@ -250,6 +262,7 @@ function Set-MergedRequest([string]$Merge, [string]$Head, [switch]$GitHub) {
     }
     Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject @($item) -Depth 3)
 }
+function Set-IssueStates([hashtable]$States) { Write-Text (Join-Path $bin 'issues.json') (ConvertTo-Json -InputObject $States) }
 function New-MergedClone([string]$Dir) {
     New-Item -ItemType Directory -Force $Dir | Out-Null
     $repoDir = Join-Path $Dir 'repo'
@@ -313,6 +326,32 @@ try {
     Set-MergedRequest $gh.Twin $gh.Head -GitHub
     $r = Test-State (Get-State $gh.Repo) @{ landed = 'no' }
     Check 'local: a GitHub merge commit missing from the default branch is not landed' $r.Ok $r.Detail
+
+    # 16. The issues of a one-issue plan and a group plan.
+    Set-MergedRequest $gh.Squash $gh.Head -GitHub
+    Write-Text (Join-Path $gh.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gh.Repo) '#7')
+    Set-IssueStates @{ '7' = 'OPEN' }
+    $r = Test-State (Get-State $gh.Repo) @{ issue = '#7'; 'issue-state' = 'OPEN'; 'issue-states' = '#7=OPEN'; next = 'ship-plan' }
+    Check 'issues: a one-issue plan on GitHub reads its issue' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $gh.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gh.Repo) '#7 #8 owner/other#9')
+    Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'OPEN'; '9' = 'CLOSED' }
+    $r = Test-State (Get-State $gh.Repo) @{ issue = '#7 #8 owner/other#9'; 'issue-state' = 'OPEN'; 'issue-states' = '#7=CLOSED #8=OPEN owner/other#9=CLOSED'; next = 'ship-plan' }
+    Check 'issues: a group plan on GitHub is open while one issue is open' $r.Ok $r.Detail
+
+    Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'CLOSED'; '9' = 'CLOSED' }
+    $r = Test-State (Get-State $gh.Repo) @{ 'issue-state' = 'CLOSED'; next = 'finish-plan' }
+    Check 'issues: a group plan on GitHub with every issue closed is finished' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo) '#7 #8')
+    Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'OPEN' }
+    $r = Test-State (Get-State $gl.Repo) @{ host = 'gitlab'; 'issue-state' = 'OPEN'; 'issue-states' = '#7=CLOSED #8=OPEN' }
+    Check 'issues: a group plan on GitLab reads each issue through glab' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo) '#7')
+    Set-IssueStates @{ '7' = 'CLOSED' }
+    $r = Test-State (Get-State $gl.Repo) @{ 'issue-state' = 'CLOSED'; 'issue-states' = '#7=CLOSED' }
+    Check 'issues: a one-issue plan on GitLab reads its issue' $r.Ok $r.Detail
 }
 finally { $env:PATH = $savedPath }
 
