@@ -362,6 +362,14 @@ try {
     $r = Test-State (Get-State $gh.Repo) @{ pr = '6 MERGED'; merge = $gh.Squash; landed = 'yes' }
     Check 'local: an older merged GitHub pull request that holds HEAD is landed under a newer closed one' $r.Ok $r.Detail
 
+    $ff = New-MergedClone (Join-Path (Join-Path $Work 'ff') 'github.com')
+    Push-Location $ff.Repo
+    try { Invoke-Git push -q --force origin "$($ff.Head):refs/heads/main" }
+    finally { Pop-Location }
+    Set-MergedRequest $ff.Head $ff.Head -GitHub -Newer 'CLOSED'
+    $r = Test-State (Get-State $ff.Repo) @{ pr = '6 MERGED'; merge = $ff.Head; landed = 'yes' }
+    Check 'local: a merged pull request is named when HEAD is already on the default branch, under a newer closed one' $r.Ok $r.Detail
+
     # 16. The issues of a one-issue plan and a group plan.
     Set-MergedRequest $gh.Squash $gh.Head -GitHub
     Write-Text (Join-Path $gh.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gh.Repo) '#7')

@@ -207,10 +207,8 @@ try {
                     if ($requests.Count -eq 0) { $pr = '-' }
                     else {
                         $chosen = $requests[0]
-                        if ($landed -eq 'no') {
-                            foreach ($request in $requests) {
-                                if ($request.State -eq 'MERGED' -and $request.Merge -and $request.Head -and (Test-RequestLanded $request.Merge $request.Head $default)) { $landed = 'yes'; $chosen = $request; break }
-                            }
+                        foreach ($request in $requests) {
+                            if ($request.State -eq 'MERGED' -and $request.Merge -and $request.Head -and (Test-RequestLanded $request.Merge $request.Head $default)) { $landed = 'yes'; $chosen = $request; break }
                         }
                         $prNumber = $chosen.Number; $prState = $chosen.State; $prMerge = $chosen.Merge; $prHead = $chosen.Head; $prBase = $chosen.Base
                         $pr = "$prNumber $prState"
