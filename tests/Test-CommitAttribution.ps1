@@ -54,8 +54,14 @@ function New-CaseBranch([string]$Branch, [string]$Message, [string]$Author = '',
     Add-CaseCommit $Message $Author $CommitterName $CommitterEmail
     $Branch
 }
-function Assert-Attribution([string]$Name, [string]$Base, [string]$Head, [int]$ExitCode, [string[]]$Contains = @(), [string[]]$NotContains = @()) {
-    $output = & pwsh -NoProfile -File $checker -Root $repository -Base $Base -Head $Head 2>&1 | Out-String
+function Assert-Attribution([string]$Name, [string]$Base, [string]$Head, [int]$ExitCode, [string[]]$Contains = @(), [string[]]$NotContains = @(), [int]$CodePage = 0) {
+    if ($CodePage -eq 0) {
+        $output = & pwsh -NoProfile -File $checker -Root $repository -Base $Base -Head $Head 2>&1 | Out-String
+    }
+    else {
+        $command = "[Console]::OutputEncoding = [Text.Encoding]::GetEncoding($CodePage); & '$checker' -Root '$repository' -Base '$Base' -Head '$Head'; exit `$LASTEXITCODE"
+        $output = & pwsh -NoProfile -Command $command 2>&1 | Out-String
+    }
     $code = $LASTEXITCODE
     $missing = @($Contains | Where-Object { -not $output.Contains($_) })
     $unwanted = @($NotContains | Where-Object { $output.Contains($_) })
@@ -121,6 +127,7 @@ try {
     $robot = [char]::ConvertFromUtf32(0x1F916)
     $head = New-CaseBranch 'generated-with' "Add a feature`n`n$robot Generated with [Claude Code](https://claude.com/claude-code)`n"
     Assert-Attribution 'a Generated with Claude Code line fails' $baseCommit $head 1 @('message has agent attribution')
+    Assert-Attribution 'a Generated with Claude Code line fails under code page 437' $baseCommit $head 1 @('message has agent attribution') -CodePage 437
 
     $head = New-CaseBranch 'prose' "Add a feature`n`nThe hook strips the Generated with Claude Code line.`n"
     Assert-Attribution 'a prose line that mentions the advertising phrase passes' $baseCommit $head 0 @('1 commit(s) checked')
