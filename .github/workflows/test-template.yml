@@ -30,7 +30,7 @@ jobs:
       - name: Test the template
         run: ./Test-Template.ps1
       - name: Test adopting existing repositories
-        run: ./Test-Adoption.ps1
+        run: ./tests/Test-Adoption.ps1
       - name: Test updating a project that ignores a large folder
         run: ./tests/Test-UpdateIgnoredFiles.ps1
       - name: Test the update's exit code

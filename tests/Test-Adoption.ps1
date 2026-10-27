@@ -17,9 +17,9 @@
     The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-adopt-test.
 
 .EXAMPLE
-    .\Test-Adoption.ps1
-    .\Test-Adoption.ps1 -UnitOnly
-    .\Test-Adoption.ps1 -SkipDotnetBuild
+    .\tests\Test-Adoption.ps1
+    .\tests\Test-Adoption.ps1 -UnitOnly
+    .\tests\Test-Adoption.ps1 -SkipDotnetBuild
 #>
 [CmdletBinding()]
 param(
@@ -28,6 +28,7 @@ param(
     [string]$Work = (Join-Path $env:TEMP 'project-template-adopt-test')
 )
 $ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
@@ -56,11 +57,11 @@ function New-TestFolder([string]$Name, [hashtable]$Files) {
     $folder
 }
 
-Import-Module (Join-Path $PSScriptRoot 'adopt\Adoption.psm1') -Force
+Import-Module (Join-Path $repoRoot 'adopt\Adoption.psm1') -Force
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 New-Item -ItemType Directory -Force $Work | Out-Null
 
-$copierYml = Join-Path $PSScriptRoot 'copier.yml'
+$copierYml = Join-Path $repoRoot 'copier.yml'
 $skip = @(Get-CopierList $copierYml '_skip_if_exists')
 $merged = @(Get-CopierList $copierYml '_merged_files')
 Check 'unit: Get-CopierList reads the file lists' (($skip -join ',') -eq 'AGENTS.md,README.md,Directory.Build.props' -and '.gitignore' -in $merged -and 'global.json' -in $merged) "$($skip -join ',') | $($merged -join ',')"
@@ -182,7 +183,7 @@ Check 'unit: Add-TemplateIndexEntry once' ((Add-TemplateIndexEntry $r) -eq $r) '
 $x = "<?xml version=""1.0""?>`n<Project>`n  <PropertyGroup>`n    <A>1</A>`n  </PropertyGroup>`n</Project>`n"
 $r = Add-ProjectTemplateImport $x
 Check 'unit: Add-ProjectTemplateImport' ($r.StartsWith("<?xml version=""1.0""?>`n<Project>`n") -and $r.Contains('<Import Project="$(MSBuildThisFileDirectory)build/ProjectTemplate.props" />') -and $r.IndexOf('<Import') -lt $r.IndexOf('<PropertyGroup>') -and (Add-ProjectTemplateImport $r) -eq $r) $r
-$central = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "template\{% if stack == 'dotnet' %}Directory.Packages.props{% endif %}")
+$central = Get-Content -Raw -LiteralPath (Join-Path $repoRoot "template\{% if stack == 'dotnet' %}Directory.Packages.props{% endif %}")
 $folder = New-TestFolder 'central' @{
     'Directory.Packages.props' = $central
     'A/A.csproj'               = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <ItemGroup>`n    <PackageReference Include=""Foo"" Version=""1.0.0"" />`n  </ItemGroup>`n</Project>`n"
@@ -196,7 +197,7 @@ $iBar = $pp.IndexOf('<PackageVersion Include="Bar" Version="2.0.0" />')
 $iFoo = $pp.IndexOf('<PackageVersion Include="Foo" Version="1.2.0" />')
 Check 'unit: Move-PackageVersionsToCentral' (-not $pa.Contains('Version="') -and -not $pb.Contains('Version="') -and $pb.Contains('PrivateAssets="all"') -and $iBar -ge 0 -and $iBar -lt $iFoo -and 'Foo: 1.0.0, 1.2.0 -> 1.2.0' -in $report) "$pa | $pb | $pp | $($report -join ' / ')"
 $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-$adapters = Join-Path $PSScriptRoot 'adopt\legacy'
+$adapters = Join-Path $repoRoot 'adopt\legacy'
 $scaffold = Join-Path $adapters 'NCode.ProjectSettings.Scaffold.ps1'
 $folder = New-TestFolder 'scaffold-adapter' @{
     'NCodeGroup.png' = $png
@@ -220,10 +221,10 @@ Check 'unit: workflow install adapter' ($detected -eq $true -and $gone -and $out
 if (-not $UnitOnly) {
     $tpl = Join-Path $Work 'template-repo'
     New-Item -ItemType Directory -Force $tpl | Out-Null
-    Get-ChildItem -LiteralPath $PSScriptRoot -Force | Where-Object Name -NotIn '.git', '.claude' | Copy-Item -Destination $tpl -Recurse -Force
+    Get-ChildItem -LiteralPath $repoRoot -Force | Where-Object Name -NotIn '.git', '.claude' | Copy-Item -Destination $tpl -Recurse -Force
     # Claude Code's plan worktrees are other checkouts, not part of the snapshot.
     $claudeCopy = New-Item -ItemType Directory -Force (Join-Path $tpl '.claude')
-    Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '.claude') -Force | Where-Object Name -NE 'worktrees' | Copy-Item -Destination $claudeCopy.FullName -Recurse -Force
+    Get-ChildItem -LiteralPath (Join-Path $repoRoot '.claude') -Force | Where-Object Name -NE 'worktrees' | Copy-Item -Destination $claudeCopy.FullName -Recurse -Force
     Push-Location $tpl
     try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
     finally { Pop-Location }
@@ -245,7 +246,7 @@ if (-not $UnitOnly) {
         '.vscode/settings.json' = "{`n  // editor`n  ""editor.rulers"": [100]`n}`n"
         '.gitlab-ci.yml'        = "test:`n  script: echo hi`n"
     } 'https://gitlab.com/example/plain.git'
-    $adopt = Join-Path $PSScriptRoot 'Adopt-Project.ps1'
+    $adopt = Join-Path $repoRoot 'Adopt-Project.ps1'
     [IO.File]::WriteAllText((Join-Path $plain '.git\hooks\pre-commit'), "#!/bin/sh`n")
     $out = & $adopt -Path $plain -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot' } -NoVerify | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $plain '.copier-answers.yml')
