@@ -13,6 +13,14 @@ function Get-CopierList([string]$CopierYml, [string]$Key) {
     }
 }
 
+# The project_owned_files answer as the list Copier needs: a single file becomes a one-item list and empty items are dropped. Throws for a file that isn't merged.
+function Get-OwnedMergedFile($Value, [string[]]$Merged) {
+    $files = @($Value | Where-Object { $_ })
+    $notMerged = @($files | Where-Object { $_ -notin $Merged })
+    if ($notMerged) { throw "project_owned_files names $($notMerged -join ', '), which isn't a merged file. It can name only these: $($Merged -join ', ')." }
+    , $files
+}
+
 function Get-MSBuildFile([string]$Path) {
     Get-ChildItem -LiteralPath $Path -Recurse -File -Include '*.csproj', '*.fsproj', '*.vbproj', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props' |
         Where-Object { $_.FullName -notmatch $script:SkipPath }
@@ -321,4 +329,4 @@ function Get-GitHooksSetup {
     [pscustomobject]@{ HooksPath = -not $preCommit -and -not $ownHooks; Note = if ($parts) { $parts -join "`n" } else { $null } }
 }
 
-Export-ModuleMember -Function Get-CopierList, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+Export-ModuleMember -Function Get-CopierList, Get-OwnedMergedFile, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup

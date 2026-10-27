@@ -25,6 +25,9 @@
                       A merged file that the project's project_owned_files answer names
                       is project-owned too; a project that replaced one sets it with -Data @{ project_owned_files
                       = '.github/workflows/ci.yml' }, and only merged files can be named.
+                      When the template changed a merged file that shares less than half its lines with the
+                      template's version, the script suggests that answer, with the -Data to run;
+                      it doesn't stop the update.
 
     The update runs `copier recopy` at the project's current template version, which resets the template-owned
     files and shows any local edits, then `copier update --defaults` to the newest version (or -Ref), which merges
@@ -141,6 +144,24 @@ function Test-HunkApplied([string]$File, [string[]]$Hunk, [string]$Folder) {
     -not $LASTEXITCODE
 }
 
+# The fraction of the project file's distinct, trimmed, non-blank lines that the template's file also has; 1 for a file with none.
+function Get-SharedLineFraction([string]$Project, [string]$Template) {
+    $templateLines = [Collections.Generic.HashSet[string]]::new([string[]]@($Template -split '\r?\n' | ForEach-Object Trim | Where-Object { $_ }))
+    $projectLines = @($Project -split '\r?\n' | ForEach-Object Trim | Where-Object { $_ } | Select-Object -Unique)
+    if (-not $projectLines.Count) { return 1.0 }
+    [double]@($projectLines | Where-Object { $templateLines.Contains($_) }).Count / $projectLines.Count
+}
+
+# The files, of those given, that share less than half their lines with the template's render of them in $Folder, leaving out the lines an adopted file keeps under its "# Kept from" comment.
+function Get-RewrittenFile([string[]]$Files, [string]$Folder) {
+    foreach ($file in $Files) {
+        $rendered = Join-Path $Folder $file
+        if (-not (Test-Path -LiteralPath $rendered -PathType Leaf)) { continue }
+        $text = [regex]::Split([IO.File]::ReadAllText((Join-Path $project $file)), "(?m)^# Kept from this repository's own \S+ when it adopted the project template\r?$")[0]
+        if ((Get-SharedLineFraction $text ([IO.File]::ReadAllText($rendered))) -lt 0.5) { $file }
+    }
+}
+
 # How to run the template's .githooks in this clone: HooksPath when core.hooksPath can point at it, otherwise the
 # Note to print. A hooks path turns off the hooks in .git/hooks, and pre-commit won't install while one is set, so
 # a clone that uses pre-commit gets a local pre-commit hook to add instead, and no note once its config runs it.
@@ -250,6 +271,21 @@ try {
     $ownedMerged = @(if ($Data.ContainsKey('project_owned_files')) { $Data['project_owned_files'] } else { Get-AnswerList 'project_owned_files' })
     $notMerged = @($ownedMerged | Where-Object { $_ -notin $merged })
     if ($notMerged) { throw "project_owned_files names $($notMerged -join ', '), which isn't a merged file. It can name only these: $($merged -join ', ')." }
+    $jinjaTag = '\{' + '%.*?%' + '\}'
+    # A merged file the project rewrote shares few lines with the template's render of it, so the template's changes to it conflict in unrelated places (copier-org/copier#2759): suggest the project_owned_files answer. Only a file the template changed can conflict.
+    $rewritten = @()
+    $fromRendered = $null
+    $renderedFrom = Join-Path $scratch 'rendered\from'
+    if ($from -ne $to) {
+        try {
+            $changedMerged = @(foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
+                    $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
+                    if ($file -in $merged -and $file -notin $ownedMerged -and (Test-Path -LiteralPath $file -PathType Leaf)) { $file }
+                })
+            if ($changedMerged) { $fromRendered = Invoke-TemplateRender $from $renderedFrom }
+            if ($fromRendered) { $rewritten = @(Get-RewrittenFile $changedMerged $renderedFrom) }
+        } catch { $rewritten = @() }
+    }
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here.
         $exclude = foreach ($file in $projectOwned + $merged) { '--exclude', $file }
@@ -328,7 +364,6 @@ try {
         elseif ($hooksSetup.Note) { $hooksSetup.Note; '' }
     }
     $changes = @(Get-Change)
-    $jinjaTag = '\{' + '%.*?%' + '\}'
     $projectOwnedChanged = @(if ($from -ne $to) {
             $owned = @(Get-TemplateList $TemplateClone $to '_skip_if_exists') + $ownedMerged
             foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
@@ -348,9 +383,8 @@ try {
     if ($projectOwnedChanged) {
         # Render both versions with the project's answers, so the diffs show what the project would get, not Jinja.
         New-Item -ItemType Directory -Force $scratch | Out-Null
-        $renderedFrom = Join-Path $scratch 'rendered\from'
         $renderedTo = Join-Path $scratch 'rendered\to'
-        $rendered = (Invoke-TemplateRender $from $renderedFrom) -and (Invoke-TemplateRender $to $renderedTo)
+        $rendered = $(if ($null -ne $fromRendered) { $fromRendered } else { Invoke-TemplateRender $from $renderedFrom }) -and (Invoke-TemplateRender $to $renderedTo)
         $empty = Join-Path $scratch 'empty'
         [IO.File]::WriteAllText($empty, '')
         $shown = foreach ($changed in $projectOwnedChanged) {
@@ -384,6 +418,13 @@ try {
         }
     }
 
+    if ($rewritten) {
+        ''
+        "These merged files share less than half their lines with the template's version, so the project seems to have replaced them, and the template's changes to them can conflict in unrelated places:"
+        $rewritten | ForEach-Object { "  $_" }
+        "To make them project-owned, so updates leave them alone and show the template's changes instead, run the update with (after abandoning it with git reset --hard; git clean -fd if it stops with a conflict below):"
+        "  .\.template\Update-Project.ps1 -Data @{ project_owned_files = $((@($ownedMerged) + $rewritten | ForEach-Object { "'$_'" }) -join ', ') }"
+    }
     $message = "Update from project-template $to"
     if ($conflicts) {
         ''

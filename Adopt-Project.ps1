@@ -7,7 +7,7 @@
     Works out the template's answers from what the repository already has (stack, project name, git host, workflow tools, authors,
     build and test commands), applies -Data over them, and runs `copier copy --overwrite --defaults` into the
     repository (Copier from PATH, or through uvx). The answers are recorded in .copier-answers.yml, so the project
-    can update itself with .\.template\Update-Project.ps1 afterwards.
+    can update itself with .\.template\Update-Project.ps1 afterwards. A merged file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging them.
 
     The repository must be the root of a Git repository with no uncommitted changes and no .copier-answers.yml.
     The result is one commit, "Adopt project-template <version>"; -NoCommit stages it instead. Before committing, the
@@ -18,6 +18,7 @@
 .EXAMPLE
     .\Adopt-Project.ps1 -Path C:\src\buffers
     .\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot' }
+    .\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ project_owned_files = '.github/workflows/ci.yml' }
     .\Adopt-Project.ps1 -Path C:\src\buffers -NoCommit
     .\Adopt-Project.ps1 -Path C:\src\buffers -NoVerify
 #>
@@ -71,6 +72,7 @@ try {
         if (-not (git config $key)) { throw "Git has no $key. Set it with: git config --global $key ""<value>""" }
     }
 
+    $merged = @(Get-CopierList (Join-Path $PSScriptRoot 'copier.yml') '_merged_files')
     $answers = Get-AdoptionAnswers $project
     $adapters = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'adopt\legacy') -Filter '*.ps1' -File | Sort-Object Name | Where-Object { & $_.FullName -Path $project -Phase Detect })
     foreach ($adapter in $adapters) {
@@ -79,6 +81,9 @@ try {
         foreach ($k in $adapterAnswers.Keys) { $answers[$k] = $adapterAnswers[$k] }
     }
     foreach ($k in $Data.Keys) { $answers[$k] = $Data[$k] }
+    # Merged files the repository owns (its project_owned_files answer): Copier leaves them as they are, and updates show the template's changes to them.
+    $ownedMerged = @()
+    if ($answers.Contains('project_owned_files')) { $ownedMerged = Get-OwnedMergedFile $answers['project_owned_files'] $merged; $answers['project_owned_files'] = $ownedMerged }
     'Answers:'
     foreach ($k in $answers.Keys) {
         if ($null -ne $answers[$k]) { "  ${k}: $(ConvertTo-CopierValue $answers[$k])" }
@@ -86,7 +91,6 @@ try {
     if (-not $answers.Contains('workflow_tools')) { "  workflow_tools: [claude, copilot, local], the template's default: the repository has no Copilot or Hybrid agent files. The Hybrid agents use the shack PC's private model; for a public or shared repository, leave them out with -Data @{ workflow_tools = 'claude', 'copilot' }" }
 
     # Copier overwrites the merged files, so keep the repository's versions to merge back afterwards.
-    $merged = @(Get-CopierList (Join-Path $PSScriptRoot 'copier.yml') '_merged_files')
     $originals = @{}
     foreach ($p in $merged + 'AGENTS.md' + 'Directory.Build.props') {
         if (Test-Path -LiteralPath $p -PathType Leaf) { $originals[$p] = [IO.File]::ReadAllText((Join-Path $project $p)) }
@@ -102,6 +106,8 @@ try {
         foreach ($k in $answers.Keys) {
             if ($null -ne $answers[$k]) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $answers[$k])" }
         }
+        # A merged file the repository owns stays exactly as it is.
+        foreach ($file in $ownedMerged) { $copierArgs += '--exclude', $file }
         $copierArgs += $Template, $project
         Invoke-Copier @copierArgs
 
@@ -109,6 +115,7 @@ try {
         $report = [Collections.Generic.List[string]]::new()
         foreach ($p in $merged) {
             if (-not $originals.ContainsKey($p)) { continue }
+            if ($p -in $ownedMerged) { $report.Add("  Owned $p $([char]0x2014) kept as the repository had it (project_owned_files)"); continue }
             $full = Join-Path $project $p
             $result = Merge-AdoptedFile $p $originals[$p] ([IO.File]::ReadAllText($full))
             [IO.File]::WriteAllText($full, $result.Text, $utf8)
