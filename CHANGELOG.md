@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.24.4
+
+- `.githooks/commit-msg` used to keep the AI agent attribution and let the commit through, saying nothing clear, when `grep` was missing from `PATH`. It now refuses the commit when `grep` is missing or fails. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.24.3
 
 - With `protect: hook`, `/run-issues` accepted any `pre-push` hook as protection, so in a pre-commit clone pre-commit's own `pre-push` hook passed its check although nothing ran `.githooks/pre-push`. It now runs only when `core.hooksPath` names the `.githooks` folder, or the clone's `pre-push` or `pre-push.legacy` calls `.githooks/pre-push`, and says how to add the wrapper otherwise. Projects get it with `.\.template\Update-Project.ps1`.
