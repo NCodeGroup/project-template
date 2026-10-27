@@ -14,6 +14,7 @@
     issue-state is OPEN while any of them is open, CLOSED when all are closed, and unknown otherwise.
     landing gives each key of AGENTS.md's Landing section that the workflow reads as key=value, with its default when
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
+    gate is the command /ship-plan runs before it pushes, or none.
 
 .PARAMETER Path
     A folder inside the repository. Defaults to the current folder.
@@ -147,8 +148,8 @@ try {
 
     # Landing policy from AGENTS.md
     # Each key the workflow reads, with its default, in the order the landing line prints them.
-    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up' }
-    $spacedKeys = @('follow-up-label')   # keys whose value keeps its spaces
+    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up'; gate = 'none' }
+    $spacedKeys = @('follow-up-label', 'gate')   # keys whose value keeps its spaces
     $agents = Join-Path $folder 'AGENTS.md'
     if (Test-Path -LiteralPath $agents) {
         $inLanding = $false
