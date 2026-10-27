@@ -72,7 +72,7 @@ The project edits them freely, and later template changes merge in: an update ke
 | `Directory.Packages.props` (.NET) | Central package management: versions in one place |
 | `global.json` (.NET) | The .NET SDK version (10.0.402, rolling forward to newer feature bands); CI installs exactly what it names |
 
-A project that replaced a merged file with its own, such as a CI workflow of its own, makes it project-owned: `.\.template\Update-Project.ps1 -Data @{ project_owned_files = '.github/workflows/ci.yml' }`, or a list of several files. `Adopt-Project.ps1` takes the same answer: `-Data @{ project_owned_files = '.github/workflows/ci.yml' }` keeps the repository's own file exactly as it is. Updates then leave the file alone and show the template's changes to it, as for the project-owned files below. Without the answer, a rewritten file shares almost no lines with the template, so the template's changes conflict in unrelated places. Only merged files can be named; any other file stops the update before it changes anything. `-Data @{ project_owned_files = @() }` gives the files back to the merge.
+A project that replaced a merged file with its own, such as a CI workflow of its own, makes it project-owned: `.\.template\Update-Project.ps1 -Data @{ project_owned_files = '.github/workflows/ci.yml' }`, or a list of several files. `Adopt-Project.ps1` takes the same answer: `-Data @{ project_owned_files = '.github/workflows/ci.yml' }` keeps the repository's own file exactly as it is. Updates then leave the file alone and show the template's changes to it, as for the project-owned files below. Without the answer, a rewritten file shares almost no lines with the template, so the template's changes conflict in unrelated places. When the template changed a merged file that shares less than half its distinct non-blank lines with the template's version of it, `Update-Project.ps1` names the file and prints the `-Data` to run; it only suggests, and the update goes on. Only merged files can be named; any other file stops the update before it changes anything. `-Data @{ project_owned_files = @() }` gives the files back to the merge.
 
 ### Project-Owned Files
 
@@ -292,7 +292,7 @@ A project on v0.8.0 or earlier doesn't hand over: its script can't read the newe
 | File | On update |
 |---|---|
 | Template-owned | Replaced by the new version; files the template added are created, and files it removed are deleted. A local edit is discarded and a deleted file restored, and the script lists both, so the change can move into a project file |
-| Merged | The template's changes since the project's version merge with the project's edits. Only the same lines changed on both sides conflict. A merged file the project deleted stays deleted |
+| Merged | The template's changes since the project's version merge with the project's edits. Only the same lines changed on both sides conflict. A merged file the project deleted stays deleted. A merged file the project seems to have replaced, sharing less than half its lines with the template's, gets a suggestion to make it project-owned. |
 | Project-owned | Including each merged file the `project_owned_files` answer names. Never touched, even if the project deleted it. When the template changed one since the project's version, the script shows the template's change, rendered with the project's answers and leaving out what the project's file already has; copy over what you want |
 | `.copier-answers.yml`, `.template-version` | Record the new version |
 

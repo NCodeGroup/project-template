@@ -25,6 +25,9 @@
                       A merged file that the project's project_owned_files answer names
                       is project-owned too; a project that replaced one sets it with -Data @{ project_owned_files
                       = '.github/workflows/ci.yml' }, and only merged files can be named.
+                      When the template changed a merged file that shares less than half its lines with the
+                      template's version, the script suggests that answer, with the -Data to run;
+                      it doesn't stop the update.
 
     The update runs `copier recopy` at the project's current template version, which resets the template-owned
     files and shows any local edits, then `copier update --defaults` to the newest version (or -Ref), which merges
