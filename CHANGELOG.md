@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.20.0
+
+- `/continue-plan` now fetches `origin` once instead of once per plan worktree. `.template/Get-PlanState.ps1` has a new `-NoFetch` switch that skips its fetch and reads `ahead`, `behind` and `landed` from the remote refs the last fetch left. `/continue-plan` passes it to its calls for the other worktrees, which share the first call's remote refs. `/ship-plan` still fetches.
+
 ## v0.19.0
 
 - `/ship-plan` lands a reviewed plan by the new `## Landing` section of `AGENTS.md`: `integrate` (`pull-request`, the default, or `direct`), `release` (`none`, the default, `tag` or `tag+release`) and `changelog` (default `CHANGELOG.md`). It shows what it will push, tag, publish, post and file, and asks once. It drops the empty `Plan:` and `Re-plan step` commits from a branch that was never pushed, pushes the commits and tag atomically or opens the pull request with `Closes`, publishes the release from the changelog section, comments on and closes the issue, and files the follow-ups you pick. Every stage skips what's already done, so it can run again after a pull request merges. A project without a Landing section keeps today's behavior: a pull request and no release. New projects get the section with those defaults, and a project adds it to its own `AGENTS.md` to change them.
