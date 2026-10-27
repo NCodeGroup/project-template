@@ -2,6 +2,12 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.27.1
+
+- `.template/Get-PlanState.ps1` read only the newest pull request or merge request from a plan's branch, so when a newer one was open or closed but an older one had merged with the branch's `HEAD`, `landed` was `no` and `/finish-plan` stopped to ask. It now reads all of them, counts the branch as landed when any merged one holds `HEAD` or its tree, and its `pr` line names that one. Projects get it with `.\.template\Update-Project.ps1`.
+- A new `merge` line prints the commit the merged pull request merged as, and `/ship-plan` tags that commit instead of asking `gh pr view` or `glab mr view` for it. Projects get it with `.\.template\Update-Project.ps1`.
+- For a merged pull request that doesn't hold the branch's `HEAD`, `next` now names the base branch when the pull request merged into another branch than the default (a stacked pull request), and is `ship-plan` under `integrate: direct`, where a plan lands by a push; `/ship-plan`'s stop for a merged pull request says the same. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.27.0
 
 - A plan may now cover a small group of related issues, up to three: `/plan-issue #25 #24 #26` writes one plan whose `Issue:` line lists them, with its steps grouped by issue and the largest version raise among them, in one worktree named after the first issue, one pull request with a `Closes` line per issue and one release. The plan snapshot and re-plan comments go to each issue, and `/ship-plan` comments on and closes each issue still open. `.template/Get-PlanState.ps1` has a new `issue-states` line, and its `issue-state` is `OPEN` while any issue is open. `/triage-issues` groups ready issues that overlap, at most three (`group:<n>` changes it), and prints one `/plan-issue` line per group. `/run-issues` runs each group as one queue entry, and a group stops together. A plan with one issue works as before. Projects get it with `.\.template\Update-Project.ps1`.
