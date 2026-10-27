@@ -2,6 +2,12 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.28.0
+
+- `/ship-plan` now opens the pull request as a draft when the Landing section of `AGENTS.md` says `- draft: yes`, as `/ship-plan draft` does. `.template/Get-PlanState.ps1`'s `landing` line now gives every Landing key the workflow reads, with its default, and prints a value with a space in double quotes. Template updates don't change a project's `AGENTS.md`, so a project adds the keys to its Landing section itself; without them it lands as before. Projects get it with `.\.template\Update-Project.ps1`.
+- `- follow-ups: issues` (the default), `- follow-ups: <owner/repo>` or `- follow-ups: none` in the Landing section says where `/ship-plan` files a plan's follow-ups. With `none` it files nothing and lists them for you to record, and `/run-issues` says the same in its summary. Projects get it with `.\.template\Update-Project.ps1`.
+- `- follow-up-label: <name>` in the Landing section sets the label filed follow-ups get, `follow-up` by default; a name may contain spaces. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.27.1
 
 - `.template/Get-PlanState.ps1` read only the newest pull request or merge request from a plan's branch, so when a newer one was open or closed but an older one had merged with the branch's `HEAD`, `landed` was `no` and `/finish-plan` stopped to ask. It now reads all of them, counts the branch as landed when any merged one holds `HEAD` or its tree, and its `pr` line names that one. Projects get it with `.\.template\Update-Project.ps1`.
