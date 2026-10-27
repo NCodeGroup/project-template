@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.26.0
+
+- No change for projects made from the template. `tests/Invoke-AllTests.ps1` runs every `tests/Test-*.ps1` suite, prints `PASS` or `FAIL` and the time per suite, writes each suite's output to a log, and exits 1 when any suite fails, so the README's "Change the Template" step is one command instead of nine. `tests/Test-InvokeAllTests.ps1` tests it, and CI runs that test.
+
 ## v0.25.4
 
 - The first `PLAN.md` rule in `.github/instructions/project-template.instructions.md` now names the optional `Release:` and `Reviewed:` lines under a plan's title and the optional `## Follow-ups` section at its end, which the planning commands, `/review-plan-diff` and `.template/Get-PlanState.ps1` already use; it listed only the `Issue:` line before. Projects get it with `.\.template\Update-Project.ps1`.
