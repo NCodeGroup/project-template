@@ -331,8 +331,9 @@ $m = @(Get-MissingText 'template\.claude\commands\plan-feature.md' ('Release: <v
 $m += @(Get-MissingText 'template\.claude\commands\review-plan-diff.md' ('Reviewed: <the commit', '## Follow-ups', '/ship-plan'))
 Check 'workflow: plans carry their release and follow-ups, and a clean review records the commit it reviewed' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText 'template\.claude\commands\ship-plan.md' ('gh label create "<label>"', 'glab label create --name "<label>"', '--label "<label>"', '`follow-up-label` names the label','filed as #<number>', 'already tracked as #<number>', 'unless I name it as one to drop', 'unless `follow-ups` is `none`', '`<repo args>` is `--repo <owner/repo>`'))
-$m += @(Get-MissingText 'template\.claude\commands\run-issues.md' ('unless I answer that I want none filed', 'Unless I said at the start that I want none filed', '`follow-ups=none`'))
+$m += @(Get-MissingText 'template\.claude\commands\run-issues.md' ('unless I answer that I want none filed', 'Unless I said at the start that I want none filed', '`follow-ups=none`', 'labelled with the `landing` line''s `follow-up-label`'))
 $m += @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\review-plan-diff.md') 'as an issue')
+$m += @(Get-MissingText 'template\.claude\commands\plan-feature.md' '`follow-up-label`')
 Check 'workflow: ship-plan files the follow-ups as labelled issues unless dropped or already tracked, run-issues files them by default, and planners list only work worth an issue' (-not $m) ($m -join '; ')
 $runFiles = 'template\.claude\commands\run-issues.md', '.claude\commands\run-issues.md'
 $m = @(Get-MissingText $runFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'required_pull_request_reviews', 'has `- protect: hook`', 'git worktree add .claude/worktrees/issue-<number>', 'plan-executor', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'ExitWorktree'))
