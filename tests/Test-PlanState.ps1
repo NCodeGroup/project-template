@@ -136,7 +136,7 @@ Check 'next: finished steps without a review run review-plan-diff' $r.Ok $r.Deta
 Write-Text $planFile (New-PlanText 'x' (Get-Head $repo))
 $r = Test-State (Get-State $repo) @{ landing = 'integrate=pull-request release=none changelog=CHANGELOG.md' }
 Check 'local: the default landing policy applies without AGENTS.md' $r.Ok $r.Detail
-$r = Test-State (Get-State $repo) @{ reviewed = 'current'; pr = '-'; next = 'ship-plan' }
+$r = Test-State (Get-State $repo) @{ reviewed = 'current'; pr = '-'; merge = '-'; next = 'ship-plan' }
 Check 'next: a reviewed plan is shipped' $r.Ok $r.Detail
 
 # 6. A commit after the review.
@@ -309,7 +309,7 @@ try {
     $gl = New-MergedClone (Join-Path $Work 'gitlab')
 
     Set-MergedRequest $gl.Squash $gl.Head
-    $r = Test-State (Get-State $gl.Repo) @{ host = 'gitlab'; pr = '5 MERGED'; ahead = '1'; landed = 'yes'; next = 'finish-plan' }
+    $r = Test-State (Get-State $gl.Repo) @{ host = 'gitlab'; pr = '5 MERGED'; merge = $gl.Squash; ahead = '1'; landed = 'yes'; next = 'finish-plan' }
     Check 'local: a squash-merged merge request that holds HEAD is landed' $r.Ok $r.Detail
 
     Set-MergedRequest $gl.Squash $gl.Twin
@@ -321,7 +321,7 @@ try {
     Check 'local: a merge commit missing from the default branch is not landed' $r.Ok $r.Detail
 
     Set-MergedRequest $gl.Squash $gl.Head -Newer 'opened'
-    $r = Test-State (Get-State $gl.Repo) @{ pr = '5 MERGED'; landed = 'yes' }
+    $r = Test-State (Get-State $gl.Repo) @{ pr = '5 MERGED'; merge = $gl.Squash; landed = 'yes' }
     Check 'local: an older merged merge request that holds HEAD is landed under a newer open one' $r.Ok $r.Detail
 
     Set-MergedRequest $gl.Squash $gl.Head
@@ -338,7 +338,7 @@ try {
     $gh = New-MergedClone (Join-Path $Work 'github.com')
 
     Set-MergedRequest $gh.Squash $gh.Head -GitHub
-    $r = Test-State (Get-State $gh.Repo) @{ host = 'github'; pr = '6 MERGED'; landed = 'yes' }
+    $r = Test-State (Get-State $gh.Repo) @{ host = 'github'; pr = '6 MERGED'; merge = $gh.Squash; landed = 'yes' }
     Check 'local: a merged GitHub pull request that holds HEAD is landed' $r.Ok $r.Detail
 
     Set-MergedRequest $gh.Twin $gh.Head -GitHub
@@ -346,7 +346,7 @@ try {
     Check 'local: a GitHub merge commit missing from the default branch is not landed' $r.Ok $r.Detail
 
     Set-MergedRequest $gh.Squash $gh.Head -GitHub -Newer 'CLOSED'
-    $r = Test-State (Get-State $gh.Repo) @{ pr = '6 MERGED'; landed = 'yes' }
+    $r = Test-State (Get-State $gh.Repo) @{ pr = '6 MERGED'; merge = $gh.Squash; landed = 'yes' }
     Check 'local: an older merged GitHub pull request that holds HEAD is landed under a newer closed one' $r.Ok $r.Detail
 
     # 16. The issues of a one-issue plan and a group plan.

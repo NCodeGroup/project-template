@@ -5,12 +5,13 @@
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, ahead, behind, landed,
-    pr, tag, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints "-". With
-    an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is yes when
-    HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its merge
-    commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one. issue is the plan's Issue: line, which names one issue or up to
-    three separated by spaces; issue-states gives each one's state as <reference>=<state>, and issue-state is OPEN
-    while any of them is open, CLOSED when all are closed, and unknown otherwise.
+    pr, merge, tag, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
+    "-". With an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is
+    yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
+    merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
+    merge is the commit that request merged as, when it merged. issue is the plan's Issue: line, which names one
+    issue or up to three separated by spaces; issue-states gives each one's state as <reference>=<state>, and
+    issue-state is OPEN while any of them is open, CLOSED when all are closed, and unknown otherwise.
 
 .PARAMETER Path
     A folder inside the repository. Defaults to the current folder.
@@ -219,6 +220,7 @@ try {
             }
         }
     }
+    $merge = if ($prState -eq 'MERGED' -and $prMerge) { $prMerge } else { '-' }
 
     # Release published on the host
     $published = '-'
@@ -308,6 +310,7 @@ try {
     Write-Output "behind: $behind"
     Write-Output "landed: $landed"
     Write-Output "pr: $pr"
+    Write-Output "merge: $merge"
     Write-Output "tag: $tag"
     Write-Output "published: $published"
     Write-Output "issue-state: $issueState"
