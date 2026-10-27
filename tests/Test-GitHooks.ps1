@@ -8,7 +8,7 @@
     .template\Update-Project.ps1 and the one in adopt\Adoption.psm1, whether .githooks is enabled and which note is printed in
     a clone with other hooks, with pre-commit's hooks or config, and with none. Then pushes from a fixture clone to a local bare
     remote and checks that .githooks/pre-push refuses a push to main only while AGENTS.md's Landing section says protect: hook,
-    and lets a branch and a tag through, and refuses the push when awk is missing, run directly with a PATH without it. Prints PASS or FAIL per check and exits 1 on any
+    and lets a branch and a tag through, and refuses the push when awk is missing, run directly with a PATH without it. Then checks that the wrapper saved as pre-push.legacy in a clone with pre-commit's pre-push hook refuses a push to main after the same commits were pushed as a branch. Prints PASS or FAIL per check and exits 1 on any
     failure.
 
 .PARAMETER Work
@@ -171,11 +171,41 @@ try {
 }
 finally { Pop-Location }
 
+# The wrapper as pre-push.legacy, run by the pre-push hook pre-commit installed, refuses a push to main even after the same commits were pushed as a branch.
+$legacyClone = Join-Path $Work 'push-legacy'
+$legacyRemote = Join-Path $Work 'push-legacy.git'
+New-Item -ItemType Directory -Force $legacyClone, $legacyRemote | Out-Null
+Invoke-Git init -q --bare -b main $legacyRemote
+$savedLegacyPath = $env:PATH
+if (Test-Path $gitUsrBin) { $env:PATH = $gitUsrBin + [IO.Path]::PathSeparator + $env:PATH }
+Push-Location $legacyClone
+try {
+    Invoke-Git init -q -b main
+    Invoke-Git remote add origin $legacyRemote
+    New-Item -ItemType Directory -Force (Join-Path $legacyClone '.githooks') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'template\.githooks\pre-push') -Destination (Join-Path $legacyClone '.githooks')
+    if (-not $IsWindows) { chmod +x .githooks/pre-push }
+    [IO.File]::WriteAllText((Join-Path $legacyClone 'AGENTS.md'), $protectAgents, [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $legacyClone '.pre-commit-config.yaml'), "repos: []`n", [Text.UTF8Encoding]::new($false))
+    Invoke-Git add .githooks/pre-push AGENTS.md .pre-commit-config.yaml
+    Invoke-Git commit -q -m 'Protect main'
+    Invoke-PreCommit install --hook-type pre-push | Out-Null
+    [IO.File]::WriteAllText((Join-Path $legacyClone '.git\hooks\pre-push.legacy'), $wrapper, [Text.UTF8Encoding]::new($false))
+    if (-not $IsWindows) { chmod +x .git/hooks/pre-push.legacy }
+    $legacyBranchOut = Invoke-Push HEAD:refs/heads/feature; $legacyBranchCode = $LASTEXITCODE
+    $legacyMainOut = Invoke-Push HEAD:refs/heads/main; $legacyMainCode = $LASTEXITCODE
+}
+finally {
+    Pop-Location
+    $env:PATH = $savedLegacyPath
+}
+
 Check 'pre-push: refuses a push to main when the Landing section says protect: hook' (($mainCode -ne 0) -and $mainOut.Contains('says protect: hook')) "exit $mainCode; $mainOut"
 Check 'pre-push: lets a branch and a tag through' (($branchCode -eq 0) -and ($tagCode -eq 0)) "branch exit $branchCode; $branchOut; tag exit $tagCode; $tagOut"
 Check 'pre-push: lets a push to main through without protect: hook' ($openCode -eq 0) "exit $openCode; $openOut"
 Check 'pre-push: refuses the push when awk is missing' ((Test-Path (Join-Path $gitDir 'awk.exe')) -eq $false -and ($noAwkCode -ne 0) -and $noAwkOut.Contains('awk is missing')) "exit $noAwkCode; $noAwkOut"
 Check 'pre-push: refuses a push to main when AGENTS.md has CRLF line endings' (($crlfCode -ne 0) -and $crlfOut.Contains('says protect: hook')) "exit $crlfCode; $crlfOut"
+Check 'pre-push: the wrapper in pre-push.legacy refuses a push to main under pre-commit, after the commits were pushed as a branch' (($legacyBranchCode -eq 0) -and ($legacyMainCode -ne 0) -and $legacyMainOut.Contains('says protect: hook')) "branch exit $legacyBranchCode; $legacyBranchOut; main exit $legacyMainCode; $legacyMainOut"
 
 ''
 if ($failures.Count) { "Git hooks tests: FAILED ($($failures.Count))"; exit 1 }
