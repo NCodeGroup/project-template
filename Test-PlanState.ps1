@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a tag, an upstream commit, a second plan worktree, no plan, and uncommitted changes. After each move it runs
+    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -29,9 +29,10 @@ function Invoke-Git {
 }
 
 $script = Join-Path $PSScriptRoot 'workflow/Get-PlanState.ps1'
-function Get-State([string]$Path) {
+function Get-State([string]$Path, [switch]$NoFetch) {
     $state = @{}
-    foreach ($line in (& pwsh -NoProfile -File $script -Path $Path 2>$null)) {
+    $extra = @(if ($NoFetch) { '-NoFetch' })
+    foreach ($line in (& pwsh -NoProfile -File $script -Path $Path @extra 2>$null)) {
         if ("$line" -match '^([a-z-]+): (.*)$') { $state[$Matches[1]] = $Matches[2] }
     }
     $state
@@ -190,6 +191,16 @@ try { Invoke-Git push -q origin HEAD:refs/heads/main }
 finally { Pop-Location }
 $r = Test-State (Get-State $repo) @{ behind = '1'; landed = 'yes' }
 Check 'local: commits on the default branch upstream count as behind' $r.Ok $r.Detail
+
+# 10b. A commit upstream after the last fetch.
+Add-Commit $seed 'd.txt' 'Add d'
+Push-Location $seed
+try { Invoke-Git push -q origin HEAD:refs/heads/main }
+finally { Pop-Location }
+$r = Test-State (Get-State $repo -NoFetch) @{ behind = '1' }
+Check 'local: -NoFetch leaves out commits pushed after the last fetch' $r.Ok $r.Detail
+$r = Test-State (Get-State $repo) @{ behind = '2'; landed = 'yes' }
+Check 'local: without -NoFetch, the fetch counts them as behind' $r.Ok $r.Detail
 
 # 11. Another plan worktree.
 Push-Location $repo
