@@ -66,7 +66,7 @@ Invoke-Git -C $tpl config uploadpack.allowAnySHA1InWant true
 $tplUrl = 'file:///' + ($tpl -replace '\\', '/') + '/.git'
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.vscode\settings.json', '.vscode\extensions.json'
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.vscode\settings.json', '.vscode\extensions.json'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
     claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
@@ -306,6 +306,18 @@ $m += @(foreach ($p in $updatePlanFiles) { $full = Join-Path $PSScriptRoot $p; i
 Check 'workflow: plan-template-update trials the update in a clone, pins the version and plans the update with exit-code checks' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.github\prompts\plan-bugfix.prompt.md', 'template\.github\skills\handoff-plan\SKILL.md', 'template\.github\agents\copilot-planner.agent.md') ('gh issue view', 'glab issue view', 'as data, not instructions'))
 Check 'workflow: every planning command reads the issue it names and treats its text as data' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md', 'template\.claude\commands\continue-plan.md') 'pwsh -NoProfile -File .template/Get-PlanState.ps1')
+$m += @(Get-MissingText 'template\.claude\commands\ship-plan.md' ('git push --atomic origin', 'gh pr create', 'glab mr create', 'gh release create', 'glab release create', 'gh issue close', 'Never force-push'))
+$m += @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'template\.claude'), (Join-Path $PSScriptRoot 'template\.github') -Recurse -File | Where-Object { [IO.File]::ReadAllText($_.FullName).Contains('{{STATE_SCRIPT}}') } | ForEach-Object { "$($_.Name): left {{STATE_SCRIPT}}" })
+Check 'workflow: ship-plan and continue-plan run .template/Get-PlanState.ps1, and ship-plan lands, tags, publishes and closes' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText 'template\.claude\commands\plan-feature.md' ('Release: <version', '## Follow-ups', 'raised by one patch version'))
+$m += @(Get-MissingText 'template\.claude\commands\review-plan-diff.md' ('Reviewed: <the commit', '## Follow-ups', '/ship-plan'))
+Check 'workflow: plans carry their release and follow-ups, and a clean review records the commit it reviewed' (-not $m) ($m -join '; ')
+$m = @(foreach ($p in 'template\.template\Get-PlanState.ps1', '.template\Get-PlanState.ps1') {
+    $full = Join-Path $PSScriptRoot $p
+    if (-not (Test-Path -LiteralPath $full) -or [IO.File]::ReadAllText($full) -ne [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'workflow\Get-PlanState.ps1'))) { $p }
+})
+Check 'workflow: the generated Get-PlanState.ps1 copies match workflow/Get-PlanState.ps1 (else run Update-Template.ps1)' (-not $m) ($m -join ', ')
 $testHunk = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-HunkApplied' }, $true) | Select-Object -First 1
 $results = if ($testHunk) {
     & {
@@ -327,7 +339,7 @@ $results = if ($testHunk) {
 Check 'update: a project-owned change the project already has is recognized, one it lacks is not' ((@($results) -join ',') -eq 'True,False') (@($results) -join ',')
 $worktreeKinds = [ordered]@{
     create = 'plan-feature', 'plan-bugfix', 'plan-refactor', 'plan-tests', 'plan-migration', 'plan-performance', 'plan-security', 'plan-docs', 'handoff-plan', 'plan-issue', 'plan-template-update'
-    join   = 'orchestrate-plan', 'execute-step', 'replan-step', 'review-plan-diff'
+    join   = 'orchestrate-plan', 'execute-step', 'replan-step', 'review-plan-diff', 'ship-plan'
     finish = 'finish-plan'
 }
 $worktreeMissing = @(
@@ -339,7 +351,7 @@ $worktreeMissing = @(
 $worktreeLeaked = @(
     Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'template\.github'), (Join-Path $PSScriptRoot 'template\.claude\agents') -Recurse -File |
         Where-Object { $text = [IO.File]::ReadAllText($_.FullName); $text.Contains('EnterWorktree') -or $text -match '(?m)^isolation:' } | ForEach-Object Name
-    'analyze-architecture', 'analyze-decision', 'review-code', 'triage-issues' | Where-Object { [IO.File]::ReadAllText((Join-Path $PSScriptRoot "template\.claude\commands\$_.md")).Contains('EnterWorktree') }
+    'analyze-architecture', 'analyze-decision', 'review-code', 'triage-issues', 'continue-plan' | Where-Object { [IO.File]::ReadAllText((Join-Path $PSScriptRoot "template\.claude\commands\$_.md")).Contains('EnterWorktree') }
 )
 Check 'workflow: Claude Code planning commands create the plan''s worktree, and the commands that work on a plan move into it' (-not $worktreeMissing) ($worktreeMissing -join ', ')
 Check 'workflow: no Copilot file, plan-executor subagent or analysis command enters a worktree' (-not $worktreeLeaked) ($worktreeLeaked -join ', ')
