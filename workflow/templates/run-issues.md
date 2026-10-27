@@ -34,3 +34,19 @@ You coordinate. Each stage runs as the workflow's own command does: read that co
    - Leave out an issue whose folder `.claude/worktrees/issue-<number>` already exists: it holds a plan in progress, which `/continue-plan issue-<number>` shows.
    - Keep the first five. When the queue is empty, say so and stop.
 5. Show the run summary, then ask me once whether to go ahead and whether to file each plan's follow-ups as issues (by default they are only listed in the issue's closing comment), and wait for my answer. The summary lists the queue (number, title, and the kind and size when triage gave them); that each issue gets a plan snapshot comment, a draft pull request that waits for my review and merge, and, after the merge, the tag, the release and the closing comment the Landing section names; when the run stops an issue; and the cost: each issue takes about one plan-issue run on Opus, one orchestrate-plan run, up to three reviews, and one more round for each set of review comments I post. `git push` may still ask for its own approval.
+
+## Run Each Issue
+
+For each issue in the queue, in order:
+
+1. Create its worktree from the main checkout. When `git check-ignore -q .claude/worktrees/` exits non-zero, append the line `.claude/worktrees/` to `info/exclude` in the folder that `git rev-parse --path-format=absolute --git-common-dir` prints. Run `git fetch origin`, then `git worktree add .claude/worktrees/issue-<number> -b worktree-issue-<number> origin/<default>`, and switch into the new worktree with the `EnterWorktree` tool and its `path`.
+2. Plan: delegate `plan-issue` to a subagent with `model: opus` and the arguments `#<number>`. Tell it that its `## Plan in a worktree of its own` section is done, because the worktree is `<worktree path>`: it skips that section's steps 1 to 3, never calls `EnterWorktree`, and does the rest, including the empty `Plan:` commit and the plan snapshot comment. When it returns without a `PLAN.md` in the worktree, stop this issue with its reason.
+3. Then run `{{STATE_SCRIPT}}` in the worktree after every stage, and act on its `next` value:
+   - `orchestrate-plan`: follow `orchestrate-plan` yourself, in this session, so the `plan-executor` subagent executes each step. A subagent can't start subagents of its own.
+   - `review-plan-diff`: delegate `review-plan-diff` to a subagent with `model: sonnet`. Tell it that its `## Work in the plan's worktree` section is done, because the plan's folder is `<worktree path>`, and never to call `EnterWorktree`. A review that adds fix steps makes `next` `orchestrate-plan` again. Count the reviews since the plan was written, or since the last round of my review comments: when the third review still adds fix steps, stop this issue.
+   - `ship-plan`: follow `ship-plan` yourself with the extra instructions `draft`. The answer I gave at the start is the answer its item 4 asks for: show the landing summary and go on without asking. File the follow-ups only when I said so at the start.
+   - A value starting with `wait`: the draft pull request is open. Go on with Review the Pull Request, below.
+   - `finish-plan`: call the `ExitWorktree` tool with `action: "keep"`, which returns the session to the main checkout, then follow `finish-plan` yourself with the arguments `issue-<number>`. The issue is done: go on with the next.
+   - Anything else, such as `replan-step 2` or a value starting with `none`: stop this issue with that value.
+
+   When a stage leaves `next` as it was, stop this issue: the stage made no progress.
