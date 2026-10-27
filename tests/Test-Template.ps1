@@ -241,6 +241,21 @@ Check 'this repository''s own workflow files match workflow/templates (else run 
 $ownFiles = git -C $repoRoot -c core.quotePath=false ls-files --eol | Where-Object { $_ -match '^i/lf\s' } | ForEach-Object { Join-Path $repoRoot (($_ -split "`t", 2)[1]) }
 $badEnd = $ownFiles | Where-Object { $b = [IO.File]::ReadAllBytes($_); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.Substring($repoRoot.Length).TrimStart('\', '/') }
 Check 'repository: every text file ends with exactly one newline' (-not $badEnd) ($badEnd -join ', ')
+# Names of the tests/Test-*.ps1 scripts under $Root that .github/workflows/test-template.yml has no "run: ./tests/<name>" line for.
+function Get-UnlistedTestScript([string]$Root) {
+    $yml = [IO.File]::ReadAllText((Join-Path $Root '.github\workflows\test-template.yml'))
+    Get-ChildItem -LiteralPath (Join-Path $Root 'tests') -File | Where-Object Name -like 'Test-*.ps1' |
+        Where-Object { $yml -notmatch "(?m)^\s*run:\s*\./tests/$([regex]::Escape($_.Name))\s*$" } | ForEach-Object Name
+}
+$ciFixture = Join-Path $Work 'ci-listing'
+New-Item -ItemType Directory -Force (Join-Path $ciFixture 'tests'), (Join-Path $ciFixture '.github\workflows') | Out-Null
+[IO.File]::WriteAllText((Join-Path $ciFixture 'tests\Test-Listed.ps1'), '')
+[IO.File]::WriteAllText((Join-Path $ciFixture 'tests\Test-Unlisted.ps1'), '')
+[IO.File]::WriteAllText((Join-Path $ciFixture '.github\workflows\test-template.yml'), "      - name: Not run: ./tests/Test-Unlisted.ps1`n        run: ./tests/Test-Listed.ps1`n")
+$unlisted = @(Get-UnlistedTestScript $ciFixture)
+Check 'repository: the CI listing check names a test script the workflow leaves out' (($unlisted -join ',') -eq 'Test-Unlisted.ps1') ($unlisted -join ',')
+$unlisted = @(Get-UnlistedTestScript $repoRoot)
+Check 'repository: CI runs every tests/Test-*.ps1 (add a "run: ./tests/<name>" step to .github/workflows/test-template.yml)' (-not $unlisted) ($unlisted -join ', ')
 $excludeCheck = 'import sys, yaml, jinja2; c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); e = jinja2.Environment(); bad = [p for p in c["_exclude"] if e.from_string(p).render().strip()]; print("; ".join(bad)); sys.exit(1 if bad else 0)'
 $excludeOutput = uv run --quiet --no-project --with pyyaml --with jinja2 python -c $excludeCheck (Join-Path $repoRoot 'copier.yml') 2>&1 | Out-String
 Check 'copier.yml: _exclude patterns exclude nothing when workflow_tools is missing' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()
