@@ -25,6 +25,8 @@
     (VSCode, CopilotCli). -NoVersionMarker skips it, as Update-Template.ps1 does, because a project made from the
     template renders its own .template-version from .copier-answers.yml.
 
+    The installer also writes Get-PlanState.ps1, which /ship-plan and /continue-plan run, to .template\ (-Repo), or to ~\.claude\ and ~\.copilot\ (-User).
+
     Claude Code commands of templates with a "worktree" field start with a section that puts the plan in a git worktree of its own (create), moves the session into it (join), or removes it once the work is pushed (finish): templates\_claude-worktree-*.md.
 
     VS Code model names use "<model name> (<vendor>)"; the Settings dropdown for
@@ -124,10 +126,10 @@ $agentTemplates = Get-ChildItem $templateDir -Filter '*.agent.md' -File
 $dest = @()
 if ($Repo) {
     $root = (Resolve-Path $Repo).Path
-    $dest += [pscustomobject]@{ Scope = 'repo'; Agents = "$root\.github\agents"; Prompts = "$root\.github\prompts"; Skills = "$root\.github\skills"; ClaudeCommands = "$root\.claude\commands"; ClaudeAgents = "$root\.claude\agents"; CopilotVersionFile = "$root\.template-version"; ClaudeVersionFile = "$root\.template-version" }
+    $dest += [pscustomobject]@{ Scope = 'repo'; Agents = "$root\.github\agents"; Prompts = "$root\.github\prompts"; Skills = "$root\.github\skills"; ClaudeCommands = "$root\.claude\commands"; ClaudeAgents = "$root\.claude\agents"; CopilotVersionFile = "$root\.template-version"; ClaudeVersionFile = "$root\.template-version"; ClaudeStateFile = "$root\.template\Get-PlanState.ps1"; CopilotStateFile = "$root\.template\Get-PlanState.ps1"; ClaudeStateScript = 'pwsh -NoProfile -File .template/Get-PlanState.ps1'; CopilotStateScript = 'pwsh -NoProfile -File .template/Get-PlanState.ps1' }
 }
 if ($User) {
-    $dest += [pscustomobject]@{ Scope = 'user'; Agents = "$HOME\.copilot\agents"; Prompts = $null; Skills = "$HOME\.copilot\skills"; ClaudeCommands = "$HOME\.claude\commands"; ClaudeAgents = "$HOME\.claude\agents"; CopilotVersionFile = "$HOME\.copilot\.template-version"; ClaudeVersionFile = "$HOME\.claude\.template-version" }
+    $dest += [pscustomobject]@{ Scope = 'user'; Agents = "$HOME\.copilot\agents"; Prompts = $null; Skills = "$HOME\.copilot\skills"; ClaudeCommands = "$HOME\.claude\commands"; ClaudeAgents = "$HOME\.claude\agents"; CopilotVersionFile = "$HOME\.copilot\.template-version"; ClaudeVersionFile = "$HOME\.claude\.template-version"; ClaudeStateFile = "$HOME\.claude\Get-PlanState.ps1"; CopilotStateFile = "$HOME\.copilot\Get-PlanState.ps1"; ClaudeStateScript = 'pwsh -NoProfile -File "$HOME/.claude/Get-PlanState.ps1"'; CopilotStateScript = 'pwsh -NoProfile -File "$HOME/.copilot/Get-PlanState.ps1"' }
 }
 
 $version = if (-not $NoVersionMarker) { Get-TemplateVersion }
@@ -148,7 +150,7 @@ foreach ($d in $dest) {
                     if ($variants.Local) { $promptModels.Add([pscustomobject]@{ Suffix = $(if ($variants.Copilot) { '-local' } else { '' }); Model = $LocalModel }) }
                 }
                 foreach ($m in $promptModels) {
-                    $body = Get-HybridPromptText -Name $t.Name -Placeholder "`${input:details:$($t.ArgumentHint)}"
+                    $body = Get-HybridPromptText -Name $t.Name -Placeholder "`${input:details:$($t.ArgumentHint)}" -StateScript $d.CopilotStateScript
                     $fm = "---`ndescription: $(Q $t.Description)`nargument-hint: $(Q $t.ArgumentHint)`nagent: agent`nmodel: $(Q $m.Model)`n---`n"
                     Write-Generated (Join-Path $d.Prompts "$($t.Name)$($m.Suffix).prompt.md") ($fm + $body)
                 }
@@ -157,7 +159,7 @@ foreach ($d in $dest) {
     }
     if ('Claude' -in $Target) {
         foreach ($t in $templates) {
-            $body = Get-HybridPromptText -Name $t.Name -Placeholder '$ARGUMENTS'
+            $body = Get-HybridPromptText -Name $t.Name -Placeholder '$ARGUMENTS' -StateScript $d.ClaudeStateScript
             $hint = $t.ArgumentHint
             if ($t.Worktree) { $body = (Get-ClaudeWorktreeSection $t.Worktree) + "`n`n## Task`n`n" + $body }
             if ($t.Worktree -in 'join', 'finish') { $hint += "; the plan's worktree name when several are open" }
@@ -168,12 +170,17 @@ foreach ($d in $dest) {
     }
     if ('CopilotCli' -in $Target) {
         foreach ($t in $templates) {
-            $body = Get-HybridPromptText -Name $t.Name -Placeholder $skillInput
+            $body = Get-HybridPromptText -Name $t.Name -Placeholder $skillInput -StateScript $d.CopilotStateScript
             $fm = "---`nname: $($t.Name)`ndescription: $(Q $t.Description)`n---`n"
             Write-Generated (Join-Path $d.Skills "$($t.Name)\SKILL.md") ($fm + $body)
         }
         Write-Generated (Join-Path $d.Agents 'plan-executor.agent.md') (Get-RenderedFile "$templateDir\plan-executor.cli.md" @{ CLI_EXECUTOR_MODEL = $CliExecutorModel })
     }
+    $stateFiles = @(
+        if ('VSCode' -in $Target -or 'CopilotCli' -in $Target) { $d.CopilotStateFile }
+        if ('Claude' -in $Target) { $d.ClaudeStateFile }
+    ) | Select-Object -Unique
+    foreach ($file in $stateFiles) { Write-Generated $file ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Get-PlanState.ps1'))) }
     if ($version) {
         $versionFiles = @(
             if ('VSCode' -in $Target -or 'CopilotCli' -in $Target) { $d.CopilotVersionFile }

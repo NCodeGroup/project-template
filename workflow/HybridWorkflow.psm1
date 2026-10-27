@@ -58,13 +58,13 @@ function Expand-HybridInclude([string]$Text) {
         })
 }
 
-# Full prompt text for a template; {{INPUT}} becomes $Placeholder (literal task text, $ARGUMENTS, ${input:...}).
-function Get-HybridPromptText([string]$Name, [string]$Placeholder) {
+# Full prompt text for a template; {{INPUT}} becomes $Placeholder (literal task text, $ARGUMENTS, ${input:...}) and {{STATE_SCRIPT}} becomes the command that runs Get-PlanState.ps1.
+function Get-HybridPromptText([string]$Name, [string]$Placeholder, [string]$StateScript = 'pwsh -NoProfile -File .template/Get-PlanState.ps1') {
     $t = Get-HybridTemplate $Name
     $text = $t.Body
     if ($t.AppendFormat) { $text = $text.TrimEnd() + "`n`n" + (Read-HybridTemplateFile (Join-Path (Get-HybridTemplateDir) '_plan-format.md')).Body }
     $text = $text.Replace('{{INPUT}}', $Placeholder)
-    Expand-HybridInclude $text
+    (Expand-HybridInclude $text).Replace('{{STATE_SCRIPT}}', $StateScript)
 }
 
 Export-ModuleMember -Function Get-HybridTemplateDir, Read-HybridTemplateFile, Get-HybridTemplateList, Get-HybridTemplate, Expand-HybridInclude, Get-HybridPromptText
