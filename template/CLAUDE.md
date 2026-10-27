@@ -8,3 +8,4 @@ This file comes from the project template, and template updates replace it. Put 
 - Run Done-when commands and other `PLAN.md` commands with the PowerShell tool, from the root of the plan's worktree.
 - Executing a plan: `/orchestrate-plan` delegates each step to the `plan-executor` subagent, verifies it with the step's Done-when command, and re-plans escalations itself.
 - Re-planning one escalated or failed step: `/replan-step N`. Reviewing finished work against the plan: `/review-plan-diff`.
+- Landing the reviewed plan, as `AGENTS.md`'s Landing section says: `/ship-plan`, then `/finish-plan`. Where every open plan stands, and what to run next: `/continue-plan`.
