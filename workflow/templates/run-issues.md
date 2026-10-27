@@ -48,7 +48,7 @@ For each entry in the queue, in order:
    - `review-plan-diff`: delegate `review-plan-diff` to a subagent with `model: sonnet`. Tell it that its `## Work in the plan's worktree` section is done, because the plan's folder is `<worktree path>`, and never to call `EnterWorktree`. A review that adds fix steps makes `next` `orchestrate-plan` again. Count the reviews since the plan was written, or since the last round of my review comments: when the third review still adds fix steps, stop this issue.
    - `ship-plan`: follow `ship-plan` yourself with the extra instructions `draft`. The answer I gave at the start is the answer its item 4 asks for: show the landing summary and go on without asking. Unless I said at the start that I want none filed, file the follow-ups; when I did, tell it to treat every follow-up as one to drop.
    - A value starting with `wait`: the draft pull request is open. Go on with Review the Pull Request, below.
-   - `finish-plan`: call the `ExitWorktree` tool with `action: "keep"`, which returns the session to the main checkout, then follow `finish-plan` yourself with the arguments `issue-<number>`. The issue is done: go on with the next.
+   - `finish-plan`: call the `ExitWorktree` tool with `action: "keep"`, which returns the session to the main checkout, then follow `finish-plan` yourself with the arguments `issue-<number>`. The entry is done: go on with the next.
    - Anything else, such as `replan-step 2` or a value starting with `none`: stop this issue with that value.
 
    When a stage leaves `next` as it was, stop this issue: the stage made no progress.
@@ -68,11 +68,11 @@ While the draft pull request is open, I review it, comment on it, and, once I'm 
 ## Stop an Issue
 
 1. Return to the main checkout with the `ExitWorktree` tool and `action: "keep"`.
-2. When the issue stopped before its `PLAN.md` was written and `git -C <worktree path> status --porcelain` prints nothing, remove its worktree: `git worktree remove <worktree path>`, then `git branch -D worktree-issue-<number>`, which holds no commits of its own. Otherwise leave the worktree as it is, with its commits and `PLAN.md`, so `/continue-plan issue-<number>` in a new session picks it up.
+2. When the entry stopped before its `PLAN.md` was written and `git -C <worktree path> status --porcelain` prints nothing, remove its worktree: `git worktree remove <worktree path>`, then `git branch -D worktree-issue-<number>`, which holds no commits of its own. Otherwise leave the worktree as it is, with its commits and `PLAN.md`, so `/continue-plan issue-<number>` in a new session picks it up.
 3. Record the stage it reached, the reason and the question for me, then go on with the next issue.
 4. A stop in `ship-plan` ends the whole run instead, after items 1 and 3: a rejected push, or a tag or release that went wrong, would stop the next issue's landing too.
 5. A group stops together: stopping an entry stops all its issues, and they keep the one worktree.
 
 ## Report
 
-Finish with one table row per entry taken or left out: its issues, their titles, result (landed, with its version or commit; stopped; or left out), the stage it reached, and the command that continues it, such as `/continue-plan issue-<number>` from a new session. Under the table, list each stopped issue's question, each review thread someone else started, and the follow-ups each landed plan filed, with their issue numbers, or didn't file.
+Finish with one table row per entry taken or left out: its issues, their titles, result (landed, with its version or commit; stopped; or left out), the stage it reached, and the command that continues it, such as `/continue-plan issue-<number>` from a new session. Under the table, list each stopped entry's question, each review thread someone else started, and the follow-ups each landed plan filed, with their issue numbers, or didn't file.
