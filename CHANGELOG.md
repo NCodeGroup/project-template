@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.25.0
+
+- `/ship-plan` and `/run-issues` now file a plan's follow-ups as issues labelled `follow-up` once the plan has landed, unless you drop them (`/ship-plan`: name them in the landing summary; `/run-issues`: answer at the start that you want none filed). Before, `/run-issues` only listed them in the issue's closing comment, which a pull request that closes the issue skips, so they were easy to lose. `/ship-plan` skips a follow-up an open issue already covers, and the closing comment, or a short comment when the pull request closed the issue, lists the filed numbers. Plans and reviews now list only work worth its own issue, one line each as `<short title>: <what, where, why>`; nits go in the planner's reply. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.24.4
 
 - `.githooks/commit-msg` used to keep the AI agent attribution and let the commit through, saying nothing clear, when `grep` was missing from `PATH`. It now refuses the commit when `grep` is missing or fails. Projects get it with `.\.template\Update-Project.ps1`.
