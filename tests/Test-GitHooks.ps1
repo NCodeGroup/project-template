@@ -8,7 +8,7 @@
     .template\Update-Project.ps1 and the one in adopt\Adoption.psm1, whether .githooks is enabled and which note is printed in
     a clone with other hooks, with pre-commit's hooks or config, and with none. Then pushes from a fixture clone to a local bare
     remote and checks that .githooks/pre-push refuses a push to main only while AGENTS.md's Landing section says protect: hook,
-    and lets a branch and a tag through. Prints PASS or FAIL per check and exits 1 on any
+    and lets a branch and a tag through, and refuses the push when awk is missing, run directly with a PATH without it. Prints PASS or FAIL per check and exits 1 on any
     failure.
 
 .PARAMETER Work
@@ -43,6 +43,14 @@ function Invoke-PreCommit {
 function Invoke-Push {
     $ErrorActionPreference = 'Continue'
     git push -q origin @args 2>&1 | Out-String
+}
+# Runs the hook as git does, with $Path as the whole PATH and a push of main on stdin; the caller reads $LASTEXITCODE.
+function Invoke-PrePushHook([string]$Path) {
+    $ErrorActionPreference = 'Continue'
+    $savedHookPath = $env:PATH
+    $env:PATH = $Path
+    try { "refs/heads/main $zero refs/heads/main $zero`n" | & $sh (Join-Path $pushHooks 'pre-push') origin $pushRemote 2>&1 | Out-String }
+    finally { $env:PATH = $savedHookPath }
 }
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
@@ -140,9 +148,24 @@ try {
 }
 finally { Pop-Location }
 
+# Run the hook directly, as git does but with a PATH that lacks Git's usr\bin, which a real push can't reproduce.
+$sh = Join-Path $gitUsrBin 'sh.exe'
+$gitDir = Split-Path (Get-Command git).Source
+$zero = '0' * 40
+Push-Location $pushClone
+try {
+    [IO.File]::WriteAllText((Join-Path $pushClone 'AGENTS.md'), $agents, [Text.UTF8Encoding]::new($false))
+    $noAwkOut = Invoke-PrePushHook $gitDir; $noAwkCode = $LASTEXITCODE
+    [IO.File]::WriteAllText((Join-Path $pushClone 'AGENTS.md'), $agents.Replace("`n", "`r`n"), [Text.UTF8Encoding]::new($false))
+    $crlfOut = Invoke-PrePushHook ($gitUsrBin + [IO.Path]::PathSeparator + $gitDir); $crlfCode = $LASTEXITCODE
+}
+finally { Pop-Location }
+
 Check 'pre-push: refuses a push to main when the Landing section says protect: hook' (($mainCode -ne 0) -and $mainOut.Contains('says protect: hook')) "exit $mainCode; $mainOut"
 Check 'pre-push: lets a branch and a tag through' (($branchCode -eq 0) -and ($tagCode -eq 0)) "branch exit $branchCode; $branchOut; tag exit $tagCode; $tagOut"
 Check 'pre-push: lets a push to main through without protect: hook' ($openCode -eq 0) "exit $openCode; $openOut"
+Check 'pre-push: refuses the push when awk is missing' ((Test-Path (Join-Path $gitDir 'awk.exe')) -eq $false -and ($noAwkCode -ne 0) -and $noAwkOut.Contains('awk is missing')) "exit $noAwkCode; $noAwkOut"
+Check 'pre-push: refuses a push to main when AGENTS.md has CRLF line endings' (($crlfCode -ne 0) -and $crlfOut.Contains('says protect: hook')) "exit $crlfCode; $crlfOut"
 
 ''
 if ($failures.Count) { "Git hooks tests: FAILED ($($failures.Count))"; exit 1 }
