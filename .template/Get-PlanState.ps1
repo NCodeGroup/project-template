@@ -6,16 +6,23 @@
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, ahead, behind, landed,
     pr, tag, published, issue-state, dirty, plans and next. A fact that does not apply prints "-". With an origin
-    remote, the script first fetches it, ignoring a failure.
+    remote, the script first fetches it, ignoring a failure, unless -NoFetch is given.
 
 .PARAMETER Path
     A folder inside the repository. Defaults to the current folder.
 
+.PARAMETER NoFetch
+    Skip the fetch of origin, and read ahead, behind and landed from the remote refs the last fetch left. Every
+    worktree of a repository shares those refs, so a second call for another worktree needs no fetch of its own.
+
 .EXAMPLE
     .\Get-PlanState.ps1
+
+.EXAMPLE
+    .\Get-PlanState.ps1 -Path .claude/worktrees/csv-export -NoFetch
 #>
 [CmdletBinding()]
-param([string]$Path = '.')
+param([string]$Path = '.', [switch]$NoFetch)
 $ErrorActionPreference = 'Stop'
 
 function Read-Lines([string]$File) {
@@ -39,7 +46,7 @@ try {
     }
     else {
         $hostName = if ($originUrl -match 'gitlab') { 'gitlab' } elseif ($originUrl -match 'github\.com') { 'github' } else { 'other' }
-        & git fetch origin --prune --tags --quiet 2>$null | Out-Null
+        if (-not $NoFetch) { & git fetch origin --prune --tags --quiet 2>$null | Out-Null }
     }
 
     if ($hostName -eq 'none') { $default = '-' }
