@@ -13,11 +13,12 @@
     The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-update-kept-test.
 
 .EXAMPLE
-    .\Test-UpdateKeptLines.ps1
+    .\tests\Test-UpdateKeptLines.ps1
 #>
 [CmdletBinding()]
 param([string]$Work = (Join-Path $env:TEMP 'project-template-update-kept-test'))
 $ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
@@ -43,10 +44,10 @@ function Invoke-Git {
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 $tpl = Join-Path $Work 'template-repo'
 New-Item -ItemType Directory -Force $tpl | Out-Null
-Get-ChildItem -LiteralPath $PSScriptRoot -Force | Where-Object Name -NotIn '.git', '.claude' | Copy-Item -Destination $tpl -Recurse -Force
+Get-ChildItem -LiteralPath $repoRoot -Force | Where-Object Name -NotIn '.git', '.claude' | Copy-Item -Destination $tpl -Recurse -Force
 # Claude Code's plan worktrees are other checkouts, not part of the snapshot.
 $claudeCopy = New-Item -ItemType Directory -Force (Join-Path $tpl '.claude')
-Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '.claude') -Force | Where-Object Name -NE 'worktrees' | Copy-Item -Destination $claudeCopy.FullName -Recurse -Force
+Get-ChildItem -LiteralPath (Join-Path $repoRoot '.claude') -Force | Where-Object Name -NE 'worktrees' | Copy-Item -Destination $claudeCopy.FullName -Recurse -Force
 Push-Location $tpl
 try {
     # v0.1.0 has the secrets rule the template had before v0.15.0, which v0.2.0 changes back.
@@ -55,7 +56,7 @@ try {
 }
 finally { Pop-Location }
 
-Import-Module (Join-Path $PSScriptRoot 'adopt/Adoption.psm1') -Force
+Import-Module (Join-Path $repoRoot 'adopt/Adoption.psm1') -Force
 $marker = "# Kept from this repository's own .gitignore when it adopted the project template"
 $kept = "# OpenTofu working directories and state`n.terraform/`n*.tfstate`n*.tfplan`nplan.txt`n"
 

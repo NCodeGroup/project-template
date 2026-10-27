@@ -36,7 +36,7 @@ jobs:
       - name: Test the update's exit code
         run: ./tests/Test-UpdateExitCode.ps1
       - name: Test updating an adopted project's kept lines
-        run: ./Test-UpdateKeptLines.ps1
+        run: ./tests/Test-UpdateKeptLines.ps1
       - name: Test updating a project that owns a merged file
         run: ./tests/Test-UpdateOwnedFiles.ps1
       - name: Test the plan state script
