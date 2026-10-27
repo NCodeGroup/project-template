@@ -8,7 +8,7 @@
     .template\Update-Project.ps1 and the one in adopt\Adoption.psm1, whether .githooks is enabled and which note is printed in
     a clone with other hooks, with pre-commit's hooks or config, and with none. Then pushes from a fixture clone to a local bare
     remote and checks that .githooks/pre-push refuses a push to main only while AGENTS.md's Landing section says protect: hook,
-    and lets a branch and a tag through, and refuses the push when awk is missing, run directly with a PATH without it. Then checks that the wrapper saved as pre-push.legacy in a clone with pre-commit's pre-push hook refuses a push to main after the same commits were pushed as a branch. Then runs the protect: hook check from workflow\templates\run-issues.md in fixture clones and checks it passes only when Git runs .githooks/pre-push. Prints PASS or FAIL per check and exits 1 on any
+    and lets a branch and a tag through, and refuses the push when awk is missing, run directly with a PATH without it. Then runs .githooks/commit-msg directly and checks that it refuses the commit when grep is missing and lets a message without attribution through. Then checks that the wrapper saved as pre-push.legacy in a clone with pre-commit's pre-push hook refuses a push to main after the same commits were pushed as a branch. Then runs the protect: hook check from workflow\templates\run-issues.md in fixture clones and checks it passes only when Git runs .githooks/pre-push. Prints PASS or FAIL per check and exits 1 on any
     failure.
 
 .PARAMETER Work
@@ -50,6 +50,14 @@ function Invoke-PrePushHook([string]$Path) {
     $savedHookPath = $env:PATH
     $env:PATH = $Path
     try { "refs/heads/main $zero refs/heads/main $zero`n" | & $sh (Join-Path $pushHooks 'pre-push') origin $pushRemote 2>&1 | Out-String }
+    finally { $env:PATH = $savedHookPath }
+}
+# Runs .githooks/commit-msg as git does, with $Path as the whole PATH; the caller reads $LASTEXITCODE.
+function Invoke-CommitMsgHook([string]$Path, [string]$MessageFile) {
+    $ErrorActionPreference = 'Continue'
+    $savedHookPath = $env:PATH
+    $env:PATH = $Path
+    try { & $sh (Join-Path $repoRoot 'template\.githooks\commit-msg') $MessageFile 2>&1 | Out-String }
     finally { $env:PATH = $savedHookPath }
 }
 
@@ -173,6 +181,15 @@ try {
 }
 finally { Pop-Location }
 
+# Run commit-msg directly: without grep it must refuse the commit, and with grep it must let a message without attribution through unchanged.
+$noGrepFile = Join-Path $Work 'no-grep-msg.txt'
+$cleanFile = Join-Path $Work 'clean-msg.txt'
+$cleanText = "Hook check`n`nNo attribution here.`n"
+[IO.File]::WriteAllText($noGrepFile, "Hook check`n`nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($cleanFile, $cleanText, [Text.UTF8Encoding]::new($false))
+$noGrepOut = Invoke-CommitMsgHook $gitDir $noGrepFile; $noGrepCode = $LASTEXITCODE
+$cleanOut = Invoke-CommitMsgHook ($gitUsrBin + [IO.Path]::PathSeparator + $gitDir) $cleanFile; $cleanCode = $LASTEXITCODE
+
 # The wrapper as pre-push.legacy, run by the pre-push hook pre-commit installed, refuses a push to main even after the same commits were pushed as a branch.
 $legacyClone = Join-Path $Work 'push-legacy'
 $legacyRemote = Join-Path $Work 'push-legacy.git'
@@ -207,6 +224,8 @@ Check 'pre-push: lets a branch and a tag through' (($branchCode -eq 0) -and ($ta
 Check 'pre-push: lets a push to main through without protect: hook' ($openCode -eq 0) "exit $openCode; $openOut"
 Check 'pre-push: refuses the push when awk is missing' ((Test-Path (Join-Path $gitDir 'awk.exe')) -eq $false -and ($noAwkCode -ne 0) -and $noAwkOut.Contains('awk is missing')) "exit $noAwkCode; $noAwkOut"
 Check 'pre-push: refuses a push to main when AGENTS.md has CRLF line endings' (($crlfCode -ne 0) -and $crlfOut.Contains('says protect: hook')) "exit $crlfCode; $crlfOut"
+Check 'commit-msg: refuses the commit when grep is missing' ((Test-Path (Join-Path $gitDir 'grep.exe')) -eq $false -and ($noGrepCode -ne 0) -and $noGrepOut.Contains('grep is missing')) "exit $noGrepCode; $noGrepOut"
+Check 'commit-msg: lets a message without attribution through unchanged' (($cleanCode -eq 0) -and ([IO.File]::ReadAllText($cleanFile) -eq $cleanText)) "exit $cleanCode; $cleanOut"
 Check 'pre-push: the wrapper in pre-push.legacy refuses a push to main under pre-commit, after the commits were pushed as a branch' (($legacyBranchCode -eq 0) -and ($legacyMainCode -ne 0) -and $legacyMainOut.Contains('says protect: hook')) "branch exit $legacyBranchCode; $legacyBranchOut; main exit $legacyMainCode; $legacyMainOut"
 
 # run-issues: its protect: hook check passes only when Git runs .githooks/pre-push.

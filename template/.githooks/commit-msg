@@ -10,6 +10,8 @@
 # removes it again. Claude Code's `attribution` setting and VS Code's
 # `git.addAICoAuthor` setting already turn these off; this hook removes any
 # that slip through, whichever tool wrote the commit.
+# It needs grep, and refuses every commit when grep is missing, since it can't
+# tell then whether the message has agent attribution.
 #
 # This file comes from the project template, and template updates replace it.
 # Git runs it once it is enabled in a clone; New-Project.ps1 and
@@ -31,9 +33,16 @@ claude_session='^[[:space:]]*claude-session:'
 # The C locale reads each byte as a character, so the emoji before the phrase matches [^[:alnum:]] whatever locale the user has; a UTF-8 locale reads it differently on some platforms.
 generated='^[^[:alnum:]]*generated with \[?claude code'
 
-if ! LC_ALL=C grep -qiE -e "$copilot" -e "$agent_email" -e "$claude_session" -e "$generated" "$msg_file"; then
-    exit 0
-fi
+status=0
+LC_ALL=C grep -qiE -e "$copilot" -e "$agent_email" -e "$claude_session" -e "$generated" "$msg_file" || status=$?
+case $status in
+    0) ;;
+    1) exit 0 ;;
+    *)
+        echo "commit-msg: can't check the commit message for AI agent attribution, because grep is missing or failed. Put grep on PATH and commit again." >&2
+        exit 1
+        ;;
+esac
 
 # `git stripspace` collapses the blank lines a removed trailer leaves behind,
 # as git's own message cleanup does; comment lines stay for the editor flow.
