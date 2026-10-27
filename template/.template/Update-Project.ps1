@@ -22,6 +22,9 @@
       Project-owned   Written once, never touched again (copier.yml's _skip_if_exists). When the template changed
                       one since the project's version, the script shows the template's change, rendered with
                       the project's answers, leaving out what the project's file already has.
+                      A merged file that the project's project_owned_files answer names
+                      is project-owned too; a project that replaced one sets it with -Data @{ project_owned_files
+                      = '.github/workflows/ci.yml' }, and only merged files can be named.
 
     The update runs `copier recopy` at the project's current template version, which resets the template-owned
     files and shows any local edits, then `copier update --defaults` to the newest version (or -Ref), which merges
