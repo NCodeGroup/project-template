@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.25.3
+
+- No change for projects made from the template. `tests/Test-Template.ps1` now fails, naming the script, when a `tests/Test-*.ps1` script has no `run: ./tests/<name>` step in `.github/workflows/test-template.yml`, so a new test script can't be left out of CI unnoticed.
+
 ## v0.25.2
 
 - `.template/Test-CommitAttribution.ps1` let a commit with Claude Code's "Generated with [Claude Code]" line through when PowerShell's console code page wasn't UTF-8, such as a Windows console on its default code page or a PowerShell job, because it read Git's output in that code page. It now reads Git's output as UTF-8 whatever the code page. Projects get it with `.\.template\Update-Project.ps1`.

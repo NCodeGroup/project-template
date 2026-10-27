@@ -404,6 +404,7 @@ The pins inside `template/` — the actions in `ci.yml.jinja` and the SDK in `gl
 | Workflow files, editor settings, `.gitignore`, `AGENTS.md`, the template rules and `README.md` only for the chosen `workflow_tools` | Every render |
 | `.copier-answers.yml` and `.template-version` record the version | Every render |
 | Every `_exclude` pattern excludes nothing when `workflow_tools` is missing | Always |
+| Every `tests/Test-*.ps1` script has a `run: ./tests/<name>` step in `.github/workflows/test-template.yml`, so CI runs it | Always |
 | Generated workflow files, under `template/` and at the repository root, match a fresh run of `workflow\Install-HybridWorkflow.ps1` | Always, including CI |
 | The installer writes both variants for every tool; `New-PlanPrompt.ps1` composes a prompt; `Invoke-PlanSteps.ps1 -DryRun` parses the example plan | Always |
 | The installer writes the template version to `.template-version` at the repository root; `template/` and this repository's root have no installer-written copy | Always |
