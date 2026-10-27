@@ -2,6 +2,11 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.30.0
+
+- `Adopt-Project.ps1` takes the `project_owned_files` answer: `-Data @{ project_owned_files = '.github/workflows/ci.yml' }` keeps the named merged files exactly as the repository has them instead of rebuilding them, records the answer in `.copier-answers.yml`, and so later updates show the template's changes to them instead of merging. A name that isn't a merged file stops the adoption before it changes anything, and the report lists each kept file as `Owned`. Projects get it with `.\.template\Update-Project.ps1`.
+- `Update-Project.ps1` suggests `project_owned_files` for a merged file the project seems to have replaced: when the template changed a merged file that shares less than half its distinct non-blank lines with the template's version (lines an adopted file keeps under its "Kept from" comment don't count), it names the file and prints the `-Data` to run, after a commit or a conflict alike. It doesn't stop the update. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.29.0
 
 - `/run-issues` now reads your top-level pull request comments and review summaries, not only review threads, fixes what they ask for, and answers each with a top-level comment that starts with `Autopilot:` and names the comment's link. A top-level comment counts as answered once such a comment names it, and a new comment from you starts a new round. Projects get it with `.\.template\Update-Project.ps1`.
