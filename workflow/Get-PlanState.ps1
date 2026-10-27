@@ -173,13 +173,13 @@ try {
     }
 
     # Pull request or merge request
-    $pr = '-'; $prNumber = ''; $prState = ''; $prMerge = ''; $prHead = ''
+    $pr = '-'; $prNumber = ''; $prState = ''; $prMerge = ''; $prHead = ''; $prBase = ''
     if ($hostName -in 'github', 'gitlab' -and $branch -ne '-' -and $branch -ne $default) {
         $cli = if ($hostName -eq 'github') { 'gh' } else { 'glab' }
         $pr = 'unknown'
         if (Get-Command $cli -ErrorAction SilentlyContinue) {
             $json = if ($hostName -eq 'github') {
-                & gh pr list --head $branch --state all --limit 100 --json number,state,mergeCommit,headRefOid 2>$null | Out-String
+                & gh pr list --head $branch --state all --limit 100 --json number,state,mergeCommit,headRefOid,baseRefName 2>$null | Out-String
             }
             else {
                 & glab mr list --source-branch $branch --all --output json 2>$null | Out-String
@@ -191,7 +191,7 @@ try {
                         if ($hostName -eq 'github') {
                             [pscustomobject]@{
                                 Number = "$($item.number)"; State = "$($item.state)".ToUpperInvariant()
-                                Merge = "$($item.mergeCommit.oid)"; Head = "$($item.headRefOid)"
+                                Merge = "$($item.mergeCommit.oid)"; Head = "$($item.headRefOid)"; Base = "$($item.baseRefName)"
                             }
                         }
                         else {
@@ -200,7 +200,7 @@ try {
                             [pscustomobject]@{
                                 Number = "$($item.iid)"
                                 State = switch ("$($item.state)") { 'opened' { 'OPEN' } 'merged' { 'MERGED' } 'closed' { 'CLOSED' } default { "$($item.state)".ToUpperInvariant() } }
-                                Merge = $mergeSha; Head = "$($item.sha)"
+                                Merge = $mergeSha; Head = "$($item.sha)"; Base = "$($item.target_branch)"
                             }
                         }
                     })
@@ -212,11 +212,11 @@ try {
                                 if ($request.State -eq 'MERGED' -and $request.Merge -and $request.Head -and (Test-RequestLanded $request.Merge $request.Head $default)) { $landed = 'yes'; $chosen = $request; break }
                             }
                         }
-                        $prNumber = $chosen.Number; $prState = $chosen.State; $prMerge = $chosen.Merge; $prHead = $chosen.Head
+                        $prNumber = $chosen.Number; $prState = $chosen.State; $prMerge = $chosen.Merge; $prHead = $chosen.Head; $prBase = $chosen.Base
                         $pr = "$prNumber $prState"
                     }
                 }
-                catch { $pr = 'unknown'; $prNumber = ''; $prState = ''; $prMerge = ''; $prHead = '' }
+                catch { $pr = 'unknown'; $prNumber = ''; $prState = ''; $prMerge = ''; $prHead = ''; $prBase = '' }
             }
         }
     }
@@ -280,6 +280,8 @@ try {
         elseif ($landed -ne 'yes') {
             if ($hostName -eq 'none') { $next = 'none no origin remote to land on' }
             elseif ($prState -eq 'OPEN') { $next = "wait pull request #$prNumber is open: run ship-plan again once it merges" }
+            elseif ($prState -eq 'MERGED' -and $integrate -eq 'direct') { $next = 'ship-plan' }
+            elseif ($prState -eq 'MERGED' -and $prBase -and $prBase -ne $default) { $next = "none pull request #$prNumber merged into $prBase, not ${default}: this branch lands once $prBase reaches $default; run ship-plan again then" }
             elseif ($prState -eq 'MERGED') { $next = "none pull request #$prNumber merged without this branch's HEAD: land the commits after it from a new branch" }
             else { $next = 'ship-plan' }
         }
