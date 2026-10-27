@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Reads a template from templates\, appends the PLAN.md format for planning templates, fills in
-    the task, and prints the prompt (or copies it with -Copy). Use it for manual handoffs: paste into
+    the task, and prints the prompt (or copies it with -Copy). -List shows each template's role, the installer targets it goes to, and its description. Use it for manual handoffs: paste into
     Claude Code, claude.ai, Copilot Chat or Copilot CLI (`copilot -i (.\New-PlanPrompt.ps1 ...)`).
 
 .EXAMPLE
@@ -22,7 +22,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'HybridWorkflow.psm1') -Force
 
 if ($List -or -not $Template) {
-    Get-HybridTemplateList | Format-Table Name, Role, Description -AutoSize | Out-String -Width 200
+    Get-HybridTemplateList | Format-Table Name, Role, @{ Name = 'Targets'; Expression = { $_.Targets -join ', ' } }, Description -AutoSize | Out-String -Width 200
     return
 }
 
