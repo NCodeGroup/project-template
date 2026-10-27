@@ -268,6 +268,19 @@ try {
     $ownedMerged = @(if ($Data.ContainsKey('project_owned_files')) { $Data['project_owned_files'] } else { Get-AnswerList 'project_owned_files' })
     $notMerged = @($ownedMerged | Where-Object { $_ -notin $merged })
     if ($notMerged) { throw "project_owned_files names $($notMerged -join ', '), which isn't a merged file. It can name only these: $($merged -join ', ')." }
+    $jinjaTag = '\{' + '%.*?%' + '\}'
+    # A merged file the project rewrote shares few lines with the template's render of it, so the template's changes to it conflict in unrelated places (copier-org/copier#2759): suggest the project_owned_files answer. Only a file the template changed can conflict.
+    $rewritten = @()
+    $fromRendered = $null
+    $renderedFrom = Join-Path $scratch 'rendered\from'
+    if ($from -ne $to) {
+        $changedMerged = @(foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
+                $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
+                if ($file -in $merged -and $file -notin $ownedMerged -and (Test-Path -LiteralPath $file -PathType Leaf)) { $file }
+            })
+        if ($changedMerged) { $fromRendered = Invoke-TemplateRender $from $renderedFrom }
+        if ($fromRendered) { $rewritten = @(Get-RewrittenFile $changedMerged $renderedFrom) }
+    }
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here.
         $exclude = foreach ($file in $projectOwned + $merged) { '--exclude', $file }
@@ -346,7 +359,6 @@ try {
         elseif ($hooksSetup.Note) { $hooksSetup.Note; '' }
     }
     $changes = @(Get-Change)
-    $jinjaTag = '\{' + '%.*?%' + '\}'
     $projectOwnedChanged = @(if ($from -ne $to) {
             $owned = @(Get-TemplateList $TemplateClone $to '_skip_if_exists') + $ownedMerged
             foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
@@ -366,9 +378,8 @@ try {
     if ($projectOwnedChanged) {
         # Render both versions with the project's answers, so the diffs show what the project would get, not Jinja.
         New-Item -ItemType Directory -Force $scratch | Out-Null
-        $renderedFrom = Join-Path $scratch 'rendered\from'
         $renderedTo = Join-Path $scratch 'rendered\to'
-        $rendered = (Invoke-TemplateRender $from $renderedFrom) -and (Invoke-TemplateRender $to $renderedTo)
+        $rendered = $(if ($null -ne $fromRendered) { $fromRendered } else { Invoke-TemplateRender $from $renderedFrom }) -and (Invoke-TemplateRender $to $renderedTo)
         $empty = Join-Path $scratch 'empty'
         [IO.File]::WriteAllText($empty, '')
         $shown = foreach ($changed in $projectOwnedChanged) {
@@ -402,6 +413,13 @@ try {
         }
     }
 
+    if ($rewritten) {
+        ''
+        "These merged files share less than half their lines with the template's version, so the project seems to have replaced them, and the template's changes to them can conflict in unrelated places:"
+        $rewritten | ForEach-Object { "  $_" }
+        "To make them project-owned, so updates leave them alone and show the template's changes instead, run the update with (after abandoning it with git reset --hard; git clean -fd if it stops with a conflict below):"
+        "  .\.template\Update-Project.ps1 -Data @{ project_owned_files = $((@($ownedMerged) + $rewritten | ForEach-Object { "'$_'" }) -join ', ') }"
+    }
     $message = "Update from project-template $to"
     if ($conflicts) {
         ''
