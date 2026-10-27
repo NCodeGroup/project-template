@@ -136,7 +136,7 @@ Check 'next: finished steps without a review run review-plan-diff' $r.Ok $r.Deta
 Write-Text $planFile (New-PlanText 'x' (Get-Head $repo))
 $r = Test-State (Get-State $repo) @{ landing = 'integrate=pull-request release=none changelog=CHANGELOG.md' }
 Check 'local: the default landing policy applies without AGENTS.md' $r.Ok $r.Detail
-$r = Test-State (Get-State $repo) @{ reviewed = 'current'; pr = '-'; next = 'ship-plan' }
+$r = Test-State (Get-State $repo) @{ reviewed = 'current'; pr = '-'; merge = '-'; next = 'ship-plan' }
 Check 'next: a reviewed plan is shipped' $r.Ok $r.Detail
 
 # 6. A commit after the review.
@@ -253,14 +253,24 @@ if ($args[0] -eq 'issue' -and $args[1] -eq 'view') {
 exit 1
 '@
 }
-function Set-MergedRequest([string]$Merge, [string]$Head, [switch]$GitHub) {
+function Set-MergedRequest([string]$Merge, [string]$Head, [switch]$GitHub, [string]$Newer = '', [string]$Base = 'main') {
     $item = if ($GitHub) {
-        @{ number = 6; state = 'MERGED'; mergeCommit = @{ oid = $Merge }; headRefOid = $Head }
+        @{ number = 6; state = 'MERGED'; mergeCommit = @{ oid = $Merge }; headRefOid = $Head; baseRefName = $Base }
     }
     else {
-        @{ iid = 5; state = 'merged'; merge_commit_sha = $null; squash_commit_sha = $Merge; sha = $Head }
+        @{ iid = 5; state = 'merged'; merge_commit_sha = $null; squash_commit_sha = $Merge; sha = $Head; target_branch = $Base }
     }
-    Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject @($item) -Depth 3)
+    $items = @($item)
+    if ($Newer) {
+        $newerItem = if ($GitHub) {
+            @{ number = 8; state = $Newer; mergeCommit = $null; headRefOid = $Head }
+        }
+        else {
+            @{ iid = 8; state = $Newer; merge_commit_sha = $null; squash_commit_sha = $null; sha = $Head }
+        }
+        $items = @($newerItem, $item)
+    }
+    Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject $items -Depth 3)
 }
 function Set-IssueStates([hashtable]$States) { Write-Text (Join-Path $bin 'issues.json') (ConvertTo-Json -InputObject $States) }
 function New-MergedClone([string]$Dir) {
@@ -299,7 +309,7 @@ try {
     $gl = New-MergedClone (Join-Path $Work 'gitlab')
 
     Set-MergedRequest $gl.Squash $gl.Head
-    $r = Test-State (Get-State $gl.Repo) @{ host = 'gitlab'; pr = '5 MERGED'; ahead = '1'; landed = 'yes'; next = 'finish-plan' }
+    $r = Test-State (Get-State $gl.Repo) @{ host = 'gitlab'; pr = '5 MERGED'; merge = $gl.Squash; ahead = '1'; landed = 'yes'; next = 'finish-plan' }
     Check 'local: a squash-merged merge request that holds HEAD is landed' $r.Ok $r.Detail
 
     Set-MergedRequest $gl.Squash $gl.Twin
@@ -310,22 +320,55 @@ try {
     $r = Test-State (Get-State $gl.Repo) @{ landed = 'no' }
     Check 'local: a merge commit missing from the default branch is not landed' $r.Ok $r.Detail
 
+    Set-MergedRequest $gl.Squash $gl.Head -Newer 'opened'
+    $r = Test-State (Get-State $gl.Repo) @{ pr = '5 MERGED'; merge = $gl.Squash; landed = 'yes' }
+    Check 'local: an older merged merge request that holds HEAD is landed under a newer open one' $r.Ok $r.Detail
+
     Set-MergedRequest $gl.Squash $gl.Head
     Add-Commit $gl.Repo 'f.txt' 'Plan step 2: F'
     Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo))
     $state = Get-State $gl.Repo
     Check 'next: commits after a merged merge request need a new branch' (($state['landed'] -eq 'no') -and ($state['next'] -like 'none pull request #5 merged*')) "landed='$($state['landed'])' next='$($state['next'])' expected landed 'no' and next 'none pull request #5 merged*'"
 
+    Set-MergedRequest $gl.Squash $gl.Head -Newer 'opened'
+    $r = Test-State (Get-State $gl.Repo) @{ pr = '8 OPEN'; landed = 'no'; next = 'wait pull request #8 is open: run ship-plan again once it merges' }
+    Check 'next: a newer open merge request is waited for when no merged one holds HEAD' $r.Ok $r.Detail
+
+    Set-MergedRequest $gl.Squash $gl.Head -Base 'release'
+    $r = Test-State (Get-State $gl.Repo) @{ landed = 'no'; next = 'none pull request #5 merged into release, not main: this branch lands once release reaches main; run ship-plan again then' }
+    Check 'next: a merge request merged into another branch waits for that branch' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $gl.Repo 'AGENTS.md') "# Demo`n`n## Landing`n`n- integrate: direct`n"
+    Push-Location $gl.Repo
+    try { Invoke-Git add AGENTS.md; Invoke-Git commit -q -m 'Add AGENTS.md' }
+    finally { Pop-Location }
+    Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo))
+    Set-MergedRequest $gl.Squash $gl.Head
+    $r = Test-State (Get-State $gl.Repo) @{ landed = 'no'; next = 'ship-plan' }
+    Check 'next: with integrate direct, a merged merge request without HEAD leaves the branch to ship-plan' $r.Ok $r.Detail
+
     # 15. A merged pull request on a GitHub origin.
     $gh = New-MergedClone (Join-Path $Work 'github.com')
 
     Set-MergedRequest $gh.Squash $gh.Head -GitHub
-    $r = Test-State (Get-State $gh.Repo) @{ host = 'github'; pr = '6 MERGED'; landed = 'yes' }
+    $r = Test-State (Get-State $gh.Repo) @{ host = 'github'; pr = '6 MERGED'; merge = $gh.Squash; landed = 'yes' }
     Check 'local: a merged GitHub pull request that holds HEAD is landed' $r.Ok $r.Detail
 
     Set-MergedRequest $gh.Twin $gh.Head -GitHub
     $r = Test-State (Get-State $gh.Repo) @{ landed = 'no' }
     Check 'local: a GitHub merge commit missing from the default branch is not landed' $r.Ok $r.Detail
+
+    Set-MergedRequest $gh.Squash $gh.Head -GitHub -Newer 'CLOSED'
+    $r = Test-State (Get-State $gh.Repo) @{ pr = '6 MERGED'; merge = $gh.Squash; landed = 'yes' }
+    Check 'local: an older merged GitHub pull request that holds HEAD is landed under a newer closed one' $r.Ok $r.Detail
+
+    $ff = New-MergedClone (Join-Path (Join-Path $Work 'ff') 'github.com')
+    Push-Location $ff.Repo
+    try { Invoke-Git push -q --force origin "$($ff.Head):refs/heads/main" }
+    finally { Pop-Location }
+    Set-MergedRequest $ff.Head $ff.Head -GitHub -Newer 'CLOSED'
+    $r = Test-State (Get-State $ff.Repo) @{ pr = '6 MERGED'; merge = $ff.Head; landed = 'yes' }
+    Check 'local: a merged pull request is named when HEAD is already on the default branch, under a newer closed one' $r.Ok $r.Detail
 
     # 16. The issues of a one-issue plan and a group plan.
     Set-MergedRequest $gh.Squash $gh.Head -GitHub
