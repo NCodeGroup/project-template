@@ -13,11 +13,12 @@
     The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-plan-state-test.
 
 .EXAMPLE
-    .\Test-PlanState.ps1
+    .\tests\Test-PlanState.ps1
 #>
 [CmdletBinding()]
 param([string]$Work = (Join-Path $env:TEMP 'project-template-plan-state-test'))
 $ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
@@ -28,7 +29,7 @@ function Invoke-Git {
     if ($LASTEXITCODE) { throw "git $($args -join ' ') failed." }
 }
 
-$script = Join-Path $PSScriptRoot 'workflow/Get-PlanState.ps1'
+$script = Join-Path $repoRoot 'workflow/Get-PlanState.ps1'
 function Get-State([string]$Path, [switch]$NoFetch) {
     $state = @{}
     $extra = @(if ($NoFetch) { '-NoFetch' })

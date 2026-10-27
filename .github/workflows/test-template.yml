@@ -40,11 +40,11 @@ jobs:
       - name: Test updating a project that owns a merged file
         run: ./Test-UpdateOwnedFiles.ps1
       - name: Test the plan state script
-        run: ./Test-PlanState.ps1
+        run: ./tests/Test-PlanState.ps1
       - name: Test the commit attribution check
         run: ./Test-CommitAttribution.ps1
       - name: Test the Git hooks
-        run: ./Test-GitHooks.ps1
+        run: ./tests/Test-GitHooks.ps1
 
   commit-attribution:
     name: Commit attribution

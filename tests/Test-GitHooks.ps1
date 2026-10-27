@@ -13,13 +13,14 @@
     The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-hooks-test.
 
 .EXAMPLE
-    .\Test-GitHooks.ps1
+    .\tests\Test-GitHooks.ps1
 #>
 [CmdletBinding()]
 param(
     [string]$Work = (Join-Path $env:TEMP 'project-template-hooks-test')
 )
 $ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
@@ -40,7 +41,7 @@ function Invoke-PreCommit {
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 $repo = Join-Path $Work 'pre-commit'
 New-Item -ItemType Directory -Force (Join-Path $repo '.githooks') | Out-Null
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'template\.githooks\commit-msg') -Destination (Join-Path $repo '.githooks')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'template\.githooks\commit-msg') -Destination (Join-Path $repo '.githooks')
 $config = "repos:`n  - repo: local`n    hooks:`n      - id: strip-agent-attribution`n        name: strip agent attribution`n        entry: .githooks/commit-msg`n        language: script`n        stages: [commit-msg]`n"
 [IO.File]::WriteAllText((Join-Path $repo '.pre-commit-config.yaml'), $config, [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $repo 'msg.txt'), "Hook check`n`nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`n", [Text.UTF8Encoding]::new($false))
@@ -66,8 +67,8 @@ finally {
 
 Check 'pre-commit: runs .githooks/commit-msg as a script hook and strips the attribution' (($exitCode -eq 0) -and -not ([IO.File]::ReadAllText((Join-Path $repo 'msg.txt'))).Contains('anthropic.com')) "exit $exitCode; $output"
 
-$updateFunction = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-GitHooksSetup' }, $true) | Select-Object -First 1
-Import-Module (Join-Path $PSScriptRoot 'adopt\Adoption.psm1') -Force
+$updateFunction = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-GitHooksSetup' }, $true) | Select-Object -First 1
+Import-Module (Join-Path $repoRoot 'adopt\Adoption.psm1') -Force
 $sources = [ordered]@{
     update = { if ($updateFunction) { . ([scriptblock]::Create($updateFunction.Extent.Text)); Get-GitHooksSetup } }
     adopt  = { if ((Get-Module Adoption).ExportedFunctions.ContainsKey('Get-GitHooksSetup')) { Adoption\Get-GitHooksSetup } }
