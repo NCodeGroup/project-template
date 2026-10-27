@@ -8,6 +8,8 @@
 # default branch, so every change lands through a pull request: /ship-plan
 # pushes the plan's branch and opens one. Pushes of other branches and of tags
 # go through. Without that line the hook does nothing.
+# It needs awk, and refuses every push when awk is missing, since it can't tell
+# then whether the line is there.
 #
 # This file comes from the project template, and template updates replace it.
 # Git runs it once it is enabled in a clone; New-Project.ps1 and
@@ -16,7 +18,10 @@
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -f "$root/AGENTS.md" ] || exit 0
-protect=$(awk '/^## Landing[[:space:]]*$/ { landing = 1; next } landing && /^## / { exit } landing && /^- protect:/ { print $3; exit }' "$root/AGENTS.md" | tr -d '\r')
+protect=$(awk '{ sub(/\r$/, "") } /^## Landing[[:space:]]*$/ { landing = 1; next } landing && /^## / { exit } landing && /^- protect:/ { print $3; exit }' "$root/AGENTS.md") || {
+    echo "pre-push: can't read the protect value from AGENTS.md's Landing section, because awk is missing or failed. Put awk on PATH and push again." >&2
+    exit 1
+}
 [ "$protect" = hook ] || exit 0
 
 default=$(git symbolic-ref --short "refs/remotes/$1/HEAD" 2>/dev/null)
