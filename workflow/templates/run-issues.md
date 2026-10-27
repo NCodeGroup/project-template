@@ -62,3 +62,14 @@ While the draft pull request is open, I review it, comment on it, and, once I'm 
 5. When you added steps, follow `orchestrate-plan` yourself, then delegate `review-plan-diff` as Run Each Issue item 3 says, with the same limit of three reviews, until the state script's `next` starts with `wait` again. Then push the new commits with `git push`, never forced: the branch already tracks `origin`.
 6. Reply on each thread that awaited an answer, starting with `Autopilot:`: what changed and in which commit, or the answer. GitHub: `gh api graphql -F threadId=<thread id> -F body=@<file> -f query='mutation($threadId: ID!, $body: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $threadId, body: $body}) { comment { url } } }'`. GitLab: `glab api --method POST "projects/:id/merge_requests/<number>/discussions/<discussion id>/notes" -F body=@<file>`. Leave the thread unresolved: I resolve it, or answer, and the next check picks up my answer.
 7. Wait for the next check.
+
+## Stop an Issue
+
+1. Return to the main checkout with the `ExitWorktree` tool and `action: "keep"`.
+2. When the issue stopped before its `PLAN.md` was written and `git -C <worktree path> status --porcelain` prints nothing, remove its worktree: `git worktree remove <worktree path>`, then `git branch -D worktree-issue-<number>`, which holds no commits of its own. Otherwise leave the worktree as it is, with its commits and `PLAN.md`, so `/continue-plan issue-<number>` in a new session picks it up.
+3. Record the stage it reached, the reason and the question for me, then go on with the next issue.
+4. A stop in `ship-plan` ends the whole run instead, after items 1 and 3: a rejected push, or a tag or release that went wrong, would stop the next issue's landing too.
+
+## Report
+
+Finish with one table row per issue taken or left out: issue, title, result (landed, with its version or commit; stopped; or left out), the stage it reached, and the command that continues it, such as `/continue-plan issue-<number>` from a new session. Under the table, list each stopped issue's question, each review thread someone else started, and the follow-ups each landed plan listed and didn't file.
