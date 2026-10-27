@@ -32,7 +32,7 @@ jobs:
       - name: Test adopting existing repositories
         run: ./Test-Adoption.ps1
       - name: Test updating a project that ignores a large folder
-        run: ./Test-UpdateIgnoredFiles.ps1
+        run: ./tests/Test-UpdateIgnoredFiles.ps1
       - name: Test the update's exit code
         run: ./tests/Test-UpdateExitCode.ps1
       - name: Test updating an adopted project's kept lines
