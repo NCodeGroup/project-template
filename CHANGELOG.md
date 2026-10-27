@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.24.5
+
+- No change for projects made from the template. `USAGE.md` now says that `/finish-plan` reads the `landed` value of `.template/Get-PlanState.ps1`, which asks the host with `gh` or `glab` for a merged pull request whose head holds the plan's branch or has its tree; since v0.22.0 the command no longer asks the host itself.
+
 ## v0.24.4
 
 - `.githooks/commit-msg` used to keep the AI agent attribution and let the commit through, saying nothing clear, when `grep` was missing from `PATH`. It now refuses the commit when `grep` is missing or fails. Projects get it with `.\.template\Update-Project.ps1`.
