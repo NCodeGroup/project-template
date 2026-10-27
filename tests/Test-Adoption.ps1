@@ -65,6 +65,11 @@ $copierYml = Join-Path $repoRoot 'copier.yml'
 $skip = @(Get-CopierList $copierYml '_skip_if_exists')
 $merged = @(Get-CopierList $copierYml '_merged_files')
 Check 'unit: Get-CopierList reads the file lists' (($skip -join ',') -eq 'AGENTS.md,README.md,Directory.Build.props' -and '.gitignore' -in $merged -and 'global.json' -in $merged) "$($skip -join ',') | $($merged -join ',')"
+$one = Get-OwnedMergedFile '.github/workflows/ci.yml' $merged
+$dropped = Get-OwnedMergedFile @('.gitignore', '', $null) $merged
+$none = Get-OwnedMergedFile @() $merged
+$ownedMsg = try { Get-OwnedMergedFile 'CLAUDE.md' $merged | Out-Null } catch { $_.Exception.Message }
+Check 'unit: Get-OwnedMergedFile makes a list and rejects a file that isn''t merged' (($one -is [array]) -and $one.Count -eq 1 -and $one[0] -eq '.github/workflows/ci.yml' -and $dropped.Count -eq 1 -and $none.Count -eq 0 -and "$ownedMsg".Contains('which isn''t a merged file')) "$($one -join ',') | $($dropped.Count) | $($none.Count) | $ownedMsg"
 
 $demo = New-TestFolder 'demo' @{
     'src/NCode.Demo.slnx'   = '<Solution />'
