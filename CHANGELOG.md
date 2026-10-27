@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.25.4
+
+- The first `PLAN.md` rule in `.github/instructions/project-template.instructions.md` now names the optional `Release:` and `Reviewed:` lines under a plan's title and the optional `## Follow-ups` section at its end, which the planning commands, `/review-plan-diff` and `.template/Get-PlanState.ps1` already use; it listed only the `Issue:` line before. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.25.3
 
 - No change for projects made from the template. `tests/Test-Template.ps1` now fails, naming the script, when a `tests/Test-*.ps1` script has no `run: ./tests/<name>` step in `.github/workflows/test-template.yml`, so a new test script can't be left out of CI unnoticed.
