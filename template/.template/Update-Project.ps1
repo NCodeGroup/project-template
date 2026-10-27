@@ -191,6 +191,18 @@ try {
         $exclude = foreach ($file in $projectOwned + $merged) { '--exclude', $file }
         Invoke-Copier recopy --force --quiet --vcs-ref :current: @exclude
         $reset = @(Get-Change)
+        # Adopt-Project.ps1 ends these files with the repository's own lines under a "# Kept from …" comment. Set them aside while
+        # Copier merges, so a template change to the file's last lines can't conflict with them or take them into its conflict.
+        $keptLines = @{}
+        foreach ($file in '.gitignore', '.gitattributes', '.editorconfig') {
+            if ($file -notin $merged -or -not (Test-Path -LiteralPath $file)) { continue }
+            $text = [IO.File]::ReadAllText((Join-Path $project $file))
+            $match = [regex]::Match($text, "(?m)^# Kept from this repository's own \S+ when it adopted the project template\r?$")
+            if (-not $match.Success) { continue }
+            $templatePart = $text.Substring(0, $match.Index).TrimEnd("`r", "`n")
+            $keptLines[$file] = $text.Substring($templatePart.Length)
+            [IO.File]::WriteAllText((Join-Path $project $file), "$templatePart`n")
+        }
         $resetCommitted = [bool](git status --porcelain)
         if ($resetCommitted) { git add -A; git commit -q --no-verify -m 'Reset template-owned files'; if ($LASTEXITCODE) { throw 'Committing the reset failed.' } }
 
@@ -213,13 +225,19 @@ try {
         try {
             if (Test-Path -LiteralPath $projectIgnore) {
                 New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
-                [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$beginCopy`n$([IO.File]::ReadAllText($projectIgnore))`n$endCopy`n")
+                [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$beginCopy`n$([IO.File]::ReadAllText($projectIgnore))$($keptLines['.gitignore'])`n$endCopy`n")
             }
             Invoke-Copier @copierArgs
         }
         finally {
             if ($null -eq $excludeBefore) { Remove-Item -LiteralPath $infoExclude -Force -ErrorAction SilentlyContinue }
             else { [IO.File]::WriteAllText($infoExclude, $excludeBefore) }
+        }
+
+        # Put the kept lines back at the end, after any conflict.
+        foreach ($file in $keptLines.Keys) {
+            $full = Join-Path $project $file
+            if (Test-Path -LiteralPath $full) { [IO.File]::WriteAllText($full, [IO.File]::ReadAllText($full).TrimEnd("`r", "`n") + $keptLines[$file]) }
         }
 
         # Drop the reset commit but keep its changes, and any conflict, in the index and the working tree.
