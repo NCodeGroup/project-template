@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.18.3
+
+- `Update-Project.ps1` sets aside the lines an adopted project kept from its own `.gitignore`, `.gitattributes` or `.editorconfig` (the block under `# Kept from this repository's own <file> when it adopted the project template`, which `Adopt-Project.ps1` puts at the end of the file) while Copier merges, then puts them back at the end. Before, a template change to the file's last line, such as v0.15.0's `secrets/` → `/secrets/` in a `stack: other` project, stopped the update with a conflict that held the project's whole kept block, so taking the template's side deleted every rule the project kept. A conflict in the template's lines now ends before the kept block. A project gets the fix with its update to this version or later, because its current script hands the update over to this version's script. An update pinned with `-Ref` to an earlier version runs that version's script and still conflicts: see v0.15.0.
+
 ## v0.18.2
 
 - `Update-Project.ps1` exits 0 when an update succeeds, with `-NoCommit` too. Before, run with `&` (as `/plan-template-update`'s trial run and its first step do), a `-NoCommit` update that showed a template change to a project-owned file left `$LASTEXITCODE` at 1, from the git commands that show the change, so a caller or plan step that judged the run by its exit code saw a failure. `pwsh -File` and committing updates weren't affected. A project gets the fix with its update to this version, because its current script hands the update over to this version's script and passes on its exit code.
@@ -25,7 +29,7 @@ What each template version changes for the projects made from it. A project move
 
 ## v0.15.0
 
-- `.gitignore` ignores only the `secrets/` folder at the repository root (`/secrets/`), and `.claude/settings.json` denies Claude Code reading only that folder (`Read(/secrets/**)`). Before, both matched a `secrets/` folder at any depth, and on Windows also `Secrets/`, so new source files in a folder such as `src/App/Endpoints/Secrets/` were silently left out of commits and agents couldn't read them. `.env` files are still ignored and denied at any depth. Both files are merged on update. A project that keeps secret files in a nested `secrets/` folder should move them to the root `secrets/` folder, or add that folder's path to `.gitignore`, before updating, because the update stops ignoring it.
+- `.gitignore` ignores only the `secrets/` folder at the repository root (`/secrets/`), and `.claude/settings.json` denies Claude Code reading only that folder (`Read(/secrets/**)`). Before, both matched a `secrets/` folder at any depth, and on Windows also `Secrets/`, so new source files in a folder such as `src/App/Endpoints/Secrets/` were silently left out of commits and agents couldn't read them. `.env` files are still ignored and denied at any depth. Both files are merged on update. A project that keeps secret files in a nested `secrets/` folder should move them to the root `secrets/` folder, or add that folder's path to `.gitignore`, before updating, because the update stops ignoring it. An adopted `stack: other` project's `.gitignore` ends with `secrets/` followed by the block kept at adoption (`# Kept from this repository's own .gitignore when it adopted the project template`). Its update to a version from v0.15.0 through v0.18.2 stops on a conflict in `.gitignore`. To resolve it, change `secrets/` to `/secrets/` and keep the whole kept block below it; taking the template's side ("after updating") deletes every rule the project kept. Updating to v0.18.3 or later doesn't conflict.
 
 ## v0.14.1
 

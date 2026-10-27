@@ -223,7 +223,7 @@ A merged file is rebuilt by type:
 
 | File | Rebuilt as |
 |---|---|
-| `.gitignore`, `.gitattributes`, `.editorconfig` | The template's file, then the repository's lines under a comment (`.editorconfig` drops its `root =` lines) |
+| `.gitignore`, `.gitattributes`, `.editorconfig` | The template's file, then the repository's lines under a comment (`.editorconfig` drops its `root =` lines). An update sets those lines aside while Copier merges and puts them back at the end, so a template change never conflicts with them |
 | `*.json` | The two merged key by key in the template's order; the repository's values win and lists are combined. Comments are dropped, and the report says so |
 | `*.props` | The template's file with the repository's elements added before `</Project>` |
 | Anything else, such as YAML CI and Dependabot files | The repository's file, kept. A template change to it conflicts on update: keep your side |

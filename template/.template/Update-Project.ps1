@@ -16,7 +16,9 @@
                       restored; the script lists both.
       Merged          Files whose tools can't include a second file (copier.yml's _merged_files). The template's
                       changes are merged with the project's edits, like a Git merge; the same lines changed on
-                      both sides conflict.
+                      both sides conflict. An adopted project's own lines at the end of .gitignore,
+                      .gitattributes and .editorconfig are set aside while Copier merges, so they never
+                      conflict.
       Project-owned   Written once, never touched again (copier.yml's _skip_if_exists). When the template changed
                       one since the project's version, the script shows the template's change, rendered with
                       the project's answers, leaving out what the project's file already has.
