@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.24.1
+
+- With `protect: hook`, `.githooks/pre-push` used to let every push through when `awk` or `tr` was missing from `PATH`. It now needs only `awk` and refuses the push when `awk` is missing or fails. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.24.0
 
 - No change for projects made from the template. `workflow/New-PlanPrompt.ps1 -List` now shows each template's targets, the installer targets its `targets` field names (all three without it), so Claude Code-only templates such as `run-issues` stand out.
