@@ -253,12 +253,12 @@ if ($args[0] -eq 'issue' -and $args[1] -eq 'view') {
 exit 1
 '@
 }
-function Set-MergedRequest([string]$Merge, [string]$Head, [switch]$GitHub, [string]$Newer = '') {
+function Set-MergedRequest([string]$Merge, [string]$Head, [switch]$GitHub, [string]$Newer = '', [string]$Base = 'main') {
     $item = if ($GitHub) {
-        @{ number = 6; state = 'MERGED'; mergeCommit = @{ oid = $Merge }; headRefOid = $Head }
+        @{ number = 6; state = 'MERGED'; mergeCommit = @{ oid = $Merge }; headRefOid = $Head; baseRefName = $Base }
     }
     else {
-        @{ iid = 5; state = 'merged'; merge_commit_sha = $null; squash_commit_sha = $Merge; sha = $Head }
+        @{ iid = 5; state = 'merged'; merge_commit_sha = $null; squash_commit_sha = $Merge; sha = $Head; target_branch = $Base }
     }
     $items = @($item)
     if ($Newer) {
@@ -333,6 +333,19 @@ try {
     Set-MergedRequest $gl.Squash $gl.Head -Newer 'opened'
     $r = Test-State (Get-State $gl.Repo) @{ pr = '8 OPEN'; landed = 'no'; next = 'wait pull request #8 is open: run ship-plan again once it merges' }
     Check 'next: a newer open merge request is waited for when no merged one holds HEAD' $r.Ok $r.Detail
+
+    Set-MergedRequest $gl.Squash $gl.Head -Base 'release'
+    $r = Test-State (Get-State $gl.Repo) @{ landed = 'no'; next = 'none pull request #5 merged into release, not main: this branch lands once release reaches main; run ship-plan again then' }
+    Check 'next: a merge request merged into another branch waits for that branch' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $gl.Repo 'AGENTS.md') "# Demo`n`n## Landing`n`n- integrate: direct`n"
+    Push-Location $gl.Repo
+    try { Invoke-Git add AGENTS.md; Invoke-Git commit -q -m 'Add AGENTS.md' }
+    finally { Pop-Location }
+    Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo))
+    Set-MergedRequest $gl.Squash $gl.Head
+    $r = Test-State (Get-State $gl.Repo) @{ landed = 'no'; next = 'ship-plan' }
+    Check 'next: with integrate direct, a merged merge request without HEAD leaves the branch to ship-plan' $r.Ok $r.Detail
 
     # 15. A merged pull request on a GitHub origin.
     $gh = New-MergedClone (Join-Path $Work 'github.com')
