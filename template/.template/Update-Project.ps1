@@ -276,6 +276,7 @@ try {
         git add -A
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
         if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
+        if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
     }
     # Enable the template's versioned hooks in this clone, unless it already runs hooks another way (Get-GitHooksSetup).
     if ((Test-Path -LiteralPath .githooks) -and -not (git config --get core.hooksPath)) {
