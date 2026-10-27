@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.21.1
+
+- No change for projects made from the template. This repository's own scripts moved: the nine `Test-*.ps1` tests into `tests/` and `Update-Template.ps1` into `tools/`, so the root holds only `New-Project.ps1`, `Adopt-Project.ps1` and `Update-Project.ps1`, the scripts people run. Run them as `.\tests\Test-Template.ps1` and `.\tools\Update-Template.ps1`. The scripts, their checks and CI are otherwise the same.
+
 ## v0.21.0
 
 - New answer `project_owned_files`: the merged files a project owns. `Update-Project.ps1` leaves them alone and shows the template's changes to them, rendered with the project's answers and leaving out what the file already has, as it does for project-owned files. A project that replaced a merged file, such as its own `.github/workflows/ci.yml`, sets it in an update to v0.21.0 or later: `.\.template\Update-Project.ps1 -Data @{ project_owned_files = '.github/workflows/ci.yml' }`. Before, the rewritten file shared almost no lines with the template, so Copier's merge paired the template's changed lines with unrelated project lines, and taking the template's side broke the workflow. Only merged files can be named; any other file stops the update before it changes anything. `-Data @{ project_owned_files = @() }` gives them back to the merge (Copier records the empty list as `project_owned_files: []`, which means no owned files). New projects aren't asked.
