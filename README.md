@@ -72,7 +72,7 @@ The project edits them freely, and later template changes merge in: an update ke
 | `Directory.Packages.props` (.NET) | Central package management: versions in one place |
 | `global.json` (.NET) | The .NET SDK version (10.0.402, rolling forward to newer feature bands); CI installs exactly what it names |
 
-A project that replaced a merged file with its own, such as a CI workflow of its own, makes it project-owned: `.\.template\Update-Project.ps1 -Data @{ project_owned_files = '.github/workflows/ci.yml' }`, or a list of several files. Updates then leave the file alone and show the template's changes to it, as for the project-owned files below. Without the answer, a rewritten file shares almost no lines with the template, so the template's changes conflict in unrelated places. Only merged files can be named; any other file stops the update before it changes anything. `-Data @{ project_owned_files = @() }` gives the files back to the merge.
+A project that replaced a merged file with its own, such as a CI workflow of its own, makes it project-owned: `.\.template\Update-Project.ps1 -Data @{ project_owned_files = '.github/workflows/ci.yml' }`, or a list of several files. `Adopt-Project.ps1` takes the same answer: `-Data @{ project_owned_files = '.github/workflows/ci.yml' }` keeps the repository's own file exactly as it is. Updates then leave the file alone and show the template's changes to it, as for the project-owned files below. Without the answer, a rewritten file shares almost no lines with the template, so the template's changes conflict in unrelated places. Only merged files can be named; any other file stops the update before it changes anything. `-Data @{ project_owned_files = @() }` gives the files back to the merge.
 
 ### Project-Owned Files
 
@@ -178,6 +178,7 @@ To bring an existing repository under the template, use [Adopt-Project.ps1](#ado
 ```powershell
 .\Adopt-Project.ps1 -Path C:\src\buffers                                                    # works out the answers, adopts, verifies, commits
 .\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot' }    # for a public or shared repository with no Copilot or Hybrid agent files: no Hybrid agents, which use the shack PC's private model
+.\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ project_owned_files = '.github/workflows/ci.yml' }  # keeps the repository's own CI workflow as it is, and later updates show the template's changes to it
 .\Adopt-Project.ps1 -Path C:\src\buffers -NoCommit                                          # stages the result for review instead
 ```
 
@@ -228,10 +229,11 @@ A merged file is rebuilt by type:
 
 | File | Rebuilt as |
 |---|---|
+| A file the `project_owned_files` answer names, such as `-Data @{ project_owned_files = '.github/workflows/ci.yml' }` | The repository's file, exactly as it is; Copier doesn't touch it, and a file the repository lacks isn't created. Later updates leave it alone and show the template's changes to it ([Merged Files](#merged-files)). Only merged files can be named; any other file stops the adoption before it changes anything |
 | `.gitignore`, `.gitattributes`, `.editorconfig` | The template's file, then the repository's lines under a comment (`.editorconfig` drops its `root =` lines). An update sets those lines aside while Copier merges and puts them back at the end, so a template change never conflicts with them |
 | `*.json` | The two merged key by key in the template's order; the repository's values win and lists are combined. Comments are dropped, and the report says so |
 | `*.props` | The template's file with the repository's elements added before `</Project>` |
-| Anything else, such as YAML CI and Dependabot files | The repository's file, kept. A template change to it conflicts on update: keep your side |
+| Anything else, such as YAML CI and Dependabot files | The repository's file, kept. A template change to it conflicts on update: keep your side; or name it in `project_owned_files` when adopting |
 
 A .NET repository without `Directory.Packages.props` moves to central package management: each `Version` goes from the project files into `Directory.Packages.props`. When projects disagree on a version, the highest wins and the report says so.
 
