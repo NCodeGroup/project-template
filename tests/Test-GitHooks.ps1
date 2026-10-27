@@ -1,12 +1,14 @@
 <#
 .SYNOPSIS
-    Test the template's Git hooks: .githooks/commit-msg run through pre-commit, and the note the update and adoption scripts print when they can't enable .githooks.
+    Test the template's Git hooks: .githooks/commit-msg run through pre-commit, .githooks/pre-push refusing a push to the default branch under protect: hook, and the note the update and adoption scripts print when they can't enable .githooks.
 
 .DESCRIPTION
     Builds a fixture repository that runs .githooks/commit-msg as a pre-commit script hook and checks that the hook
     strips the agent attribution from a commit message. Then checks, for the copy of Get-GitHooksSetup in
     .template\Update-Project.ps1 and the one in adopt\Adoption.psm1, whether .githooks is enabled and which note is printed in
-    a clone with other hooks, with pre-commit's hooks or config, and with none. Prints PASS or FAIL per check and exits 1 on any
+    a clone with other hooks, with pre-commit's hooks or config, and with none. Then pushes from a fixture clone to a local bare
+    remote and checks that .githooks/pre-push refuses a push to main only while AGENTS.md's Landing section says protect: hook,
+    and lets a branch and a tag through. Prints PASS or FAIL per check and exits 1 on any
     failure.
 
 .PARAMETER Work
@@ -36,6 +38,11 @@ function Invoke-PreCommit {
     if (Get-Command pre-commit -ErrorAction SilentlyContinue) { & pre-commit @args }
     elseif (Get-Command uvx -ErrorAction SilentlyContinue) { & uvx pre-commit @args }
     else { throw 'pre-commit not found. Install it with: uv tool install pre-commit' }
+}
+# A refused push is the result under test, so this doesn't check the exit code; the caller reads $LASTEXITCODE.
+function Invoke-Push {
+    $ErrorActionPreference = 'Continue'
+    git push -q origin @args 2>&1 | Out-String
 }
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
@@ -105,6 +112,37 @@ foreach ($name in $cases.Keys) {
     }
     finally { Pop-Location }
 }
+
+# pre-push: refuses a push to the default branch only when AGENTS.md's Landing section says protect: hook.
+$pushHooks = Join-Path $Work 'push-hooks'
+$pushRemote = Join-Path $Work 'push-remote.git'
+$pushClone = Join-Path $Work 'push-clone'
+New-Item -ItemType Directory -Force $pushHooks, $pushRemote, $pushClone | Out-Null
+Copy-Item -LiteralPath (Join-Path $repoRoot 'template\.githooks\pre-push') -Destination $pushHooks
+if (-not $IsWindows) { chmod +x (Join-Path $pushHooks 'pre-push') }
+Invoke-Git init -q --bare -b main $pushRemote
+Push-Location $pushClone
+try {
+    Invoke-Git init -q -b main
+    Invoke-Git config core.hooksPath $pushHooks
+    Invoke-Git remote add origin $pushRemote
+    $agents = "# Fixture`n`n## Landing`n`n- integrate: pull-request`n- protect: hook`n`n## Conventions`n"
+    [IO.File]::WriteAllText((Join-Path $pushClone 'AGENTS.md'), $agents, [Text.UTF8Encoding]::new($false))
+    Invoke-Git add AGENTS.md
+    Invoke-Git commit -q -m 'Protect main'
+    $mainOut = Invoke-Push HEAD:refs/heads/main; $mainCode = $LASTEXITCODE
+    $branchOut = Invoke-Push HEAD:refs/heads/feature; $branchCode = $LASTEXITCODE
+    Invoke-Git tag -a v1.0.0 -m v1.0.0
+    $tagOut = Invoke-Push refs/tags/v1.0.0; $tagCode = $LASTEXITCODE
+    [IO.File]::WriteAllText((Join-Path $pushClone 'AGENTS.md'), $agents.Replace('- protect: hook', '- protect: none'), [Text.UTF8Encoding]::new($false))
+    Invoke-Git commit -q -am 'Open main'
+    $openOut = Invoke-Push HEAD:refs/heads/main; $openCode = $LASTEXITCODE
+}
+finally { Pop-Location }
+
+Check 'pre-push: refuses a push to main when the Landing section says protect: hook' (($mainCode -ne 0) -and $mainOut.Contains('says protect: hook')) "exit $mainCode; $mainOut"
+Check 'pre-push: lets a branch and a tag through' (($branchCode -eq 0) -and ($tagCode -eq 0)) "branch exit $branchCode; $branchOut; tag exit $tagCode; $tagOut"
+Check 'pre-push: lets a push to main through without protect: hook' ($openCode -eq 0) "exit $openCode; $openOut"
 
 ''
 if ($failures.Count) { "Git hooks tests: FAILED ($($failures.Count))"; exit 1 }
