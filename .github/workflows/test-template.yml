@@ -31,6 +31,8 @@ jobs:
         run: ./tests/Test-Template.ps1
       - name: Test adopting existing repositories
         run: ./tests/Test-Adoption.ps1
+      - name: Test adopting a repository that owns a merged file
+        run: ./tests/Test-AdoptOwnedFiles.ps1
       - name: Test updating a project that ignores a large folder
         run: ./tests/Test-UpdateIgnoredFiles.ps1
       - name: Test the update's exit code
