@@ -5,10 +5,10 @@ The single source of truth for the plan-and-execute workflow: the prompt and age
 | File | Purpose |
 |---|---|
 | [templates/](templates/) | The 22 prompt templates, the 4 VS Code agent templates, the `plan-executor` subagent templates, the Claude Code plan-worktree sections, the issue label table, the `PLAN.md` format and an example plan ([templates/README.md](templates/README.md)) |
-| [Install-HybridWorkflow.ps1](Install-HybridWorkflow.ps1) | Generate Claude Code commands and the `plan-executor` subagent, VS Code prompt files and agents (Local and Copilot variants), and Copilot CLI skills and agent from `templates/` into a repository (`-Repo`) or the user profile (`-User`). Re-running overwrites what it generated. It records the template version — `git describe` of this clone — in `.template-version`: at the repository root, or in `~\.claude\` and `~\.copilot\` for `-User`; `-NoVersionMarker` skips it, as `Update-Template.ps1` does |
+| [Install-HybridWorkflow.ps1](Install-HybridWorkflow.ps1) | Generate Claude Code commands and the `plan-executor` subagent, VS Code prompt files and agents (Local and Copilot variants), and Copilot CLI skills and agent from `templates/` into a repository (`-Repo`) or the user profile (`-User`). Re-running overwrites what it generated. It records the template version — `git describe` of this clone — in `.template-version`: at the repository root, or in `~\.claude\` and `~\.copilot\` for `-User`; `-NoVersionMarker` skips it, as `tools/Update-Template.ps1` does |
 | [New-PlanPrompt.ps1](New-PlanPrompt.ps1) | Compose a template and a request into one prompt for any chat (`-List`, `-Copy`) |
 | [Invoke-PlanSteps.ps1](Invoke-PlanSteps.ps1) | Execute `PLAN.md` step by step (local or Copilot executor); verifies each Done-when command itself, commits per step (never `PLAN.md`), detects `[?]` escalations, and re-plans automatically with `-Replan claude\|copilot\|local` |
-| [Get-PlanState.ps1](Get-PlanState.ps1) | Print where the plan in a folder stands, as `key: value` lines (steps, review, landing policy, commits ahead and behind, pull request, tag, release, issue, other plan worktrees), and the workflow command to run next. `-NoFetch` skips its fetch of `origin`, for a call that an earlier call's fetch already covers. The installer copies it next to the commands; `ship-plan` and `continue-plan` run it; `Test-PlanState.ps1` tests it |
+| [Get-PlanState.ps1](Get-PlanState.ps1) | Print where the plan in a folder stands, as `key: value` lines (steps, review, landing policy, commits ahead and behind, pull request, tag, release, issue, other plan worktrees), and the workflow command to run next. `-NoFetch` skips its fetch of `origin`, for a call that an earlier call's fetch already covers. The installer copies it next to the commands; `ship-plan` and `continue-plan` run it; `../tests/Test-PlanState.ps1` tests it |
 | [HybridWorkflow.psm1](HybridWorkflow.psm1) | Shared template reader used by the three scripts above |
 
 ```powershell
@@ -18,8 +18,8 @@ The single source of truth for the plan-and-execute workflow: the prompt and age
 .\workflow\Invoke-PlanSteps.ps1 -Plan C:\src\qso-viewer\PLAN.md -Replan claude
 ```
 
-After changing a template, run `.\Update-Template.ps1` at the repository root to regenerate the copies under `template/` and this repository's own copies at its root, then `.\Test-Template.ps1`, which fails while they differ.
+After changing a template, run `.\tools\Update-Template.ps1` at the repository root to regenerate the copies under `template/` and this repository's own copies at its root, then `.\tests\Test-Template.ps1`, which fails while they differ.
 
 ---
 
-**TL;DR:** Edit the workflow only here: `templates/` holds every prompt and agent, `Install-HybridWorkflow.ps1` installs them anywhere, `New-PlanPrompt.ps1` composes them for a chat, and `Invoke-PlanSteps.ps1` runs a plan step by step. `Update-Template.ps1` turns them into the project template's generated files and this repository's own.
+**TL;DR:** Edit the workflow only here: `templates/` holds every prompt and agent, `Install-HybridWorkflow.ps1` installs them anywhere, `New-PlanPrompt.ps1` composes them for a chat, and `Invoke-PlanSteps.ps1` runs a plan step by step. `tools/Update-Template.ps1` turns them into the project template's generated files and this repository's own.

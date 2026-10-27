@@ -88,7 +88,7 @@ The four VS Code agent templates are variant-neutral; the installer renders each
 
 To add a prompt template, create `<name>.md` with the same four header fields, plus `worktree: create` when its Claude Code command writes a new `PLAN.md`, `worktree: join` when it works on one, or `worktree: finish` when it closes one; `New-PlanPrompt.ps1 -List` and the installer pick it up automatically.
 
-New projects get generated copies of these files under `template/` ([What a Project Gets](../../README.md#what-a-project-gets)). After changing a template here, run `Update-Template.ps1` and `Test-Template.ps1` at the repository root, then commit, tag and push a new version; projects pick it up with `Update-Project.ps1`.
+New projects get generated copies of these files under `template/` ([What a Project Gets](../../README.md#what-a-project-gets)). After changing a template here, run `tools/Update-Template.ps1` and `tests/Test-Template.ps1` from the repository root, then commit, tag and push a new version; projects pick it up with `Update-Project.ps1`.
 
 ---
 
