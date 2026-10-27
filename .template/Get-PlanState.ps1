@@ -12,6 +12,8 @@
     merge is the commit that request merged as, when it merged. issue is the plan's Issue: line, which names one
     issue or up to three separated by spaces; issue-states gives each one's state as <reference>=<state>, and
     issue-state is OPEN while any of them is open, CLOSED when all are closed, and unknown otherwise.
+    landing gives each key of AGENTS.md's Landing section that the workflow reads as key=value, with its default when
+    the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
 
 .PARAMETER Path
     A folder inside the repository. Defaults to the current folder.
@@ -32,6 +34,13 @@ $ErrorActionPreference = 'Stop'
 
 function Read-Lines([string]$File) {
     ([IO.File]::ReadAllText($File) -split "`r?`n")
+}
+
+function Get-LandingValue([string]$Text, [switch]$Spaced) {
+    $value = $Text.Trim()
+    if ($value -match '^`(.+)`$' -or $value -match '^"(.+)"$') { $value = $Matches[1].Trim() }
+    if (-not $Spaced) { $value = ($value -split '\s+')[0] }
+    $value
 }
 
 function Get-IssueState([string]$Ref, [string]$HostName) {
@@ -137,23 +146,22 @@ try {
     }
 
     # Landing policy from AGENTS.md
-    $integrate = 'pull-request'; $releasePolicy = 'none'; $changelog = 'CHANGELOG.md'
+    # Each key the workflow reads, with its default, in the order the landing line prints them.
+    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no' }
+    $spacedKeys = @()   # keys whose value keeps its spaces
     $agents = Join-Path $folder 'AGENTS.md'
     if (Test-Path -LiteralPath $agents) {
         $inLanding = $false
         foreach ($line in (Read-Lines $agents)) {
             if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
             if ($inLanding -and $line -match '^## ') { break }
-            if ($inLanding -and $line -match '^- (integrate|release|changelog):\s*(\S+)') {
-                switch ($Matches[1]) {
-                    'integrate' { $integrate = $Matches[2] }
-                    'release' { $releasePolicy = $Matches[2] }
-                    'changelog' { $changelog = $Matches[2] }
-                }
+            if ($inLanding -and $line -match '^- ([a-z-]+):\s*(\S.*)$' -and $policy.Contains($Matches[1])) {
+                $key = $Matches[1]; $policy[$key] = Get-LandingValue $Matches[2] -Spaced:($key -in $spacedKeys)
             }
         }
     }
-    $landing = "integrate=$integrate release=$releasePolicy changelog=$changelog"
+    $integrate = $policy['integrate']; $releasePolicy = $policy['release']
+    $landing = @(foreach ($key in $policy.Keys) { if ($policy[$key] -match '\s') { "$key=`"$($policy[$key])`"" } else { "$key=$($policy[$key])" } }) -join ' '
 
     # Position against the default branch
     $ahead = '-'; $behind = '-'; $landed = '-'
