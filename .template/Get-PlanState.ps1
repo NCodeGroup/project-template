@@ -5,10 +5,12 @@
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, ahead, behind, landed,
-    pr, tag, published, issue-state, dirty, plans and next. A fact that does not apply prints "-". With an origin
-    remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is yes when HEAD is on
-    the default branch, or when the branch's merged pull request or merge request has its merge commit there and its
-    head holds HEAD or has HEAD's tree.
+    pr, tag, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints "-". With
+    an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is yes when
+    HEAD is on the default branch, or when the branch's merged pull request or merge request has its merge commit
+    there and its head holds HEAD or has HEAD's tree. issue is the plan's Issue: line, which names one issue or up to
+    three separated by spaces; issue-states gives each one's state as <reference>=<state>, and issue-state is OPEN
+    while any of them is open, CLOSED when all are closed, and unknown otherwise.
 
 .PARAMETER Path
     A folder inside the repository. Defaults to the current folder.
@@ -29,6 +31,34 @@ $ErrorActionPreference = 'Stop'
 
 function Read-Lines([string]$File) {
     ([IO.File]::ReadAllText($File) -split "`r?`n")
+}
+
+function Get-IssueState([string]$Ref, [string]$HostName) {
+    $issueState = 'unknown'
+    $numbers = [regex]::Matches($Ref, '\d+')
+    if ($HostName -in 'github', 'gitlab' -and $numbers.Count -gt 0) {
+        $issueNumber = $numbers[$numbers.Count - 1].Value
+        $repoArgs = @()
+        if ($Ref -match '^(?<r>[^\s/#:]+/[^\s/#:]+)#\d+') { $repoArgs = @('--repo', $Matches['r']) }
+        elseif ($Ref -match '^https?://[^/\s]+/(?<r>.+?)/(?:-/)?issues/\d+') { $repoArgs = @('--repo', $Matches['r']) }
+        $cli = if ($HostName -eq 'github') { 'gh' } else { 'glab' }
+        if (Get-Command $cli -ErrorAction SilentlyContinue) {
+            if ($HostName -eq 'github') {
+                $out = (& gh issue view $issueNumber @repoArgs --json state --jq .state 2>$null | Out-String).Trim()
+                if ($LASTEXITCODE -eq 0 -and $out) { $issueState = $out.ToUpperInvariant() }
+            }
+            else {
+                $out = & glab issue view $issueNumber @repoArgs --output json 2>$null | Out-String
+                if ($LASTEXITCODE -eq 0) {
+                    try {
+                        $issueState = switch ("$(($out | ConvertFrom-Json -ErrorAction Stop).state)") { 'opened' { 'OPEN' } 'closed' { 'CLOSED' } default { 'unknown' } }
+                    }
+                    catch { $issueState = 'unknown' }
+                }
+            }
+        }
+    }
+    $issueState
 }
 
 Push-Location -LiteralPath $Path
@@ -190,32 +220,12 @@ try {
     }
 
     # State of the linked issue
-    $issueState = '-'
+    $issueState = '-'; $issueStates = '-'
     if ($issue -ne '-') {
-        $issueState = 'unknown'
-        $numbers = [regex]::Matches($issue, '\d+')
-        if ($hostName -in 'github', 'gitlab' -and $numbers.Count -gt 0) {
-            $issueNumber = $numbers[$numbers.Count - 1].Value
-            $repoArgs = @()
-            if ($issue -match '^(?<r>[^\s/#:]+/[^\s/#:]+)#\d+') { $repoArgs = @('--repo', $Matches['r']) }
-            elseif ($issue -match '^https?://[^/\s]+/(?<r>.+?)/(?:-/)?issues/\d+') { $repoArgs = @('--repo', $Matches['r']) }
-            $cli = if ($hostName -eq 'github') { 'gh' } else { 'glab' }
-            if (Get-Command $cli -ErrorAction SilentlyContinue) {
-                if ($hostName -eq 'github') {
-                    $out = (& gh issue view $issueNumber @repoArgs --json state --jq .state 2>$null | Out-String).Trim()
-                    if ($LASTEXITCODE -eq 0 -and $out) { $issueState = $out.ToUpperInvariant() }
-                }
-                else {
-                    $out = & glab issue view $issueNumber @repoArgs --output json 2>$null | Out-String
-                    if ($LASTEXITCODE -eq 0) {
-                        try {
-                            $issueState = switch ("$(($out | ConvertFrom-Json -ErrorAction Stop).state)") { 'opened' { 'OPEN' } 'closed' { 'CLOSED' } default { 'unknown' } }
-                        }
-                        catch { $issueState = 'unknown' }
-                    }
-                }
-            }
-        }
+        $refs = @($issue -split '[\s,]+' | Where-Object { $_ })
+        $states = @(foreach ($ref in $refs) { Get-IssueState $ref $hostName })
+        $issueStates = @(for ($i = 0; $i -lt $refs.Count; $i++) { "$($refs[$i])=$($states[$i])" }) -join ' '
+        $issueState = if ($states -contains 'OPEN') { 'OPEN' } elseif (@($states | Where-Object { $_ -ne 'CLOSED' }).Count -eq 0) { 'CLOSED' } else { 'unknown' }
     }
 
     $status = (& git status --porcelain 2>$null | Out-String).Trim()
@@ -286,6 +296,7 @@ try {
     Write-Output "tag: $tag"
     Write-Output "published: $published"
     Write-Output "issue-state: $issueState"
+    Write-Output "issue-states: $issueStates"
     Write-Output "dirty: $dirty"
     Write-Output "plans: $plans"
     Write-Output "next: $next"

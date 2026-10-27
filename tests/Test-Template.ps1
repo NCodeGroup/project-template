@@ -342,6 +342,12 @@ Check 'workflow: run-issues is a Claude Code command that gates on pull requests
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('open it as a draft', '--draft', 'has `- protect: hook` and `integrate` is `direct`'))
 $m += @(if (-not ((git -C $repoRoot ls-files -s template/.githooks/pre-push) -join '').StartsWith('100755')) { 'template/.githooks/pre-push: not executable in the index' })
 Check 'workflow: ship-plan opens a draft pull request when asked, and the pre-push hook is executable' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $issuePlanFiles ('up to three related issues named one by one', 'stop for the whole group', 'after the first issue the request names'))
+$m += @(Get-MissingText 'template\.claude\commands\plan-feature.md' ('Issue: #25 #24 #26', '- Issue: <reference>', 'largest raise', 'once to each issue on its'))
+$m += @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('line for each reference on the plan', 'issue-states', 'one comment per issue'))
+$m += @(Get-MissingText $triageFiles ('group:<n>', '/plan-issue #25 #24 #26'))
+$m += @(Get-MissingText $runFiles ('one entry per', 'A group stops together'))
+Check 'workflow: a plan covers up to three related issues: plan-issue takes them, the plan lists them, ship-plan closes each, triage groups them and run-issues runs a group as one entry' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.template\Get-PlanState.ps1', '.template\Get-PlanState.ps1') {
     $full = Join-Path $repoRoot $p
     if (-not (Test-Path -LiteralPath $full) -or [IO.File]::ReadAllText($full) -ne [IO.File]::ReadAllText((Join-Path $repoRoot 'workflow\Get-PlanState.ps1'))) { $p }

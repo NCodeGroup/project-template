@@ -5,9 +5,11 @@ model: opus
 effort: high
 disable-model-invocation: true
 ---
-Take these issues from plan to landing, one at a time, in this session:
+Take these issues from plan to landing, one queue entry at a time, in this session:
 
 $ARGUMENTS
+
+An entry is one issue, or a group of up to three related issues that triage-issues printed on one `/plan-issue` line, which gets one plan, worktree, pull request and release. Below, `<number>` is the number of an entry's first issue, which names its worktree `issue-<number>` and branch `worktree-issue-<number>`, and `<issues>` is the entry's references, such as `#25 #24 #26`.
 
 You coordinate. Each stage runs as the workflow's own command does: read that command's installed file, `.claude/commands/<name>.md` in the repository, or `~/.claude/commands/<name>.md` when the repository has none, and follow its body after the front matter, using the arguments named below wherever the body refers to its request or extra instructions. Delegate a stage to a subagent with the Agent tool, `subagent_type: general-purpose` and the `model` named below. A subagent doesn't see this conversation: give it the worktree's absolute path, the command file to follow, its arguments and the rules below, and tell it to work only in that folder.
 
@@ -15,7 +17,7 @@ You coordinate. Each stage runs as the workflow's own command does: read that co
 
 - Ask me once, at the start, and never again in this run. Where a command says to ask me, wait for me or stop to ask, stop that issue instead, as Stop an Issue says. A subagent that reaches such a point stops and returns the question.
 - Every change reaches the default branch through a pull request that I merge. Open each one as a draft. Never merge it, mark it ready for review, turn on auto-merge, resolve a review thread, force-push, or push with `--no-verify`.
-- Run one issue at a time, from planning until its pull request has merged and `finish-plan` has run, before starting the next. Each plan then starts from a default branch that holds the plans before it, so it sees their changes and picks the next version.
+- Run one entry at a time, from planning until its pull request has merged and `finish-plan` has run, before starting the next. Each plan then starts from a default branch that holds the plans before it, so it sees their changes and picks the next version.
 - Write every comment and reply to a temporary file outside the repository with your file-writing tool, pass the file to the command, and delete it afterwards.
 
 ## Start
@@ -29,24 +31,24 @@ You coordinate. Each stage runs as the workflow's own command does: read that co
 
    When none holds, stop. Say to require pull requests into `<default>` with a branch protection rule or ruleset, or, where the host can't, to add `- protect: hook` to the Landing section and run `git config core.hooksPath .githooks`, or, in a clone that uses pre-commit or hooks of its own, to save `#!/usr/bin/env sh` and `exec .githooks/pre-push "$@"` as `.git/hooks/pre-push`, or as `.git/hooks/pre-push.legacy` when pre-commit installed its pre-push hook.
 4. Build the queue:
-   - When the request names issues, such as `#42` or `#42 #43`, the queue is those issues in that order. Leave out an issue in another repository, such as `owner/repo#42`, and say so: this command lands only this repository's issues.
-   - Otherwise delegate `triage-issues` to a subagent with `model: opus` and the request as its arguments. The queue is the ready issues, in the order of the `/plan-issue` lines it returns.
-   - Leave out an issue whose folder `.claude/worktrees/issue-<number>` already exists: it holds a plan in progress, which `/continue-plan issue-<number>` shows.
-   - Keep the first five. When the queue is empty, say so and stop.
-5. Show the run summary, then ask me once whether to go ahead, and wait for my answer. The summary lists the queue (number, title, and the kind and size when triage gave them); that each issue gets a plan snapshot comment, a draft pull request that waits for my review and merge, and, after the merge, the tag, the release, the closing comment the Landing section names, and an issue labelled `follow-up` for each follow-up its plan lists, unless I answer that I want none filed; when the run stops an issue; and the cost: each issue takes about one plan-issue run on Opus, one orchestrate-plan run, up to three reviews, and one more round for each set of review comments I post. `git push` may still ask for its own approval.
+   - When the request names issues, such as `#42` or `#42 #43`, the queue is those issues in that order, one entry each. Leave out an issue in another repository, such as `owner/repo#42`, and say so: this command lands only this repository's issues.
+   - Otherwise delegate `triage-issues` to a subagent with `model: opus` and the request as its arguments. The queue has one entry per `/plan-issue` line it returns, in that order, holding the issues that line names.
+   - Leave out an entry when the folder `.claude/worktrees/issue-<number>` already exists for any of its issues: it holds a plan in progress, which `/continue-plan issue-<number>` shows.
+   - Keep the first five entries. When the queue is empty, say so and stop.
+5. Show the run summary, then ask me once whether to go ahead, and wait for my answer. The summary lists the queue, each entry with its issues (number, title, and the kind and size when triage gave them); that each issue gets a plan snapshot comment, a draft pull request that waits for my review and merge, and, after the merge, the tag, the release, a closing comment on each issue, and an issue labelled `follow-up` for each follow-up its plan lists, unless I answer that I want none filed; when the run stops an issue; and the cost: each issue takes about one plan-issue run on Opus, one orchestrate-plan run, up to three reviews, and one more round for each set of review comments I post. `git push` may still ask for its own approval.
 
 ## Run Each Issue
 
-For each issue in the queue, in order:
+For each entry in the queue, in order:
 
 1. Create its worktree from the main checkout. When `git check-ignore -q .claude/worktrees/` exits non-zero, append the line `.claude/worktrees/` to `info/exclude` in the folder that `git rev-parse --path-format=absolute --git-common-dir` prints. Run `git fetch origin`, then `git worktree add .claude/worktrees/issue-<number> -b worktree-issue-<number> origin/<default>`, and switch into the new worktree with the `EnterWorktree` tool and its `path`.
-2. Plan: delegate `plan-issue` to a subagent with `model: opus` and the arguments `#<number>`. Tell it that its `## Plan in a worktree of its own` section is done, because the worktree is `<worktree path>`: it skips that section's steps 1 to 3, never calls `EnterWorktree`, and does the rest, including the empty `Plan:` commit and the plan snapshot comment. When it returns without a `PLAN.md` in the worktree, stop this issue with its reason.
+2. Plan: delegate `plan-issue` to a subagent with `model: opus` and the arguments `<issues>`. Tell it that its `## Plan in a worktree of its own` section is done, because the worktree is `<worktree path>`: it skips that section's steps 1 to 3, never calls `EnterWorktree`, and does the rest, including the empty `Plan:` commit and the plan snapshot comment. When it returns without a `PLAN.md` in the worktree, stop this entry with its reason.
 3. Then run `pwsh -NoProfile -File .template/Get-PlanState.ps1` in the worktree after every stage, and act on its `next` value:
    - `orchestrate-plan`: follow `orchestrate-plan` yourself, in this session, so the `plan-executor` subagent executes each step. A subagent can't start subagents of its own.
    - `review-plan-diff`: delegate `review-plan-diff` to a subagent with `model: sonnet`. Tell it that its `## Work in the plan's worktree` section is done, because the plan's folder is `<worktree path>`, and never to call `EnterWorktree`. A review that adds fix steps makes `next` `orchestrate-plan` again. Count the reviews since the plan was written, or since the last round of my review comments: when the third review still adds fix steps, stop this issue.
    - `ship-plan`: follow `ship-plan` yourself with the extra instructions `draft`. The answer I gave at the start is the answer its item 4 asks for: show the landing summary and go on without asking. Unless I said at the start that I want none filed, file the follow-ups; when I did, tell it to treat every follow-up as one to drop.
    - A value starting with `wait`: the draft pull request is open. Go on with Review the Pull Request, below.
-   - `finish-plan`: call the `ExitWorktree` tool with `action: "keep"`, which returns the session to the main checkout, then follow `finish-plan` yourself with the arguments `issue-<number>`. The issue is done: go on with the next.
+   - `finish-plan`: call the `ExitWorktree` tool with `action: "keep"`, which returns the session to the main checkout, then follow `finish-plan` yourself with the arguments `issue-<number>`. The entry is done: go on with the next.
    - Anything else, such as `replan-step 2` or a value starting with `none`: stop this issue with that value.
 
    When a stage leaves `next` as it was, stop this issue: the stage made no progress.
@@ -66,10 +68,11 @@ While the draft pull request is open, I review it, comment on it, and, once I'm 
 ## Stop an Issue
 
 1. Return to the main checkout with the `ExitWorktree` tool and `action: "keep"`.
-2. When the issue stopped before its `PLAN.md` was written and `git -C <worktree path> status --porcelain` prints nothing, remove its worktree: `git worktree remove <worktree path>`, then `git branch -D worktree-issue-<number>`, which holds no commits of its own. Otherwise leave the worktree as it is, with its commits and `PLAN.md`, so `/continue-plan issue-<number>` in a new session picks it up.
+2. When the entry stopped before its `PLAN.md` was written and `git -C <worktree path> status --porcelain` prints nothing, remove its worktree: `git worktree remove <worktree path>`, then `git branch -D worktree-issue-<number>`, which holds no commits of its own. Otherwise leave the worktree as it is, with its commits and `PLAN.md`, so `/continue-plan issue-<number>` in a new session picks it up.
 3. Record the stage it reached, the reason and the question for me, then go on with the next issue.
 4. A stop in `ship-plan` ends the whole run instead, after items 1 and 3: a rejected push, or a tag or release that went wrong, would stop the next issue's landing too.
+5. A group stops together: stopping an entry stops all its issues, and they keep the one worktree.
 
 ## Report
 
-Finish with one table row per issue taken or left out: issue, title, result (landed, with its version or commit; stopped; or left out), the stage it reached, and the command that continues it, such as `/continue-plan issue-<number>` from a new session. Under the table, list each stopped issue's question, each review thread someone else started, and the follow-ups each landed plan filed, with their issue numbers, or didn't file.
+Finish with one table row per entry taken or left out: its issues, their titles, result (landed, with its version or commit; stopped; or left out), the stage it reached, and the command that continues it, such as `/continue-plan issue-<number>` from a new session. Under the table, list each stopped entry's question, each review thread someone else started, and the follow-ups each landed plan filed, with their issue numbers, or didn't file.
