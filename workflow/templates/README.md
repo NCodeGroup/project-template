@@ -26,6 +26,8 @@ Each prompt has a small front-matter header (`description`, `argument-hint`, `ro
 | [triage-issues.md](triage-issues.md) | analyst | Findings in chat | List a set of open issues (a label, a milestone, a search), judge which are ready to plan, and give the `/plan-issue` command for each |
 | [review-code.md](review-code.md) | reviewer | Findings in chat | Review a branch, PR or folder in depth |
 | [review-plan-diff.md](review-plan-diff.md) | reviewer | Fix steps in `PLAN.md` | Check the executor's work against the plan |
+| [ship-plan.md](ship-plan.md) | reviewer | Pushed commits or a pull request, a tag, a release, a closed issue | Land a reviewed plan as `AGENTS.md`'s Landing section says, in stages that skip what's done, so it can run again after a pull request merges |
+| [continue-plan.md](continue-plan.md) | reviewer | A table in chat | Show where each open plan stands and the one command to run next; changes nothing |
 | [finish-plan.md](finish-plan.md) | reviewer | Deleted `PLAN.md`, a fast-forwarded default branch | Close a plan whose work is pushed or merged: retire it, update the default branch, delete its branch and, in Claude Code, its worktree |
 | [execute-step.md](execute-step.md) | executor | Code changes or an escalation | Run one step on the cheap model; escalate with `[?]` instead of improvising |
 
@@ -42,7 +44,7 @@ In Claude Code only, each plan lives in its own git worktree, so several session
 | `worktree` | Section | Templates | The command |
 |---|---|---|---|
 | `create` | [_claude-worktree-create.md](_claude-worktree-create.md) | The `plan-*` templates and `handoff-plan` | Creates `.claude/worktrees/<name>/` with the `EnterWorktree` tool before it researches, plans there, keeps `PLAN.md` untracked, and marks the worktree with an empty `Plan: <title>` commit so Claude Code asks before removing it |
-| `join` | [_claude-worktree-join.md](_claude-worktree-join.md) | `orchestrate-plan`, `execute-step`, `replan-step`, `review-plan-diff` | Moves the session into the plan's worktree — the one its arguments name, or the only one — before it starts; with no plan worktree, works on a `PLAN.md` in the current checkout |
+| `join` | [_claude-worktree-join.md](_claude-worktree-join.md) | `orchestrate-plan`, `execute-step`, `replan-step`, `review-plan-diff`, `ship-plan` | Moves the session into the plan's worktree — the one its arguments name, or the only one — before it starts; with no plan worktree, works on a `PLAN.md` in the current checkout |
 | `finish` | [_claude-worktree-finish.md](_claude-worktree-finish.md) | `finish-plan` | Finds the plan's worktree — the session's own, the one its arguments name, or the only one — without entering it, removes it with the `ExitWorktree` tool or `git worktree remove`, clears a stale lock or a leftover folder, including one Windows' path limit left behind, and fast-forwards the default branch in the main checkout |
 
 A command without the field works where the session is. VS Code prompt files, Copilot CLI skills, the agents and `New-PlanPrompt.ps1` never get a section. The `plan-executor` subagent inherits the orchestrator's worktree; `isolation: worktree` would give it a worktree of its own instead.
@@ -82,6 +84,7 @@ The four VS Code agent templates are variant-neutral; the installer renders each
 | `{{PLANNER_AGENT}}`, `{{IMPLEMENTER_AGENT}}`, `{{REVIEWER_AGENT}}`, `{{ORCHESTRATOR_AGENT}}`, `{{EXECUTOR_LABEL}}` | Agent templates | Agent names and the executor description for the variant being installed |
 | `{{PLANNER_MODEL}}`, `{{REVIEWER_MODEL}}`, `{{EXECUTOR_MODEL}}`, `{{FAST_EXECUTOR_MODEL}}` | Agent front matter | `-PlannerModel`, `-ReviewerModel`, and `-LocalModel`/`-FastLocalModel` (Local) or `-CopilotExecutorModel`/`-CopilotFastModel` (Copilot) |
 | `{{CLAUDE_EXECUTOR_MODEL}}`, `{{CLI_EXECUTOR_MODEL}}` | `plan-executor` templates | `-ClaudeExecutorModel`, `-CliExecutorModel` |
+| `{{STATE_SCRIPT}}` | Prompt bodies | The command that runs `Get-PlanState.ps1`: `pwsh -NoProfile -File .template/Get-PlanState.ps1`, or the copy in `~\.claude\` or `~\.copilot\` for `-User` |
 
 To add a prompt template, create `<name>.md` with the same four header fields, plus `worktree: create` when its Claude Code command writes a new `PLAN.md`, `worktree: join` when it works on one, or `worktree: finish` when it closes one; `New-PlanPrompt.ps1 -List` and the installer pick it up automatically.
 
