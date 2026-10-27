@@ -48,7 +48,7 @@ A smaller, cheaper model — a local model or a lower-cost Copilot model — wil
 - Keep each step under about 25 lines. Split anything bigger.
 - Expect escalations: when a step needs a decision the plan didn't make, the executor stops, marks it `[?]` with an `- Escalation:` note, and the step comes back to you for re-planning. Every escalation costs a round trip, so settle decisions now.
 - When `AGENTS.md`'s `## Landing` section sets `release` to `tag` or `tag+release`, add the `Release:` line. Use the newest version tag (the first `git tag --list --sort=-version:refname` entry shaped like `v1.2.3` or `1.2.3`; `v0.1.0` when there is none), raised by one patch version for a bugfix, docs, tests or refactor plan, or by one minor version, with the patch set to 0, for any other plan. When the change breaks how existing users work, ask me which version to use. Make the last step add that version's section at the top of the changelog the Landing section names (`changelog`, default `CHANGELOG.md`), in the style of the entries below it.
-- Under `## Follow-ups`, list work you found that this plan doesn't do. `/ship-plan` offers to file each one as an issue.
+- Under `## Follow-ups`, list only work someone would plan as its own task: a real defect, gap or cleanup you found that this plan doesn't do. Write each as one line, `<short title>: <what to change, where (file or symbol), and why it matters>`, that a reader who never saw this plan understands; `/ship-plan` files each one as an issue labelled `follow-up` once the plan has landed. Leave out nits, style preferences, ideas for someday, and anything this plan should do itself (add a step for that): mention them in your reply instead.
 
 Use exactly this structure; the step runner parses the `### [ ] N.` headings and the `- Done when:` lines:
 
@@ -87,7 +87,7 @@ Release: <version, such as v1.4.0; only when AGENTS.md's Landing section release
 - <What the reviewer must confirm beyond the Done-when checks: behavior, edge cases, compatibility, performance.>
 
 ## Follow-ups
-- <Work found while planning that this plan doesn't do, one line each; leave the section out when there is none.>
+- <short title>: <what to change, where, and why it matters; one line each, only work worth its own issue; leave the section out when there is none.>
 ```
 
 ## When the Request Names an Issue
