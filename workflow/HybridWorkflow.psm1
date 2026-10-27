@@ -19,13 +19,16 @@ function Read-HybridTemplateFile([string]$Path) {
     [pscustomobject]@{ Meta = $meta; Body = $body.Trim() + "`n"; FrontMatter = $front }
 }
 
-# Prompt templates are the .md files with a "role" field; excludes agents, the plan format, the example and the README.
+# Prompt templates are the .md files with a "role" field; excludes agents, the plan format, the example and the README. Targets lists the installer targets a template goes to: its "targets" field, or all three.
 function Get-HybridTemplateList {
     Get-ChildItem (Get-HybridTemplateDir) -Filter '*.md' -File |
         Where-Object { $_.Name -notlike '*.agent.md' -and $_.Name -notlike '_*' -and $_.Name -notin 'README.md', 'PLAN.example.md' } |
         ForEach-Object {
             $t = Read-HybridTemplateFile $_.FullName
             if ($t.Meta.role) {
+                $targets = if ($t.Meta.targets) { @($t.Meta.targets -split '\s*,\s*') } else { @('VSCode', 'Claude', 'CopilotCli') }
+                $unknown = @($targets | Where-Object { $_ -notin 'VSCode', 'Claude', 'CopilotCli' })
+                if ($unknown) { throw "Template '$($_.BaseName)' has unknown targets: $($unknown -join ', '). Use VSCode, Claude or CopilotCli." }
                 [pscustomobject]@{
                     Name         = $_.BaseName
                     Role         = $t.Meta.role
@@ -33,6 +36,7 @@ function Get-HybridTemplateList {
                     ArgumentHint = $t.Meta.'argument-hint'
                     AppendFormat = $t.Meta.'append-format' -eq 'true'
                     Worktree     = $t.Meta.worktree
+                    Targets      = $targets
                     Body         = $t.Body
                 }
             }
