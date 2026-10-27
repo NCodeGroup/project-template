@@ -9,7 +9,7 @@
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in %TEMP%\project-template-test, so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab and checks YAML with
     PyYAML through uv. Also checks that the generated workflow files under template/ and at the repository root
-    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that run-issues reaches only Claude Code, and that the workflow scripts run. Prints PASS or FAIL
+    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that run-issues reaches only Claude Code, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
 .EXAMPLE
@@ -377,6 +377,7 @@ Check 'workflow: template/ and this repository have no installer-written .templa
 $list = & (Join-Path $workflow 'New-PlanPrompt.ps1') -List | Out-String
 $prompt = & (Join-Path $workflow 'New-PlanPrompt.ps1') plan-feature 'Add CSV export' | Out-String
 Check 'workflow: New-PlanPrompt lists the templates and composes a prompt' ($list.Contains('execute-step') -and $prompt.Contains('Add CSV export') -and $prompt.Contains('### [ ] 1.'))
+Check 'workflow: New-PlanPrompt -List shows each template''s targets' ($list -match '(?m)^run-issues\s+orchestrator\s+Claude\s{2,}\S' -and $list -match '(?m)^execute-step\s+executor\s+VSCode, Claude, CopilotCli\s')
 $runnerRepo = Join-Path $Work 'runner'
 New-Item -ItemType Directory -Force $runnerRepo | Out-Null
 Copy-Item -LiteralPath (Join-Path $workflow 'templates\PLAN.example.md') (Join-Path $runnerRepo 'PLAN.md')

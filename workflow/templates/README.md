@@ -4,7 +4,7 @@ Source templates for the plan-and-execute workflow — the single source of trut
 
 ## Prompt Templates
 
-Each prompt has a small front-matter header (`description`, `argument-hint`, `role`, `append-format`, and optionally `worktree` and `targets`) and a body with one `{{INPUT}}` placeholder for your request. Planning templates with `append-format: true` get [_plan-format.md](_plan-format.md) appended, so every plan comes out in the same parseable shape. `targets: Claude` limits a template to the installer targets it names, comma-separated from `VSCode`, `Claude` and `CopilotCli`; without it a template goes to all three.
+Each prompt has a small front-matter header (`description`, `argument-hint`, `role`, `append-format`, and optionally `worktree` and `targets`) and a body with one `{{INPUT}}` placeholder for your request. Planning templates with `append-format: true` get [_plan-format.md](_plan-format.md) appended, so every plan comes out in the same parseable shape. `targets: Claude` limits a template to the installer targets it names, comma-separated from `VSCode`, `Claude` and `CopilotCli`; without it a template goes to all three. `New-PlanPrompt.ps1 -List` shows each template's targets.
 
 | Template | Role | Produces | Use it to |
 |---|---|---|---|
