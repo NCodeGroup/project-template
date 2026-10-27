@@ -277,12 +277,14 @@ try {
     $fromRendered = $null
     $renderedFrom = Join-Path $scratch 'rendered\from'
     if ($from -ne $to) {
-        $changedMerged = @(foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
-                $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
-                if ($file -in $merged -and $file -notin $ownedMerged -and (Test-Path -LiteralPath $file -PathType Leaf)) { $file }
-            })
-        if ($changedMerged) { $fromRendered = Invoke-TemplateRender $from $renderedFrom }
-        if ($fromRendered) { $rewritten = @(Get-RewrittenFile $changedMerged $renderedFrom) }
+        try {
+            $changedMerged = @(foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
+                    $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
+                    if ($file -in $merged -and $file -notin $ownedMerged -and (Test-Path -LiteralPath $file -PathType Leaf)) { $file }
+                })
+            if ($changedMerged) { $fromRendered = Invoke-TemplateRender $from $renderedFrom }
+            if ($fromRendered) { $rewritten = @(Get-RewrittenFile $changedMerged $renderedFrom) }
+        } catch { $rewritten = @() }
     }
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here.
