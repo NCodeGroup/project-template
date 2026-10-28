@@ -220,7 +220,25 @@ function Get-GitHooksSetup {
     [pscustomobject]@{ HooksPath = -not $preCommit -and -not $ownHooks; Note = if ($parts) { $parts -join "`n" } else { $null } }
 }
 
-$project = (Resolve-Path -LiteralPath $Path).Path
+# The changelog AGENTS.md's Landing section names (CHANGELOG.md by default) as File, and as Range the version tags merged into HEAD
+# that have no release heading in it: <oldest>..<newest>, the tag alone, or -. workflow/Get-PlanState.ps1 prints Range as changelog-backfill.
+function Get-ChangelogBackfill {
+    $file = 'CHANGELOG.md'
+    if (Test-Path -LiteralPath AGENTS.md) {
+        $inLanding = $false
+        foreach ($line in Get-Content -LiteralPath AGENTS.md) {
+            if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
+            if ($inLanding -and $line -match '^## ') { break }
+            if ($inLanding -and $line -match '^- changelog:\s*`?([^`\s]+)') { $file = $Matches[1]; break }
+        }
+    }
+    $listed = @(if (Test-Path -LiteralPath $file -PathType Leaf) { foreach ($line in Get-Content -LiteralPath $file) { if ($line -match '^## \[?v?(\d+\.\d+\.\d+)\]?(?: - \d{4}-\d{2}-\d{2})?(?: \[YANKED\])?\s*$') { [version]$Matches[1] } } })
+    $missing = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -notin $listed } | Sort-Object { [version]($_ -replace '^v') })
+    $range = if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0] } else { "$($missing[0])..$($missing[-1])" }
+    [pscustomobject]@{ File = $file; Range = $range }
+}
+
+$project =(Resolve-Path -LiteralPath $Path).Path
 $ownClone = -not $TemplateClone
 $scratch = Join-Path ([IO.Path]::GetTempPath()) "project-template-update-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
 $outputEncoding = [Console]::OutputEncoding
