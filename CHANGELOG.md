@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.39.1] - 2026-10-28
+
+### Fixed
+
+- The plan executor runs each step's Done-when command in a child `pwsh` that prints `exit=<code>`, judges the step by that line alone, and quotes it in its report. Claude Code's PowerShell tool shows nothing for a command that passes, so executors took an empty output as a pass or checked the condition their own way. It applies to Claude Code's `plan-executor` subagent and `/execute-step`, the Copilot implementer agents and `execute-step` prompt files in VS Code, and the Copilot CLI `plan-executor` agent and `execute-step` skill. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## [0.39.0] - 2026-10-28
 
 ### Added
@@ -487,7 +493,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/polewskm/project-template/compare/v0.39.0...HEAD
+[unreleased]: https://github.com/polewskm/project-template/compare/v0.39.1...HEAD
+[0.39.1]: https://github.com/polewskm/project-template/compare/v0.39.0...v0.39.1
 [0.39.0]: https://github.com/polewskm/project-template/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/polewskm/project-template/compare/v0.37.1...v0.38.0
 [0.37.1]: https://github.com/polewskm/project-template/compare/v0.37.0...v0.37.1
