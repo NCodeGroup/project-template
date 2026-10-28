@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
     Test that a project's update exits 0 when it succeeds: staged with -NoCommit while it shows a project-owned
-    change, and with nothing to update.
+    change, and with nothing to update. It also checks that the update asks to backfill the changelog from a tag it
+    has no section for.
 
 .DESCRIPTION
     Run with &, the script used to leave $LASTEXITCODE at 1 from the git commands that show a project-owned change.
@@ -56,7 +57,7 @@ $handoffMarker = 'Update-Project.ps1 from v0.2.0 is running.'
 $project = Join-Path $Work 'project'
 Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test Exit Code' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tpl $project
 Push-Location $project
-try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project' }
+try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'; Invoke-Git tag v1.0.0 }
 finally { Pop-Location }
 
 # v0.2.0 changes a heading in README.md, which the project owns and the update shows but doesn't apply, and ships a new
@@ -79,6 +80,7 @@ try {
     $output = $lines -join "`n"
     Check 'fixture: the update hands over to the v0.2.0 script and shows a README.md change the project lacks' ($output.Contains($handoffMarker) -and $output -match '(?m)^  README\.md:\r?$' -and $output.Contains('+## AI-Assisted Workflow, Updated')) $output.Trim()
     Check 'update -NoCommit: stages the update and exits 0' (($exitCode -eq 0) -and $output.Contains('Staged for review') -and ((git rev-parse HEAD) -eq $head) -and (@(git diff --cached --name-only) -contains '.copier-answers.yml')) $output.Trim()
+    Check 'update: asks to backfill the changelog from a tag it has no section for' ($output.Contains('/plan-migration Backfill CHANGELOG.md from the releases v1.0.0')) $output.Trim()
 
     Invoke-Git commit -q -m 'Update from project-template v0.2.0'
     $lines = [Collections.Generic.List[string]]::new()

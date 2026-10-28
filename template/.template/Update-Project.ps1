@@ -44,6 +44,9 @@
     runs .githooks/commit-msg. With protect: hook in AGENTS.md's Landing section, it also says how to run
     .githooks/pre-push there.
 
+    When the project has version tags merged into HEAD that the changelog (AGENTS.md's Landing changelog key,
+    CHANGELOG.md by default) has no section for, it ends with a /plan-migration request to backfill them.
+
     Every version of this script accepts -Path, -Ref, -Data, -NoCommit, -TemplateClone and -HandedOff, so any
     version can hand over to any later one.
 
@@ -442,6 +445,14 @@ try {
         $rewritten | ForEach-Object { "  $_" }
         "To make them project-owned, so updates leave them alone and show the template's changes instead, run the update with (after abandoning it with git reset --hard; git clean -fd if it stops with a conflict below):"
         "  .\.template\Update-Project.ps1 -Data @{ project_owned_files = $((@($ownedMerged) + $rewritten | ForEach-Object { "'$_'" }) -join ', ') }"
+    }
+
+    # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).
+    $backfill = Get-ChangelogBackfill
+    if ($backfill.Range -ne '-') {
+        ''
+        "Version tags without a section in $($backfill.File): $($backfill.Range). To give the changelog the project's full release history, in the repository, run:"
+        "  /plan-migration Backfill $($backfill.File) from the releases $($backfill.Range)"
     }
     $message = "Update from project-template $to"
     if ($conflicts) {
