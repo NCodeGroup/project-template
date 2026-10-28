@@ -311,6 +311,10 @@ Check 'workflow: a re-plan that changes the plan posts what changed to its issue
 $m = @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\instructions\project-template.instructions.md.jinja') 'Closes <issue reference>')
 $m += @(Get-MissingText 'template\.github\instructions\project-template.instructions.md.jinja' 'Only the planning session calls')
 Check 'workflow: the review and the push name the issue the pull request closes' (-not $m) ($m -join '; ')
+$rulesJinja = 'template\.github\instructions\project-template.instructions.md.jinja'
+$m = @(Get-MissingText $rulesJinja ('`git log --stat origin/<branch>..` when `origin` has the branch you push to', '`git log --stat origin/<default branch>..` when it doesn''t yet', 'Compare with `origin`, not the branch''s upstream'))
+$m += @(if ([IO.File]::ReadAllText((Join-Path $repoRoot $rulesJinja)).Contains('@{u}')) { "${rulesJinja}: still lists the unpushed commits against the upstream" })
+Check 'workflow: the project rules list the unpushed commits against origin, not the upstream' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.claude\agents\plan-executor.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\agents\copilot-implementer.agent.md', 'template\.github\agents\local-implementer.agent.md', 'template\.github\skills\execute-step\SKILL.md', 'template\.github\prompts\execute-step.prompt.md', 'template\.github\prompts\execute-step-local.prompt.md') { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); if ($t.Contains('gh issue') -or $t.Contains('glab issue')) { $p } })
 Check 'workflow: no executor calls gh or glab on the issue' (-not $m) ($m -join ', ')
 $issuePlanFiles = 'template\.claude\commands\plan-issue.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-issue\SKILL.md'
