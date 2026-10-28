@@ -445,6 +445,18 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - Copilot's step prompt is `execute-step.prompt.md`, like its `execute-step` skill; with the local model too, the local model's is `execute-step-local.prompt.md`. `Adopt-Project.ps1` deletes an older `execute-step-copilot.prompt.md`.
 - When `Update-Project.ps1` can't read the template, it says that updating needs read access to it, and that the project still works without it.
 
+## [0.1.0] - 2026-10-24
+
+### Added
+
+- The first release: a Copier template for repositories set up for plan-then-execute AI coding. Claude Opus plans each change into `PLAN.md`, a cheaper model executes it one verified step at a time, and any step that needs a decision goes back to Opus. The base works for any language, a .NET layer adds shared build settings and C# conventions, and projects live on GitHub (the default) or GitLab.
+- `New-Project.ps1` asks the questions (`project_name`, `project_description`, `stack`, `git_host`, `author_name` for .NET, `build_command` and `test_command`), creates the project and makes its first commit. With `-CreateRemote` it also creates the repository, public unless `-Visibility` says otherwise, and pushes.
+- Every file has one owner. Template-owned files are replaced on update. Merged files, the settings whose tools can't include a second file, take the template's changes merged with the project's edits. Project-owned files, `AGENTS.md`, `README.md` and, for .NET, `Directory.Build.props`, are never touched.
+- `.template/Update-Project.ps1`, in every project, updates it to the newest template version, handing the update over to that version's copy of itself.
+- The workflow: Claude Code commands (`/plan-feature`, `/plan-bugfix`, `/orchestrate-plan`, `/replan-step`, `/review-plan-diff`, …) with a `plan-executor` subagent, VS Code agents and prompt files whose Local Implementer runs steps on the shack PC's model, and the template's rules in `.github/instructions/project-template.instructions.md`, which `AGENTS.md` imports.
+- The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
+- CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
+
 [unreleased]: https://github.com/polewskm/project-template/compare/v0.37.0...HEAD
 [0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.2...v0.37.0
 [0.36.2]: https://github.com/polewskm/project-template/compare/v0.36.1...v0.36.2
@@ -502,3 +514,4 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 [0.4.0]: https://github.com/polewskm/project-template/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/polewskm/project-template/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/polewskm/project-template/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/polewskm/project-template/releases/tag/v0.1.0
