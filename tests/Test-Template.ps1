@@ -397,6 +397,10 @@ $m += @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.gi
 $m += @(Get-MissingText $triageFiles ('group:<n>', '/plan-issue #25 #24 #26'))
 $m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('one entry per', 'A group stops together'))
 Check 'workflow: a plan covers up to three related issues: plan-issue takes them, the plan lists them, ship-plan closes each, triage groups them and run-issues runs a group as one entry' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.github\prompts\plan-bugfix.prompt.md', 'template\.github\agents\copilot-planner.agent.md') ('Refs: <issue reference', 'put its reference on a `Refs:` line instead', 'and never to one on its `Refs:` line'))
+$m += @(Get-MissingText $issuePlanFiles 'it goes on the plan''s `Refs:` line')
+$m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('after `Issue:`, `Release:` and `Refs:`', 'one `Refs <issue reference>` line per reference on its `Refs:` line'))
+Check 'workflow: planners put an issue the request only refers to on a Refs: line and post no snapshot to it' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.template\Get-PlanState.ps1', '.template\Get-PlanState.ps1') {
     $full = Join-Path $repoRoot $p
     if (-not (Test-Path -LiteralPath $full) -or [IO.File]::ReadAllText($full) -ne [IO.File]::ReadAllText((Join-Path $repoRoot 'workflow\Get-PlanState.ps1'))) { $p }
