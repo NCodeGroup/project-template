@@ -163,6 +163,85 @@ switch ("$($args[0]) $($args[1])") {
         exit 0
     }
     'label create' { exit 0 }
+    'pr create' {
+        $head = Get-Option '--head'
+        if (-not $head) { $head = (git branch --show-current) }
+        $base = Get-Option '--base'
+        if (-not $base) { $base = 'main' }
+        $oid = ''
+        $originFile = Join-Path $hostDir 'origin.txt'
+        if (Test-Path -LiteralPath $originFile) {
+            $originPath = ([IO.File]::ReadAllText($originFile)).Trim()
+            $oid = git -C $originPath rev-parse --verify -q "refs/heads/$head"
+            if ($LASTEXITCODE -ne 0) { Stop-Call UNSUPPORTED "head branch $head is not on origin" }
+        }
+        $number = Get-NextNumber
+        $url = "https://github.com/fixture/app/pull/$number"
+        $prs = @(Read-Json 'prs.json' @())
+        $prs += @{
+            number = $number; title = (Get-Option '--title', '-t'); body = (Get-Body); state = 'OPEN'
+            isDraft = (Test-Flag '--draft', '-d'); headRefName = $head; baseRefName = $base
+            headRefOid = "$oid"; mergeCommit = $null; url = $url
+        }
+        Write-Json 'prs.json' $prs
+        $url
+        exit 0
+    }
+    'pr list' {
+        $state = Get-Option '--state'
+        $head = Get-Option '--head'
+        $found = @(@(Read-Json 'prs.json' @()) | Where-Object {
+            (-not $state -or $state -eq 'all' -or $_.state -eq $state.ToUpper()) -and (-not $head -or $_.headRefName -eq $head)
+        })
+        if (Get-Option '--json') { Write-Result $found }
+        else { foreach ($pr in $found) { "$($pr.number)`t$($pr.title)`t$($pr.headRefName)`t$(if ($pr.isDraft) { 'DRAFT' } else { 'OPEN' })" } }
+        exit 0
+    }
+    'pr view' {
+        $which = "$($args[2])".TrimStart('#')
+        if (-not $which -or $which.StartsWith('-')) { $which = (git branch --show-current) }
+        $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $which -or $_.headRefName -eq $which } | Select-Object -First 1
+        if (-not $pr) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+        $pr.comments = @(@(Read-Json 'comments.json' @()) | Where-Object { $_.kind -eq 'pr' -and "$($_.number)" -eq "$($pr.number)" } |
+            ForEach-Object { @{ author = $_.author; body = $_.body; url = $_.url } })
+        $pr.reviews = @()
+        $pr.reviewDecision = ''
+        Write-Result $pr
+        exit 0
+    }
+    'pr comment' {
+        $number = [int]"$($args[2])".TrimStart('#')
+        Add-Comment 'pr' $number 'pull'
+        exit 0
+    }
+    'pr edit' {
+        $number = "$($args[2])".TrimStart('#')
+        $prs = @(Read-Json 'prs.json' @())
+        $pr = $prs | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+        if (-not $pr) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+        $pr.body = Get-Body
+        Write-Json 'prs.json' $prs
+        $pr.url
+        exit 0
+    }
+    'api graphql' {
+        $query = Get-Field 'query'
+        $number = Get-Field 'number'
+        $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq "$number" } | Select-Object -First 1
+        if ($query -and $query.Contains('addPullRequestReviewThreadReply')) {
+            $prUrl = if ($pr) { $pr.url } else { 'https://github.com/fixture/app/pull/0' }
+            Write-Result @{ data = @{ addPullRequestReviewThreadReply = @{ comment = @{ url = "$prUrl#discussion_r1" } } } }
+            exit 0
+        }
+        if (-not $pr) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+        $nodes = @(@(Read-Json 'comments.json' @()) | Where-Object { $_.kind -eq 'pr' -and "$($_.number)" -eq "$($pr.number)" } |
+            ForEach-Object { @{ author = $_.author; body = $_.body; url = $_.url } })
+        Write-Result @{ data = @{ repository = @{ pullRequest = @{
+            state = $pr.state; isDraft = $pr.isDraft
+            comments = @{ nodes = $nodes }; reviews = @{ nodes = @() }; reviewThreads = @{ nodes = @() }
+        } } } }
+        exit 0
+    }
     'pr merge' { Stop-Call FORBIDDEN 'pr merge is not allowed in /run-issues' }
     'pr ready' { Stop-Call FORBIDDEN 'pr ready is not allowed in /run-issues' }
     default { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
