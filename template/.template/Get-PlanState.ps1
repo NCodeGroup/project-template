@@ -5,7 +5,7 @@
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, protected, ahead, behind, landed,
-    pr, merge, tag, renumber, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
+    pr, merge, tag, renumber, changelog-format, changelog-version, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
     "-". With an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
@@ -16,7 +16,8 @@
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
     gate is the command /ship-plan runs before it pushes, or none.
     pr-format is <file>#<heading>, the section that sets a pull request's title and description, or none.
-    renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag or first ## <version> heading of the changelog on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed. next is ship-plan rather than wait while a pull request is open and renumber isn't -, so /ship-plan renumbers the plan.
+    renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag or newest release heading of the changelog, ## [<version>] - <date> or ## <version>, on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed. next is ship-plan rather than wait while a pull request is open and renumber isn't -, so /ship-plan renumbers the plan.
+    changelog-format is keep-a-changelog when the changelog has a ## [Unreleased] or ## [<version>] heading, other when it has neither, and missing without the file; changelog-version is its newest release, with a leading v when the plan's Release: version has one, or -.
     protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
     requests into the default branch, no when it does not, unknown when the host or its CLI cannot say, and - without
     a default branch.
@@ -52,6 +53,22 @@ function Get-LandingValue([string]$Text, [switch]$Spaced) {
 function ConvertTo-PlanVersion([string]$Text) {
     if ($Text -match '^v?(\d+)\.(\d+)\.(\d+)$') { return [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3]) }
     $null
+}
+
+# The version of the first release heading in a changelog, as ## [1.2.3] - 2026-01-31 or ## 1.2.3, or $null.
+function Get-ChangelogVersion([string[]]$Lines) {
+    foreach ($line in $Lines) {
+        if ("$line" -match '^## \[?(v?\d+\.\d+\.\d+)\]?(?: - \d{4}-\d{2}-\d{2})?(?: \[YANKED\])?\s*$') { return ConvertTo-PlanVersion $Matches[1] }
+    }
+    $null
+}
+
+# keep-a-changelog when a changelog has a ## [Unreleased] or ## [<version>] heading, else other.
+function Get-ChangelogFormat([string[]]$Lines) {
+    foreach ($line in $Lines) {
+        if ("$line" -match '^## \[(Unreleased|v?\d+\.\d+\.\d+)\]') { return 'keep-a-changelog' }
+    }
+    'other'
 }
 
 function Get-IssueState([string]$Ref, [string]$HostName) {
@@ -271,6 +288,19 @@ try {
     }
     $merge = if ($prState -eq 'MERGED' -and $prMerge) { $prMerge } else { '-' }
 
+    # Changelog in this checkout
+    $changelogFormat = 'missing'; $changelogVersion = '-'
+    $changelogFile = Join-Path $folder $policy['changelog']
+    if (Test-Path -LiteralPath $changelogFile -PathType Leaf) {
+        $changelogLines = Read-Lines $changelogFile
+        $changelogFormat = Get-ChangelogFormat $changelogLines
+        $v = Get-ChangelogVersion $changelogLines
+        if ($null -ne $v) {
+            $prefix = if ("$release".StartsWith('v')) { 'v' } else { '' }
+            $changelogVersion = "$prefix$($v.Major).$($v.Minor).$($v.Build)"
+        }
+    }
+
     # Version still free for the plan
     $renumber = '-'
     $planVersion = ConvertTo-PlanVersion $release
@@ -282,12 +312,8 @@ try {
         }
         $headLines = @(& git show "origin/${default}:$($policy['changelog'])" 2>$null)
         if ($LASTEXITCODE -eq 0) {
-            foreach ($headLine in $headLines) {
-                if ("$headLine" -match '^## (\S+)\s*$') {
-                    $v = ConvertTo-PlanVersion $Matches[1]
-                    if ($null -ne $v) { $found += $v; break }
-                }
-            }
+            $v = Get-ChangelogVersion $headLines
+            if ($null -ne $v) { $found += $v }
         }
         if ($found.Count -gt 0) {
             $newest = $found | Sort-Object | Select-Object -Last 1
@@ -396,6 +422,8 @@ try {
     Write-Output "merge: $merge"
     Write-Output "tag: $tag"
     Write-Output "renumber: $renumber"
+    Write-Output "changelog-format: $changelogFormat"
+    Write-Output "changelog-version: $changelogVersion"
     Write-Output "published: $published"
     Write-Output "issue-state: $issueState"
     Write-Output "issue-states: $issueStates"

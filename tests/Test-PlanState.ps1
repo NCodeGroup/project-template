@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open. After each move it runs
+    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, then Keep a Changelog headings and the changelog lines. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -517,6 +517,37 @@ try {
     Check 'next: an open pull request at a free version waits' $r.Ok $r.Detail
 }
 finally { $env:PATH = $savedPath }
+
+# 19. Keep a Changelog headings.
+Push-Location $lateRepo
+try { Invoke-Git remote set-url origin $lateOrigin }
+finally { Pop-Location }
+$r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'other'; 'changelog-version' = 'v0.1.0' }
+Check 'changelog: a changelog without Keep a Changelog headings is other' $r.Ok $r.Detail
+
+Write-Text (Join-Path $lateSeed 'CHANGELOG.md') "# Changelog`n`n## [Unreleased]`n`n## [0.4.0] - 2026-10-28`n`n### Added`n`n- Fourth.`n`n## v0.2.0`n`n- Second.`n`n[unreleased]: https://example.invalid/compare/v0.4.0...HEAD`n"
+Push-Location $lateSeed
+try {
+    Invoke-Git add CHANGELOG.md
+    Invoke-Git commit -q -m 'Release 0.4.0'
+    Invoke-Git push -q origin HEAD:refs/heads/main
+}
+finally { Pop-Location }
+$r = Test-State (Get-State $lateRepo) @{ release = 'v0.3.1'; renumber = 'v0.4.1' }
+Check 'renumber: a Keep a Changelog heading on the default branch moves the plan past it' $r.Ok $r.Detail
+
+$lateLog = Join-Path $lateRepo 'CHANGELOG.md'
+Write-Text $lateLog "# Changelog`n`n## [Unreleased]`n`n## [0.3.1] - 2026-10-28`n`n### Fixed`n`n- Third.`n"
+$r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'keep-a-changelog'; 'changelog-version' = 'v0.3.1' }
+Check 'changelog: reads the newest Keep a Changelog release with the plan''s prefix' $r.Ok $r.Detail
+
+Write-Text $lateLog "# Changelog`n`n## [Unreleased]`n`n### Added`n`n- Coming.`n"
+$r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'keep-a-changelog'; 'changelog-version' = '-' }
+Check 'changelog: an Unreleased section alone is no release' $r.Ok $r.Detail
+
+Remove-Item -LiteralPath $lateLog
+$r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'missing'; 'changelog-version' = '-' }
+Check 'changelog: a missing changelog' $r.Ok $r.Detail
 
 ''
 if ($failures.Count) { "Plan state tests: FAILED ($($failures.Count))"; exit 1 }

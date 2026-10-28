@@ -57,14 +57,14 @@ function Get-HybridTemplate([string]$Name) {
     $t
 }
 
-# Replaces {{PROMPT:name|input}} with that template's body (plus the plan format when it appends one), and {{BODY:name|input}} with its body alone.
+# Replaces {{PROMPT:name|input}} with that template's body (plus the plan format when it appends one), and {{BODY:name|input}} with its body alone. A fragment's own includes are expanded too.
 function Expand-HybridInclude([string]$Text) {
     [regex]::Replace($Text, '\{\{(PROMPT|BODY):([A-Za-z0-9_-]+)(?:\|([^}]*))?\}\}', {
             param($m)
             $kind = $m.Groups[1].Value
             $name = $m.Groups[2].Value
             $inputText = $m.Groups[3].Value
-            if ($name.StartsWith('_')) { return (Read-HybridTemplateFile (Join-Path (Get-HybridTemplateDir) "$name.md")).Body.Trim() }
+            if ($name.StartsWith('_')) { return (Expand-HybridInclude (Read-HybridTemplateFile (Join-Path (Get-HybridTemplateDir) "$name.md")).Body).Trim() }
             if ($kind -eq 'BODY') { return (Expand-HybridInclude (Get-HybridTemplate $name).Body.Replace('{{INPUT}}', $inputText)).Trim() }
             (Get-HybridPromptText -Name $name -Placeholder $inputText).Trim()
         })

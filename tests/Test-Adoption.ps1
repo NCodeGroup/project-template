@@ -185,6 +185,7 @@ $lines = $r -split "`n"
 $pt = [array]::IndexOf($lines, '## Project Template'); $ly = [array]::IndexOf($lines, '## Layout')
 Check 'unit: Add-TemplateIndexEntry before the first section' ($lines[2] -eq 'Some text.' -and $pt -eq 4 -and $lines[3] -eq '' -and $lines[5] -eq '' -and $lines[6].Contains($entryMarker) -and $lines[7] -eq '' -and $ly -eq 8 -and $r.EndsWith("`n") -and -not $r.EndsWith("`n`n")) $r
 Check 'unit: Add-TemplateIndexEntry once' ((Add-TemplateIndexEntry $r) -eq $r) ''
+Check 'unit: Test-KeepAChangelog' ((Test-KeepAChangelog "# Changelog`n`n## [Unreleased]`n") -and (Test-KeepAChangelog "# Changelog`n`n## [1.0.0] - 2026-01-01`n") -and -not (Test-KeepAChangelog "# Changes`n`n## v1.0.0`n`n- First.`n")) ''
 $x = "<?xml version=""1.0""?>`n<Project>`n  <PropertyGroup>`n    <A>1</A>`n  </PropertyGroup>`n</Project>`n"
 $r = Add-ProjectTemplateImport $x
 Check 'unit: Add-ProjectTemplateImport' ($r.StartsWith("<?xml version=""1.0""?>`n<Project>`n") -and $r.Contains('<Import Project="$(MSBuildThisFileDirectory)build/ProjectTemplate.props" />') -and $r.IndexOf('<Import') -lt $r.IndexOf('<PropertyGroup>') -and (Add-ProjectTemplateImport $r) -eq $r) $r
@@ -245,6 +246,7 @@ if (-not $UnitOnly) {
     $plain = New-Fixture 'plain' @{
         'AGENTS.md'             = "# Legacy Agents`n`nOwn rules.`n`n## Conventions`n`n- Keep it simple.`n"
         'README.md'             = "# Plain`n"
+        'CHANGELOG.md'          = "# Changelog`n`n## [Unreleased]`n`n## [1.0.0] - 2026-01-01`n`n### Added`n`n- First.`n"
         '.gitignore'            = "*.local-test`n"
         'main.py'               = "print('hi')`n"
         'pyproject.toml'        = "[project]`nname = ""plain""`n"
@@ -262,6 +264,7 @@ if (-not $UnitOnly) {
     Check 'plain: one commit, nothing left over' ($subject -eq 'Adopt project-template v0.1.0' -and $count -eq '2' -and -not $status) "$subject | $count | $status"
     Check 'plain: leaves core.hooksPath alone when the clone has hooks in .git/hooks' (-not (git -C $plain config core.hooksPath) -and $out.Contains('has hooks of its own in .git/hooks (pre-commit)')) $out
     Check 'plain: README.md untouched' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'README.md')) -eq "# Plain`n") ''
+    Check 'plain: a Keep a Changelog file stays as it is, with no follow-up' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'CHANGELOG.md')) -eq "# Changelog`n`n## [Unreleased]`n`n## [1.0.0] - 2026-01-01`n`n### Added`n`n- First.`n" -and -not $out.Contains('convert CHANGELOG.md')) $out
     Check 'plain: workflow files for claude, copilot only' ((Test-Path -LiteralPath (Join-Path $plain 'CLAUDE.md')) -and (Test-Path -LiteralPath (Join-Path $plain '.github\skills\plan-feature\SKILL.md')) -and -not (Test-Path -LiteralPath (Join-Path $plain '.github\agents\hybrid-planner.agent.md'))) ''
     $message = try { & $adopt -Path $plain -Template $tpl -Ref v0.1.0 | Out-Null } catch { $_.Exception.Message }
     Check 'plain: a second run refuses' ("$message".Contains('already uses the project template')) "$message"
@@ -283,6 +286,7 @@ if (-not $UnitOnly) {
         '.gitignore'                        = "bin/`nobj/`n*.local-test`n"
         '.editorconfig'                     = "root = true`n`n[*.cs]`nindent_size = 4`n"
         'README.md'                         = "# NCode.Demo`n"
+        'CHANGELOG.md'                      = "# Changes`n`n## 1.0.0`n`n- First.`n"
         'NCodeGroup.png'                    = $png
         '.github/copilot-instructions.md'   = "# Copilot Instructions`n"
         '.github/instructions/csharp-production.instructions.md' = "---`napplyTo: ""**/*.cs""`n---`n# C#`n"
@@ -299,6 +303,7 @@ if (-not $UnitOnly) {
     $editorconfig = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.editorconfig')
     Check 'scaffold: Directory.Build.props imports the template settings' ($props.Contains('build/ProjectTemplate.props') -and $props.Contains('<LangVersion>latest</LangVersion>') -and @($editorconfig -split "`n" | Where-Object { $_ -match '^\s*root\s*=' }).Count -eq 1) "$props | $editorconfig"
     Check 'scaffold: report lists the follow-ups' ($out.Contains('/plan-migration Finish adopting the project template') -and $out.Contains('.github/copilot-instructions.md') -and $out.Contains('.github/workflows/main.yml')) $out
+    Check 'scaffold: its own changelog stays as it is, with a follow-up to convert it' ((Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'CHANGELOG.md')) -eq "# Changes`n`n## 1.0.0`n`n- First.`n" -and $out.Contains('convert CHANGELOG.md to Keep a Changelog 1.1.0')) $out
     Check 'scaffold: asks to re-admit the imported build files in .dockerignore' ($out.Contains("re-admit Directory.Build.props and build/ProjectTemplate.props, which it imports, in each list of the build's files: .dockerignore")) $out
     Check 'scaffold: reconciles the C# instructions' ($out.Contains('reconcile .github/instructions/csharp.instructions.md with csharp-production.instructions.md')) $out
     Check 'scaffold: no commit attribution follow-up when the template added ci.yml' (-not $out.Contains('commit-attribution job')) $out

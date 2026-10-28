@@ -329,4 +329,7 @@ function Get-GitHooksSetup {
     [pscustomobject]@{ HooksPath = -not $preCommit -and -not $ownHooks; Note = if ($parts) { $parts -join "`n" } else { $null } }
 }
 
-Export-ModuleMember -Function Get-CopierList, Get-OwnedMergedFile, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+# Reads the format as workflow/Get-PlanState.ps1's Get-ChangelogFormat does.
+function Test-KeepAChangelog([string]$Text) { $Text -match '(?m)^## \[(Unreleased|v?\d+\.\d+\.\d+)\]' }
+
+Export-ModuleMember -Function Test-KeepAChangelog, Get-CopierList, Get-OwnedMergedFile, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
