@@ -9,7 +9,7 @@
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in project-template-test in the temp folder, so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab and checks YAML with
     PyYAML through uv. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1, that the generated workflow files under template/ and at the repository root
-    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
+    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
 .EXAMPLE
@@ -293,6 +293,10 @@ function Get-MissingText([string[]]$Path, [string[]]$Text) {
 }
 $m = @(Get-MissingText 'template\.claude\agents\plan-executor.md' ('tools: Read, Edit, Write, Bash, PowerShell, Grep, Glob', 'with the PowerShell tool'))
 Check 'workflow: the Claude Code plan-executor has the PowerShell tool and runs commands with it' (-not $m) ($m -join '; ')
+$doneWhenExecutors = 'template\.claude\agents\plan-executor.md', 'template\.claude\commands\execute-step.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\agents\copilot-implementer.agent.md', 'template\.github\agents\local-implementer.agent.md', 'template\.github\prompts\execute-step.prompt.md', 'template\.github\prompts\execute-step-local.prompt.md', 'template\.github\skills\execute-step\SKILL.md'
+$m = @(Get-MissingText $doneWhenExecutors ('pwsh -NoProfile -NonInteractive -Command ''<command>''; "exit=$LASTEXITCODE"', 'pwsh -NoProfile -NonInteractive -Command ''<command>''; echo "exit=$?"', 'Judge the result by that `exit=` line alone', 'quoting its `exit=` line'))
+$m += @(Get-MissingText 'template\.claude\agents\plan-executor.md' 'in the `pwsh` child process that step 5 gives')
+Check 'workflow: every executor runs the Done-when command in a child pwsh and judges it by its exit= line' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\finish-plan.md', 'template\.github\prompts\finish-plan.prompt.md', 'template\.github\skills\finish-plan\SKILL.md') ('pwsh -NoProfile -File .template/Get-PlanState.ps1', '`landed`'))
 Check 'workflow: finish-plan reads whether the work landed from .template/Get-PlanState.ps1' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText 'template\.claude\commands\finish-plan.md' ('Filename too long', 'git config --global core.longpaths true'))
