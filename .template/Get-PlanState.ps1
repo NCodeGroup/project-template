@@ -16,7 +16,7 @@
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
     gate is the command /ship-plan runs before it pushes, or none.
     pr-format is <file>#<heading>, the section that sets a pull request's title and description, or none.
-    renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag or first ## <version> heading of the changelog on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed.
+    renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag or first ## <version> heading of the changelog on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed. next is ship-plan rather than wait while a pull request is open and renumber isn't -, so /ship-plan renumbers the plan.
     protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
     requests into the default branch, no when it does not, unknown when the host or its CLI cannot say, and - without
     a default branch.
@@ -358,6 +358,7 @@ try {
         elseif ($reviewed -ne 'current') { $next = 'review-plan-diff' }
         elseif ($landed -ne 'yes') {
             if ($hostName -eq 'none') { $next = 'none no origin remote to land on' }
+            elseif ($prState -eq 'OPEN' -and $renumber -ne '-') { $next = 'ship-plan' }
             elseif ($prState -eq 'OPEN') { $next = "wait pull request #$prNumber is open: run ship-plan again once it merges" }
             elseif ($prState -eq 'MERGED' -and $integrate -eq 'direct') { $next = 'ship-plan' }
             elseif ($prState -eq 'MERGED' -and $prBase -and $prBase -ne $default) { $next = "none pull request #$prNumber merged into $prBase, not ${default}: this branch lands once $prBase reaches $default; run ship-plan again then" }
