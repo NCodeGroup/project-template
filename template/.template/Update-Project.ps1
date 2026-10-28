@@ -241,7 +241,7 @@ function Get-ChangelogBackfill {
     [pscustomobject]@{ File = $file; Range = $range }
 }
 
-$project =(Resolve-Path -LiteralPath $Path).Path
+$project = (Resolve-Path -LiteralPath $Path).Path
 $ownClone = -not $TemplateClone
 $scratch = Join-Path ([IO.Path]::GetTempPath()) "project-template-update-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
 $outputEncoding = [Console]::OutputEncoding

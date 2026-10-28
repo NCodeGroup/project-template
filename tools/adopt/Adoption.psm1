@@ -350,4 +350,4 @@ function Get-ChangelogBackfill {
     [pscustomobject]@{ File = $file; Range = $range }
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill,Get-CopierList, Get-OwnedMergedFile, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-CopierList, Get-OwnedMergedFile, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
