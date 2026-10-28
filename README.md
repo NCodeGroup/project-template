@@ -49,7 +49,7 @@ Replaced on every update. A project never edits them; an edit is discarded by th
 | `.copier-answers.yml` | Copier's: the answers and template version that `Update-Project.ps1` reads |
 | `.template-version` | The template version the project is on, one line such as `v0.6.0`: Copier writes `_commit` from `.copier-answers.yml` here, for people and scripts to read. A repository with only the workflow installed gets the same file from `workflow\Install-HybridWorkflow.ps1` |
 | `.template/Update-Project.ps1` | The [update script](#update-a-project): run in the project, it pulls in the newest template version and updates itself |
-| `.template/Get-PlanState.ps1` | Prints where the plan in a folder stands (its steps, review, landing policy, whether the default branch takes changes only through pull requests, pull request, tag, the version it moves to when another plan took its release, and each of its issues) and the workflow command to run next; `/ship-plan`, `/continue-plan`, `/finish-plan` and `/run-issues` run it, and `Install-HybridWorkflow.ps1` installs it with the commands — generated |
+| `.template/Get-PlanState.ps1` | Prints where the plan in a folder stands (its steps, review, landing policy, whether the default branch takes changes only through pull requests, pull request, tag, the version it moves to when another plan took its release, the version tags its changelog has no section for, and each of its issues) and the workflow command to run next; `/ship-plan`, `/continue-plan`, `/finish-plan` and `/run-issues` run it, and `Install-HybridWorkflow.ps1` installs it with the commands — generated |
 | `.githooks/commit-msg` | Strips AI agent attribution from every commit message — `Co-authored-by:` trailers for Copilot and Claude, `Claude-Session:` trailers, "Generated with Claude Code" lines — whichever tool commits ([Commit Attribution](#commit-attribution)) |
 | `.githooks/pre-push` | Refuses a push to the default branch when `AGENTS.md`'s Landing section says `protect: hook`, for a host that can't require pull requests, such as a private repository on GitHub Free; does nothing otherwise. In a clone that uses pre-commit or its own hooks, `Update-Project.ps1` and `Adopt-Project.ps1` print a two-line `.git/hooks/pre-push` wrapper to add, because pre-commit's pre-push stage checks only one ref of a push |
 | `.template/Test-CommitAttribution.ps1` | Fails CI on a commit attributed to an AI agent ([Commit Attribution](#commit-attribution)) |
@@ -241,6 +241,8 @@ Before committing, the script runs the build and test commands from the answers.
 
 Some judgment is left to you. The script prints it as a ready request: folding `.github/copilot-instructions.md` into `AGENTS.md`; for a .NET repository, reconciling the template's `csharp.instructions.md` with the repository's own instruction files; and, when the template added `ci.yml` because the repository had none, reconciling its other workflows in `.github/workflows` with it. A `ci.yml` the repository already had is kept, and so is every workflow beside it.
 
+When the repository has version tags merged into the current branch that its changelog has no section for, the request also says to backfill them, such as `backfill CHANGELOG.md from the releases v0.1.0..v0.3.0`. The changelog is the file the `changelog` key of `AGENTS.md`'s Landing section names, `CHANGELOG.md` by default, and only tags shaped like `v1.2.3` or `1.2.3` count.
+
 ```text
 Still to do — in the repository, run:
   /plan-migration Finish adopting the project template: fold .github/copilot-instructions.md into AGENTS.md or a file it lists; reconcile .github/workflows/main.yml with ci.yml
@@ -324,6 +326,13 @@ Committed "Update from project-template v0.2.0". Review it with: git show --stat
 ```
 
 The script runs `copier recopy` at the project's current template version, which resets the template-owned files and so shows any local edits, then `copier update --defaults`, which moves to the new version and merges the merged files. If anything else fails, it resets the project to where it was. `copier check-update`, run in a project, tells whether a newer template version exists.
+
+When the project has version tags merged into the current branch that its changelog has no section for, such as releases from before it had a changelog, the update ends with a request to backfill them:
+
+```text
+Version tags without a section in CHANGELOG.md: v0.1.0..v0.3.0. To give the changelog the project's full release history, in the repository, run:
+  /plan-migration Backfill CHANGELOG.md from the releases v0.1.0..v0.3.0
+```
 
 To plan an update instead of running it, run `/plan-template-update` in the project, or name a version: `/plan-template-update v0.14.0`. It reads `.copier-answers.yml` and the release notes since the project's version, runs `Update-Project.ps1 -NoCommit` on a clone of the project in a temporary folder, and plans from what that trial changed. The plan's first step runs the update with `-Ref` pinned to the target and `-NoCommit`, so it is committed as a plan step, and a result that differs from the trial escalates. The next steps run the project's checks and fix the project's own files that still describe the old template, and the last runs the project's tests. Every check is judged by its exit code. The planning session files an issue here for each gap in the template that the trial shows. In Claude Code the plan gets its own worktree, unless the project's `plan-executor` subagent predates v0.11.0 and can't run PowerShell there; then it runs on a `build/project-template-<version>` branch in the current checkout. A project on v0.13.0 or earlier doesn't have the command yet: compose it from this repository's clone with `.\workflow\New-PlanPrompt.ps1 plan-template-update`, or install the commands for your user with `.\workflow\Install-HybridWorkflow.ps1 -User`.
 
