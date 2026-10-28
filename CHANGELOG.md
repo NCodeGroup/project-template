@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.37.1] - 2026-10-28
+
+### Changed
+
+- No change for projects made from the template. This repository's `CHANGELOG.md` now covers every version: it has sections for v0.1.0 to v0.7.0, written from their commits, with their tags' dates and compare links.
+
 ## [0.37.0] - 2026-10-28
 
 ### Added
@@ -457,7 +463,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/polewskm/project-template/compare/v0.37.0...HEAD
+[unreleased]: https://github.com/polewskm/project-template/compare/v0.37.1...HEAD
+[0.37.1]: https://github.com/polewskm/project-template/compare/v0.37.0...v0.37.1
 [0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.2...v0.37.0
 [0.36.2]: https://github.com/polewskm/project-template/compare/v0.36.1...v0.36.2
 [0.36.1]: https://github.com/polewskm/project-template/compare/v0.36.0...v0.36.1
