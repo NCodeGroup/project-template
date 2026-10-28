@@ -121,7 +121,21 @@ Release: <version, such as v1.4.0; only when AGENTS.md's Landing section release
 - <short title>: <what to change, where, and why it matters; one line each, only work worth its own issue; leave the section out when there is none.>
 ```
 
-{{PROMPT:_changelog}}
+## The Changelog
+
+The changelog is the file the `changelog` key of `AGENTS.md`'s `## Landing` section names, `CHANGELOG.md` by default. Read it before you write its step. It follows Keep a Changelog 1.1.0 (https://keepachangelog.com/en/1.1.0/) when it has a `## [Unreleased]` heading or a heading such as `## [1.4.0] - 2026-10-28`. The state script prints `changelog-format: keep-a-changelog` for such a file, `other` for a changelog in any other format, and `missing` when there is no file.
+
+A Keep a Changelog file holds, in order: `# Changelog`, its preamble, `## [Unreleased]`, one `## [<number>] - <date>` section per release, newest first, and the link reference definitions. `<number>` is the version without a leading `v` (`1.4.0` for `v1.4.0`). `<date>` is the day the section is written, as `Get-Date -Format yyyy-MM-dd` prints it. A section's entries are `- ` bullets written for the project's users. They are grouped under these headings, in this order, and each heading appears only when it has an entry: `### Added` (new commands, files, settings, options or output), `### Changed` (changes to behavior or documentation), `### Deprecated`, `### Removed`, `### Fixed` (behavior that was wrong) and `### Security` (a vulnerability or exposure closed). The link reference definitions come newest first. The first is `[unreleased]: <web>/compare/<newest tag>...HEAD`. Then each release has `[<number>]: <web>/compare/<previous tag>...<tag>`, or `[<number>]: <web>/releases/tag/<tag>` for the first release. `<web>` is the repository's web address: `git remote get-url origin` written as `https://<host>/<path>` without `.git`. On GitLab, the links use `<web>/-/compare/` and `<web>/-/tags/<tag>`. Tags keep the project's prefix, such as `v1.4.0`. A file with no release yet has no link reference definitions.
+
+The plan's last step writes the plan's entries, for every plan:
+
+- `missing`: create the file, then write to it as for `keep-a-changelog`. It starts with these lines, each followed by a blank line except the last: `# Changelog`, then `All notable changes to this project will be documented in this file.`, then `The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).`, then `## [Unreleased]`.
+- `keep-a-changelog`, without a `Release:` line: add the entries under `## [Unreleased]`, putting each in its group, and add to a group that is already there.
+- `keep-a-changelog`, with a `Release:` line: insert `## [<number>] - <date>` right below `## [Unreleased]`. Put in it every entry `## [Unreleased]` held and the plan's own, in one set of groups, and leave `## [Unreleased]` empty. Set the `[unreleased]` link to compare the new tag with `HEAD`, and add the new version's link above the previous version's.
+- `other`, with a `Release:` line: add that version's section at the top, in the style of the sections below it.
+- `other`, without a `Release:` line: leave the file as it is.
+
+Write the step so the executor copies text: it gives the heading, each entry under its group, and each link line in full. Only `<date>` is left to the executor, with the `Get-Date` command. Never reformat a changelog in another format, or an older section of any changelog, unless the request asks for it, as an adopted project's follow-up does. A plan that converts a changelog keeps every entry's text. It dates each version's heading with its tag's date (`git log -1 --format=%as <tag>`), puts each entry in one group, and adds the preamble, `## [Unreleased]` and the link reference definitions.
 
 ## When the Request Names an Issue
 
