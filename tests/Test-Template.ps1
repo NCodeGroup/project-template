@@ -311,6 +311,10 @@ Check 'workflow: a re-plan that changes the plan posts what changed to its issue
 $m = @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\instructions\project-template.instructions.md.jinja') 'Closes <issue reference>')
 $m += @(Get-MissingText 'template\.github\instructions\project-template.instructions.md.jinja' 'Only the planning session calls')
 Check 'workflow: the review and the push name the issue the pull request closes' (-not $m) ($m -join '; ')
+$rulesJinja = 'template\.github\instructions\project-template.instructions.md.jinja'
+$m = @(Get-MissingText $rulesJinja ('`git log --stat origin/<branch>..` when `origin` has the branch you push to', '`git log --stat origin/<default branch>..` when it doesn''t yet', 'Compare with `origin`, not the branch''s upstream'))
+$m += @(if ([IO.File]::ReadAllText((Join-Path $repoRoot $rulesJinja)).Contains('@{u}')) { "${rulesJinja}: still lists the unpushed commits against the upstream" })
+Check 'workflow: the project rules list the unpushed commits against origin, not the upstream' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.claude\agents\plan-executor.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\agents\copilot-implementer.agent.md', 'template\.github\agents\local-implementer.agent.md', 'template\.github\skills\execute-step\SKILL.md', 'template\.github\prompts\execute-step.prompt.md', 'template\.github\prompts\execute-step-local.prompt.md') { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); if ($t.Contains('gh issue') -or $t.Contains('glab issue')) { $p } })
 Check 'workflow: no executor calls gh or glab on the issue' (-not $m) ($m -join ', ')
 $issuePlanFiles = 'template\.claude\commands\plan-issue.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-issue\SKILL.md'
@@ -377,6 +381,9 @@ Check 'workflow: ship-plan asks origin, not the upstream, whether the plan branc
 $m = @(Get-MissingText $shipFiles ('the push to `<default>` must fast-forward, so `behind` matters', 'or the one The Catch-Up Step below gives when it is `none` or `unknown`', '## The Catch-Up Step', 'so this plan''s branch conflicts with it', 'the next ship-plan adds the step item 3 gives'))
 $m += @(foreach ($p in $shipFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('stop when `behind` is more than 0')) { "${p}: still stops a direct landing that is behind" } })
 Check 'workflow: ship-plan under integrate: direct merges a moved default branch in with a step instead of stopping' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $shipFiles ('When the push fails, such as when it is rejected or not approved, and this run made the tag', '`git ls-remote --exit-code --tags origin refs/tags/<version>` exits 2', 'delete it with `git tag -d <version>`', 'When that push fails, remove the tag as item 6''s `direct` bullet says', 'delete a tag `origin` has'))
+$m += @(foreach ($p in $shipFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('move or delete a tag')) { "${p}: still never deletes a tag it failed to push" } })
+Check 'workflow: ship-plan removes the tag a failed push left in the clone' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('git merge-base HEAD origin/<default>', 'the diff holds only this plan''s work'))
 Check 'workflow: review-plan-diff diffs from the merge base with the default branch' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\handoff-plan.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-bugfix\SKILL.md') ('moves this plan to the next free version, raised the same way'))
