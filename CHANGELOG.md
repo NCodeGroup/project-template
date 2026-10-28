@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.36.1
+
+- No change for projects made from the template. A new end-to-end test, `tests/e2e/Test-RunIssues.ps1`, runs `/run-issues` in headless Claude Code on a fixture project made from the template, with a local `origin` and a stand-in for `gh`, and checks the plan snapshot comment, the draft pull request, the step commits and the reviewed plan it leaves. It costs model usage, so it runs by hand; CI runs its fixture setup with `-SetupOnly`.
+
 ## v0.36.0
 
 - `/run-issues` now runs in Copilot Chat and Copilot CLI too, from a new template, `run-issues-copilot`: it takes the same requests, plans, executes and reviews each entry, opens a draft pull request, answers your review threads and comments, and lands it once you merge. It works in the open folder instead of worktrees, one entry after another, each on a branch `issue-<number>`, without running one ahead, and a stop after an entry's plan is written ends the run, leaving it for `/continue-plan`. Run it in a Local session in Copilot Chat, or a Copilot CLI session started on Opus, without approval prompts (Bypass Approvals or Autopilot; `/allow-all`). Projects get it with `.\.template\Update-Project.ps1`.
