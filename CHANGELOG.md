@@ -2,6 +2,11 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.36.0
+
+- `/run-issues` now runs in Copilot Chat and Copilot CLI too, from a new template, `run-issues-copilot`: it takes the same requests, plans, executes and reviews each entry, opens a draft pull request, answers your review threads and comments, and lands it once you merge. It works in the open folder instead of worktrees, one entry after another, each on a branch `issue-<number>`, without running one ahead, and a stop after an entry's plan is written ends the run, leaving it for `/continue-plan`. Run it in a Local session in Copilot Chat, or a Copilot CLI session started on Opus, without approval prompts (Bypass Approvals or Autopilot; `/allow-all`). Projects get it with `.\.template\Update-Project.ps1`.
+- A workflow template's new `command` field names the command, prompt file and skill it installs as, so two templates can give different tools the same command; `Install-HybridWorkflow.ps1` stops when two templates install the same command for one tool.
+
 ## v0.35.2
 
 - `/ship-plan` made the follow-up label with `gh label create --force`, which on GitHub rewrote an existing label's color and description to `FBCA04` and "Work a plan found and did not do" on every landing that filed a follow-up, such as when `follow-up-label` names a label the project already uses or the project recolored `follow-up`. It now creates the label only when it is missing and leaves an existing one as it is, as it already did on GitLab. Projects get it with `.\.template\Update-Project.ps1`.
