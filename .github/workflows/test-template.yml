@@ -36,6 +36,8 @@ jobs:
             run: ./tests/Test-UpdateRewrittenFiles.ps1
           - name: Test the plan state script
             run: ./tests/Test-PlanState.ps1
+          - name: Test the changelog backfill check
+            run: ./tests/Test-ChangelogBackfill.ps1
           - name: Test the commit attribution check
             run: ./tests/Test-CommitAttribution.ps1
           - name: Test the Git hooks
