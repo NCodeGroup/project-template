@@ -418,6 +418,16 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 
 - `Update-Project.ps1` no longer fails on Windows with `[WinError 206] The filename or extension is too long` when the project's own `.gitignore` ignores a large folder that the template's `.gitignore` doesn't, such as `node_modules/` in a .NET project with a frontend. While Copier updates, it keeps the project's ignore rules in force through `.git/info/exclude`, and it restores that file afterwards. A run also removes the copy of the rules that a killed update left there.
 
+## [0.3.0] - 2026-10-25
+
+### Added
+
+- In Claude Code, each plan lives in its own git worktree, so several sessions can plan and execute different plans on one machine at once. The planning commands (the `/plan-*` commands and `/handoff-plan`) create `.claude/worktrees/<name>/` on the branch `worktree-<name>` before they research, and commit `PLAN.md` there as `Plan: <title>`. `/orchestrate-plan`, `/execute-step`, `/replan-step` and `/review-plan-diff` move the session into the plan's worktree first; with several plans open, name one: `/orchestrate-plan <name>`. Copilot is unchanged: to continue a plan there, open the worktree's folder.
+
+### Changed
+
+- `.claude/settings.json` allows Claude Code's `EnterWorktree` tool, so creating or entering a plan's worktree doesn't ask.
+
 [unreleased]: https://github.com/polewskm/project-template/compare/v0.37.0...HEAD
 [0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.2...v0.37.0
 [0.36.2]: https://github.com/polewskm/project-template/compare/v0.36.1...v0.36.2
@@ -473,3 +483,4 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 [0.6.0]: https://github.com/polewskm/project-template/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/polewskm/project-template/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/polewskm/project-template/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/polewskm/project-template/compare/v0.2.0...v0.3.0
