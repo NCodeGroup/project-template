@@ -58,7 +58,7 @@ The four VS Code agent templates are variant-neutral; the installer renders each
 |---|---|---|---|
 | [planner.agent.md](planner.agent.md) | Hybrid Planner | Copilot Planner | Plans on Opus, re-plans steps that come back; buttons to execute, execute fast, or run all |
 | [implementer.agent.md](implementer.agent.md) | Local Implementer (qwen3.6) | Copilot Implementer (Claude Sonnet 5.5) | Executes one step, escalates with `[?]`; buttons for next step, re-plan with the planner, review |
-| [reviewer.agent.md](reviewer.agent.md) | Hybrid Reviewer | Copilot Reviewer | Reviews on Sonnet and queues fix steps; buttons to execute the fixes or re-plan |
+| [reviewer.agent.md](reviewer.agent.md) | Hybrid Reviewer | Copilot Reviewer | Reviews on Sonnet and queues fix steps; buttons to execute the fixes, re-plan, land the plan with `/ship-plan`, or show where it stands with `/continue-plan` |
 | [orchestrator.agent.md](orchestrator.agent.md) | Hybrid Orchestrator | Copilot Orchestrator | Opus runs every step through implementer subagents, verifies each, re-plans escalations itself |
 
 | Template | Installed as | For |
