@@ -10,13 +10,13 @@
     failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-update-kept-test.
+    The scratch folder, deleted and recreated. Defaults to project-template-update-kept-test in the temp folder.
 
 .EXAMPLE
     .\tests\Test-UpdateKeptLines.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path $env:TEMP 'project-template-update-kept-test'))
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-update-kept-test'))
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()

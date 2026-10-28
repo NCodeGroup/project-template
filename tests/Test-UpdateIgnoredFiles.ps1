@@ -12,7 +12,7 @@
     and exits 1 on any failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-update-ignored-test.
+    The scratch folder, deleted and recreated. Defaults to project-template-update-ignored-test in the temp folder.
 
 .PARAMETER Packages
     The number of fake packages in node_modules. Defaults to 700.
@@ -23,7 +23,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Work = (Join-Path $env:TEMP 'project-template-update-ignored-test'),
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-update-ignored-test'),
     [int]$Packages = 700
 )
 $ErrorActionPreference = 'Stop'

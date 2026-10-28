@@ -19,6 +19,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A changelog in another format, such as one an adopted project already had, is left as it is. Plans with a `Release:` line keep adding sections in its own style, and plans without one don't touch it. `Adopt-Project.ps1` lists a `/plan-migration` follow-up to convert a `CHANGELOG.md` that isn't Keep a Changelog. To convert the changelog of a project adopted earlier, run `/plan-migration Convert CHANGELOG.md to Keep a Changelog 1.1.0`.
 - No change for projects made from the template. This repository's own `CHANGELOG.md` now follows Keep a Changelog: each version has its tag's date, its entries are grouped by type, and the file ends with compare links.
 
+## [0.36.2] - 2026-10-28
+
+### Changed
+
+- No change for projects made from the template. This repository's CI now runs on Linux, each test suite in a parallel job, and a run takes a few minutes instead of about 18. A final `test` job, the check the ruleset requires, passes only when every suite passes, and every `tests/Test-*.ps1` script still needs a `run: ./tests/<name>` entry in the matrix of `.github/workflows/test-template.yml`. The tests now default their scratch folders to the system temp folder instead of `%TEMP%`, and `tests/Test-GitHooks.ps1` uses the system `sh`, `awk` and `grep` outside Windows. `workflow/Install-HybridWorkflow.ps1` and `workflow/Invoke-PlanSteps.ps1` build their paths with forward slashes and no longer need `%TEMP%` or `%LOCALAPPDATA%`, so they also run on Linux and macOS.
+
+## [0.36.1] - 2026-10-28
+
+### Changed
+
+- No change for projects made from the template. A new end-to-end test, `tests/e2e/Test-RunIssues.ps1`, runs `/run-issues` in headless Claude Code on a fixture project made from the template, with a local `origin` and a stand-in for `gh`, and checks the plan snapshot comment, the draft pull request, the step commits and the reviewed plan it leaves. It costs model usage, so it runs by hand; CI runs its fixture setup with `-SetupOnly`.
+
 ## [0.36.0] - 2026-10-28
 
 ### Added
@@ -375,7 +387,9 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - An agent asked to push deletes a finished `PLAN.md` first, once every step, the review's fix steps included, is marked `[x]`; with a step still open it keeps the plan and says which steps remain.
 
 [unreleased]: https://github.com/polewskm/project-template/compare/v0.37.0...HEAD
-[0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.0...v0.37.0
+[0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.2...v0.37.0
+[0.36.2]: https://github.com/polewskm/project-template/compare/v0.36.1...v0.36.2
+[0.36.1]: https://github.com/polewskm/project-template/compare/v0.36.0...v0.36.1
 [0.36.0]: https://github.com/polewskm/project-template/compare/v0.35.2...v0.36.0
 [0.35.2]: https://github.com/polewskm/project-template/compare/v0.35.1...v0.35.2
 [0.35.1]: https://github.com/polewskm/project-template/compare/v0.35.0...v0.35.1

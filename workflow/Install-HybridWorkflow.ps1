@@ -130,10 +130,10 @@ $agentTemplates = Get-ChildItem $templateDir -Filter '*.agent.md' -File
 $dest = @()
 if ($Repo) {
     $root = (Resolve-Path $Repo).Path
-    $dest += [pscustomobject]@{ Scope = 'repo'; Agents = "$root\.github\agents"; Prompts = "$root\.github\prompts"; Skills = "$root\.github\skills"; ClaudeCommands = "$root\.claude\commands"; ClaudeAgents = "$root\.claude\agents"; CopilotVersionFile = "$root\.template-version"; ClaudeVersionFile = "$root\.template-version"; ClaudeStateFile = "$root\.template\Get-PlanState.ps1"; CopilotStateFile = "$root\.template\Get-PlanState.ps1"; ClaudeStateScript = 'pwsh -NoProfile -File .template/Get-PlanState.ps1'; CopilotStateScript = 'pwsh -NoProfile -File .template/Get-PlanState.ps1' }
+    $dest += [pscustomobject]@{ Scope = 'repo'; Agents = "$root/.github/agents"; Prompts = "$root/.github/prompts"; Skills = "$root/.github/skills"; ClaudeCommands = "$root/.claude/commands"; ClaudeAgents = "$root/.claude/agents"; CopilotVersionFile = "$root/.template-version"; ClaudeVersionFile = "$root/.template-version"; ClaudeStateFile = "$root/.template/Get-PlanState.ps1"; CopilotStateFile = "$root/.template/Get-PlanState.ps1"; ClaudeStateScript = 'pwsh -NoProfile -File .template/Get-PlanState.ps1'; CopilotStateScript = 'pwsh -NoProfile -File .template/Get-PlanState.ps1' }
 }
 if ($User) {
-    $dest += [pscustomobject]@{ Scope = 'user'; Agents = "$HOME\.copilot\agents"; Prompts = $null; Skills = "$HOME\.copilot\skills"; ClaudeCommands = "$HOME\.claude\commands"; ClaudeAgents = "$HOME\.claude\agents"; CopilotVersionFile = "$HOME\.copilot\.template-version"; ClaudeVersionFile = "$HOME\.claude\.template-version"; ClaudeStateFile = "$HOME\.claude\Get-PlanState.ps1"; CopilotStateFile = "$HOME\.copilot\Get-PlanState.ps1"; ClaudeStateScript = 'pwsh -NoProfile -File "$HOME/.claude/Get-PlanState.ps1"'; CopilotStateScript = 'pwsh -NoProfile -File "$HOME/.copilot/Get-PlanState.ps1"' }
+    $dest += [pscustomobject]@{ Scope = 'user'; Agents = "$HOME/.copilot/agents"; Prompts = $null; Skills = "$HOME/.copilot/skills"; ClaudeCommands = "$HOME/.claude/commands"; ClaudeAgents = "$HOME/.claude/agents"; CopilotVersionFile = "$HOME/.copilot/.template-version"; ClaudeVersionFile = "$HOME/.claude/.template-version"; ClaudeStateFile = "$HOME/.claude/Get-PlanState.ps1"; CopilotStateFile = "$HOME/.copilot/Get-PlanState.ps1"; ClaudeStateScript = 'pwsh -NoProfile -File "$HOME/.claude/Get-PlanState.ps1"'; CopilotStateScript = 'pwsh -NoProfile -File "$HOME/.copilot/Get-PlanState.ps1"' }
 }
 
 $version = if (-not $NoVersionMarker) { Get-TemplateVersion }
@@ -172,7 +172,7 @@ foreach ($d in $dest) {
             $fm = "---`ndescription: $(Q $t.Description)`nargument-hint: $(Q "[$hint]")`n$($claudeRole[$t.Role])`ndisable-model-invocation: true`n---`n"
             Write-Generated (Join-Path $d.ClaudeCommands "$($t.Command).md") ($fm + $body)
         }
-        Write-Generated (Join-Path $d.ClaudeAgents 'plan-executor.md') (Get-RenderedFile "$templateDir\plan-executor.claude.md" @{ CLAUDE_EXECUTOR_MODEL = $ClaudeExecutorModel })
+        Write-Generated (Join-Path $d.ClaudeAgents 'plan-executor.md') (Get-RenderedFile "$templateDir/plan-executor.claude.md" @{ CLAUDE_EXECUTOR_MODEL = $ClaudeExecutorModel })
     }
     if ('CopilotCli' -in $Target) {
         foreach ($t in $templates) {
@@ -181,7 +181,7 @@ foreach ($d in $dest) {
             $fm = "---`nname: $($t.Command)`ndescription: $(Q $t.Description)`n---`n"
             Write-Generated (Join-Path $d.Skills "$($t.Command)\SKILL.md") ($fm + $body)
         }
-        Write-Generated (Join-Path $d.Agents 'plan-executor.agent.md') (Get-RenderedFile "$templateDir\plan-executor.cli.md" @{ CLI_EXECUTOR_MODEL = $CliExecutorModel })
+        Write-Generated (Join-Path $d.Agents 'plan-executor.agent.md') (Get-RenderedFile "$templateDir/plan-executor.cli.md" @{ CLI_EXECUTOR_MODEL = $CliExecutorModel })
     }
     $stateFiles = @(
         if ('VSCode' -in $Target -or 'CopilotCli' -in $Target) { $d.CopilotStateFile }
