@@ -39,7 +39,7 @@ Once per PC, in PowerShell 7, not elevated:
 |---|---|---|
 | PowerShell 7 | `winget install --id Microsoft.PowerShell -e` | The scripts, and every plan's Done-when commands |
 | Git | `winget install --id Git.Git -e` | Everything; it also gives Claude Code its Bash tool |
-| GitHub CLI | `winget install --id GitHub.cli -e` | Reading this private template; `New-Project.ps1 -CreateRemote` |
+| GitHub CLI | `winget install --id GitHub.cli -e` | `New-Project.ps1 -CreateRemote`, and the plan commands' issues and pull requests |
 | uv and Copier | `winget install --id astral-sh.uv -e`, then, in a new terminal, `uv tool install copier` | `New-Project.ps1` and `.template\Update-Project.ps1` |
 | VS Code | `winget install --id Microsoft.VisualStudioCode -e` | The Claude Code and Copilot Chat panels |
 | Claude Code | `irm https://claude.ai/install.ps1 \| iex` | The `claude` command. This installer keeps it up to date; the WinGet package `Anthropic.ClaudeCode` doesn't |
@@ -85,7 +85,7 @@ git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 git config --global core.longpaths true    # paths over Windows' 260 characters, which a plan's worktree under .claude/worktrees/ reaches
 gh auth login        # the GitHub account that owns your projects and this template
-gh auth setup-git    # lets Git, and so Copier, read the private template
+gh auth setup-git    # lets Git use the gh sign-in, so it can push to your repositories
 ```
 
 In a fresh clone of a project, run `git config core.hooksPath .githooks` once, so its hook strips AI agent attribution from commit messages; `New-Project.ps1` and `.template\Update-Project.ps1` do it for you, unless the clone already has hooks in `.git/hooks` or uses pre-commit, and then print how to run the hook alongside them. With pre-commit, add it to `.pre-commit-config.yaml` as a `repo: local` hook with `entry: .githooks/commit-msg`, `language: script` and `stages: [commit-msg]`, then run `pre-commit install --hook-type commit-msg`. With `- protect: hook`, save `#!/usr/bin/env sh` and `exec .githooks/pre-push "$@"` as `.git/hooks/pre-push`, or as `.git/hooks/pre-push.legacy` when pre-commit installed its pre-push hook. In a clone of this template, it's `git config core.hooksPath template/.githooks`.
@@ -201,7 +201,7 @@ The Hybrid agents, and the `execute-step-local` prompt file, execute on `qwen3.6
 | Copilot Chat uses the wrong account | VS Code is signed in with several GitHub accounts | Accounts menu → Manage Extension Account Preferences → GitHub Copilot Chat |
 | An agent answers on another model | The organization turned that model off, or the model isn't available | Select a model in the picker; it's used instead |
 | Copilot CLI isn't available | The organization turned it off | Use Copilot Chat or Claude Code |
-| `New-Project.ps1` or `Update-Project.ps1` can't read the template | Git has no credentials for it | `gh auth setup-git` |
+| `New-Project.ps1` or `Update-Project.ps1` can't read the template | Git can't reach github.com, or the template is a private copy that Git has no credentials for | Check the network; for a private copy, `gh auth setup-git` |
 | Claude Code stops with a limit message | The 5-hour or weekly limit is reached | Continue in Copilot, or wait for the reset `/usage` shows |
 | `/orchestrate-plan` lists plans and asks which one | Several plan worktrees are open | Name the plan's worktree: `/orchestrate-plan <name>`; `git worktree list` shows them |
 | `git worktree remove`, `/finish-plan` or a clone reports "Filename too long" | A path passes Windows' 260-character limit; a plan's worktree under `.claude/worktrees/` lengthens every path | `git config --global core.longpaths true`, then run the command again |
