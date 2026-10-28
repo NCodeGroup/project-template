@@ -2,6 +2,11 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.32.0
+
+- `- pr-format: <file>#<heading>` in the Landing section, such as `AGENTS.md#Pull requests`, makes `/ship-plan` write the pull request's title and description as that section says, such as a conventional-commit title or required headings, still ending with its `Closes` lines. `/run-issues` refreshes descriptions the same way, and `/ship-plan` stops before pushing when the file or heading is missing. The `landing` line of `.template/Get-PlanState.ps1` prints `pr-format`, `none` by default, which keeps the plan's title and a short summary. Template updates don't change a project's `AGENTS.md`, so a project adds the key to its own Landing section. Projects get it with `.\.template\Update-Project.ps1`.
+- The Copilot and Hybrid reviewer agents in VS Code have two more buttons: Land the plan, which puts `/ship-plan` in the chat box to send, and Show where the plan stands, which runs `/continue-plan`. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.31.0
 
 - `- gate: <command>` in the Landing section, such as `./build/dod.ps1 -Fast -Affected`, makes `/ship-plan` run that command from the repository root before it pushes, judged by its exit code, and stop when it fails or changes a file. `/run-issues` runs it before the pushes it makes after review rounds. The `landing` line of `.template/Get-PlanState.ps1` prints `gate`, `none` by default. Template updates don't change a project's `AGENTS.md`, so a project adds the key to its own Landing section. Projects get it with `.\.template\Update-Project.ps1`.
