@@ -185,3 +185,37 @@ if ($SetupOnly) {
     'Run-issues end-to-end setup: PASSED'
     exit 0
 }
+
+if (-not $CheckOnly) {
+    if (-not (Get-Command $Claude -ErrorAction SilentlyContinue)) { throw 'Claude Code CLI not found: install it, or pass -Claude <path>' }
+
+    function Invoke-Claude([string]$Prompt, [string]$SessionId, [int]$Index) {
+        $arguments = @('-p', $Prompt)
+        if ($SessionId) { $arguments += '--resume', $SessionId }
+        $arguments += '--output-format', 'json', '--permission-mode', 'bypassPermissions'
+        if ($MaxBudgetUsd -gt 0) { $arguments += '--max-budget-usd', "$MaxBudgetUsd" }
+        Push-Location $app
+        try { $output = & $Claude @arguments | Out-String }
+        finally { Pop-Location }
+        [IO.File]::WriteAllText((Join-Path $Work "claude-$Index.json"), $output)
+        try { $output | ConvertFrom-Json } catch { $null }
+    }
+
+    $script:cost = 0.0
+    $script:sessionId = ''
+    Use-FixtureEnvironment {
+        $first = Invoke-Claude '/run-issues #1 wait:0' '' 1
+        Check 'Claude Code run 1 returned a session' ($first -and $first.session_id) 'no session_id in the output'
+        if ($first -and $first.total_cost_usd) { $script:cost += [double]$first.total_cost_usd }
+        $script:sessionId = if ($first) { "$($first.session_id)" } else { '' }
+        $prs = @(Get-Content -Raw -LiteralPath (Join-Path $hostDir 'prs.json') | ConvertFrom-Json)
+        if ($prs.Count -eq 0 -and $first -and $first.session_id) {
+            $second = Invoke-Claude 'Yes, go ahead with the run you summarized.' $first.session_id 2
+            Check 'Claude Code run 2 returned a session' ($second -and $second.session_id) 'no session_id in the output'
+            if ($second -and $second.total_cost_usd) { $script:cost += [double]$second.total_cost_usd }
+        }
+    }
+    "Cost: $script:cost USD"
+    "Fixture: $app"
+    "Continue the session from $app with: claude --resume $script:sessionId"
+}
