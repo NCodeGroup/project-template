@@ -8,46 +8,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.36.0] - 2026-10-28
 
+### Added
+
 - `/run-issues` now runs in Copilot Chat and Copilot CLI too, from a new template, `run-issues-copilot`: it takes the same requests, plans, executes and reviews each entry, opens a draft pull request, answers your review threads and comments, and lands it once you merge. It works in the open folder instead of worktrees, one entry after another, each on a branch `issue-<number>`, without running one ahead, and a stop after an entry's plan is written ends the run, leaving it for `/continue-plan`. Run it in a Local session in Copilot Chat, or a Copilot CLI session started on Opus, without approval prompts (Bypass Approvals or Autopilot; `/allow-all`). Projects get it with `.\.template\Update-Project.ps1`.
 - A workflow template's new `command` field names the command, prompt file and skill it installs as, so two templates can give different tools the same command; `Install-HybridWorkflow.ps1` stops when two templates install the same command for one tool.
 
 ## [0.35.2] - 2026-10-27
 
+### Fixed
+
 - `/ship-plan` made the follow-up label with `gh label create --force`, which on GitHub rewrote an existing label's color and description to `FBCA04` and "Work a plan found and did not do" on every landing that filed a follow-up, such as when `follow-up-label` names a label the project already uses or the project recolored `follow-up`. It now creates the label only when it is missing and leaves an existing one as it is, as it already did on GitLab. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.35.1] - 2026-10-27
+
+### Changed
 
 - No change for projects made from the template. This repository's `adopt/` folder, which holds `Adoption.psm1` and the `legacy/` adapters that only `Adopt-Project.ps1` uses, moved to `tools/adopt/`, beside `tools/Update-Template.ps1`. Add a new legacy adapter to `tools/adopt/legacy/`. `Adopt-Project.ps1` takes the same parameters and works as before.
 
 ## [0.35.0] - 2026-10-27
 
+### Changed
+
 - `/run-issues` now runs `.template/Get-PlanState.ps1` at each check of a draft pull request it waits on, so when a pull request outside the run lands that entry's `Release:` version, it renumbers the entry right away through `/ship-plan` (the `Release:` line and the renumber step), executes and reviews the step, pushes it to the draft pull request, and comments that the pull request must now merge with a merge commit, not by rebasing. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.34.0] - 2026-10-27
+
+### Changed
 
 - When another plan takes a plan's `Release:` version while its pull request is open, `/ship-plan` now renumbers it as it does before a pull request opens: it changes the `Release:` line and adds the renumber step, and once that step is reviewed the next `/ship-plan` pushes it to the open pull request, which then merges with a merge commit, not by rebasing. `.template/Get-PlanState.ps1` names `ship-plan` as `next`, not `wait`, while the pull request is open and `renumber` isn't `-`. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.33.0] - 2026-10-27
 
-- `/run-issues` runs one entry ahead: while a draft pull request waits for review, it plans, executes and reviews the next entry in its own worktree, and opens that entry's pull request only once the one before has landed, so entries still land in queue order. Projects get it with `.\.template\Update-Project.ps1`.
+### Added
+
 - A plan's `Release:` version now holds only until another plan lands it, or a later one, first: `.template/Get-PlanState.ps1` prints a new `renumber` line with the next free version, from the newest tag or the default branch's changelog, raised as the plan's version was; `/ship-plan` then changes the `Release:` line and adds a step that merges in the default branch and moves the changelog section, and lands after that step's review; such a pull request merges with a merge commit, not by rebasing; `/review-plan-diff` now diffs from the merge base with the default branch, so merged-in commits aren't reviewed as the plan's. Projects get it with `.\.template\Update-Project.ps1`.
 
+### Changed
+
+- `/run-issues` runs one entry ahead: while a draft pull request waits for review, it plans, executes and reviews the next entry in its own worktree, and opens that entry's pull request only once the one before has landed, so entries still land in queue order. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## [0.32.0] - 2026-10-27
+
+### Added
 
 - `- pr-format: <file>#<heading>` in the Landing section, such as `AGENTS.md#Pull requests`, makes `/ship-plan` write the pull request's title and description as that section says, such as a conventional-commit title or required headings, still ending with its `Closes` lines. `/run-issues` refreshes descriptions the same way, and `/ship-plan` stops before pushing when the file or heading is missing. The `landing` line of `.template/Get-PlanState.ps1` prints `pr-format`, `none` by default, which keeps the plan's title and a short summary. Template updates don't change a project's `AGENTS.md`, so a project adds the key to its own Landing section. Projects get it with `.\.template\Update-Project.ps1`.
 - The Copilot and Hybrid reviewer agents in VS Code have two more buttons: Land the plan, which puts `/ship-plan` in the chat box to send, and Show where the plan stands, which runs `/continue-plan`. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.31.0] - 2026-10-27
 
+### Added
+
 - `- gate: <command>` in the Landing section, such as `./build/dod.ps1 -Fast -Affected`, makes `/ship-plan` run that command from the repository root before it pushes, judged by its exit code, and stop when it fails or changes a file. `/run-issues` runs it before the pushes it makes after review rounds. The `landing` line of `.template/Get-PlanState.ps1` prints `gate`, `none` by default. Template updates don't change a project's `AGENTS.md`, so a project adds the key to its own Landing section. Projects get it with `.\.template\Update-Project.ps1`.
 - `.template/Get-PlanState.ps1` prints a new `protected` line: `host` when GitHub or GitLab requires pull requests into the default branch, `hook` under `protect: hook` with the `pre-push` hook enabled, else `no`, `unknown` or `-`. The `landing` line now also gives `protect`. `/run-issues` reads `protected` instead of calling `gh api` and `glab api` itself, and `/ship-plan` reads `protect` from the `landing` line. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.30.0] - 2026-10-27
 
+### Added
+
 - `Adopt-Project.ps1` takes the `project_owned_files` answer: `-Data @{ project_owned_files = '.github/workflows/ci.yml' }` keeps the named merged files exactly as the repository has them instead of rebuilding them, records the answer in `.copier-answers.yml`, and so later updates show the template's changes to them instead of merging. A name that isn't a merged file stops the adoption before it changes anything, and the report lists each kept file as `Owned`. Projects get it with `.\.template\Update-Project.ps1`.
 - `Update-Project.ps1` suggests `project_owned_files` for a merged file the project seems to have replaced: when the template changed a merged file that shares less than half its distinct non-blank lines with the template's version (lines an adopted file keeps under its "Kept from" comment don't count), it names the file and prints the `-Data` to run, after a commit or a conflict alike. It doesn't stop the update. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.29.0] - 2026-10-27
+
+### Changed
 
 - `/run-issues` now reads your top-level pull request comments and review summaries, not only review threads, fixes what they ask for, and answers each with a top-level comment that starts with `Autopilot:` and names the comment's link. A top-level comment counts as answered once such a comment names it, and a new comment from you starts a new round. Projects get it with `.\.template\Update-Project.ps1`.
 - After a review round adds fix steps and pushes them, `/run-issues` rewrites the pull request description the way `/ship-plan` writes it, a short summary of the plan's steps and Decisions and a `Closes` line per issue, so it matches the plan that lands. Projects get it with `.\.template\Update-Project.ps1`.
@@ -55,17 +78,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.28.0] - 2026-10-27
 
+### Added
+
 - `/ship-plan` now opens the pull request as a draft when the Landing section of `AGENTS.md` says `- draft: yes`, as `/ship-plan draft` does. `.template/Get-PlanState.ps1`'s `landing` line now gives every Landing key the workflow reads, with its default, and prints a value with a space in double quotes. Template updates don't change a project's `AGENTS.md`, so a project adds the keys to its Landing section itself; without them it lands as before. Projects get it with `.\.template\Update-Project.ps1`.
 - `- follow-ups: issues` (the default), `- follow-ups: <owner/repo>` or `- follow-ups: none` in the Landing section says where `/ship-plan` files a plan's follow-ups. With `none` it files nothing and lists them for you to record, and `/run-issues` says the same in its summary. Projects get it with `.\.template\Update-Project.ps1`.
 - `- follow-up-label: <name>` in the Landing section sets the label filed follow-ups get, `follow-up` by default; a name may contain spaces. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.27.1] - 2026-10-27
 
-- `.template/Get-PlanState.ps1` read only the newest pull request or merge request from a plan's branch, so when a newer one was open or closed but an older one had merged with the branch's `HEAD`, `landed` was `no` and `/finish-plan` stopped to ask. It now reads all of them, counts the branch as landed when any merged one holds `HEAD` or its tree, and its `pr` line names that one. Projects get it with `.\.template\Update-Project.ps1`.
+### Added
+
 - A new `merge` line prints the commit the merged pull request merged as, and `/ship-plan` tags that commit instead of asking `gh pr view` or `glab mr view` for it. Projects get it with `.\.template\Update-Project.ps1`.
+
+### Changed
+
 - For a merged pull request that doesn't hold the branch's `HEAD`, `next` now names the base branch when the pull request merged into another branch than the default (a stacked pull request), and is `ship-plan` under `integrate: direct`, where a plan lands by a push; `/ship-plan`'s stop for a merged pull request says the same. Projects get it with `.\.template\Update-Project.ps1`.
 
+### Fixed
+
+- `.template/Get-PlanState.ps1` read only the newest pull request or merge request from a plan's branch, so when a newer one was open or closed but an older one had merged with the branch's `HEAD`, `landed` was `no` and `/finish-plan` stopped to ask. It now reads all of them, counts the branch as landed when any merged one holds `HEAD` or its tree, and its `pr` line names that one. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## [0.27.0] - 2026-10-27
+
+### Added
 
 - A plan may now cover a small group of related issues, up to three: `/plan-issue #25 #24 #26` writes one plan whose `Issue:` line lists them, with its steps grouped by issue and the largest version raise among them, in one worktree named after the first issue, one pull request with a `Closes` line per issue and one release. The plan snapshot and re-plan comments go to each issue, and `/ship-plan` comments on and closes each issue still open. `.template/Get-PlanState.ps1` has a new `issue-states` line, and its `issue-state` is `OPEN` while any issue is open. `/triage-issues` groups ready issues that overlap, at most three (`group:<n>` changes it), and prints one `/plan-issue` line per group. `/run-issues` runs each group as one queue entry, and a group stops together. A plan with one issue works as before. Projects get it with `.\.template\Update-Project.ps1`.
 
