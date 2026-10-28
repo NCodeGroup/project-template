@@ -8,7 +8,7 @@
     .template\Update-Project.ps1 and the one in adopt\Adoption.psm1, whether .githooks is enabled and which note is printed in
     a clone with other hooks, with pre-commit's hooks or config, and with none. Then pushes from a fixture clone to a local bare
     remote and checks that .githooks/pre-push refuses a push to main only while AGENTS.md's Landing section says protect: hook,
-    and lets a branch and a tag through, and refuses the push when awk is missing, run directly with a PATH without it. Then runs .githooks/commit-msg directly and checks that it refuses the commit when grep is missing and lets a message without attribution through. Then checks that the wrapper saved as pre-push.legacy in a clone with pre-commit's pre-push hook refuses a push to main after the same commits were pushed as a branch. Then runs the protect: hook check from workflow\templates\run-issues.md in fixture clones and checks it passes only when Git runs .githooks/pre-push. Prints PASS or FAIL per check and exits 1 on any
+    and lets a branch and a tag through, and refuses the push when awk is missing, run directly with a PATH without it. Then runs .githooks/commit-msg directly and checks that it refuses the commit when grep is missing and lets a message without attribution through. Then checks that the wrapper saved as pre-push.legacy in a clone with pre-commit's pre-push hook refuses a push to main after the same commits were pushed as a branch. Then runs workflow\Get-PlanState.ps1 in fixture clones and checks that its protected line is hook only when the Landing section says protect: hook and Git runs .githooks/pre-push. Prints PASS or FAIL per check and exits 1 on any
     failure.
 
 .PARAMETER Work
@@ -228,32 +228,28 @@ Check 'commit-msg: refuses the commit when grep is missing' ((Test-Path (Join-Pa
 Check 'commit-msg: lets a message without attribution through unchanged' (($cleanCode -eq 0) -and ([IO.File]::ReadAllText($cleanFile) -eq $cleanText)) "exit $cleanCode; $cleanOut"
 Check 'pre-push: the wrapper in pre-push.legacy refuses a push to main under pre-commit, after the commits were pushed as a branch' (($legacyBranchCode -eq 0) -and ($legacyMainCode -ne 0) -and $legacyMainOut.Contains('says protect: hook')) "branch exit $legacyBranchCode; $legacyBranchOut; main exit $legacyMainCode; $legacyMainOut"
 
-# run-issues: its protect: hook check passes only when Git runs .githooks/pre-push.
-$locallyLine = Get-Content -LiteralPath (Join-Path $repoRoot 'workflow\templates\run-issues.md') | Where-Object { $_.Contains('- Locally,') } | Select-Object -First 1
-$runCheck = $null
-if ($locallyLine) {
-    foreach ($span in [regex]::Matches($locallyLine, '`([^`]+)`')) {
-        if ($span.Groups[1].Value.Contains('git rev-parse --git-path hooks')) { $runCheck = $span.Groups[1].Value; break }
-    }
-}
+# The state script: protected is hook only when the Landing section says protect: hook and Git runs .githooks/pre-push.
 $runCases = [ordered]@{
-    'pre-commit''s pre-push hook alone'                              = @{ PushHook = $preCommitHook; Expected = $false }
-    'the wrapper as pre-push'                                        = @{ PushHook = $wrapper; Expected = $true }
-    'pre-commit''s pre-push hook and the wrapper as pre-push.legacy' = @{ PushHook = $preCommitHook; LegacyHook = $wrapper; Expected = $true }
-    'pre-commit''s pre-push hook and an own pre-push.legacy'         = @{ PushHook = $preCommitHook; LegacyHook = "#!/bin/sh`n"; Expected = $false }
-    'core.hooksPath .githooks'                                       = @{ HooksPath = '.githooks'; Expected = $true }
-    'core.hooksPath template/.githooks'                              = @{ HooksPath = 'template/.githooks'; Expected = $true }
-    'no pre-push hook'                                               = @{ Expected = $false }
+    'pre-commit''s pre-push hook alone'                              = @{ PushHook = $preCommitHook; Protect = 'hook'; Expected = $false }
+    'the wrapper as pre-push'                                        = @{ PushHook = $wrapper; Protect = 'hook'; Expected = $true }
+    'pre-commit''s pre-push hook and the wrapper as pre-push.legacy' = @{ PushHook = $preCommitHook; LegacyHook = $wrapper; Protect = 'hook'; Expected = $true }
+    'pre-commit''s pre-push hook and an own pre-push.legacy'         = @{ PushHook = $preCommitHook; LegacyHook = "#!/bin/sh`n"; Protect = 'hook'; Expected = $false }
+    'core.hooksPath .githooks'                                       = @{ HooksPath = '.githooks'; Protect = 'hook'; Expected = $true }
+    'core.hooksPath template/.githooks'                              = @{ HooksPath = 'template/.githooks'; Protect = 'hook'; Expected = $true }
+    'no pre-push hook'                                               = @{ Protect = 'hook'; Expected = $false }
+    'the wrapper as pre-push under protect: none'                    = @{ PushHook = $wrapper; Protect = 'none'; Expected = $false }
 }
 $n = 0
 foreach ($name in $runCases.Keys) {
     $case = $runCases[$name]
     $n++
-    $folder = Join-Path $Work "run-issues-$n"
+    $folder = Join-Path $Work "state-script-$n"
     New-Item -ItemType Directory -Force $folder | Out-Null
     Push-Location $folder
     try {
         Invoke-Git init -q
+        $agentsText = if ($case.Protect -eq 'none') { $protectAgents.Replace('- protect: hook', '- protect: none') } else { $protectAgents }
+        [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), $agentsText, [Text.UTF8Encoding]::new($false))
         if ($case.PushHook) { [IO.File]::WriteAllText((Join-Path $folder '.git\hooks\pre-push'), $case.PushHook, [Text.UTF8Encoding]::new($false)) }
         if ($case.LegacyHook) { [IO.File]::WriteAllText((Join-Path $folder '.git\hooks\pre-push.legacy'), $case.LegacyHook, [Text.UTF8Encoding]::new($false)) }
         if ($case.HooksPath) {
@@ -262,8 +258,9 @@ foreach ($name in $runCases.Keys) {
             Copy-Item -LiteralPath (Join-Path $repoRoot 'template\.githooks\pre-push') -Destination $hooksFolder
             Invoke-Git config core.hooksPath $case.HooksPath
         }
-        $result = if ($runCheck) { & ([scriptblock]::Create($runCheck)) }
-        Check "run-issues: protect: hook check with $name" ("$result" -eq "$($case.Expected)") "check: $runCheck; result: $result"
+        $line = & pwsh -NoProfile -File (Join-Path $repoRoot 'workflow\Get-PlanState.ps1') -Path $folder -NoFetch 2>$null | Where-Object { "$_" -like 'protected: *' } | Select-Object -First 1
+        $result = ("$line" -eq 'protected: hook')
+        Check "state script: protected is hook with $name" ($result -eq $case.Expected) "line: $line"
     }
     finally { Pop-Location }
 }
