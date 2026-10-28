@@ -142,7 +142,7 @@ An instruction override is the project's word against the template's, so say it 
 
 ## Create a Project
 
-Needs Git with `user.name` and `user.email` set, Copier (`uv tool install copier`; the scripts fall back to `uvx`), access to this private repository (`gh auth setup-git` once per PC), and for `-CreateRemote` the signed-in `gh` or `glab` CLI. [USAGE.md](USAGE.md#install-the-tools) sets all of it up, along with Claude Code and GitHub Copilot.
+Needs Git with `user.name` and `user.email` set, Copier (`uv tool install copier`; the scripts fall back to `uvx`), network access to this repository, which is public, and for `-CreateRemote` the signed-in `gh` or `glab` CLI. [USAGE.md](USAGE.md#install-the-tools) sets all of it up, along with Claude Code and GitHub Copilot.
 
 ```powershell
 .\New-Project.ps1 -Path C:\src\qso-viewer                                # asks the questions, then git init and the first commit
@@ -165,7 +165,7 @@ Needs Git with `user.name` and `user.email` set, Copier (`uv tool install copier
 
 The script runs `copier copy`, which asks the [questions](#questions) and writes the files and the answers (`.copier-answers.yml`), then `git init -b main`, enables the template's Git hooks (`git config core.hooksPath .githooks`), and makes the first commit, `Create project from project-template v0.1.0`. With `-CreateRemote` it reads `git_host` from `.copier-answers.yml`: for `github` it runs `gh repo create <name> --public --source . --push`; for `gitlab`, `glab repo create <name> --public` and `git push -u origin main`. `-Visibility` replaces `--public` with `--private` or `--internal`. GitLab would otherwise default to internal, so the script always passes the flag.
 
-A public project is readable by anyone, including its `.copier-answers.yml`, which names this private template; only people with access to the template can run `copier update`. Secrets stay out of it as in any project (`AGENTS.md`, `.gitignore`), and its CI is safe for pull requests from forks: `pull_request` with a read-only token and no secrets. Without a `LICENSE` file, the code is all rights reserved; add one if others should be able to use it. To change the visibility later: `gh repo edit --visibility private --accept-visibility-change-consequences`, or `glab api --method PUT projects/:id --raw-field visibility=private` (`glab repo update` has no visibility flag).
+A public project is readable by anyone, including its `.copier-answers.yml`, which names this template; the template is public too, so anyone can run `copier update` against it. Secrets stay out of it as in any project (`AGENTS.md`, `.gitignore`), and its CI is safe for pull requests from forks: `pull_request` with a read-only token and no secrets. Without a `LICENSE` file, the code is all rights reserved; add one if others should be able to use it. To change the visibility later: `gh repo edit --visibility private --accept-visibility-change-consequences`, or `glab api --method PUT projects/:id --raw-field visibility=private` (`glab repo update` has no visibility flag).
 
 For a .NET project, `dotnet new` templates put a `Version` on each `<PackageReference>`, which central package management rejects (NU1008); move each version into `Directory.Packages.props`. The template's rules tell the agents the same, and `dotnet add package` already does it. Add each project to one solution at the repository root (`dotnet new sln` once, then `dotnet sln add <project folder>`), so the default `dotnet build` and `dotnet test` — and CI — cover it.
 
@@ -438,7 +438,7 @@ Once, from this folder:
 git add -A
 git commit -m "Create the project template"
 git tag v0.1.0
-gh repo create polewskm/project-template --private --source . --remote origin --push
+gh repo create polewskm/project-template --public --source . --remote origin --push
 git push origin v0.1.0
 ```
 
@@ -474,6 +474,7 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `tests/Test-InvokeAllTests.ps1` | Test the runner that runs every test suite |
 | `.github/workflows/test-template.yml` | Runs `tests/Test-Template.ps1`, `tests/Test-Adoption.ps1`, `tests/Test-AdoptOwnedFiles.ps1`, `tests/Test-UpdateIgnoredFiles.ps1`, `tests/Test-UpdateExitCode.ps1`, `tests/Test-UpdateKeptLines.ps1`, `tests/Test-UpdateOwnedFiles.ps1`, `tests/Test-UpdateRewrittenFiles.ps1`, `tests/Test-PlanState.ps1`, `tests/Test-CommitAttribution.ps1`, `tests/Test-GitHooks.ps1` and `tests/Test-InvokeAllTests.ps1` on Windows, and checks this repository's commit attribution, for every push to `main` and every pull request |
 | `.github/dependabot.yml` | Dependabot for the actions in `test-template.yml` |
+| `LICENSE` | The MIT license this repository is published under; projects made from it don't get it and choose their own |
 | `USAGE.md` | Setting up a PC for Claude Code and GitHub Copilot, and using and switching between them in a project |
 | `.gitattributes` | Keeps every file LF on disk, because Copier copies non-`.jinja` files byte for byte |
 
