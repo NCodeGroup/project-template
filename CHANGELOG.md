@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-28
+
+### Added
+
+- `.template/Get-PlanState.ps1` prints a new line, `changelog-backfill`. It names the version tags merged into `HEAD` that the changelog has no section for, as `<oldest>..<newest>`, as the tag alone when there is one, or as `-` when there is none. Projects get it with `.\.template\Update-Project.ps1`.
+- `.\.template\Update-Project.ps1` and `Adopt-Project.ps1` print a request to backfill the changelog when the project has version tags it has no section for, such as `/plan-migration Backfill CHANGELOG.md from the releases v0.1.0..v0.3.0`. A project whose changelog started after its first releases can then get its full history.
+- Every planning command lists that backfill under the plan's Follow-ups until it lands. It also says how a backfill plan writes the sections: one per tag, dated with the tag's date, with entries from the tag's release notes, or from its commits when it has no release, and compare links. Projects get it with `.\.template\Update-Project.ps1`.
+
+### Changed
+
+- No change for projects made from the template. A new test suite, `tests/Test-ChangelogBackfill.ps1`, checks both copies of the backfill check, in `.template/Update-Project.ps1` and `tools/adopt/Adoption.psm1`.
+
 ## [0.37.1] - 2026-10-28
 
 ### Changed
@@ -463,7 +475,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/polewskm/project-template/compare/v0.37.1...HEAD
+[unreleased]: https://github.com/polewskm/project-template/compare/v0.38.0...HEAD
+[0.38.0]: https://github.com/polewskm/project-template/compare/v0.37.1...v0.38.0
 [0.37.1]: https://github.com/polewskm/project-template/compare/v0.37.0...v0.37.1
 [0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.2...v0.37.0
 [0.36.2]: https://github.com/polewskm/project-template/compare/v0.36.1...v0.36.2
