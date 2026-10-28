@@ -15,6 +15,16 @@ handoffs:
     prompt: Re-plan the remaining work in PLAN.md based on the review findings above.
     send: false
     model: 'Claude Opus 5.5 (copilot)'
+  - label: Land the plan
+    agent: agent
+    prompt: /ship-plan
+    send: false
+    model: 'Claude Sonnet 5.5 (copilot)'
+  - label: Show where the plan stands
+    agent: agent
+    prompt: /continue-plan
+    send: true
+    model: 'Claude Sonnet 5.5 (copilot)'
 ---
 Review the changes made while executing `PLAN.md`.
 

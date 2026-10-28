@@ -15,5 +15,15 @@ handoffs:
     prompt: Re-plan the remaining work in PLAN.md based on the review findings above.
     send: false
     model: '{{PLANNER_MODEL}}'
+  - label: Land the plan
+    agent: agent
+    prompt: /ship-plan
+    send: false
+    model: '{{REVIEWER_MODEL}}'
+  - label: Show where the plan stands
+    agent: agent
+    prompt: /continue-plan
+    send: true
+    model: '{{REVIEWER_MODEL}}'
 ---
 {{PROMPT:review-plan-diff|the base branch or commit in my message, if any}}

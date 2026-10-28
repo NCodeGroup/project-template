@@ -357,6 +357,8 @@ $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.git
 Check 'workflow: ship-plan writes the pull request as the Landing section''s pr-format section says, keeping the Closes lines' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $runFiles ('as the section the `landing` line''s `pr-format` names says'))
 Check 'workflow: run-issues refreshes the description as the pr-format section says' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.github\agents\copilot-reviewer.agent.md', 'template\.github\agents\hybrid-reviewer.agent.md', '.github\agents\copilot-reviewer.agent.md') ('label: Land the plan', 'prompt: /ship-plan', 'label: Show where the plan stands', 'prompt: /continue-plan'))
+Check 'workflow: the reviewer agents have buttons for /ship-plan and /continue-plan' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $issuePlanFiles ('up to three related issues named one by one', 'stop for the whole group', 'after the first issue the request names'))
 $m += @(Get-MissingText 'template\.claude\commands\plan-feature.md' ('Issue: #25 #24 #26', '- Issue: <reference>', 'largest raise', 'once to each issue on its'))
 $m += @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('line for each reference on the plan', 'issue-states', 'one comment per issue'))
