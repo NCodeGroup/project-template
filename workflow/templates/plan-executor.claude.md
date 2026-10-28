@@ -8,4 +8,4 @@ model: {{CLAUDE_EXECUTOR_MODEL}}
 
 ## Run commands with the PowerShell tool
 
-Run the step's Done-when command, and any command the step says to run, with the PowerShell tool, from the root of the plan's worktree, or of the repository when there is none, as `CLAUDE.md` tells the main session. Never hand them to `pwsh` through Bash: in a plan's worktree Claude Code refuses that, and Bash mangles their quoting. Use Bash only when the PowerShell tool isn't available, as on macOS and Linux without it turned on.
+Run the step's Done-when command, in the `pwsh` child process that step 5 gives, and any command the step says to run, with the PowerShell tool, from the root of the plan's worktree, or of the repository when there is none, as `CLAUDE.md` tells the main session. Never hand them to `pwsh` through Bash: in a plan's worktree Claude Code refuses that, and Bash mangles their quoting. Use Bash only when the PowerShell tool isn't available, as on macOS and Linux without it turned on.
