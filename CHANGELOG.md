@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-10-28
+
+### Added
+
+- `.template/Get-PlanState.ps1` prints a new line, `conflicts`. It names the files that conflict when the default branch on `origin` merges into the plan's branch, joined by `, `, found with `git merge-tree` without touching the index or the working tree. It is `none` when the merge is clean, `unknown` when Git can't say, such as Git older than 2.38, and `-` on the default branch or once the plan has landed. While a pull request is open and `conflicts` names files, `next` is `ship-plan`. Projects get it with `.\.template\Update-Project.ps1`.
+
+### Changed
+
+- `/ship-plan` no longer pushes a branch, or opens or updates a pull request, that conflicts with the default branch. It adds a step that merges the default branch in, never by rebasing, with a sentence for each file that conflicts saying how to combine the two sides, and stops. The plan lands once that step is executed and reviewed, and an open pull request then gets the step pushed to it and merges with a merge commit. A branch that merges cleanly isn't merged in: the pull request merges it. Projects get it with `.\.template\Update-Project.ps1`.
+- The renumber step resolves the files that conflict besides the changelog the same way, instead of stopping to escalate them. Projects get it with `.\.template\Update-Project.ps1`.
+- `/run-issues` handles a waiting draft pull request that another pull request left conflicting as it handles one whose release was taken, and `/continue-plan` shows the files that conflict. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## [0.38.0] - 2026-10-28
 
 ### Added
@@ -475,7 +487,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/polewskm/project-template/compare/v0.38.0...HEAD
+[unreleased]: https://github.com/polewskm/project-template/compare/v0.39.0...HEAD
+[0.39.0]: https://github.com/polewskm/project-template/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/polewskm/project-template/compare/v0.37.1...v0.38.0
 [0.37.1]: https://github.com/polewskm/project-template/compare/v0.37.0...v0.37.1
 [0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.2...v0.37.0
