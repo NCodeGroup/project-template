@@ -359,6 +359,8 @@ $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.git
 Check 'workflow: ship-plan moves a plan whose release another plan took to the renumber version with a merge step' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('git merge-base HEAD origin/<default>', 'the diff holds only this plan''s work'))
 Check 'workflow: review-plan-diff diffs from the merge base with the default branch' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\handoff-plan.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-bugfix\SKILL.md') ('moves this plan to the next free version, raised the same way'))
+Check 'workflow: plans say their release version moves when another plan lands it first' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $runFiles ('as the section the `landing` line''s `pr-format` names says'))
 Check 'workflow: run-issues refreshes the description as the pr-format section says' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.github\agents\copilot-reviewer.agent.md', 'template\.github\agents\hybrid-reviewer.agent.md', '.github\agents\copilot-reviewer.agent.md') ('label: Land the plan', 'prompt: /ship-plan', 'label: Show where the plan stands', 'prompt: /continue-plan'))
