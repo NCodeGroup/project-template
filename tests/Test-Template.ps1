@@ -341,7 +341,7 @@ $m += @(foreach ($p in $shipFiles) { $full = Join-Path $repoRoot $p; if ((Test-P
 Check 'workflow: ship-plan creates the follow-up label only when it is missing and leaves an existing one as it is' (-not $m) ($m -join '; ')
 $runFiles = 'template\.claude\commands\run-issues.md', '.claude\commands\run-issues.md'
 $copilotRunFiles = 'template\.github\prompts\run-issues.prompt.md', 'template\.github\skills\run-issues\SKILL.md', '.github\prompts\run-issues.prompt.md', '.github\skills\run-issues\SKILL.md'
-$m = @(Get-MissingText $runFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`','git worktree add .claude/worktrees/issue-<number>', 'plan-executor', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'ExitWorktree'))
+$m = @(Get-MissingText $runFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`','git worktree add --no-track .claude/worktrees/issue-<number> -b worktree-issue-<number> origin/<default>', '`--no-track` leaves the branch without an upstream until `ship-plan` pushes it with `git push -u`', 'plan-executor', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'ExitWorktree'))
 $m += @(foreach ($p in $runFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and ([regex]::Matches([IO.File]::ReadAllText($full), [regex]::Escape('$ARGUMENTS')).Count -ne 1 -or [IO.File]::ReadAllText($full).Contains('{{'))) { "${p}: the arguments placeholder is not there exactly once, or a template token is left" } })
 $m += @(Get-MissingText $copilotRunFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`', 'git switch --no-track -c issue-<number> origin/<default>', 'runSubagent', 'plan-executor', '.github/skills/<name>/SKILL.md', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'Otherwise end the run'))
 $m += @(foreach ($p in $copilotRunFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'ExitWorktree', 'git worktree add', '.claude/commands/', '$ARGUMENTS', '{{', '## Run Ahead') { if ($t.Contains($x)) { "${p}: has $x" } } } })
@@ -367,6 +367,12 @@ $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.git
 Check 'workflow: ship-plan adds a merge step instead of pushing a branch that conflicts with the default branch, and never merges a clean one in' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('<other-conflicts> Commit note:', 'stage only `<changelog>` and the files this step resolved', 'a renumber or merge step''s merge', 'the merge a renumber or merge step made'))
 Check 'workflow: the renumber step resolves the other files that conflict, and a merge step''s merge keeps the empty commits' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $shipFiles ('`git ls-remote --exit-code --heads origin <branch>` shows by exiting 2', 'Ask `origin`, not the branch''s upstream'))
+$m += @(foreach ($p in $shipFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('@{u}')) { "${p}: still tests the upstream with @{u}" } })
+Check 'workflow: ship-plan asks origin, not the upstream, whether the plan branch was pushed before it drops the empty commits' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $shipFiles ('the push to `<default>` must fast-forward, so `behind` matters', 'or the one The Catch-Up Step below gives when it is `none` or `unknown`', '## The Catch-Up Step', 'so this plan''s branch conflicts with it', 'the next ship-plan adds the step item 3 gives'))
+$m += @(foreach ($p in $shipFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('stop when `behind` is more than 0')) { "${p}: still stops a direct landing that is behind" } })
+Check 'workflow: ship-plan under integrate: direct merges a moved default branch in with a step instead of stopping' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('git merge-base HEAD origin/<default>', 'the diff holds only this plan''s work'))
 Check 'workflow: review-plan-diff diffs from the merge base with the default branch' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\handoff-plan.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-bugfix\SKILL.md') ('moves this plan to the next free version, raised the same way'))
@@ -391,6 +397,15 @@ $m += @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.gi
 $m += @(Get-MissingText $triageFiles ('group:<n>', '/plan-issue #25 #24 #26'))
 $m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('one entry per', 'A group stops together'))
 Check 'workflow: a plan covers up to three related issues: plan-issue takes them, the plan lists them, ship-plan closes each, triage groups them and run-issues runs a group as one entry' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.github\prompts\plan-bugfix.prompt.md', 'template\.github\agents\copilot-planner.agent.md') ('Refs: <issue reference', 'put its reference on a `Refs:` line instead', 'and never to one on its `Refs:` line'))
+$m += @(Get-MissingText $issuePlanFiles 'it goes on the plan''s `Refs:` line')
+$m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('after `Issue:`, `Release:` and `Refs:`', 'one `Refs <issue reference>` line per reference on its `Refs:` line'))
+Check 'workflow: planners put an issue the request only refers to on a Refs: line and post no snapshot to it' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $shipFiles ('the state script''s `refs` line', 'After them come one `Refs <issue reference>` line for each reference on the `refs` line', 'unless the `pr-format` section says where related issues go', 'Never comment on or close an issue on the `refs` line'))
+$m += @(Get-MissingText 'template\.claude\commands\continue-plan.md' '`issue`, `refs`, `steps`')
+Check 'workflow: ship-plan names the Refs: issues in the pull request and never closes them, and continue-plan shows them' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles) 'then one `Refs <issue reference>` line for each reference on its `Refs:` line')
+Check 'workflow: run-issues keeps the Refs lines when it refreshes the pull request description' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.template\Get-PlanState.ps1', '.template\Get-PlanState.ps1') {
     $full = Join-Path $repoRoot $p
     if (-not (Test-Path -LiteralPath $full) -or [IO.File]::ReadAllText($full) -ne [IO.File]::ReadAllText((Join-Path $repoRoot 'workflow\Get-PlanState.ps1'))) { $p }
