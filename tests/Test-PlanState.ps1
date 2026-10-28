@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, then Keep a Changelog headings and the changelog lines. After each move it runs
+    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, then Keep a Changelog headings and the changelog lines, then the version tags merged into HEAD that the changelog has no section for. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -548,6 +548,27 @@ Check 'changelog: an Unreleased section alone is no release' $r.Ok $r.Detail
 Remove-Item -LiteralPath $lateLog
 $r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'missing'; 'changelog-version' = '-' }
 Check 'changelog: a missing changelog' $r.Ok $r.Detail
+
+# 20. Version tags without a changelog section.
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'changelog-backfill' = 'v0.1.0' }
+Check 'backfill: a missing changelog names the tag merged into HEAD, not a later one' $r.Ok $r.Detail
+
+Push-Location $lateRepo
+try {
+    Invoke-Git tag v0.1.1
+    Invoke-Git tag 0.1.2
+}
+finally { Pop-Location }
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'changelog-backfill' = 'v0.1.0..0.1.2' }
+Check 'backfill: names the oldest and the newest tag without a section' $r.Ok $r.Detail
+
+Write-Text $lateLog "# Changelog`n`n## [Unreleased]`n`n## [0.1.2] - 2026-10-28`n`n- Third.`n"
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'changelog-backfill' = 'v0.1.0..v0.1.1' }
+Check 'backfill: a changelog started mid-history names the older tags' $r.Ok $r.Detail
+
+Write-Text $lateLog "# Changelog`n`n## [Unreleased]`n`n## [0.1.2] - 2026-10-28`n`n## v0.1.1`n`n## [0.1.0] - 2026-10-01 [YANKED]`n"
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'changelog-backfill' = '-' }
+Check 'backfill: every tag merged into HEAD has a section' $r.Ok $r.Detail
 
 ''
 if ($failures.Count) { "Plan state tests: FAILED ($($failures.Count))"; exit 1 }

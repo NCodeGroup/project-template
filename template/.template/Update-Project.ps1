@@ -44,6 +44,9 @@
     runs .githooks/commit-msg. With protect: hook in AGENTS.md's Landing section, it also says how to run
     .githooks/pre-push there.
 
+    When the project has version tags merged into HEAD that the changelog (AGENTS.md's Landing changelog key,
+    CHANGELOG.md by default) has no section for, it ends with a /plan-migration request to backfill them.
+
     Every version of this script accepts -Path, -Ref, -Data, -NoCommit, -TemplateClone and -HandedOff, so any
     version can hand over to any later one.
 
@@ -218,6 +221,24 @@ function Get-GitHooksSetup {
         }
     }
     [pscustomobject]@{ HooksPath = -not $preCommit -and -not $ownHooks; Note = if ($parts) { $parts -join "`n" } else { $null } }
+}
+
+# The changelog AGENTS.md's Landing section names (CHANGELOG.md by default) as File, and as Range the version tags merged into HEAD
+# that have no release heading in it: <oldest>..<newest>, the tag alone, or -. workflow/Get-PlanState.ps1 prints Range as changelog-backfill.
+function Get-ChangelogBackfill {
+    $file = 'CHANGELOG.md'
+    if (Test-Path -LiteralPath AGENTS.md) {
+        $inLanding = $false
+        foreach ($line in Get-Content -LiteralPath AGENTS.md) {
+            if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
+            if ($inLanding -and $line -match '^## ') { break }
+            if ($inLanding -and $line -match '^- changelog:\s*`?([^`\s]+)') { $file = $Matches[1]; break }
+        }
+    }
+    $listed = @(if (Test-Path -LiteralPath $file -PathType Leaf) { foreach ($line in Get-Content -LiteralPath $file) { if ($line -match '^## \[?v?(\d+\.\d+\.\d+)\]?(?: - \d{4}-\d{2}-\d{2})?(?: \[YANKED\])?\s*$') { [version]$Matches[1] } } })
+    $missing = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -notin $listed } | Sort-Object { [version]($_ -replace '^v') })
+    $range = if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0] } else { "$($missing[0])..$($missing[-1])" }
+    [pscustomobject]@{ File = $file; Range = $range }
 }
 
 $project = (Resolve-Path -LiteralPath $Path).Path
@@ -424,6 +445,14 @@ try {
         $rewritten | ForEach-Object { "  $_" }
         "To make them project-owned, so updates leave them alone and show the template's changes instead, run the update with (after abandoning it with git reset --hard; git clean -fd if it stops with a conflict below):"
         "  .\.template\Update-Project.ps1 -Data @{ project_owned_files = $((@($ownedMerged) + $rewritten | ForEach-Object { "'$_'" }) -join ', ') }"
+    }
+
+    # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).
+    $backfill = Get-ChangelogBackfill
+    if ($backfill.Range -ne '-') {
+        ''
+        "Version tags without a section in $($backfill.File): $($backfill.Range). To give the changelog the project's full release history, in the repository, run:"
+        "  /plan-migration Backfill $($backfill.File) from the releases $($backfill.Range)"
     }
     $message = "Update from project-template $to"
     if ($conflicts) {

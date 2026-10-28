@@ -152,6 +152,9 @@ try {
         if ((Test-Path -LiteralPath CHANGELOG.md -PathType Leaf) -and -not (Test-KeepAChangelog ([IO.File]::ReadAllText((Join-Path $project 'CHANGELOG.md'))))) {
             $followUps.Add('convert CHANGELOG.md to Keep a Changelog 1.1.0 (https://keepachangelog.com/en/1.1.0/), keeping every entry')
         }
+        # Version tags the changelog has no section for, such as releases from before it started.
+        $backfill = Get-ChangelogBackfill
+        if ($backfill.Range -ne '-') { $followUps.Add("backfill $($backfill.File) from the releases $($backfill.Range)") }
         if ((Get-Answer 'stack') -eq 'dotnet') {
             $otherInstructions = @(Get-ChildItem -LiteralPath .github/instructions -Filter '*.instructions.md' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin 'csharp.instructions.md', 'project-template.instructions.md' } | Sort-Object Name | ForEach-Object Name)
             if ($otherInstructions.Count) { $followUps.Add("reconcile .github/instructions/csharp.instructions.md with $($otherInstructions -join ', ')") }
