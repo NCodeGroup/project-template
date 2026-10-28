@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a fixture repository that runs .githooks/commit-msg as a pre-commit script hook and checks that the hook
     strips the agent attribution from a commit message. Then checks, for the copy of Get-GitHooksSetup in
-    .template\Update-Project.ps1 and the one in adopt\Adoption.psm1, whether .githooks is enabled and which note is printed in
+    .template\Update-Project.ps1 and the one in tools\adopt\Adoption.psm1, whether .githooks is enabled and which note is printed in
     a clone with other hooks, with pre-commit's hooks or config, and with none. Then pushes from a fixture clone to a local bare
     remote and checks that .githooks/pre-push refuses a push to main only while AGENTS.md's Landing section says protect: hook,
     and lets a branch and a tag through, and refuses the push when awk is missing, run directly with a PATH without it. Then runs .githooks/commit-msg directly and checks that it refuses the commit when grep is missing and lets a message without attribution through. Then checks that the wrapper saved as pre-push.legacy in a clone with pre-commit's pre-push hook refuses a push to main after the same commits were pushed as a branch. Then runs workflow\Get-PlanState.ps1 in fixture clones and checks that its protected line is hook only when the Landing section says protect: hook and Git runs .githooks/pre-push. Prints PASS or FAIL per check and exits 1 on any
@@ -91,7 +91,7 @@ finally {
 Check 'pre-commit: runs .githooks/commit-msg as a script hook and strips the attribution' (($exitCode -eq 0) -and -not ([IO.File]::ReadAllText((Join-Path $repo 'msg.txt'))).Contains('anthropic.com')) "exit $exitCode; $output"
 
 $updateFunction = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-GitHooksSetup' }, $true) | Select-Object -First 1
-Import-Module (Join-Path $repoRoot 'adopt\Adoption.psm1') -Force
+Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
 $sources = [ordered]@{
     update = { if ($updateFunction) { . ([scriptblock]::Create($updateFunction.Extent.Text)); Get-GitHooksSetup } }
     adopt  = { if ((Get-Module Adoption).ExportedFunctions.ContainsKey('Get-GitHooksSetup')) { Adoption\Get-GitHooksSetup } }

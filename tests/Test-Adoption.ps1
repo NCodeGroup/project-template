@@ -57,7 +57,7 @@ function New-TestFolder([string]$Name, [hashtable]$Files) {
     $folder
 }
 
-Import-Module (Join-Path $repoRoot 'adopt\Adoption.psm1') -Force
+Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 New-Item -ItemType Directory -Force $Work | Out-Null
 
@@ -202,7 +202,7 @@ $iBar = $pp.IndexOf('<PackageVersion Include="Bar" Version="2.0.0" />')
 $iFoo = $pp.IndexOf('<PackageVersion Include="Foo" Version="1.2.0" />')
 Check 'unit: Move-PackageVersionsToCentral' (-not $pa.Contains('Version="') -and -not $pb.Contains('Version="') -and $pb.Contains('PrivateAssets="all"') -and $iBar -ge 0 -and $iBar -lt $iFoo -and 'Foo: 1.0.0, 1.2.0 -> 1.2.0' -in $report) "$pa | $pb | $pp | $($report -join ' / ')"
 $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-$adapters = Join-Path $repoRoot 'adopt\legacy'
+$adapters = Join-Path $repoRoot 'tools\adopt\legacy'
 $scaffold = Join-Path $adapters 'NCode.ProjectSettings.Scaffold.ps1'
 $folder = New-TestFolder 'scaffold-adapter' @{
     'NCodeGroup.png' = $png

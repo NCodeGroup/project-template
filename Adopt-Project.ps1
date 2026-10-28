@@ -33,7 +33,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-Import-Module (Join-Path $PSScriptRoot 'adopt\Adoption.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'tools\adopt\Adoption.psm1') -Force
 
 function Invoke-Copier {
     if (Get-Command copier -ErrorAction SilentlyContinue) { & copier @args }
@@ -74,7 +74,7 @@ try {
 
     $merged = @(Get-CopierList (Join-Path $PSScriptRoot 'copier.yml') '_merged_files')
     $answers = Get-AdoptionAnswers $project
-    $adapters = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'adopt\legacy') -Filter '*.ps1' -File | Sort-Object Name | Where-Object { & $_.FullName -Path $project -Phase Detect })
+    $adapters = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'tools\adopt\legacy') -Filter '*.ps1' -File | Sort-Object Name | Where-Object { & $_.FullName -Path $project -Phase Detect })
     foreach ($adapter in $adapters) {
         "Found $($adapter.BaseName)"
         $adapterAnswers = & $adapter.FullName -Path $project -Phase Answers

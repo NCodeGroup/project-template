@@ -56,7 +56,7 @@ try {
 }
 finally { Pop-Location }
 
-Import-Module (Join-Path $repoRoot 'adopt/Adoption.psm1') -Force
+Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
 $marker = "# Kept from this repository's own .gitignore when it adopted the project template"
 $kept = "# OpenTofu working directories and state`n.terraform/`n*.tfstate`n*.tfplan`nplan.txt`n"
 
