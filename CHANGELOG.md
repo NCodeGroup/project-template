@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-28
+
+### Added
+
+- Changelogs follow [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/): `## [Unreleased]` first, then one `## [1.4.0] - <date>` section per release with its entries under `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed` and `### Security`, and compare links at the end. Every plan's last step now writes the changelog the Landing section names. A plan without a `Release:` line adds its entries under `## [Unreleased]`. A plan with one moves them into its new version's section and updates the links. The first such step creates `CHANGELOG.md` when the project has none. Projects get it with `.\.template\Update-Project.ps1`.
+- `.template/Get-PlanState.ps1` prints two new lines. `changelog-format` is `keep-a-changelog`, `other` or `missing`. `changelog-version` is the changelog's newest release, written with the plan's `v` prefix. The script reads `## [1.4.0] - <date>` headings, `[YANKED]` ones included, as well as `## v1.4.0`, and does so for `renumber` too. Projects get it with `.\.template\Update-Project.ps1`.
+
+### Changed
+
+- `/ship-plan` checks `changelog-version` against the plan's `Release:` version instead of the changelog's first `## ` heading. It takes the release notes from a `## [1.4.0] - <date>` section, up to the next section or the links. Its renumber step re-dates a Keep a Changelog section and moves its links. Projects get it with `.\.template\Update-Project.ps1`.
+- A changelog in another format, such as one an adopted project already had, is left as it is. Plans with a `Release:` line keep adding sections in its own style, and plans without one don't touch it. `Adopt-Project.ps1` lists a `/plan-migration` follow-up to convert a `CHANGELOG.md` that isn't Keep a Changelog. To convert the changelog of a project adopted earlier, run `/plan-migration Convert CHANGELOG.md to Keep a Changelog 1.1.0`.
+- No change for projects made from the template. This repository's own `CHANGELOG.md` now follows Keep a Changelog: each version has its tag's date, its entries are grouped by type, and the file ends with compare links.
+
 ## [0.36.0] - 2026-10-28
 
 ### Added
@@ -361,7 +374,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 
 - An agent asked to push deletes a finished `PLAN.md` first, once every step, the review's fix steps included, is marked `[x]`; with a step still open it keeps the plan and says which steps remain.
 
-[unreleased]: https://github.com/polewskm/project-template/compare/v0.36.0...HEAD
+[unreleased]: https://github.com/polewskm/project-template/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/polewskm/project-template/compare/v0.35.2...v0.36.0
 [0.35.2]: https://github.com/polewskm/project-template/compare/v0.35.1...v0.35.2
 [0.35.1]: https://github.com/polewskm/project-template/compare/v0.35.0...v0.35.1
