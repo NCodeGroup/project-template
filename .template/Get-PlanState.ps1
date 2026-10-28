@@ -15,6 +15,7 @@
     landing gives each key of AGENTS.md's Landing section that the workflow reads as key=value, with its default when
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
     gate is the command /ship-plan runs before it pushes, or none.
+    pr-format is <file>#<heading>, the section that sets a pull request's title and description, or none.
     protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
     requests into the default branch, no when it does not, unknown when the host or its CLI cannot say, and - without
     a default branch.
@@ -182,8 +183,8 @@ try {
 
     # Landing policy from AGENTS.md
     # Each key the workflow reads, with its default, in the order the landing line prints them.
-    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up'; gate = 'none'; protect = 'none' }
-    $spacedKeys = @('follow-up-label', 'gate')   # keys whose value keeps its spaces
+    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up'; gate = 'none'; protect = 'none'; 'pr-format' = 'none' }
+    $spacedKeys = @('follow-up-label', 'gate', 'pr-format')   # keys whose value keeps its spaces
     $agents = Join-Path $folder 'AGENTS.md'
     if (Test-Path -LiteralPath $agents) {
         $inLanding = $false
