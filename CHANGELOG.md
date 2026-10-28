@@ -386,6 +386,21 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 
 - An agent asked to push deletes a finished `PLAN.md` first, once every step, the review's fix steps included, is marked `[x]`; with a step still open it keeps the plan and says which steps remain.
 
+## [0.7.0] - 2026-10-25
+
+### Added
+
+- Every project has a `.template-version` file: one line with the template version the project is on, such as `v0.7.0`, which Copier writes from `_commit` in `.copier-answers.yml`, for people and scripts to read. It is template-owned, so `Update-Project.ps1` records each new version in it.
+- `workflow\Install-HybridWorkflow.ps1` records the template version it installed in `.template-version`: at the repository root with `-Repo`, or in `~\.claude\` and `~\.copilot\` with `-User`. `-NoVersionMarker` skips it.
+
+## [0.6.0] - 2026-10-25
+
+### Changed
+
+- `PLAN.md` is a local working file, never committed or pushed. The template's `.gitignore` ignores it, and a planning command adds it to `.git/info/exclude` in a repository whose `.gitignore` doesn't.
+- A finished step is committed as `Plan step N: <title>` with only the files the step lists staged, never with `git add -A` or `PLAN.md`. A re-planned step is recorded as an empty commit, `Re-plan step N: <title>`, and in Claude Code a new plan's worktree gets an empty `Plan: <title>` commit. `workflow\Invoke-PlanSteps.ps1` never stages the plan either.
+- Before a push it was asked for, an agent lists what the unpushed commits contain (`git log --stat @{u}..`) and stops on anything unexpected, such as `PLAN.md`, secrets or large files.
+
 [unreleased]: https://github.com/polewskm/project-template/compare/v0.37.0...HEAD
 [0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.2...v0.37.0
 [0.36.2]: https://github.com/polewskm/project-template/compare/v0.36.1...v0.36.2
@@ -437,3 +452,5 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 [0.10.0]: https://github.com/polewskm/project-template/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/polewskm/project-template/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/polewskm/project-template/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/polewskm/project-template/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/polewskm/project-template/compare/v0.5.0...v0.6.0
