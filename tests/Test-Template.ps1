@@ -335,6 +335,10 @@ $m += @(Get-MissingText 'template\.claude\commands\run-issues.md' ('unless I ans
 $m += @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\review-plan-diff.md') 'as an issue')
 $m += @(Get-MissingText 'template\.claude\commands\plan-feature.md' '`follow-up-label`')
 Check 'workflow: ship-plan files the follow-ups as labelled issues unless dropped or already tracked, run-issues files them by default, and planners list only work worth an issue' (-not $m) ($m -join '; ')
+$shipFiles = 'template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md'
+$m = @(Get-MissingText $shipFiles ('gh label create "<label>" --color FBCA04 --description "Work a plan found and did not do" <repo args>', 'leaves that label as it is'))
+$m += @(foreach ($p in $shipFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('--force <repo args>')) { "${p}: gh label create has --force" } })
+Check 'workflow: ship-plan creates the follow-up label only when it is missing and leaves an existing one as it is' (-not $m) ($m -join '; ')
 $runFiles = 'template\.claude\commands\run-issues.md', '.claude\commands\run-issues.md'
 $m = @(Get-MissingText $runFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`','git worktree add .claude/worktrees/issue-<number>', 'plan-executor', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'ExitWorktree'))
 $m += @(foreach ($p in $runFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and ([regex]::Matches([IO.File]::ReadAllText($full), [regex]::Escape('$ARGUMENTS')).Count -ne 1 -or [IO.File]::ReadAllText($full).Contains('{{'))) { "${p}: the arguments placeholder is not there exactly once, or a template token is left" } })
