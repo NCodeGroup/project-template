@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, then Keep a Changelog headings and the changelog lines, then the version tags merged into HEAD that the changelog has no section for. After each move it runs
+    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, then Keep a Changelog headings and the changelog lines, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -106,7 +106,7 @@ finally { Pop-Location }
 $planFile = Join-Path $repo 'PLAN.md'
 
 # 1. On the default branch with no plan.
-$r = Test-State (Get-State $repo) @{ plan = '-'; default = 'main'; branch = 'main'; host = 'other'; worktree = '-'; ahead = '0'; behind = '0'; landed = 'yes'; dirty = 'no'; plans = '-'; protected = 'unknown' }
+$r = Test-State (Get-State $repo) @{ plan = '-'; default = 'main'; branch = 'main'; host = 'other'; worktree = '-'; ahead = '0'; behind = '0'; landed = 'yes'; dirty = 'no'; plans = '-'; conflicts = '-'; protected = 'unknown' }
 Check 'local: a clean default branch with no plan' $r.Ok $r.Detail
 $state = Get-State $repo
 Check 'next: no plan means nothing to do' ($state['next'] -like 'none *') "next='$($state['next'])' expected 'none *'"
@@ -178,7 +178,7 @@ Check 'next: an empty commit after the review keeps it current' $r.Ok $r.Detail
 Push-Location $repo
 try { Invoke-Git push -q origin HEAD:refs/heads/main }
 finally { Pop-Location }
-$r = Test-State (Get-State $repo) @{ landed = 'yes'; ahead = '0'; tag = 'absent' }
+$r = Test-State (Get-State $repo) @{ landed = 'yes'; ahead = '0'; conflicts = '-'; tag = 'absent' }
 Check 'local: work pushed to the default branch is landed' $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ next = 'ship-plan' }
 Check 'next: a landed plan without its tag is shipped again' $r.Ok $r.Detail
@@ -569,6 +569,94 @@ Check 'backfill: a changelog started mid-history names the older tags' $r.Ok $r.
 Write-Text $lateLog "# Changelog`n`n## [Unreleased]`n`n## [0.1.2] - 2026-10-28`n`n## v0.1.1`n`n## [0.1.0] - 2026-10-01 [YANKED]`n"
 $r = Test-State (Get-State $lateRepo -NoFetch) @{ 'changelog-backfill' = '-' }
 Check 'backfill: every tag merged into HEAD has a section' $r.Ok $r.Detail
+
+# 21. Files that conflict with the default branch.
+$cOrigin = Join-Path $Work 'conflict/github.com/origin.git'
+$cSeed = Join-Path $Work 'conflict/seed'
+$cRepo = Join-Path $Work 'conflict/repo'
+Push-Location $Work
+try {
+    Invoke-Git init -q --bare -b main $cOrigin
+    Invoke-Git clone -q $cOrigin $cSeed
+}
+finally { Pop-Location }
+Add-Commit $cSeed 'shared.txt' 'Add shared'
+Push-Location $cSeed
+try { Invoke-Git push -q origin HEAD:refs/heads/main }
+finally { Pop-Location }
+Push-Location $Work
+try { Invoke-Git clone -q $cOrigin $cRepo }
+finally { Pop-Location }
+[IO.File]::AppendAllText((Join-Path $cRepo '.git/info/exclude'), "PLAN.md`n")
+Push-Location $cRepo
+try { Invoke-Git switch -q -c worktree-conflict }
+finally { Pop-Location }
+Write-Text (Join-Path $cRepo 'shared.txt') "plan`n"
+Push-Location $cRepo
+try { Invoke-Git add shared.txt; Invoke-Git commit -q -m 'Plan step 1: Change shared' }
+finally { Pop-Location }
+$cPlan = Join-Path $cRepo 'PLAN.md'
+Write-Text $cPlan (New-PlanText 'x' (Get-Head $cRepo))
+Write-Text (Join-Path $bin 'pr.json') '[]'
+$savedPath = $env:PATH
+$env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+try {
+    $r = Test-State (Get-State $cRepo) @{ host = 'github'; behind = '0'; conflicts = 'none'; next = 'ship-plan' }
+    Check 'conflicts: a branch level with the default branch merges cleanly' $r.Ok $r.Detail
+
+    Add-Commit $cSeed 'other.txt' 'Add other'
+    Push-Location $cSeed
+    try { Invoke-Git push -q origin HEAD:refs/heads/main }
+    finally { Pop-Location }
+    $r = Test-State (Get-State $cRepo) @{ behind = '1'; conflicts = 'none'; next = 'ship-plan' }
+    Check 'conflicts: a default branch that changed other files merges cleanly' $r.Ok $r.Detail
+
+    New-Item -ItemType Directory -Force (Join-Path $cSeed 'docs') | Out-Null
+    Write-Text (Join-Path $cSeed 'shared.txt') "main`n"
+    Write-Text (Join-Path $cSeed 'docs/new file.md') "main`n"
+    Push-Location $cSeed
+    try {
+        Invoke-Git add shared.txt 'docs/new file.md'
+        Invoke-Git commit -q -m 'Change shared and add new file'
+        Invoke-Git push -q origin HEAD:refs/heads/main
+    }
+    finally { Pop-Location }
+    New-Item -ItemType Directory -Force (Join-Path $cRepo 'docs') | Out-Null
+    Write-Text (Join-Path $cRepo 'docs/new file.md') "plan`n"
+    Push-Location $cRepo
+    try { Invoke-Git add 'docs/new file.md'; Invoke-Git commit -q -m 'Plan step 2: Add new file' }
+    finally { Pop-Location }
+    Write-Text $cPlan (New-PlanText 'x' (Get-Head $cRepo))
+    $r = Test-State (Get-State $cRepo) @{ conflicts = 'docs/new file.md, shared.txt'; next = 'ship-plan' }
+    Check 'conflicts: names each file that conflicts, in path order' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject @(@{ number = 4; state = 'OPEN'; mergeCommit = $null; headRefOid = (Get-Head $cRepo); baseRefName = 'main' }) -Depth 3)
+    $r = Test-State (Get-State $cRepo) @{ pr = '4 OPEN'; renumber = '-'; conflicts = 'docs/new file.md, shared.txt'; next = 'ship-plan' }
+    Check 'next: an open pull request that conflicts with the default branch goes back to ship-plan' $r.Ok $r.Detail
+
+    Push-Location $cRepo
+    try {
+        git merge --no-commit --no-ff origin/main 2>$null | Out-Null
+        Write-Text (Join-Path $cRepo 'shared.txt') "both`n"
+        Write-Text (Join-Path $cRepo 'docs/new file.md') "both`n"
+        Invoke-Git add shared.txt 'docs/new file.md'
+        Invoke-Git commit -q -m 'Plan step 3: Merge main in'
+    }
+    finally { Pop-Location }
+    Write-Text $cPlan (New-PlanText 'x' (Get-Head $cRepo))
+    $r = Test-State (Get-State $cRepo) @{ conflicts = 'none'; next = 'wait pull request #4 is open: run ship-plan again once it merges' }
+    Check 'conflicts: none once the default branch is merged in' $r.Ok $r.Detail
+
+    Push-Location $cSeed
+    try {
+        $lone = (Invoke-Git commit-tree 'HEAD^{tree}' -m 'Unrelated root' | Out-String).Trim()
+        Invoke-Git push -q --force origin "${lone}:refs/heads/main"
+    }
+    finally { Pop-Location }
+    $r = Test-State (Get-State $cRepo) @{ conflicts = 'unknown'; next = 'wait pull request #4 is open: run ship-plan again once it merges' }
+    Check 'conflicts: unknown when git merge-tree cannot merge the default branch' $r.Ok $r.Detail
+}
+finally { $env:PATH = $savedPath }
 
 ''
 if ($failures.Count) { "Plan state tests: FAILED ($($failures.Count))"; exit 1 }

@@ -5,7 +5,7 @@
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, protected, ahead, behind, landed,
-    pr, merge, tag, renumber, changelog-format, changelog-version, changelog-backfill, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
+    pr, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
     "-". With an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
@@ -17,6 +17,7 @@
     gate is the command /ship-plan runs before it pushes, or none.
     pr-format is <file>#<heading>, the section that sets a pull request's title and description, or none.
     renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag or newest release heading of the changelog, ## [<version>] - <date> or ## <version>, on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed. next is ship-plan rather than wait while a pull request is open and renumber isn't -, so /ship-plan renumbers the plan.
+    conflicts names the files that conflict when origin's default branch merges into HEAD, joined by ", ", from git merge-tree --write-tree, which changes neither the index nor the working tree; none when the merge is clean, unknown when Git can't say, such as Git older than 2.38, and - on the default branch or once the plan has landed. next is ship-plan rather than wait while a pull request is open and conflicts names files, so /ship-plan adds a step that merges the default branch in.
     changelog-format is keep-a-changelog when the changelog has a ## [Unreleased] or ## [<version>] heading, other when it has neither, and missing without the file; changelog-version is its newest release, with a leading v when the plan's Release: version has one, or -. changelog-backfill names the version tags merged into HEAD, shaped like v1.2.3 or 1.2.3, that have no release heading in the changelog, as <oldest>..<newest>, the tag alone when there is one, or - when there is none.
     protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
     requests into the default branch, no when it does not, unknown when the host or its CLI cannot say, and - without
@@ -146,6 +147,19 @@ function Get-Protected([string]$HostName, [string]$Default, [string]$Protect) {
         catch { }
     }
     'no'
+}
+
+# The files that conflict when origin/<Default> merges into HEAD, from git merge-tree, which changes no file: their
+# paths joined by ', ', none when the merge is clean, or unknown when Git can't say (such as Git older than 2.38).
+function Get-Conflicts([string]$Default) {
+    $out = @(& git -c core.quotePath=false merge-tree --write-tree --name-only --no-messages "origin/$Default" HEAD 2>$null)
+    $code = $LASTEXITCODE
+    if ($code -eq 0) { return 'none' }
+    if ($code -eq 1 -and $out.Count -gt 1 -and "$($out[0])" -match '^[0-9a-f]{40,64}$') {
+        $files = @($out | Select-Object -Skip 1 | ForEach-Object { "$_" } | Where-Object { $_ })
+        if ($files.Count) { return ($files -join ', ') }
+    }
+    'unknown'
 }
 
 Push-Location -LiteralPath $Path
@@ -337,6 +351,10 @@ try {
         }
     }
 
+    # Files that conflict with the default branch
+    $conflicts = '-'
+    if ($default -ne '-' -and $branch -ne $default -and $landed -eq 'no') { $conflicts = if ($behind -eq '0') { 'none' } else { Get-Conflicts $default } }
+
     # Release published on the host
     $published = '-'
     if ($releasePolicy -eq 'tag+release' -and $tag -eq 'present') {
@@ -394,7 +412,7 @@ try {
         elseif ($reviewed -ne 'current') { $next = 'review-plan-diff' }
         elseif ($landed -ne 'yes') {
             if ($hostName -eq 'none') { $next = 'none no origin remote to land on' }
-            elseif ($prState -eq 'OPEN' -and $renumber -ne '-') { $next = 'ship-plan' }
+            elseif ($prState -eq 'OPEN' -and ($renumber -ne '-' -or $conflicts -notin '-', 'none', 'unknown')) { $next = 'ship-plan' }
             elseif ($prState -eq 'OPEN') { $next = "wait pull request #$prNumber is open: run ship-plan again once it merges" }
             elseif ($prState -eq 'MERGED' -and $integrate -eq 'direct') { $next = 'ship-plan' }
             elseif ($prState -eq 'MERGED' -and $prBase -and $prBase -ne $default) { $next = "none pull request #$prNumber merged into $prBase, not ${default}: this branch lands once $prBase reaches $default; run ship-plan again then" }
@@ -432,6 +450,7 @@ try {
     Write-Output "merge: $merge"
     Write-Output "tag: $tag"
     Write-Output "renumber: $renumber"
+    Write-Output "conflicts: $conflicts"
     Write-Output "changelog-format: $changelogFormat"
     Write-Output "changelog-version: $changelogVersion"
     Write-Output "changelog-backfill: $changelogBackfill"
