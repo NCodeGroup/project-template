@@ -17,7 +17,7 @@ You coordinate. Each stage runs as the workflow's own command does: read that co
 
 - Ask me once, at the start, and never again in this run. Where a command says to ask me, wait for me or stop to ask, stop that issue instead, as Stop an Issue says. A subagent that reaches such a point stops and returns the question.
 - Every change reaches the default branch through a pull request that I merge. Open each one as a draft. Never merge it, mark it ready for review, turn on auto-merge, resolve a review thread, force-push, or push with `--no-verify`.
-- Run one entry at a time, from planning until its pull request has merged and `finish-plan` has run, before starting the next. Each plan then starts from a default branch that holds the plans before it, so it sees their changes and picks the next version.
+- Land one entry at a time, in queue order: run `ship-plan` for an entry, which opens its pull request, only once the entry before it has landed and `finish-plan` has run for it, or it has stopped. While an entry's draft pull request waits for review, the next entry runs ahead, as Run Ahead says, and no other. A plan that runs ahead starts from a default branch without the entry before it, so its `Release:` version is provisional: when that entry lands with it first, the state script's `renumber` line names the next free version, and `ship-plan` adds a step that merges the default branch in and moves the plan's changelog section to that version.
 - Write every comment and reply to a temporary file outside the repository with your file-writing tool, pass the file to the command, and delete it afterwards.
 
 ## Start
@@ -50,6 +50,16 @@ For each entry in the queue, in order:
    - Anything else, such as `replan-step 2` or a value starting with `none`: stop this issue with that value.
 
    When a stage leaves `next` as it was, stop this issue: the stage made no progress.
+
+## Run Ahead
+
+While the current entry's draft pull request waits in Review the Pull Request, work on the next entry in the queue between checks:
+
+1. Leave the current entry's worktree with the `ExitWorktree` tool and `action: "keep"`, then create and plan the next entry as Run Each Issue items 1 and 2 say.
+2. Run its stages as Run Each Issue item 3 says, one stage at a time, until its `next` is `ship-plan`. Hold it there until the current entry has landed and `finish-plan` has run for it, or the current entry has stopped.
+3. You work in one worktree at a time. When a check is due, finish the stage in progress first, then return to the current entry's worktree, with `ExitWorktree` and `action: "keep"`, then `EnterWorktree` and its `path`, for the check and for any answers and fix steps it needs. Return to the next entry's worktree the same way before its next stage.
+4. When the entry running ahead stops, as Stop an Issue says, the entry after it may run ahead in its place.
+5. Once the current entry is done or has stopped, the entry that ran ahead becomes the current one: enter its worktree and go on with Run Each Issue item 3 from its `next`. When the entry before it landed with the version it expected, `ship-plan` adds the renumber step and stops, so `next` becomes `orchestrate-plan`, then `review-plan-diff`, then `ship-plan` again, which opens its pull request.
 
 ## Review the Pull Request
 
