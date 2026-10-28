@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.37.1] - 2026-10-28
+
+### Changed
+
+- No change for projects made from the template. This repository's `CHANGELOG.md` now covers every version: it has sections for v0.1.0 to v0.7.0, written from their commits, with their tags' dates and compare links.
+
 ## [0.37.0] - 2026-10-28
 
 ### Added
@@ -386,7 +392,79 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 
 - An agent asked to push deletes a finished `PLAN.md` first, once every step, the review's fix steps included, is marked `[x]`; with a step still open it keeps the plan and says which steps remain.
 
-[unreleased]: https://github.com/polewskm/project-template/compare/v0.37.0...HEAD
+## [0.7.0] - 2026-10-25
+
+### Added
+
+- Every project has a `.template-version` file: one line with the template version the project is on, such as `v0.7.0`, which Copier writes from `_commit` in `.copier-answers.yml`, for people and scripts to read. It is template-owned, so `Update-Project.ps1` records each new version in it.
+- `workflow\Install-HybridWorkflow.ps1` records the template version it installed in `.template-version`: at the repository root with `-Repo`, or in `~\.claude\` and `~\.copilot\` with `-User`. `-NoVersionMarker` skips it.
+
+## [0.6.0] - 2026-10-25
+
+### Changed
+
+- `PLAN.md` is a local working file, never committed or pushed. The template's `.gitignore` ignores it, and a planning command adds it to `.git/info/exclude` in a repository whose `.gitignore` doesn't.
+- A finished step is committed as `Plan step N: <title>` with only the files the step lists staged, never with `git add -A` or `PLAN.md`. A re-planned step is recorded as an empty commit, `Re-plan step N: <title>`, and in Claude Code a new plan's worktree gets an empty `Plan: <title>` commit. `workflow\Invoke-PlanSteps.ps1` never stages the plan either.
+- Before a push it was asked for, an agent lists what the unpushed commits contain (`git log --stat @{u}..`) and stops on anything unexpected, such as `PLAN.md`, secrets or large files.
+
+## [0.5.0] - 2026-10-25
+
+### Added
+
+- A `package_manager` question for Node.js projects: npm (the default), pnpm, Yarn or Bun. CI installs dependencies with it: pnpm and Yarn through Corepack, Bun through `oven-sh/setup-bun` on GitHub and the `oven/bun` image on GitLab. It also sets Dependabot's ecosystem (`bun` for Bun, else `npm`) and the default build and test commands, such as `pnpm run build` and `pnpm run test`.
+
+### Fixed
+
+- CI installed a Node.js project's dependencies only with `npm ci`, so a pnpm, Yarn or Bun project ran its build and test commands with nothing installed.
+- `Adopt-Project.ps1` works out a Node.js repository's package manager (the `packageManager` field in `package.json`, else its lockfile, else npm) and its build and test commands from the scripts in `package.json`. It leaves a command blank when there is no such script or the `test` script is the failing placeholder `npm init` writes, so adopting a repository without a build script no longer fails its verification.
+
+## [0.4.0] - 2026-10-25
+
+### Fixed
+
+- `Update-Project.ps1` no longer fails on Windows with `[WinError 206] The filename or extension is too long` when the project's own `.gitignore` ignores a large folder that the template's `.gitignore` doesn't, such as `node_modules/` in a .NET project with a frontend. While Copier updates, it keeps the project's ignore rules in force through `.git/info/exclude`, and it restores that file afterwards. A run also removes the copy of the rules that a killed update left there.
+
+## [0.3.0] - 2026-10-25
+
+### Added
+
+- In Claude Code, each plan lives in its own git worktree, so several sessions can plan and execute different plans on one machine at once. The planning commands (the `/plan-*` commands and `/handoff-plan`) create `.claude/worktrees/<name>/` on the branch `worktree-<name>` before they research, and commit `PLAN.md` there as `Plan: <title>`. `/orchestrate-plan`, `/execute-step`, `/replan-step` and `/review-plan-diff` move the session into the plan's worktree first; with several plans open, name one: `/orchestrate-plan <name>`. Copilot is unchanged: to continue a plan there, open the worktree's folder.
+
+### Changed
+
+- `.claude/settings.json` allows Claude Code's `EnterWorktree` tool, so creating or entering a plan's worktree doesn't ask.
+
+## [0.2.0] - 2026-10-25
+
+### Added
+
+- Every project works with Claude Code and with GitHub Copilot, and you can switch between them at any time: besides the Claude Code commands and `plan-executor` subagent, it gets the Copilot agents and prompt files for Copilot Chat in VS Code, and the same commands as Copilot CLI skills with a `plan-executor` agent. `PLAN.md` is the only state they share. This repository's `USAGE.md` covers setting up and switching between them.
+- A `workflow_tools` question chooses which of Claude Code (`claude`), Copilot (`copilot`) and the shack PC's local model (`local`) a project gets workflow files, editor settings and recommended extensions for; the default is all three. `New-Project.ps1` and `Update-Project.ps1` pass a list given in `-Data` to Copier: `-Data @{ workflow_tools = 'claude', 'copilot' }`.
+- A `nuget_package` question (.NET) turns on NuGet packaging in `build/ProjectTemplate.props`: the license expression from the required `package_license`, the root `README.md` and an optional `package_icon` in each package, Source Link with untracked sources, symbol packages and XML documentation.
+- `Adopt-Project.ps1` brings an existing repository under the template without asking questions. It works out the answers, runs Copier, rebuilds each merged file as the template's file plus the repository's own content, extends `AGENTS.md` and `Directory.Build.props`, moves a .NET repository's package versions into `Directory.Packages.props`, and removes legacy setups through legacy adapters. It runs the build and test commands before it commits, and rolls the repository back when a later step fails.
+- AI agent attribution stays out of commits. `.claude/settings.json` turns Claude Code's attribution off, `.vscode/settings.json` sets `git.addAICoAuthor` to off, and the template's rules tell agents not to add it. A `.githooks/commit-msg` hook, which `New-Project.ps1` and `Update-Project.ps1` enable, strips Copilot and Claude `Co-authored-by:` trailers, `Claude-Session:` trailers and "Generated with Claude Code" lines, and keeps a person's co-author trailer.
+- `.template/Test-CommitAttribution.ps1`, run by a `Commit attribution` job in `ci.yml` or `.gitlab-ci.yml`, fails on a commit authored, committed or co-authored by an AI agent, on pull requests, in a GitHub merge queue and on pushes to the default branch.
+
+### Changed
+
+- The plan executor runs on Claude Sonnet 5.5 in every tool: the Copilot agents in VS Code, Copilot CLI and `workflow\Invoke-PlanSteps.ps1`, instead of Copilot's Auto, which picked a different model from run to run, and Claude Code's `plan-executor` subagent, pinned to `claude-sonnet-5-5`.
+- Copilot's step prompt is `execute-step.prompt.md`, like its `execute-step` skill; with the local model too, the local model's is `execute-step-local.prompt.md`. `Adopt-Project.ps1` deletes an older `execute-step-copilot.prompt.md`.
+- When `Update-Project.ps1` can't read the template, it says that updating needs read access to it, and that the project still works without it.
+
+## [0.1.0] - 2026-10-24
+
+### Added
+
+- The first release: a Copier template for repositories set up for plan-then-execute AI coding. Claude Opus plans each change into `PLAN.md`, a cheaper model executes it one verified step at a time, and any step that needs a decision goes back to Opus. The base works for any language, a .NET layer adds shared build settings and C# conventions, and projects live on GitHub (the default) or GitLab.
+- `New-Project.ps1` asks the questions (`project_name`, `project_description`, `stack`, `git_host`, `author_name` for .NET, `build_command` and `test_command`), creates the project and makes its first commit. With `-CreateRemote` it also creates the repository, public unless `-Visibility` says otherwise, and pushes.
+- Every file has one owner. Template-owned files are replaced on update. Merged files, the settings whose tools can't include a second file, take the template's changes merged with the project's edits. Project-owned files, `AGENTS.md`, `README.md` and, for .NET, `Directory.Build.props`, are never touched.
+- `.template/Update-Project.ps1`, in every project, updates it to the newest template version, handing the update over to that version's copy of itself.
+- The workflow: Claude Code commands (`/plan-feature`, `/plan-bugfix`, `/orchestrate-plan`, `/replan-step`, `/review-plan-diff`, …) with a `plan-executor` subagent, VS Code agents and prompt files whose Local Implementer runs steps on the shack PC's model, and the template's rules in `.github/instructions/project-template.instructions.md`, which `AGENTS.md` imports.
+- The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
+- CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
+
+[unreleased]: https://github.com/polewskm/project-template/compare/v0.37.1...HEAD
+[0.37.1]: https://github.com/polewskm/project-template/compare/v0.37.0...v0.37.1
 [0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.2...v0.37.0
 [0.36.2]: https://github.com/polewskm/project-template/compare/v0.36.1...v0.36.2
 [0.36.1]: https://github.com/polewskm/project-template/compare/v0.36.0...v0.36.1
@@ -437,3 +515,10 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 [0.10.0]: https://github.com/polewskm/project-template/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/polewskm/project-template/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/polewskm/project-template/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/polewskm/project-template/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/polewskm/project-template/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/polewskm/project-template/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/polewskm/project-template/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/polewskm/project-template/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/polewskm/project-template/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/polewskm/project-template/releases/tag/v0.1.0
