@@ -98,6 +98,85 @@ exit 0
     Write-Text $settingsPath ((ConvertTo-Json -InputObject $s -Depth 10) + "`n")
     Invoke-Git -C $app add src/Greeting.ps1 tests/Test-Greeting.ps1 AGENTS.md .claude/settings.json
     Invoke-Git -C $app commit -q -m 'Add the greeting function and the fixture landing policy'
+
+    # The origin gets main by fetching: the template's pre-push hook refuses a push to main.
+    New-Item -ItemType Directory -Force (Split-Path -Parent $origin) | Out-Null
+    Invoke-Git init -q --bare -b main $origin
+    Invoke-Git -C $origin fetch -q $app main:main
+    Invoke-Git -C $app remote add origin $origin
+    Invoke-Git -C $app fetch -q origin
+    Invoke-Git -C $app branch -q --set-upstream-to origin/main main
+    Invoke-Git -C $app remote set-head origin main
+
+    New-Item -ItemType Directory -Force $hostDir | Out-Null
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'gh.ps1') -Destination (Join-Path $bin 'gh.ps1')
+    [IO.File]::WriteAllText((Join-Path $bin 'gh.cmd'), "@pwsh -NoProfile -File `"%~dp0gh.ps1`" %*`r`n")
+    Write-Text (Join-Path $bin 'gh') @'
+#!/usr/bin/env sh
+exec pwsh -NoProfile -File "$(dirname "$0")/gh.ps1" "$@"
+'@
+    if (-not $IsWindows) { chmod +x (Join-Path $bin 'gh') }
+    $issueBody = @'
+## What
+`Get-Greeting` in `src/Greeting.ps1` returns `Hello, !` when `-Name` is empty or missing. It should return `Hello, world!`.
+
+## Done when
+- `Get-Greeting` and `Get-Greeting -Name ''` return `Hello, world!`
+- `Get-Greeting -Name Ada` still returns `Hello, Ada!`
+- `tests/Test-Greeting.ps1` checks all three
+'@
+    $issues = @{
+        '1' = @{
+            number    = 1
+            title     = 'Greet the world when no name is given'
+            body      = $issueBody.Replace("`r`n", "`n")
+            state     = 'OPEN'
+            url       = 'https://github.com/fixture/app/issues/1'
+            labels    = @(@{ name = 'enhancement' })
+            assignees = @()
+            author    = @{ login = 'fixture-owner' }
+        }
+    }
+    Write-Text (Join-Path $hostDir 'issues.json') (ConvertTo-Json -InputObject $issues -Depth 10)
+    Write-Text (Join-Path $hostDir 'prs.json') '[]'
+    Write-Text (Join-Path $hostDir 'comments.json') '[]'
+    [IO.File]::WriteAllText((Join-Path $hostDir 'origin.txt'), $origin)
+    [IO.File]::WriteAllText((Join-Path $hostDir 'main.txt'), (git -C $origin rev-parse main))
+    New-Item -ItemType Directory -Force (Join-Path $Work 'gh-config') | Out-Null
+}
+
+function Use-FixtureEnvironment([scriptblock]$Body) {
+    $names = 'PATH', 'GH_CONFIG_DIR', 'GH_TOKEN', 'GITHUB_TOKEN', 'CLAUDECODE'
+    $saved = @{}
+    foreach ($n in $names) { $saved[$n] = [Environment]::GetEnvironmentVariable($n) }
+    try {
+        $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+        $env:GH_CONFIG_DIR = Join-Path $Work 'gh-config'
+        foreach ($n in 'GH_TOKEN', 'GITHUB_TOKEN', 'CLAUDECODE') { [Environment]::SetEnvironmentVariable($n, $null) }
+        & $Body
+    }
+    finally {
+        foreach ($n in $names) { [Environment]::SetEnvironmentVariable($n, $saved[$n]) }
+    }
+}
+function Get-State([string]$Path) {
+    $state = @{}
+    foreach ($line in (& pwsh -NoProfile -File (Join-Path $app '.template/Get-PlanState.ps1') -Path $Path 2>$null)) {
+        if ("$line" -match '^([a-z-]+): (.*)$') { $state[$Matches[1]] = $Matches[2] }
+    }
+    $state
+}
+
+if (-not $CheckOnly) {
+    Use-FixtureEnvironment {
+        $st = Get-State $app
+        $ok = $st['host'] -eq 'github' -and $st['default'] -eq 'main' -and $st['protected'] -eq 'hook' -and $st['landing'] -like '*integrate=pull-request*' -and $st['next'] -eq 'none no plan in this folder'
+        Check 'fixture: the state script sees a GitHub origin whose main takes only pull requests' $ok "host='$($st['host'])' default='$($st['default'])' protected='$($st['protected'])' landing='$($st['landing'])' next='$($st['next'])'"
+        $title = "$(gh issue view 1 --json title --jq .title)".Trim()
+        Check 'fixture: gh on PATH is the stand-in' ($title -eq 'Greet the world when no name is given') "title='$title'"
+        $null = pwsh -NoProfile -File (Join-Path $app 'tests/Test-Greeting.ps1')
+        Check 'fixture: the fixture test passes' ($LASTEXITCODE -eq 0) "exit code $LASTEXITCODE"
+    }
 }
 
 if ($SetupOnly) {
