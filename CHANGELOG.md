@@ -428,6 +428,23 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 
 - `.claude/settings.json` allows Claude Code's `EnterWorktree` tool, so creating or entering a plan's worktree doesn't ask.
 
+## [0.2.0] - 2026-10-25
+
+### Added
+
+- Every project works with Claude Code and with GitHub Copilot, and you can switch between them at any time: besides the Claude Code commands and `plan-executor` subagent, it gets the Copilot agents and prompt files for Copilot Chat in VS Code, and the same commands as Copilot CLI skills with a `plan-executor` agent. `PLAN.md` is the only state they share. This repository's `USAGE.md` covers setting up and switching between them.
+- A `workflow_tools` question chooses which of Claude Code (`claude`), Copilot (`copilot`) and the shack PC's local model (`local`) a project gets workflow files, editor settings and recommended extensions for; the default is all three. `New-Project.ps1` and `Update-Project.ps1` pass a list given in `-Data` to Copier: `-Data @{ workflow_tools = 'claude', 'copilot' }`.
+- A `nuget_package` question (.NET) turns on NuGet packaging in `build/ProjectTemplate.props`: the license expression from the required `package_license`, the root `README.md` and an optional `package_icon` in each package, Source Link with untracked sources, symbol packages and XML documentation.
+- `Adopt-Project.ps1` brings an existing repository under the template without asking questions. It works out the answers, runs Copier, rebuilds each merged file as the template's file plus the repository's own content, extends `AGENTS.md` and `Directory.Build.props`, moves a .NET repository's package versions into `Directory.Packages.props`, and removes legacy setups through legacy adapters. It runs the build and test commands before it commits, and rolls the repository back when a later step fails.
+- AI agent attribution stays out of commits. `.claude/settings.json` turns Claude Code's attribution off, `.vscode/settings.json` sets `git.addAICoAuthor` to off, and the template's rules tell agents not to add it. A `.githooks/commit-msg` hook, which `New-Project.ps1` and `Update-Project.ps1` enable, strips Copilot and Claude `Co-authored-by:` trailers, `Claude-Session:` trailers and "Generated with Claude Code" lines, and keeps a person's co-author trailer.
+- `.template/Test-CommitAttribution.ps1`, run by a `Commit attribution` job in `ci.yml` or `.gitlab-ci.yml`, fails on a commit authored, committed or co-authored by an AI agent, on pull requests, in a GitHub merge queue and on pushes to the default branch.
+
+### Changed
+
+- The plan executor runs on Claude Sonnet 5.5 in every tool: the Copilot agents in VS Code, Copilot CLI and `workflow\Invoke-PlanSteps.ps1`, instead of Copilot's Auto, which picked a different model from run to run, and Claude Code's `plan-executor` subagent, pinned to `claude-sonnet-5-5`.
+- Copilot's step prompt is `execute-step.prompt.md`, like its `execute-step` skill; with the local model too, the local model's is `execute-step-local.prompt.md`. `Adopt-Project.ps1` deletes an older `execute-step-copilot.prompt.md`.
+- When `Update-Project.ps1` can't read the template, it says that updating needs read access to it, and that the project still works without it.
+
 [unreleased]: https://github.com/polewskm/project-template/compare/v0.37.0...HEAD
 [0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.2...v0.37.0
 [0.36.2]: https://github.com/polewskm/project-template/compare/v0.36.1...v0.36.2
@@ -484,3 +501,4 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 [0.5.0]: https://github.com/polewskm/project-template/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/polewskm/project-template/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/polewskm/project-template/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/polewskm/project-template/compare/v0.1.0...v0.2.0
