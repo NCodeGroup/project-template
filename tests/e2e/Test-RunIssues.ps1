@@ -219,3 +219,67 @@ if (-not $CheckOnly) {
     "Fixture: $app"
     "Continue the session from $app with: claude --resume $script:sessionId"
 }
+
+function Read-HostJson([string]$Name) {
+    $path = Join-Path $hostDir $Name
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    try { Get-Content -Raw -LiteralPath $path | ConvertFrom-Json } catch { $null }
+}
+
+Use-FixtureEnvironment {
+    Invoke-Git -C $app fetch -q origin
+    $mainBefore = if (Test-Path -LiteralPath (Join-Path $hostDir 'main.txt')) { ([IO.File]::ReadAllText((Join-Path $hostDir 'main.txt'))).Trim() } else { '' }
+    $callsPath = Join-Path $hostDir 'calls.log'
+    $calls = if (Test-Path -LiteralPath $callsPath) { @(Get-Content -LiteralPath $callsPath) } else { @() }
+
+    $unsupported = @($calls | Where-Object { $_ -match '^UNSUPPORTED' })
+    Check 'the stand-in saw only supported gh calls' ($unsupported.Count -eq 0) ($unsupported -join '; ')
+    $forbidden = @($calls | Where-Object { $_ -match '^FORBIDDEN' })
+    Check 'no gh call merged or readied a pull request' ($forbidden.Count -eq 0) ($forbidden -join '; ')
+
+    $comments = @(Read-HostJson 'comments.json')
+    $snapshot = @($comments | Where-Object { $_ -and $_.kind -eq 'issue' -and $_.number -eq 1 -and "$($_.body)" -match '^Plan snapshot\.' })
+    Check 'issue #1 has a plan snapshot comment' ($snapshot.Count -ge 1) "comments: $(@($comments | Where-Object { $_ }).Count)"
+
+    $prs = @(Read-HostJson 'prs.json' | Where-Object { $_ })
+    $pr = if ($prs.Count -eq 1) { $prs[0] } else { $null }
+    $prOk = $pr -and $pr.isDraft -eq $true -and $pr.headRefName -eq 'worktree-issue-1' -and $pr.baseRefName -eq 'main' -and "$($pr.body)" -match '(?m)^Closes #1\s*$'
+    Check 'one draft pull request from worktree-issue-1 into main closes #1' ([bool]$prOk) "pull requests: $($prs.Count)$(if ($pr) { "; isDraft=$($pr.isDraft) head=$($pr.headRefName) base=$($pr.baseRefName)" })"
+
+    $mainNow = "$(git -C $origin rev-parse main 2>$null)".Trim()
+    Check 'origin main is unchanged' ($mainNow -and $mainNow -eq $mainBefore) "main is '$mainNow', expected '$mainBefore'"
+
+    $subjects = @(git -C $origin log --format=%s main..worktree-issue-1 2>$null)
+    $logCode = $LASTEXITCODE
+    $stepOk = $logCode -eq 0 -and @($subjects | Where-Object { $_ -match '^Plan step \d+: ' }).Count -ge 1 -and @($subjects | Where-Object { $_ -match '^Plan: ' }).Count -eq 0
+    Check 'origin has the plan''s step commits and no empty Plan: commit' $stepOk $(if ($logCode) { 'no worktree-issue-1 branch on origin' } else { "subjects: $($subjects -join ' | ')" })
+
+    $null = pwsh -NoProfile -File (Join-Path $app '.template/Test-CommitAttribution.ps1') -Root $app -Base $mainBefore -Head origin/worktree-issue-1 2>&1
+    Check 'the pull request''s commits carry no AI attribution' ($LASTEXITCODE -eq 0) "exit code $LASTEXITCODE"
+
+    $noTree = "no worktree at $worktree"
+    if (Test-Path -LiteralPath $worktree) {
+        $st = Get-State $worktree
+        $stepsOk = "$($st['steps'])" -match '^(\d+)/\1 open=0 escalated=- failed=-$'
+        Check 'every step of the plan is done and reviewed' ($stepsOk -and $st['reviewed'] -eq 'current') "steps='$($st['steps'])' reviewed='$($st['reviewed'])'"
+        Check 'the state script waits on the pull request' ("$($st['next'])" -like 'wait pull request #*') "next='$($st['next'])'"
+        Push-Location $worktree
+        try {
+            $out = "$(pwsh -NoProfile -Command ". ./src/Greeting.ps1; (Get-Greeting) -eq 'Hello, world!' -and (Get-Greeting -Name '') -eq 'Hello, world!' -and (Get-Greeting -Name Ada) -eq 'Hello, Ada!'")".Trim()
+            $null = pwsh -NoProfile -File tests/Test-Greeting.ps1
+            $testCode = $LASTEXITCODE
+        }
+        finally { Pop-Location }
+        Check 'Get-Greeting greets the world on the branch' ($out -eq 'True' -and $testCode -eq 0) "output='$out' test exit code $testCode"
+    }
+    else {
+        Check 'every step of the plan is done and reviewed' $false $noTree
+        Check 'the state script waits on the pull request' $false $noTree
+        Check 'Get-Greeting greets the world on the branch' $false $noTree
+    }
+}
+
+''
+if ($failures.Count) { "Run-issues end-to-end: FAILED ($($failures.Count))"; exit 1 }
+'Run-issues end-to-end: PASSED'
+exit 0
