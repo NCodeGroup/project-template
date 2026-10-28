@@ -6,11 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.39.1] - 2026-10-28
+## [0.40.1] - 2026-10-28
 
 ### Fixed
 
 - The plan executor runs each step's Done-when command in a child `pwsh` that prints `exit=<code>`, judges the step by that line alone, and quotes it in its report. Claude Code's PowerShell tool shows nothing for a command that passes, so executors took an empty output as a pass or checked the condition their own way. It applies to Claude Code's `plan-executor` subagent and `/execute-step`, the Copilot implementer agents and `execute-step` prompt files in VS Code, and the Copilot CLI `plan-executor` agent and `execute-step` skill. Projects get it with `.\.template\Update-Project.ps1`.
+
+## [0.40.0] - 2026-10-28
+
+### Added
+
+- Plans can name issues they relate to without resolving them, on a `Refs:` line after `Issue:` and `Release:`. The planning commands put an issue there when the request marks it as related, such as `refs owner/repo#90`, and post no snapshot to it. `/ship-plan` ends the pull request description with one `Refs <reference>` line per reference, after the `Closes` lines, and never comments on or closes those issues. `.template/Get-PlanState.ps1` prints them on a new `refs` line, and `/continue-plan` shows them. Projects get it with `.\.template\Update-Project.ps1`.
+
+### Changed
+
+- `/ship-plan` under `integrate: direct` no longer stops when the default branch has moved since the plan branched. Because the push to the default branch must fast-forward, it adds a step that merges the default branch in, never by rebasing, with a sentence for each file that conflicts saying how to combine the two sides, and stops. The plan lands once that step is executed and reviewed. Projects get it with `.\.template\Update-Project.ps1`.
+
+### Fixed
+
+- `/ship-plan` drops the empty `Plan:` and `Re-plan step` commits whenever `origin` doesn't have the plan's branch yet. It used to test whether the branch had an upstream, and a branch made from `origin/<default>` tracks it before its first push, so the empty commits reached the pull request and the default branch. `/run-issues` also makes each worktree's branch with `git worktree add --no-track`, so it has no upstream until `/ship-plan` pushes it. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.39.0] - 2026-10-28
 
@@ -493,8 +507,9 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/polewskm/project-template/compare/v0.39.1...HEAD
-[0.39.1]: https://github.com/polewskm/project-template/compare/v0.39.0...v0.39.1
+[unreleased]: https://github.com/polewskm/project-template/compare/v0.40.1...HEAD
+[0.40.1]: https://github.com/polewskm/project-template/compare/v0.40.0...v0.40.1
+[0.40.0]: https://github.com/polewskm/project-template/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/polewskm/project-template/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/polewskm/project-template/compare/v0.37.1...v0.38.0
 [0.37.1]: https://github.com/polewskm/project-template/compare/v0.37.0...v0.37.1

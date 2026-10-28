@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, then Keep a Changelog headings and the changelog lines, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
+    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, then Keep a Changelog headings and the changelog lines, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -106,7 +106,7 @@ finally { Pop-Location }
 $planFile = Join-Path $repo 'PLAN.md'
 
 # 1. On the default branch with no plan.
-$r = Test-State (Get-State $repo) @{ plan = '-'; default = 'main'; branch = 'main'; host = 'other'; worktree = '-'; ahead = '0'; behind = '0'; landed = 'yes'; dirty = 'no'; plans = '-'; conflicts = '-'; protected = 'unknown' }
+$r = Test-State (Get-State $repo) @{ plan = '-'; refs = '-'; default = 'main'; branch = 'main'; host = 'other'; worktree = '-';ahead = '0'; behind = '0'; landed = 'yes'; dirty = 'no'; plans = '-'; conflicts = '-'; protected = 'unknown' }
 Check 'local: a clean default branch with no plan' $r.Ok $r.Detail
 $state = Get-State $repo
 Check 'next: no plan means nothing to do' ($state['next'] -like 'none *') "next='$($state['next'])' expected 'none *'"
@@ -121,6 +121,9 @@ $r = Test-State (Get-State $repo) @{ plan = 'Demo plan'; issue = '#7'; release =
 Check "local: reads the plan's header and steps" $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ next = 'orchestrate-plan' }
 Check 'next: an open step runs orchestrate-plan' $r.Ok $r.Detail
+Write-Text $planFile ((New-PlanText ' ').Replace("Release: v0.2.0`n", "Release: v0.2.0`nRefs: #3 owner/other#90`n"))
+$r = Test-State (Get-State $repo) @{ issue = '#7'; refs = '#3 owner/other#90'; release = 'v0.2.0'; next = 'orchestrate-plan' }
+Check 'local: reads the plan''s Refs: line apart from its Issue: line' $r.Ok $r.Detail
 
 # 3. An escalated step.
 Write-Text $planFile (New-PlanText '?')
@@ -428,6 +431,11 @@ try {
     Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'CLOSED'; '9' = 'CLOSED' }
     $r = Test-State (Get-State $gh.Repo) @{ 'issue-state' = 'CLOSED'; next = 'finish-plan' }
     Check 'issues: a group plan on GitHub with every issue closed is finished' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $gh.Repo 'PLAN.md') ((New-PlanText 'x' (Get-Head $gh.Repo) '#7').Replace("Release: v0.2.0`n", "Release: v0.2.0`nRefs: #8`n"))
+    Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'OPEN' }
+    $r = Test-State (Get-State $gh.Repo) @{ issue = '#7'; refs = '#8'; 'issue-state' = 'CLOSED'; 'issue-states' = '#7=CLOSED'; next = 'finish-plan' }
+    Check 'issues: an open issue on the Refs: line keeps no plan open' $r.Ok $r.Detail
 
     Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo) '#7 #8')
     Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'OPEN' }

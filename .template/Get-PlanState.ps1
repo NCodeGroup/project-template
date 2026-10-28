@@ -4,14 +4,14 @@
 
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
-    folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, protected, ahead, behind, landed,
+    folder, worktree, branch, default, host, plan, issue, refs, release, steps, reviewed, landing, protected, ahead, behind, landed,
     pr, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
     "-". With an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
     merge is the commit that request merged as, when it merged. issue is the plan's Issue: line, which names one
     issue or up to three separated by spaces; issue-states gives each one's state as <reference>=<state>, and
-    issue-state is OPEN while any of them is open, CLOSED when all are closed, and unknown otherwise.
+    issue-state is OPEN while any of them is open, CLOSED when all are closed, and unknown otherwise. refs is the plan's Refs: line, the issues it relates to without resolving them; the script reads no state for them.
     landing gives each key of AGENTS.md's Landing section that the workflow reads as key=value, with its default when
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
     gate is the command /ship-plan runs before it pushes, or none.
@@ -189,13 +189,14 @@ try {
     }
 
     # PLAN.md
-    $plan = '-'; $issue = '-'; $release = '-'; $steps = '-'; $reviewed = '-'
+    $plan = '-'; $issue = '-'; $related = '-'; $release = '-'; $steps = '-'; $reviewed = '-'
     $done = 0; $total = 0; $open = 0; $escalated = @(); $failed = @()
     $planFile = Join-Path $folder 'PLAN.md'
     if (Test-Path -LiteralPath $planFile) {
         $lines = Read-Lines $planFile
         foreach ($line in $lines) { if ($line -match '^# Plan:\s*(.+)$') { $plan = $Matches[1].Trim(); break } }
         foreach ($line in $lines) { if ($line -match '^Issue:\s*(\S.*)$') { $issue = $Matches[1].Trim(); break } }
+        foreach ($line in $lines) { if ($line -match '^Refs:\s*(\S.*)$') { $related = $Matches[1].Trim(); break } }
         foreach ($line in $lines) { if ($line -match '^Release:\s*(\S+)') { $release = $Matches[1]; break } }
 
         $done = 0; $total = 0; $open = 0; $escalated = @(); $failed = @()
@@ -438,6 +439,7 @@ try {
     Write-Output "host: $hostName"
     Write-Output "plan: $plan"
     Write-Output "issue: $issue"
+    Write-Output "refs: $related"
     Write-Output "release: $release"
     Write-Output "steps: $steps"
     Write-Output "reviewed: $reviewed"
