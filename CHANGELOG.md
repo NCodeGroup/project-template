@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.34.0
+
+- When another plan takes a plan's `Release:` version while its pull request is open, `/ship-plan` now renumbers it as it does before a pull request opens: it changes the `Release:` line and adds the renumber step, and once that step is reviewed the next `/ship-plan` pushes it to the open pull request, which then merges with a merge commit, not by rebasing. `.template/Get-PlanState.ps1` names `ship-plan` as `next`, not `wait`, while the pull request is open and `renumber` isn't `-`. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.33.0
 
 - `/run-issues` runs one entry ahead: while a draft pull request waits for review, it plans, executes and reviews the next entry in its own worktree, and opens that entry's pull request only once the one before has landed, so entries still land in queue order. Projects get it with `.\.template\Update-Project.ps1`.

@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab. After each move it runs
+    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -498,6 +498,25 @@ Check 'renumber: a newer tag moves it past the tag' $r.Ok $r.Detail
 Write-Text $latePlan ((Get-Content -Raw $latePlan).Replace('Release: v0.2.0', 'Release: v0.2.1').Replace("`r`n", "`n"))
 $r = Test-State (Get-State $lateRepo) @{ release = 'v0.2.1'; renumber = 'v0.3.1' }
 Check 'renumber: a patch plan moves to the next patch' $r.Ok $r.Detail
+
+# 18. An open pull request whose release another plan took.
+$prOrigin = Join-Path $Work 'late-pr/github.com/origin.git'
+Invoke-Git clone -q --bare $lateOrigin $prOrigin
+Push-Location $lateRepo
+try { Invoke-Git remote set-url origin $prOrigin }
+finally { Pop-Location }
+Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject @(@{ number = 9; state = 'OPEN'; mergeCommit = $null; headRefOid = (Get-Head $lateRepo); baseRefName = 'main' }) -Depth 3)
+$savedPath = $env:PATH
+$env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+try {
+    $r = Test-State (Get-State $lateRepo) @{ host = 'github'; pr = '9 OPEN'; renumber = 'v0.3.1'; next = 'ship-plan' }
+    Check 'next: an open pull request whose release another plan took goes back to ship-plan' $r.Ok $r.Detail
+
+    Write-Text $latePlan ((Get-Content -Raw $latePlan).Replace('Release: v0.2.1', 'Release: v0.3.1').Replace("`r`n", "`n"))
+    $r = Test-State (Get-State $lateRepo) @{ pr = '9 OPEN'; renumber = '-'; next = 'wait pull request #9 is open: run ship-plan again once it merges' }
+    Check 'next: an open pull request at a free version waits' $r.Ok $r.Detail
+}
+finally { $env:PATH = $savedPath }
 
 ''
 if ($failures.Count) { "Plan state tests: FAILED ($($failures.Count))"; exit 1 }
