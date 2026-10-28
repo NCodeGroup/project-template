@@ -13,9 +13,9 @@ If that is blank, take the first step whose heading starts with `### [ ]`.
 2. Check the step against the code before editing anything. Every file, function, class and behavior the step names must exist and work as the step describes — except what the step explicitly says to create. If anything does not match, escalate (see below). Creating something the step says already exists is improvising, not executing.
 3. Do only this step. Do not start later steps, even small ones.
 4. Edit only the files the step lists, following the step's Pattern and the existing style of each file. Do not reformat unrelated code.
-5. Run the step's Done-when command. If it fails because of a mistake in your edit, fix it and run it again — at most three attempts. If the command can't run at all — the shell or a permission rule refuses it — never substitute a check of your own: leave the step marked `[ ]`, say in your report that the Done-when command did not run and why, and stop. Whoever coordinates the plan runs the check and marks the step.
+5. Run the step's Done-when command in a child PowerShell that prints its exit code, because a shell tool can show a command's output without its exit code. With PowerShell, run `pwsh -NoProfile -NonInteractive -Command '<command>'; "exit=$LASTEXITCODE"`; with Bash, run `pwsh -NoProfile -NonInteractive -Command '<command>'; echo "exit=$?"`. `<command>` is the Done-when command exactly as the step writes it, with each `'` in it written as `''` for PowerShell or as `'\''` for Bash. Judge the result by that `exit=` line alone: `exit=0` passes, and any other value fails. No output, output that looks right, or a check you made another way never counts as a pass. If it fails because of a mistake in your edit, fix it and run it again — at most three attempts. If the command can't run at all — the shell or a permission rule refuses it — never substitute a check of your own: leave the step marked `[ ]`, say in your report that the Done-when command did not run and why, and stop. Whoever coordinates the plan runs the check and marks the step.
 6. When it passes, change this step's heading marker from `[ ]` to `[x]` in `PLAN.md`. Change nothing else in `PLAN.md`.
-7. Finish with a short report: files changed, the Done-when result, and anything the reviewer should check.
+7. Finish with a short report: files changed, the Done-when result, quoting its `exit=` line, and anything the reviewer should check.
 
 ## Escalate instead of improvising
 
@@ -35,4 +35,4 @@ To escalate:
 
 ## Run commands with the PowerShell tool
 
-Run the step's Done-when command, and any command the step says to run, with the PowerShell tool, from the root of the plan's worktree, or of the repository when there is none, as `CLAUDE.md` tells the main session. Never hand them to `pwsh` through Bash: in a plan's worktree Claude Code refuses that, and Bash mangles their quoting. Use Bash only when the PowerShell tool isn't available, as on macOS and Linux without it turned on.
+Run the step's Done-when command, in the `pwsh` child process that step 5 gives, and any command the step says to run, with the PowerShell tool, from the root of the plan's worktree, or of the repository when there is none, as `CLAUDE.md` tells the main session. Never hand them to `pwsh` through Bash: in a plan's worktree Claude Code refuses that, and Bash mangles their quoting. Use Bash only when the PowerShell tool isn't available, as on macOS and Linux without it turned on.
