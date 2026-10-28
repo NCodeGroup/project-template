@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.40.2] - 2026-10-28
+
+### Fixed
+
+- `/ship-plan` no longer leaves a release tag in the clone when the push that should carry it fails. Under `integrate: direct` it tags the commit and pushes the commits and the tag together with `git push --atomic`; after a pull request merges, it tags the merge commit and pushes the tag. When either push fails, such as when the default branch moved, it now deletes the tag it made unless `origin` has it. The tag it left behind made the next run take the version for one another plan had released and move the plan to the next version, stop because the tag pointed at a commit that never landed, or never push the tag. Projects get it with `.\.template\Update-Project.ps1`.
+- The project rules list what a push sends with `git log --stat origin/<branch>..`, or `git log --stat origin/<default branch>..` before a branch's first push, instead of `git log --stat @{u}..`. That failed on a plan branch with no upstream, such as one `/run-issues` makes, and listed commits already pushed on a branch that tracks the default branch. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## [0.40.1] - 2026-10-28
 
 ### Fixed
@@ -507,7 +514,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/polewskm/project-template/compare/v0.40.1...HEAD
+[unreleased]: https://github.com/polewskm/project-template/compare/v0.40.2...HEAD
+[0.40.2]: https://github.com/polewskm/project-template/compare/v0.40.1...v0.40.2
 [0.40.1]: https://github.com/polewskm/project-template/compare/v0.40.0...v0.40.1
 [0.40.0]: https://github.com/polewskm/project-template/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/polewskm/project-template/compare/v0.38.0...v0.39.0
