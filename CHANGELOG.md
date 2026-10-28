@@ -106,107 +106,152 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.26.0] - 2026-10-27
 
+### Changed
+
 - No change for projects made from the template. `tests/Invoke-AllTests.ps1` runs every `tests/Test-*.ps1` suite, prints `PASS` or `FAIL` and the time per suite, writes each suite's output to a log, and exits 1 when any suite fails, so the README's "Change the Template" step is one command instead of nine. `tests/Test-InvokeAllTests.ps1` tests it, and CI runs that test.
 
 ## [0.25.4] - 2026-10-27
+
+### Changed
 
 - The first `PLAN.md` rule in `.github/instructions/project-template.instructions.md` now names the optional `Release:` and `Reviewed:` lines under a plan's title and the optional `## Follow-ups` section at its end, which the planning commands, `/review-plan-diff` and `.template/Get-PlanState.ps1` already use; it listed only the `Issue:` line before. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.25.3] - 2026-10-27
 
+### Changed
+
 - No change for projects made from the template. `tests/Test-Template.ps1` now fails, naming the script, when a `tests/Test-*.ps1` script has no `run: ./tests/<name>` step in `.github/workflows/test-template.yml`, so a new test script can't be left out of CI unnoticed.
 
 ## [0.25.2] - 2026-10-27
+
+### Fixed
 
 - `.template/Test-CommitAttribution.ps1` let a commit with Claude Code's "Generated with [Claude Code]" line through when PowerShell's console code page wasn't UTF-8, such as a Windows console on its default code page or a PowerShell job, because it read Git's output in that code page. It now reads Git's output as UTF-8 whatever the code page. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.25.1] - 2026-10-27
 
+### Changed
+
 - No change for projects made from the template. `USAGE.md` now says that `/finish-plan` reads the `landed` value of `.template/Get-PlanState.ps1`, which asks the host with `gh` or `glab` for a merged pull request whose head holds the plan's branch or has its tree; since v0.22.0 the command no longer asks the host itself.
 
 ## [0.25.0] - 2026-10-27
+
+### Added
 
 - `/ship-plan` and `/run-issues` now file a plan's follow-ups as issues labelled `follow-up` once the plan has landed, unless you drop them (`/ship-plan`: name them in the landing summary; `/run-issues`: answer at the start that you want none filed). Before, `/run-issues` only listed them in the issue's closing comment, which a pull request that closes the issue skips, so they were easy to lose. `/ship-plan` skips a follow-up an open issue already covers, and the closing comment, or a short comment when the pull request closed the issue, lists the filed numbers. Plans and reviews now list only work worth its own issue, one line each as `<short title>: <what, where, why>`; nits go in the planner's reply. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.24.4] - 2026-10-27
 
+### Fixed
+
 - `.githooks/commit-msg` used to keep the AI agent attribution and let the commit through, saying nothing clear, when `grep` was missing from `PATH`. It now refuses the commit when `grep` is missing or fails. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.24.3] - 2026-10-27
+
+### Fixed
 
 - With `protect: hook`, `/run-issues` accepted any `pre-push` hook as protection, so in a pre-commit clone pre-commit's own `pre-push` hook passed its check although nothing ran `.githooks/pre-push`. It now runs only when `core.hooksPath` names the `.githooks` folder, or the clone's `pre-push` or `pre-push.legacy` calls `.githooks/pre-push`, and says how to add the wrapper otherwise. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.24.2] - 2026-10-27
 
+### Fixed
+
 - In a clone that uses pre-commit or has hooks of its own, `Update-Project.ps1` and `Adopt-Project.ps1` left `.githooks/pre-push` unrun and said nothing, so `protect: hook` protected nothing. Under `protect: hook` they now print a two-line wrapper to save as `.git/hooks/pre-push` (or `pre-push.legacy` when pre-commit installed its pre-push hook), or say to call it from the clone's own pre-push hook. A pre-commit `stages: [pre-push]` hook isn't enough, because pre-commit's pre-push stage checks only one ref of a push. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.24.1] - 2026-10-27
+
+### Fixed
 
 - With `protect: hook`, `.githooks/pre-push` used to let every push through when `awk` or `tr` was missing from `PATH`. It now needs only `awk` and refuses the push when `awk` is missing or fails. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.24.0] - 2026-10-27
 
+### Changed
+
 - No change for projects made from the template. `workflow/New-PlanPrompt.ps1 -List` now shows each template's targets, the installer targets its `targets` field names (all three without it), so Claude Code-only templates such as `run-issues` stand out.
 
 ## [0.23.2] - 2026-10-27
+
+### Changed
 
 - No change for projects made from the template. This repository's `AGENTS.md` no longer gives a project whose `main` takes changes only through pull requests as one that squashes plan step commits: since v0.23.0 this repository lands through pull requests and keeps them, by merge commit or rebase.
 
 ## [0.23.1] - 2026-10-27
 
+### Changed
+
 - No change for projects made from the template. The help of `workflow/Install-HybridWorkflow.ps1` now names `tools\Update-Template.ps1`, where v0.22.1 moved the script, as the one that passes `-NoVersionMarker`.
 
 ## [0.23.0] - 2026-10-27
 
+### Added
+
 - `/run-issues` (Claude Code only) takes the issues a request names, or the ready ones a filter finds through `/triage-issues`, from plan to landing in one session, up to five, one at a time: it plans each issue, executes and reviews it, opens a draft pull request, fixes what each review thread you start asks for and replies with `Autopilot:` (you resolve the thread), and once you mark the pull request ready and it merges, tags, releases, closes and finishes it before starting the next. It asks once, at the start, never merges, marks ready, turns on auto-merge or resolves a thread, and stops an issue that needs a decision, keeping its worktree for `/continue-plan`.
-
 - `/run-issues` runs only when `AGENTS.md`'s Landing section says `integrate: pull-request` and the default branch takes changes through pull requests alone: a GitHub ruleset or branch protection rule that requires them, a GitLab protected branch nobody pushes to, or the new `protect: hook`.
-
 - New Landing key `protect`: `hook` turns on the new `.githooks/pre-push`, which refuses any push to the default branch, for a host that can't require pull requests, such as a private repository on GitHub Free. A project without the key sees no change. New projects get `- protect: none`. `New-Project.ps1`, `Adopt-Project.ps1` and `Update-Project.ps1` mark the hook executable. Projects get it with `.\.template\Update-Project.ps1`.
-
 - `/ship-plan` opens a draft pull request when its extra instructions say `draft`, and stops when `protect: hook` is set with `integrate: direct`.
+
+### Changed
 
 - This repository now lands through pull requests, guarded by `protect: hook`: run `git config core.hooksPath template/.githooks` in each clone. `Install-HybridWorkflow.ps1` reads a new template field, `targets`, that limits a template to the tools it names.
 
 ## [0.22.1] - 2026-10-26
 
+### Changed
+
 - No change for projects made from the template. This repository's own scripts moved: the nine `Test-*.ps1` tests into `tests/` and `Update-Template.ps1` into `tools/`, so the root holds only `New-Project.ps1`, `Adopt-Project.ps1` and `Update-Project.ps1`, the scripts people run. Run them as `.\tests\Test-Template.ps1` and `.\tools\Update-Template.ps1`. The scripts, their checks and CI are otherwise the same.
 
 ## [0.22.0] - 2026-10-26
 
+### Changed
+
 - `/finish-plan` now runs `.template/Get-PlanState.ps1` and reads `landed`, `dirty` and `steps` from it instead of running its own git, `gh` and `glab` checks, so the script is the one tested copy of the "is the work upstream" rule.
+
+### Fixed
 
 - The script's `landed` now counts a merged pull request or merge request only when its merge commit is on the default branch and its head holds the branch's `HEAD` or has the same tree. Before, any merged pull request counted, so `/ship-plan` and `/continue-plan` could call a branch landed after commits were added to it once its pull request merged. Such a branch's `next` now says to land those commits from a new branch, and `/ship-plan` stops on it. Projects get it with `.\.template\Update-Project.ps1`.
 
 ## [0.21.0] - 2026-10-26
 
+### Added
+
 - New answer `project_owned_files`: the merged files a project owns. `Update-Project.ps1` leaves them alone and shows the template's changes to them, rendered with the project's answers and leaving out what the file already has, as it does for project-owned files. A project that replaced a merged file, such as its own `.github/workflows/ci.yml`, sets it in an update to v0.21.0 or later: `.\.template\Update-Project.ps1 -Data @{ project_owned_files = '.github/workflows/ci.yml' }`. Before, the rewritten file shared almost no lines with the template, so Copier's merge paired the template's changed lines with unrelated project lines, and taking the template's side broke the workflow. Only merged files can be named; any other file stops the update before it changes anything. `-Data @{ project_owned_files = @() }` gives them back to the merge (Copier records the empty list as `project_owned_files: []`, which means no owned files). New projects aren't asked.
 
 ## [0.20.0] - 2026-10-26
+
+### Changed
 
 - `/continue-plan` now fetches `origin` once instead of once per plan worktree. `.template/Get-PlanState.ps1` has a new `-NoFetch` switch that skips its fetch and reads `ahead`, `behind` and `landed` from the remote refs the last fetch left. `/continue-plan` passes it to its calls for the other worktrees, which share the first call's remote refs. `/ship-plan` still fetches.
 
 ## [0.19.0] - 2026-10-26
 
+### Added
+
 - `/ship-plan` lands a reviewed plan by the new `## Landing` section of `AGENTS.md`: `integrate` (`pull-request`, the default, or `direct`), `release` (`none`, the default, `tag` or `tag+release`) and `changelog` (default `CHANGELOG.md`). It shows what it will push, tag, publish, post and file, and asks once. It drops the empty `Plan:` and `Re-plan step` commits from a branch that was never pushed, pushes the commits and tag atomically or opens the pull request with `Closes`, publishes the release from the changelog section, comments on and closes the issue, and files the follow-ups you pick. Every stage skips what's already done, so it can run again after a pull request merges. A project without a Landing section keeps today's behavior: a pull request and no release. New projects get the section with those defaults, and a project adds it to its own `AGENTS.md` to change them.
-
 - `/continue-plan` shows where each open plan stands (steps, review, landing, pull request) and the one command to run next. Both commands run `.template/Get-PlanState.ps1`, a new template-owned script that `Install-HybridWorkflow.ps1` also installs with the commands, in `.template\` with `-Repo` or in `~\.claude\` and `~\.copilot\` with `-User`.
-
 - Plans gain a `Release:` line, which the planner sets from the kind of plan when the Landing section releases (a patch for bugfix, docs, tests and refactor plans, a minor for others), with a last step that writes that version's changelog section, and a `## Follow-ups` section. A clean `/review-plan-diff` records the commit it reviewed on a `Reviewed:` line, and `/ship-plan` lands only work that matches it. `/orchestrate-plan` and `/review-plan-diff` end with the exact next command.
 
 ## [0.18.3] - 2026-10-26
+
+### Fixed
 
 - `Update-Project.ps1` sets aside the lines an adopted project kept from its own `.gitignore`, `.gitattributes` or `.editorconfig` (the block under `# Kept from this repository's own <file> when it adopted the project template`, which `Adopt-Project.ps1` puts at the end of the file) while Copier merges, then puts them back at the end. Before, a template change to the file's last line, such as v0.15.0's `secrets/` → `/secrets/` in a `stack: other` project, stopped the update with a conflict that held the project's whole kept block, so taking the template's side deleted every rule the project kept. A conflict in the template's lines now ends before the kept block. A project gets the fix with its update to this version or later, because its current script hands the update over to this version's script. An update pinned with `-Ref` to an earlier version runs that version's script and still conflicts: see v0.15.0.
 
 ## [0.18.2] - 2026-10-26
 
+### Fixed
+
 - `Update-Project.ps1` exits 0 when an update succeeds, with `-NoCommit` too. Before, run with `&` (as `/plan-template-update`'s trial run and its first step do), a `-NoCommit` update that showed a template change to a project-owned file left `$LASTEXITCODE` at 1, from the git commands that show the change, so a caller or plan step that judged the run by its exit code saw a failure. `pwsh -File` and committing updates weren't affected. A project gets the fix with its update to this version, because its current script hands the update over to this version's script and passes on its exit code.
 
 ## [0.18.1] - 2026-10-26
 
+### Fixed
+
 - `Adopt-Project.ps1` answers `stack: other` for an OpenTofu or Terraform repository (a `.tf`, `.tofu` or `.tftest.hcl` file within two folders of the root), even when it has PowerShell scripts. PowerShell files under the root's `build/`, `eng/`, `scripts/`, `tools/`, `.github/` and `.gitlab/` folders no longer make a repository `powershell`. Before, such a repository got `Invoke-ScriptAnalyzer` and `Invoke-Pester` as its build and test commands, and the adoption stopped staged, not committed, when those modules weren't installed. A PowerShell project whose only PowerShell files are in those folders now gets `other`, so pass `-Data @{ stack = 'powershell' }`. A project adopted before this release with the wrong stack corrects `stack`, `build_command` and `test_command` in `.copier-answers.yml` and runs `.\.template\Update-Project.ps1`.
 
 ## [0.18.0] - 2026-10-26
+
+### Changed
 
 - `Adopt-Project.ps1` works out `workflow_tools` from the repository's own files instead of always taking the default: `claude`, plus `copilot` when it has `.github/agents/copilot-*.agent.md`, `.github/skills/` or `.github/prompts/`, plus `local` only when it has `.github/agents/hybrid-*.agent.md`. `-Data` still wins. Before, a repository with only Copilot agents got the Hybrid agents and `local-implementer.agent.md`, which use the shack PC's private model, `.github/prompts/execute-step-local.prompt.md`, the only prompt file without a matching skill, and `"ollama.inferenceTimeoutMinutes"` in `.vscode/settings.json`. A repository with none of these files still gets the default, and the script prints a line saying it included `local` and how to leave it out. A project adopted before this release that shouldn't have the local model's files removes them with `.\.template\Update-Project.ps1 -Data @{ workflow_tools = 'claude', 'copilot' }`.
 
