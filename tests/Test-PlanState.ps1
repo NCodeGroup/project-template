@@ -441,6 +441,64 @@ try {
 }
 finally { $env:PATH = $savedPath }
 
+# 17. A plan whose release another plan took.
+$lateOrigin = Join-Path $Work 'renumber.git'
+$lateSeed = Join-Path $Work 'renumber-seed'
+$lateRepo = Join-Path $Work 'renumber-repo'
+Push-Location $Work
+try {
+    Invoke-Git init -q --bare -b main $lateOrigin
+    Invoke-Git clone -q $lateOrigin $lateSeed
+}
+finally { Pop-Location }
+Write-Text (Join-Path $lateSeed 'AGENTS.md') "# Demo`n`n## Landing`n`n- release: tag+release`n"
+Write-Text (Join-Path $lateSeed 'CHANGELOG.md') "# Changelog`n`n## v0.1.0`n`n- First.`n"
+Push-Location $lateSeed
+try {
+    Invoke-Git add AGENTS.md CHANGELOG.md
+    Invoke-Git commit -q -m 'Add landing and changelog'
+    Invoke-Git tag v0.1.0
+    Invoke-Git push -q origin HEAD:refs/heads/main
+    Invoke-Git push -q origin v0.1.0
+}
+finally { Pop-Location }
+Push-Location $Work
+try { Invoke-Git clone -q $lateOrigin $lateRepo }
+finally { Pop-Location }
+[IO.File]::AppendAllText((Join-Path $lateRepo '.git/info/exclude'), "PLAN.md`n")
+Push-Location $lateRepo
+try { Invoke-Git switch -q -c worktree-late }
+finally { Pop-Location }
+Add-Commit $lateRepo 'late.txt' 'Plan step 1: Late'
+$latePlan = Join-Path $lateRepo 'PLAN.md'
+Write-Text $latePlan (New-PlanText 'x' (Get-Head $lateRepo))
+$r = Test-State (Get-State $lateRepo) @{ release = 'v0.2.0'; renumber = '-'; next = 'ship-plan' }
+Check 'renumber: a version newer than every tag and changelog heading is free' $r.Ok $r.Detail
+
+Write-Text (Join-Path $lateSeed 'CHANGELOG.md') "# Changelog`n`n## v0.2.0`n`n- Second.`n`n## v0.1.0`n`n- First.`n"
+Push-Location $lateSeed
+try {
+    Invoke-Git add CHANGELOG.md
+    Invoke-Git commit -q -m 'Release 0.2.0'
+    Invoke-Git push -q origin HEAD:refs/heads/main
+}
+finally { Pop-Location }
+$r = Test-State (Get-State $lateRepo) @{ renumber = 'v0.3.0'; next = 'ship-plan' }
+Check 'renumber: a merged changelog heading at the plan''s version moves it a minor version on' $r.Ok $r.Detail
+
+Push-Location $lateSeed
+try {
+    Invoke-Git tag v0.3.0
+    Invoke-Git push -q origin v0.3.0
+}
+finally { Pop-Location }
+$r = Test-State (Get-State $lateRepo) @{ renumber = 'v0.4.0' }
+Check 'renumber: a newer tag moves it past the tag' $r.Ok $r.Detail
+
+Write-Text $latePlan ((Get-Content -Raw $latePlan).Replace('Release: v0.2.0', 'Release: v0.2.1').Replace("`r`n", "`n"))
+$r = Test-State (Get-State $lateRepo) @{ release = 'v0.2.1'; renumber = 'v0.3.1' }
+Check 'renumber: a patch plan moves to the next patch' $r.Ok $r.Detail
+
 ''
 if ($failures.Count) { "Plan state tests: FAILED ($($failures.Count))"; exit 1 }
 'Plan state tests: PASSED'

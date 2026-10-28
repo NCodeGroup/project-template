@@ -5,7 +5,7 @@
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, protected, ahead, behind, landed,
-    pr, merge, tag, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
+    pr, merge, tag, renumber, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
     "-". With an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
@@ -16,6 +16,7 @@
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
     gate is the command /ship-plan runs before it pushes, or none.
     pr-format is <file>#<heading>, the section that sets a pull request's title and description, or none.
+    renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag or first ## <version> heading of the changelog on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed.
     protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
     requests into the default branch, no when it does not, unknown when the host or its CLI cannot say, and - without
     a default branch.
@@ -46,6 +47,11 @@ function Get-LandingValue([string]$Text, [switch]$Spaced) {
     if ($value -match '^`(.+)`$' -or $value -match '^"(.+)"$') { $value = $Matches[1].Trim() }
     if (-not $Spaced) { $value = ($value -split '\s+')[0] }
     $value
+}
+
+function ConvertTo-PlanVersion([string]$Text) {
+    if ($Text -match '^v?(\d+)\.(\d+)\.(\d+)$') { return [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3]) }
+    $null
 }
 
 function Get-IssueState([string]$Ref, [string]$HostName) {
@@ -265,6 +271,36 @@ try {
     }
     $merge = if ($prState -eq 'MERGED' -and $prMerge) { $prMerge } else { '-' }
 
+    # Version still free for the plan
+    $renumber = '-'
+    $planVersion = ConvertTo-PlanVersion $release
+    if ($releasePolicy -ne 'none' -and $default -ne '-' -and $landed -ne 'yes' -and $null -ne $planVersion) {
+        $found = @()
+        foreach ($tagName in (& git tag --list 2>$null)) {
+            $v = ConvertTo-PlanVersion "$tagName"
+            if ($null -ne $v) { $found += $v }
+        }
+        $headLines = @(& git show "origin/${default}:$($policy['changelog'])" 2>$null)
+        if ($LASTEXITCODE -eq 0) {
+            foreach ($headLine in $headLines) {
+                if ("$headLine" -match '^## (\S+)\s*$') {
+                    $v = ConvertTo-PlanVersion $Matches[1]
+                    if ($null -ne $v) { $found += $v; break }
+                }
+            }
+        }
+        if ($found.Count -gt 0) {
+            $newest = $found | Sort-Object | Select-Object -Last 1
+            if ($newest -ge $planVersion) {
+                $raised = if ($planVersion.Build -gt 0) { [version]::new($newest.Major, $newest.Minor, $newest.Build + 1) }
+                elseif ($planVersion.Minor -gt 0) { [version]::new($newest.Major, $newest.Minor + 1, 0) }
+                else { [version]::new($newest.Major + 1, 0, 0) }
+                $prefix = if ($release.StartsWith('v')) { 'v' } else { '' }
+                $renumber = "$prefix$($raised.Major).$($raised.Minor).$($raised.Build)"
+            }
+        }
+    }
+
     # Release published on the host
     $published = '-'
     if ($releasePolicy -eq 'tag+release' -and $tag -eq 'present') {
@@ -358,6 +394,7 @@ try {
     Write-Output "pr: $pr"
     Write-Output "merge: $merge"
     Write-Output "tag: $tag"
+    Write-Output "renumber: $renumber"
     Write-Output "published: $published"
     Write-Output "issue-state: $issueState"
     Write-Output "issue-states: $issueStates"
