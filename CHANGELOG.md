@@ -401,6 +401,23 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - A finished step is committed as `Plan step N: <title>` with only the files the step lists staged, never with `git add -A` or `PLAN.md`. A re-planned step is recorded as an empty commit, `Re-plan step N: <title>`, and in Claude Code a new plan's worktree gets an empty `Plan: <title>` commit. `workflow\Invoke-PlanSteps.ps1` never stages the plan either.
 - Before a push it was asked for, an agent lists what the unpushed commits contain (`git log --stat @{u}..`) and stops on anything unexpected, such as `PLAN.md`, secrets or large files.
 
+## [0.5.0] - 2026-10-25
+
+### Added
+
+- A `package_manager` question for Node.js projects: npm (the default), pnpm, Yarn or Bun. CI installs dependencies with it: pnpm and Yarn through Corepack, Bun through `oven-sh/setup-bun` on GitHub and the `oven/bun` image on GitLab. It also sets Dependabot's ecosystem (`bun` for Bun, else `npm`) and the default build and test commands, such as `pnpm run build` and `pnpm run test`.
+
+### Fixed
+
+- CI installed a Node.js project's dependencies only with `npm ci`, so a pnpm, Yarn or Bun project ran its build and test commands with nothing installed.
+- `Adopt-Project.ps1` works out a Node.js repository's package manager (the `packageManager` field in `package.json`, else its lockfile, else npm) and its build and test commands from the scripts in `package.json`. It leaves a command blank when there is no such script or the `test` script is the failing placeholder `npm init` writes, so adopting a repository without a build script no longer fails its verification.
+
+## [0.4.0] - 2026-10-25
+
+### Fixed
+
+- `Update-Project.ps1` no longer fails on Windows with `[WinError 206] The filename or extension is too long` when the project's own `.gitignore` ignores a large folder that the template's `.gitignore` doesn't, such as `node_modules/` in a .NET project with a frontend. While Copier updates, it keeps the project's ignore rules in force through `.git/info/exclude`, and it restores that file afterwards. A run also removes the copy of the rules that a killed update left there.
+
 [unreleased]: https://github.com/polewskm/project-template/compare/v0.37.0...HEAD
 [0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.2...v0.37.0
 [0.36.2]: https://github.com/polewskm/project-template/compare/v0.36.1...v0.36.2
@@ -454,3 +471,5 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 [0.8.0]: https://github.com/polewskm/project-template/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/polewskm/project-template/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/polewskm/project-template/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/polewskm/project-template/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/polewskm/project-template/compare/v0.3.0...v0.4.0
