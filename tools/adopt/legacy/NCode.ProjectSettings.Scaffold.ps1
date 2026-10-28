@@ -6,7 +6,7 @@
     Handles a repository whose MSBuild files reference NCode.ProjectSettings.Scaffold. The template's
     build/ProjectTemplate.props (nuget_package) replaces what that package provided, so the reference is removed.
 
-    Contract: Adopt-Project.ps1 runs every script in adopt\legacy with -Phase Detect. For each that returns $true,
+    Contract: Adopt-Project.ps1 runs every script in tools\adopt\legacy with -Phase Detect. For each that returns $true,
     it adds the -Phase Answers hashtable to the answers before Copier runs and runs -Phase Apply after, printing
     the lines Apply returns.
 

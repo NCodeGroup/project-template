@@ -250,7 +250,7 @@ Afterwards the repository updates like any project: `.\.template\Update-Project.
 
 ### Legacy Adapters
 
-A legacy adapter removes one old setup that the template replaces. Each is a script in [adopt/legacy/](adopt/legacy/) that takes `-Path` and `-Phase`. `Adopt-Project.ps1` runs every script there with `-Phase Detect`; for each that returns `$true` it:
+A legacy adapter removes one old setup that the template replaces. Each is a script in [tools/adopt/legacy/](tools/adopt/legacy/) that takes `-Path` and `-Phase`. `Adopt-Project.ps1` runs every script there with `-Phase Detect`; for each that returns `$true` it:
 
 | Phase | When | Returns |
 |---|---|---|
@@ -258,7 +258,7 @@ A legacy adapter removes one old setup that the template replaces. Each is a scr
 | `Answers` | Before Copier runs | A hashtable of answers, which beat what the script works out but not `-Data` |
 | `Apply` | After Copier runs | Lines for the report; the script prints them and puts them in the commit message |
 
-To handle another setup, add a script to `adopt/legacy/`; nothing else changes.
+To handle another setup, add a script to `tools/adopt/legacy/`; nothing else changes.
 
 | Adapter | Detects | Does |
 |---|---|---|
@@ -452,7 +452,7 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `template/` | The files a project gets |
 | `New-Project.ps1` | Create a project, its first commit and optionally its remote |
 | `Adopt-Project.ps1` | Bring an existing repository under the template, with no questions asked |
-| `adopt/` | `Adoption.psm1`, the functions `Adopt-Project.ps1` uses, and `legacy/`, one adapter per old setup it removes |
+| `tools/adopt/` | `Adoption.psm1`, the functions `Adopt-Project.ps1` uses, and `legacy/`, one adapter per old setup it removes |
 | `Update-Project.ps1` | Update a project by `-Path` from this clone: a wrapper around `template\.template\Update-Project.ps1`, the update script every project carries |
 | `workflow/` | The single source of the workflow: prompt and agent templates, the installer, the prompt composer and the step runner ([workflow/README.md](workflow/README.md)) |
 | `tools/Update-Template.ps1` | Regenerate the workflow files under `template/` and at the repository root from `workflow/templates` |
