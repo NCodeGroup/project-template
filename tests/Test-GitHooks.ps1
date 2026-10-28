@@ -170,7 +170,8 @@ finally { Pop-Location }
 
 # Run the hook directly, as git does but with a PATH that lacks Git's usr\bin, which a real push can't reproduce.
 $sh = Join-Path $gitUsrBin 'sh.exe'
-$gitDir = Split-Path (Get-Command git).Source
+# Git's cmd folder has git but no awk or grep. Not the folder git came from: a GitHub runner finds Git's bin folder first, which sh reads as /bin, Git's usr\bin.
+$gitDir = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'cmd'
 $zero = '0' * 40
 Push-Location $pushClone
 try {
