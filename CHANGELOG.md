@@ -2,6 +2,11 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.31.0
+
+- `- gate: <command>` in the Landing section, such as `./build/dod.ps1 -Fast -Affected`, makes `/ship-plan` run that command from the repository root before it pushes, judged by its exit code, and stop when it fails or changes a file. `/run-issues` runs it before the pushes it makes after review rounds. The `landing` line of `.template/Get-PlanState.ps1` prints `gate`, `none` by default. Template updates don't change a project's `AGENTS.md`, so a project adds the key to its own Landing section. Projects get it with `.\.template\Update-Project.ps1`.
+- `.template/Get-PlanState.ps1` prints a new `protected` line: `host` when GitHub or GitLab requires pull requests into the default branch, `hook` under `protect: hook` with the `pre-push` hook enabled, else `no`, `unknown` or `-`. The `landing` line now also gives `protect`. `/run-issues` reads `protected` instead of calling `gh api` and `glab api` itself, and `/ship-plan` reads `protect` from the `landing` line. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.30.0
 
 - `Adopt-Project.ps1` takes the `project_owned_files` answer: `-Data @{ project_owned_files = '.github/workflows/ci.yml' }` keeps the named merged files exactly as the repository has them instead of rebuilding them, records the answer in `.copier-answers.yml`, and so later updates show the template's changes to them instead of merging. A name that isn't a merged file stops the adoption before it changes anything, and the report lists each kept file as `Owned`. Projects get it with `.\.template\Update-Project.ps1`.
