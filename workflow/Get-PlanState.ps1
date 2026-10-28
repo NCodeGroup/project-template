@@ -5,7 +5,7 @@
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, release, steps, reviewed, landing, protected, ahead, behind, landed,
-    pr, merge, tag, renumber, changelog-format, changelog-version, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
+    pr, merge, tag, renumber, changelog-format, changelog-version, changelog-backfill, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
     "-". With an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
@@ -17,7 +17,7 @@
     gate is the command /ship-plan runs before it pushes, or none.
     pr-format is <file>#<heading>, the section that sets a pull request's title and description, or none.
     renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag or newest release heading of the changelog, ## [<version>] - <date> or ## <version>, on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed. next is ship-plan rather than wait while a pull request is open and renumber isn't -, so /ship-plan renumbers the plan.
-    changelog-format is keep-a-changelog when the changelog has a ## [Unreleased] or ## [<version>] heading, other when it has neither, and missing without the file; changelog-version is its newest release, with a leading v when the plan's Release: version has one, or -.
+    changelog-format is keep-a-changelog when the changelog has a ## [Unreleased] or ## [<version>] heading, other when it has neither, and missing without the file; changelog-version is its newest release, with a leading v when the plan's Release: version has one, or -. changelog-backfill names the version tags merged into HEAD, shaped like v1.2.3 or 1.2.3, that have no release heading in the changelog, as <oldest>..<newest>, the tag alone when there is one, or - when there is none.
     protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
     requests into the default branch, no when it does not, unknown when the host or its CLI cannot say, and - without
     a default branch.
@@ -69,6 +69,14 @@ function Get-ChangelogFormat([string[]]$Lines) {
         if ("$line" -match '^## \[(Unreleased|v?\d+\.\d+\.\d+)\]') { return 'keep-a-changelog' }
     }
     'other'
+}
+
+# The version tags merged into HEAD that have no release heading in a changelog: <oldest>..<newest>, the tag alone, or -.
+function Get-ChangelogBackfill([string[]]$Lines) {
+    $listed = @(foreach ($line in $Lines) { if ("$line" -match '^## \[?(v?\d+\.\d+\.\d+)\]?(?: - \d{4}-\d{2}-\d{2})?(?: \[YANKED\])?\s*$') { ConvertTo-PlanVersion $Matches[1] } })
+    $missing = @(foreach ($t in @(& git tag --list --merged HEAD 2>$null)) { $v = ConvertTo-PlanVersion "$t"; if ($null -ne $v -and $v -notin $listed) { [pscustomobject]@{ Tag = "$t"; Version = $v } } })
+    $missing = @($missing | Sort-Object Version)
+    if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0].Tag } else { "$($missing[0].Tag)..$($missing[-1].Tag)" }
 }
 
 function Get-IssueState([string]$Ref, [string]$HostName) {
@@ -291,6 +299,7 @@ try {
     # Changelog in this checkout
     $changelogFormat = 'missing'; $changelogVersion = '-'
     $changelogFile = Join-Path $folder $policy['changelog']
+    $changelogLines = @()
     if (Test-Path -LiteralPath $changelogFile -PathType Leaf) {
         $changelogLines = Read-Lines $changelogFile
         $changelogFormat = Get-ChangelogFormat $changelogLines
@@ -300,6 +309,7 @@ try {
             $changelogVersion = "$prefix$($v.Major).$($v.Minor).$($v.Build)"
         }
     }
+    $changelogBackfill = Get-ChangelogBackfill $changelogLines
 
     # Version still free for the plan
     $renumber = '-'
@@ -424,6 +434,7 @@ try {
     Write-Output "renumber: $renumber"
     Write-Output "changelog-format: $changelogFormat"
     Write-Output "changelog-version: $changelogVersion"
+    Write-Output "changelog-backfill: $changelogBackfill"
     Write-Output "published: $published"
     Write-Output "issue-state: $issueState"
     Write-Output "issue-states: $issueStates"
