@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.35.1
+
+- No change for projects made from the template. This repository's `adopt/` folder, which holds `Adoption.psm1` and the `legacy/` adapters that only `Adopt-Project.ps1` uses, moved to `tools/adopt/`, beside `tools/Update-Template.ps1`. Add a new legacy adapter to `tools/adopt/legacy/`. `Adopt-Project.ps1` takes the same parameters and works as before.
+
 ## v0.35.0
 
 - `/run-issues` now runs `.template/Get-PlanState.ps1` at each check of a draft pull request it waits on, so when a pull request outside the run lands that entry's `Release:` version, it renumbers the entry right away through `/ship-plan` (the `Release:` line and the renumber step), executes and reviews the step, pushes it to the draft pull request, and comments that the pull request must now merge with a merge commit, not by rebasing. Projects get it with `.\.template\Update-Project.ps1`.
