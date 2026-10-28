@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, read through stand-ins for gh and glab. After each move it runs
+    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -257,6 +257,15 @@ if ($args[0] -eq 'issue' -and $args[1] -eq 'view') {
     else { $property.Value }
     exit 0
 }
+if ($args[0] -eq 'api') {
+    $file = Join-Path $PSScriptRoot 'api.json'
+    if (-not (Test-Path $file)) { exit 1 }
+    $responses = [IO.File]::ReadAllText($file) | ConvertFrom-Json
+    $property = $responses.PSObject.Properties["$($args[1])"]
+    if (-not $property) { exit 1 }
+    ConvertTo-Json -InputObject $property.Value -Depth 5
+    exit 0
+}
 exit 1
 '@
 }
@@ -280,6 +289,7 @@ function Set-MergedRequest([string]$Merge, [string]$Head, [switch]$GitHub, [stri
     Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject $items -Depth 3)
 }
 function Set-IssueStates([hashtable]$States) { Write-Text (Join-Path $bin 'issues.json') (ConvertTo-Json -InputObject $States) }
+function Set-HostApi([hashtable]$Responses) { Write-Text (Join-Path $bin 'api.json') (ConvertTo-Json -InputObject $Responses -Depth 5) }
 function New-MergedClone([string]$Dir) {
     New-Item -ItemType Directory -Force $Dir | Out-Null
     $repoDir = Join-Path $Dir 'repo'
@@ -354,6 +364,18 @@ try {
     $r = Test-State (Get-State $gl.Repo) @{ landed = 'no'; next = 'ship-plan' }
     Check 'next: with integrate direct, a merged merge request without HEAD leaves the branch to ship-plan' $r.Ok $r.Detail
 
+    Set-HostApi @{ 'projects/:id/protected_branches/main' = @{ push_access_levels = @(@{ access_level = 0 }) } }
+    $r = Test-State (Get-State $gl.Repo) @{ protected = 'host' }
+    Check 'protected: a GitLab protected branch nobody can push to' $r.Ok $r.Detail
+
+    Set-HostApi @{ 'projects/:id/protected_branches/main' = @{ push_access_levels = @(@{ access_level = 40 }) } }
+    $r = Test-State (Get-State $gl.Repo) @{ protected = 'no' }
+    Check 'protected: a GitLab protected branch maintainers can push to is not enough' $r.Ok $r.Detail
+
+    Set-HostApi @{}
+    $r = Test-State (Get-State $gl.Repo) @{ protected = 'no' }
+    Check 'protected: a GitLab branch that is not protected' $r.Ok $r.Detail
+
     # 15. A merged pull request on a GitHub origin.
     $gh = New-MergedClone (Join-Path $Work 'github.com')
 
@@ -376,6 +398,19 @@ try {
     Set-MergedRequest $ff.Head $ff.Head -GitHub -Newer 'CLOSED'
     $r = Test-State (Get-State $ff.Repo) @{ pr = '6 MERGED'; merge = $ff.Head; landed = 'yes' }
     Check 'local: a merged pull request is named when HEAD is already on the default branch, under a newer closed one' $r.Ok $r.Detail
+
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = @(@{ type = 'pull_request' }) }
+    $r = Test-State (Get-State $gh.Repo) @{ protected = 'host' }
+    Check 'protected: a GitHub ruleset that requires a pull request' $r.Ok $r.Detail
+
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = @(@{ type = 'deletion' }); 'repos/{owner}/{repo}/branches/main/protection/required_pull_request_reviews' = @{ required_approving_review_count = 1 } }
+    $r = Test-State (Get-State $gh.Repo) @{ protected = 'host' }
+    Check 'protected: a GitHub branch protection rule that requires reviews' $r.Ok $r.Detail
+
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = @(@{ type = 'deletion' }) }
+    $r = Test-State (Get-State $gh.Repo) @{ protected = 'no' }
+    Check 'protected: a GitHub ruleset without a pull request rule' $r.Ok $r.Detail
+    Set-HostApi @{}
 
     # 16. The issues of a one-issue plan and a group plan.
     Set-MergedRequest $gh.Squash $gh.Head -GitHub
