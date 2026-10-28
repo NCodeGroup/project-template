@@ -2,6 +2,11 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.33.0
+
+- `/run-issues` runs one entry ahead: while a draft pull request waits for review, it plans, executes and reviews the next entry in its own worktree, and opens that entry's pull request only once the one before has landed, so entries still land in queue order. Projects get it with `.\.template\Update-Project.ps1`.
+- A plan's `Release:` version now holds only until another plan lands it, or a later one, first: `.template/Get-PlanState.ps1` prints a new `renumber` line with the next free version, from the newest tag or the default branch's changelog, raised as the plan's version was; `/ship-plan` then changes the `Release:` line and adds a step that merges in the default branch and moves the changelog section, and lands after that step's review; such a pull request merges with a merge commit, not by rebasing; `/review-plan-diff` now diffs from the merge base with the default branch, so merged-in commits aren't reviewed as the plan's. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.32.0
 
 - `- pr-format: <file>#<heading>` in the Landing section, such as `AGENTS.md#Pull requests`, makes `/ship-plan` write the pull request's title and description as that section says, such as a conventional-commit title or required headings, still ending with its `Closes` lines. `/run-issues` refreshes descriptions the same way, and `/ship-plan` stops before pushing when the file or heading is missing. The `landing` line of `.template/Get-PlanState.ps1` prints `pr-format`, `none` by default, which keeps the plan's title and a short summary. Template updates don't change a project's `AGENTS.md`, so a project adds the key to its own Landing section. Projects get it with `.\.template\Update-Project.ps1`.
