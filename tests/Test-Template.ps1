@@ -401,6 +401,9 @@ $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.
 $m += @(Get-MissingText $issuePlanFiles 'it goes on the plan''s `Refs:` line')
 $m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('after `Issue:`, `Release:` and `Refs:`', 'one `Refs <issue reference>` line per reference on its `Refs:` line'))
 Check 'workflow: planners put an issue the request only refers to on a Refs: line and post no snapshot to it' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $shipFiles ('the state script''s `refs` line', 'After them come one `Refs <issue reference>` line for each reference on the `refs` line', 'unless the `pr-format` section says where related issues go', 'Never comment on or close an issue on the `refs` line'))
+$m += @(Get-MissingText 'template\.claude\commands\continue-plan.md' '`issue`, `refs`, `steps`')
+Check 'workflow: ship-plan names the Refs: issues in the pull request and never closes them, and continue-plan shows them' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.template\Get-PlanState.ps1', '.template\Get-PlanState.ps1') {
     $full = Join-Path $repoRoot $p
     if (-not (Test-Path -LiteralPath $full) -or [IO.File]::ReadAllText($full) -ne [IO.File]::ReadAllText((Join-Path $repoRoot 'workflow\Get-PlanState.ps1'))) { $p }
