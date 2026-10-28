@@ -2,6 +2,10 @@
 
 What each template version changes for the projects made from it. A project moves to a version with `.\.template\Update-Project.ps1`.
 
+## v0.35.2
+
+- `/ship-plan` made the follow-up label with `gh label create --force`, which on GitHub rewrote an existing label's color and description to `FBCA04` and "Work a plan found and did not do" on every landing that filed a follow-up, such as when `follow-up-label` names a label the project already uses or the project recolored `follow-up`. It now creates the label only when it is missing and leaves an existing one as it is, as it already did on GitLab. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## v0.35.1
 
 - No change for projects made from the template. This repository's `adopt/` folder, which holds `Adoption.psm1` and the `legacy/` adapters that only `Adopt-Project.ps1` uses, moved to `tools/adopt/`, beside `tools/Update-Template.ps1`. Add a new legacy adapter to `tools/adopt/legacy/`. `Adopt-Project.ps1` takes the same parameters and works as before.
