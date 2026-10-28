@@ -11,7 +11,7 @@
     1 on any failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated unless -CheckOnly. Defaults to %TEMP%\project-template-run-issues-e2e.
+    The scratch folder, deleted and recreated unless -CheckOnly. Defaults to project-template-run-issues-e2e in the temp folder.
 
 .PARAMETER SetupOnly
     Build the fixture and check it, without calling a model.
@@ -33,7 +33,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Work = (Join-Path $env:TEMP 'project-template-run-issues-e2e'),
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-run-issues-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
     [string]$Claude = 'claude',

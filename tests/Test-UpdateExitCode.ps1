@@ -10,13 +10,13 @@
     failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-update-exit-test.
+    The scratch folder, deleted and recreated. Defaults to project-template-update-exit-test in the temp folder.
 
 .EXAMPLE
     .\tests\Test-UpdateExitCode.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path $env:TEMP 'project-template-update-exit-test'))
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-update-exit-test'))
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()

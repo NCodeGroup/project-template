@@ -10,8 +10,40 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: windows-latest
+  suite:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Test the template
+            run: ./tests/Test-Template.ps1
+          - name: Test adopting existing repositories
+            run: ./tests/Test-Adoption.ps1
+          - name: Test adopting a repository that owns a merged file
+            run: ./tests/Test-AdoptOwnedFiles.ps1
+          - name: Test updating a project that ignores a large folder
+            run: ./tests/Test-UpdateIgnoredFiles.ps1
+          - name: Test the update's exit code
+            run: ./tests/Test-UpdateExitCode.ps1
+          - name: Test updating an adopted project's kept lines
+            run: ./tests/Test-UpdateKeptLines.ps1
+          - name: Test updating a project that owns a merged file
+            run: ./tests/Test-UpdateOwnedFiles.ps1
+          - name: Test the suggestion for a rewritten merged file
+            run: ./tests/Test-UpdateRewrittenFiles.ps1
+          - name: Test the plan state script
+            run: ./tests/Test-PlanState.ps1
+          - name: Test the commit attribution check
+            run: ./tests/Test-CommitAttribution.ps1
+          - name: Test the Git hooks
+            run: ./tests/Test-GitHooks.ps1
+          - name: Test the test runner
+            run: ./tests/Test-InvokeAllTests.ps1
+          - name: Set up the run-issues end-to-end fixture
+            run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly
     defaults:
       run:
         shell: pwsh
@@ -23,36 +55,28 @@ jobs:
         with:
           global-json-file: "template/{% if stack == 'dotnet' %}global.json{% endif %}"
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install Copier once, so the tests don't resolve it through uvx on every run
+        run: |
+          uv tool install copier
+          uv tool dir --bin >> $env:GITHUB_PATH
       - name: Set a Git identity for Copier's update merge
         run: |
           git config --global user.name "template-test"
           git config --global user.email "template-test@example.invalid"
-      - name: Test the template
-        run: ./tests/Test-Template.ps1
-      - name: Test adopting existing repositories
-        run: ./tests/Test-Adoption.ps1
-      - name: Test adopting a repository that owns a merged file
-        run: ./tests/Test-AdoptOwnedFiles.ps1
-      - name: Test updating a project that ignores a large folder
-        run: ./tests/Test-UpdateIgnoredFiles.ps1
-      - name: Test the update's exit code
-        run: ./tests/Test-UpdateExitCode.ps1
-      - name: Test updating an adopted project's kept lines
-        run: ./tests/Test-UpdateKeptLines.ps1
-      - name: Test updating a project that owns a merged file
-        run: ./tests/Test-UpdateOwnedFiles.ps1
-      - name: Test the suggestion for a rewritten merged file
-        run: ./tests/Test-UpdateRewrittenFiles.ps1
-      - name: Test the plan state script
-        run: ./tests/Test-PlanState.ps1
-      - name: Test the commit attribution check
-        run: ./tests/Test-CommitAttribution.ps1
-      - name: Test the Git hooks
-        run: ./tests/Test-GitHooks.ps1
-      - name: Test the test runner
-        run: ./tests/Test-InvokeAllTests.ps1
-      - name: Set up the run-issues end-to-end fixture
-        run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly
+      - name: ${{ matrix.name }}
+        run: ${{ matrix.run }}
+
+  # The ruleset requires a check named test: this job passes only when every suite passed.
+  test:
+    needs: suite
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check that every suite passed
+        env:
+          RESULT: ${{ needs.suite.result }}
+        run: test "$RESULT" = success
 
   commit-attribution:
     name: Commit attribution

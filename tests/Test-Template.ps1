@@ -6,7 +6,7 @@
     alone, and stop on a conflict.
 
 .DESCRIPTION
-    Tests a committed, tagged (v0.1.0) snapshot of the current working tree in %TEMP%\project-template-test, so
+    Tests a committed, tagged (v0.1.0) snapshot of the current working tree in project-template-test in the temp folder, so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab and checks YAML with
     PyYAML through uv. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1, that the generated workflow files under template/ and at the repository root
     match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
@@ -25,7 +25,7 @@ param(
     [switch]$SkipDotnetBuild,
     [switch]$SkipUpdate,
     [string[]]$Only,
-    [string]$Work = (Join-Path $env:TEMP 'project-template-test')
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-test')
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -255,7 +255,7 @@ New-Item -ItemType Directory -Force (Join-Path $ciFixture 'tests'), (Join-Path $
 $unlisted = @(Get-UnlistedTestScript $ciFixture)
 Check 'repository: the CI listing check names a test script the workflow leaves out' (($unlisted -join ',') -eq 'Test-Unlisted.ps1') ($unlisted -join ',')
 $unlisted = @(Get-UnlistedTestScript $repoRoot)
-Check 'repository: CI runs every tests/Test-*.ps1 (add a "run: ./tests/<name>" step to .github/workflows/test-template.yml)' (-not $unlisted) ($unlisted -join ', ')
+Check 'repository: CI runs every tests/Test-*.ps1 (add a "run: ./tests/<name>" entry to the matrix in .github/workflows/test-template.yml)' (-not $unlisted) ($unlisted -join ', ')
 $excludeCheck = 'import sys, yaml, jinja2; c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); e = jinja2.Environment(); bad = [p for p in c["_exclude"] if e.from_string(p).render().strip()]; print("; ".join(bad)); sys.exit(1 if bad else 0)'
 $excludeOutput = uv run --quiet --no-project --with pyyaml --with jinja2 python -c $excludeCheck (Join-Path $repoRoot 'copier.yml') 2>&1 | Out-String
 Check 'copier.yml: _exclude patterns exclude nothing when workflow_tools is missing' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()

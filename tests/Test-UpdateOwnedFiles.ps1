@@ -10,13 +10,13 @@
     leave the answer empty (project_owned_files: []). Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-update-owned-test.
+    The scratch folder, deleted and recreated. Defaults to project-template-update-owned-test in the temp folder.
 
 .EXAMPLE
     .\tests\Test-UpdateOwnedFiles.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path $env:TEMP 'project-template-update-owned-test'))
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-update-owned-test'))
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()

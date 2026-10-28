@@ -10,13 +10,13 @@
     per check and exits 1 on any failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-plan-state-test.
+    The scratch folder, deleted and recreated. Defaults to project-template-plan-state-test in the temp folder.
 
 .EXAMPLE
     .\tests\Test-PlanState.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path $env:TEMP 'project-template-plan-state-test'))
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-plan-state-test'))
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()

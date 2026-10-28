@@ -12,14 +12,14 @@
     failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-hooks-test.
+    The scratch folder, deleted and recreated. Defaults to project-template-hooks-test in the temp folder.
 
 .EXAMPLE
     .\tests\Test-GitHooks.ps1
 #>
 [CmdletBinding()]
 param(
-    [string]$Work = (Join-Path $env:TEMP 'project-template-hooks-test')
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-hooks-test')
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -71,7 +71,8 @@ $config = "repos:`n  - repo: local`n    hooks:`n      - id: strip-agent-attribut
 
 $savedPath = $env:PATH
 # Git puts its own usr\bin, which has sh, on PATH when it runs a hook; this session doesn't have it.
-$gitUsrBin = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'usr\bin'
+# Elsewhere sh, awk and grep come from the system: the folder with awk stands in for Git's usr\bin.
+$gitUsrBin = if ($IsWindows) { Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'usr\bin' } else { Split-Path (Get-Command awk).Source }
 if (Test-Path $gitUsrBin) { $env:PATH = $gitUsrBin + [IO.Path]::PathSeparator + $env:PATH }
 Push-Location $repo
 try {
@@ -169,9 +170,15 @@ try {
 finally { Pop-Location }
 
 # Run the hook directly, as git does but with a PATH that lacks Git's usr\bin, which a real push can't reproduce.
-$sh = Join-Path $gitUsrBin 'sh.exe'
+$sh = if ($IsWindows) { Join-Path $gitUsrBin 'sh.exe' } else { (Get-Command sh).Source }
 # Git's cmd folder has git but no awk or grep. Not the folder git came from: a GitHub runner finds Git's bin folder first, which sh reads as /bin, Git's usr\bin.
-$gitDir = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'cmd'
+# Elsewhere git sits next to awk and grep, so a folder with only a link to git stands in for it.
+if ($IsWindows) { $gitDir = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'cmd' }
+else {
+    $gitDir = Join-Path $Work 'git-only'
+    New-Item -ItemType Directory -Force $gitDir | Out-Null
+    New-Item -ItemType SymbolicLink -Path (Join-Path $gitDir 'git') -Target (Get-Command git).Source | Out-Null
+}
 $zero = '0' * 40
 Push-Location $pushClone
 try {
