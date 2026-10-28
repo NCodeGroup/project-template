@@ -475,6 +475,7 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `.github/workflows/test-template.yml` | Runs `tests/Test-Template.ps1`, `tests/Test-Adoption.ps1`, `tests/Test-AdoptOwnedFiles.ps1`, `tests/Test-UpdateIgnoredFiles.ps1`, `tests/Test-UpdateExitCode.ps1`, `tests/Test-UpdateKeptLines.ps1`, `tests/Test-UpdateOwnedFiles.ps1`, `tests/Test-UpdateRewrittenFiles.ps1`, `tests/Test-PlanState.ps1`, `tests/Test-CommitAttribution.ps1`, `tests/Test-GitHooks.ps1` and `tests/Test-InvokeAllTests.ps1` on Windows, and checks this repository's commit attribution, for every push to `main` and every pull request |
 | `.github/dependabot.yml` | Dependabot for the actions in `test-template.yml` |
 | `LICENSE` | The MIT license this repository is published under; projects made from it don't get it and choose their own |
+| `CONTRIBUTING.md`, `SECURITY.md` | How issues and pull requests reach this repository, and how to report a vulnerability privately; projects don't get them either |
 | `USAGE.md` | Setting up a PC for Claude Code and GitHub Copilot, and using and switching between them in a project |
 | `.gitattributes` | Keeps every file LF on disk, because Copier copies non-`.jinja` files byte for byte |
 
