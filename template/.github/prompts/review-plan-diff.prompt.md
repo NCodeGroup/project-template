@@ -7,7 +7,7 @@ model: "Claude Sonnet 5.5 (copilot)"
 Review the changes made while executing `PLAN.md`.
 
 Compare against (may be empty): ${input:details:Optional base branch or commit to diff against}
-If empty, use the parent of the first commit whose message starts with "Plan step" or "Re-plan step", or `main`.
+If empty, use `git merge-base HEAD origin/<default>`, where `<default>` is the default branch: what follows `origin/` in the output of `git symbolic-ref --short refs/remotes/origin/HEAD`, or `main` when that fails. Without an `origin` remote, use the parent of the first commit whose message starts with "Plan step" or "Re-plan step". After a renumber step has merged the default branch in, the merge base is the merged commit, so the diff holds only this plan's work.
 
 1. Read `PLAN.md`: Goal, Decisions, Out of scope, Steps and Review checklist.
 2. Read the full diff (`git diff <base>` including uncommitted changes) and the changed files in full where context matters.

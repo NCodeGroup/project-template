@@ -357,6 +357,8 @@ $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.git
 Check 'workflow: ship-plan writes the pull request as the Landing section''s pr-format section says, keeping the Closes lines' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('When `renumber` isn''t `-`', 'change the `Release:` line of `PLAN.md` to `Release: <renumber>`', '## The Renumber Step', 'git merge --no-commit --no-ff origin/<default>', 'git rev-list --merges origin/<default>..HEAD', 'must merge with a merge commit, not by rebasing'))
 Check 'workflow: ship-plan moves a plan whose release another plan took to the renumber version with a merge step' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('git merge-base HEAD origin/<default>', 'the diff holds only this plan''s work'))
+Check 'workflow: review-plan-diff diffs from the merge base with the default branch' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $runFiles ('as the section the `landing` line''s `pr-format` names says'))
 Check 'workflow: run-issues refreshes the description as the pr-format section says' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.github\agents\copilot-reviewer.agent.md', 'template\.github\agents\hybrid-reviewer.agent.md', '.github\agents\copilot-reviewer.agent.md') ('label: Land the plan', 'prompt: /ship-plan', 'label: Show where the plan stands', 'prompt: /continue-plan'))
