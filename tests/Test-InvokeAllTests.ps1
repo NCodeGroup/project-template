@@ -8,13 +8,13 @@
     or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-all-tests-test.
+    The scratch folder, deleted and recreated. Defaults to project-template-all-tests-test in the temp folder.
 
 .EXAMPLE
     .\tests\Test-InvokeAllTests.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path $env:TEMP 'project-template-all-tests-test'))
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-all-tests-test'))
 $ErrorActionPreference = 'Stop'
 $runner = Join-Path $PSScriptRoot 'Invoke-AllTests.ps1'
 $pwsh = (Get-Process -Id $PID).Path

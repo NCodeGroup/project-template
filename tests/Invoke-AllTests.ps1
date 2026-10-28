@@ -13,7 +13,7 @@
     The folder with the Test-*.ps1 scripts. Defaults to the folder of this script.
 
 .PARAMETER Work
-    The folder for the suites' logs, deleted and recreated. Defaults to %TEMP%\project-template-all-tests.
+    The folder for the suites' logs, deleted and recreated. Defaults to project-template-all-tests in the temp folder.
 
 .PARAMETER SkipDotnetBuild
     Pass -SkipDotnetBuild to the suites that take it, to skip the .NET build and pack.
@@ -27,7 +27,7 @@
 [CmdletBinding()]
 param(
     [string]$Path = $PSScriptRoot,
-    [string]$Work = (Join-Path $env:TEMP 'project-template-all-tests'),
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-all-tests'),
     [switch]$SkipDotnetBuild
 )
 $ErrorActionPreference = 'Stop'

@@ -14,7 +14,7 @@
     Skip the .NET build and pack.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to %TEMP%\project-template-adopt-test.
+    The scratch folder, deleted and recreated. Defaults to project-template-adopt-test in the temp folder.
 
 .EXAMPLE
     .\tests\Test-Adoption.ps1
@@ -25,7 +25,7 @@
 param(
     [switch]$UnitOnly,
     [switch]$SkipDotnetBuild,
-    [string]$Work = (Join-Path $env:TEMP 'project-template-adopt-test')
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-adopt-test')
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot

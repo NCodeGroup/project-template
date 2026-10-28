@@ -54,10 +54,10 @@ if (-not $repo) { throw "$planPath is not inside a git repository." }
 $repo = (Resolve-Path $repo).Path
 $planRel = [IO.Path]::GetRelativePath($repo, $planPath).Replace('\', '/')
 $copilot = (Get-Command copilot -ErrorAction SilentlyContinue).Source
-if (-not $copilot) { $copilot = Join-Path $env:LOCALAPPDATA 'Programs\copilot-cli\copilot.exe' }
-if (-not $DryRun -and -not (Test-Path $copilot)) { throw 'Copilot CLI not found. Install it, for example with personal-notes'' Install-CopilotCli.ps1.' }
+if (-not $copilot -and $env:LOCALAPPDATA) { $copilot = Join-Path $env:LOCALAPPDATA 'Programs\copilot-cli\copilot.exe' }
+if (-not $DryRun -and -not ($copilot -and (Test-Path $copilot))) { throw 'Copilot CLI not found. Install it, for example with personal-notes'' Install-CopilotCli.ps1.' }
 if (-not $DryRun -and $Replan -eq 'claude' -and -not (Get-Command claude -ErrorAction SilentlyContinue)) { throw 'Claude Code (claude) not found on PATH.' }
-$logDir = Join-Path $env:TEMP "plan-runs\$(Split-Path $repo -Leaf)"
+$logDir = Join-Path ([IO.Path]::GetTempPath()) "plan-runs/$(Split-Path $repo -Leaf)"
 New-Item -ItemType Directory -Force $logDir | Out-Null
 $utf8 = New-Object Text.UTF8Encoding $false
 $byokVars = 'COPILOT_OFFLINE', 'COPILOT_PROVIDER_BASE_URL', 'COPILOT_MODEL', 'COPILOT_PROVIDER_MAX_PROMPT_TOKENS', 'COPILOT_PROVIDER_MAX_OUTPUT_TOKENS'
