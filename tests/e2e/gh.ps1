@@ -28,7 +28,7 @@ function Get-Option([string[]]$Names) {
     for ($i = 0; $i -lt $list.Count; $i++) {
         $arg = "$($list[$i])"
         if ($arg -in $Names) {
-            if ($i + 1 -lt $list.Count) { return "$($list[$i + 1])" }
+            if ($i + 1 -lt $list.Count) { return (@($list[$i + 1]) -join ',') }
             return $null
         }
         foreach ($name in $Names) {
@@ -82,6 +82,28 @@ function Stop-Call([string]$Kind, [string]$Message, $CallArgs = $script:CallArgs
     exit 1
 }
 
+function Get-Body {
+    $file = Get-Option '--body-file', '-F'
+    if ($file) { return [IO.File]::ReadAllText($file) }
+    $body = Get-Option '--body', '-b'
+    if ($null -ne $body) { return $body }
+    return ''
+}
+function Get-NextNumber {
+    $max = 0
+    foreach ($key in (Read-Json 'issues.json' @{}).Keys) { if ([int]$key -gt $max) { $max = [int]$key } }
+    foreach ($pr in @(Read-Json 'prs.json' @())) { if ([int]$pr.number -gt $max) { $max = [int]$pr.number } }
+    return $max + 1
+}
+function Add-Comment([string]$Kind, [int]$Number, [string]$Path) {
+    $comments = @(Read-Json 'comments.json' @())
+    $id = 1000 + $comments.Count + 1
+    $url = "https://github.com/fixture/app/$Path/$Number#issuecomment-$id"
+    $comments += @{ kind = $Kind; number = $Number; body = (Get-Body); url = $url; author = @{ login = 'fixture-owner' } }
+    Write-Json 'comments.json' $comments
+    return $url
+}
+
 if ("$($args[0])" -eq '--version') { 'gh version 2.99.0 (stand-in)'; exit 0 }
 
 switch ("$($args[0]) $($args[1])") {
@@ -91,6 +113,56 @@ switch ("$($args[0]) $($args[1])") {
         Write-Result @{ name = 'app'; nameWithOwner = 'fixture/app'; owner = @{ login = 'fixture' }; url = 'https://github.com/fixture/app'; defaultBranchRef = @{ name = 'main' } }
         exit 0
     }
+    'issue view' {
+        $number = "$($args[2])".TrimStart('#')
+        $issues = Read-Json 'issues.json' @{}
+        if (-not $issues.ContainsKey($number)) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+        $issue = $issues[$number]
+        $issue.comments = @(@(Read-Json 'comments.json' @()) | Where-Object { $_.kind -eq 'issue' -and "$($_.number)" -eq $number } |
+            ForEach-Object { @{ author = $_.author; body = $_.body; url = $_.url } })
+        if ((Get-Option '--json') -or (Get-Option '--jq')) { Write-Result $issue }
+        else {
+            "title:`t$($issue.title)"
+            "state:`t$($issue.state)"
+            "labels:`t$((@($issue.labels) | ForEach-Object { $_.name }) -join ', ')"
+            ''
+            $issue.body
+        }
+        exit 0
+    }
+    'issue list' {
+        if (Get-Option '--json') { Write-Result @() }
+        exit 0
+    }
+    'issue comment' {
+        $number = [int]"$($args[2])".TrimStart('#')
+        Add-Comment 'issue' $number 'issues'
+        exit 0
+    }
+    'issue create' {
+        $number = Get-NextNumber
+        $url = "https://github.com/fixture/app/issues/$number"
+        $labels = @()
+        $label = Get-Option '--label', '-l'
+        if ($label) { $labels = @($label -split ',' | ForEach-Object { @{ name = $_ } }) }
+        $issues = Read-Json 'issues.json' @{}
+        $issues["$number"] = @{
+            number = $number; title = (Get-Option '--title', '-t'); body = (Get-Body); state = 'OPEN'; url = $url
+            labels = $labels; assignees = @(); author = @{ login = 'fixture-owner' }
+        }
+        Write-Json 'issues.json' $issues
+        $url
+        exit 0
+    }
+    'issue close' {
+        $number = "$($args[2])".TrimStart('#')
+        $issues = Read-Json 'issues.json' @{}
+        if (-not $issues.ContainsKey($number)) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+        $issues[$number].state = 'CLOSED'
+        Write-Json 'issues.json' $issues
+        exit 0
+    }
+    'label create' { exit 0 }
     'pr merge' { Stop-Call FORBIDDEN 'pr merge is not allowed in /run-issues' }
     'pr ready' { Stop-Call FORBIDDEN 'pr ready is not allowed in /run-issues' }
     default { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
