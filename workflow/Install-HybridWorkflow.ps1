@@ -31,6 +31,8 @@
 
     A template's "targets" field limits it to the targets it names, such as "targets: Claude" for run-issues, which only Claude Code gets; without it a template goes to every target.
 
+    A template's "command" field names the command, prompt file and skill it installs as, its own name by default: run-issues-copilot has "targets: VSCode, CopilotCli" and "command: run-issues", so Copilot Chat and Copilot CLI get their own /run-issues.
+
     VS Code model names use "<model name> (<vendor>)"; the Settings dropdown for
     chat.planAgent.defaultModel lists the exact names. Copilot CLI uses model IDs such as
     claude-sonnet-5.5 (see `copilot help config`); Claude Code uses aliases such as sonnet or full model IDs such as claude-sonnet-5-5.
@@ -155,7 +157,7 @@ foreach ($d in $dest) {
                 foreach ($m in $promptModels) {
                     $body = Get-HybridPromptText -Name $t.Name -Placeholder "`${input:details:$($t.ArgumentHint)}" -StateScript $d.CopilotStateScript
                     $fm = "---`ndescription: $(Q $t.Description)`nargument-hint: $(Q $t.ArgumentHint)`nagent: agent`nmodel: $(Q $m.Model)`n---`n"
-                    Write-Generated (Join-Path $d.Prompts "$($t.Name)$($m.Suffix).prompt.md") ($fm + $body)
+                    Write-Generated (Join-Path $d.Prompts "$($t.Command)$($m.Suffix).prompt.md") ($fm + $body)
                 }
             }
         }
@@ -168,7 +170,7 @@ foreach ($d in $dest) {
             if ($t.Worktree) { $body = (Get-ClaudeWorktreeSection $t.Worktree) + "`n`n## Task`n`n" + $body }
             if ($t.Worktree -in 'join', 'finish') { $hint += "; the plan's worktree name when several are open" }
             $fm = "---`ndescription: $(Q $t.Description)`nargument-hint: $(Q "[$hint]")`n$($claudeRole[$t.Role])`ndisable-model-invocation: true`n---`n"
-            Write-Generated (Join-Path $d.ClaudeCommands "$($t.Name).md") ($fm + $body)
+            Write-Generated (Join-Path $d.ClaudeCommands "$($t.Command).md") ($fm + $body)
         }
         Write-Generated (Join-Path $d.ClaudeAgents 'plan-executor.md') (Get-RenderedFile "$templateDir\plan-executor.claude.md" @{ CLAUDE_EXECUTOR_MODEL = $ClaudeExecutorModel })
     }
@@ -176,8 +178,8 @@ foreach ($d in $dest) {
         foreach ($t in $templates) {
             if ('CopilotCli' -notin $t.Targets) { continue }
             $body = Get-HybridPromptText -Name $t.Name -Placeholder $skillInput -StateScript $d.CopilotStateScript
-            $fm = "---`nname: $($t.Name)`ndescription: $(Q $t.Description)`n---`n"
-            Write-Generated (Join-Path $d.Skills "$($t.Name)\SKILL.md") ($fm + $body)
+            $fm = "---`nname: $($t.Command)`ndescription: $(Q $t.Description)`n---`n"
+            Write-Generated (Join-Path $d.Skills "$($t.Command)\SKILL.md") ($fm + $body)
         }
         Write-Generated (Join-Path $d.Agents 'plan-executor.agent.md') (Get-RenderedFile "$templateDir\plan-executor.cli.md" @{ CLI_EXECUTOR_MODEL = $CliExecutorModel })
     }

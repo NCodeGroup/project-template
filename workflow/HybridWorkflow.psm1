@@ -19,9 +19,9 @@ function Read-HybridTemplateFile([string]$Path) {
     [pscustomobject]@{ Meta = $meta; Body = $body.Trim() + "`n"; FrontMatter = $front }
 }
 
-# Prompt templates are the .md files with a "role" field; excludes agents, the plan format, the example and the README. Targets lists the installer targets a template goes to: its "targets" field, or all three.
+# Prompt templates are the .md files with a "role" field; excludes agents, the plan format, the example and the README. Targets lists the installer targets a template goes to: its "targets" field, or all three. Command is the name it installs as: its "command" field, or its file name.
 function Get-HybridTemplateList {
-    Get-ChildItem (Get-HybridTemplateDir) -Filter '*.md' -File |
+    $list = @(Get-ChildItem (Get-HybridTemplateDir) -Filter '*.md' -File |
         Where-Object { $_.Name -notlike '*.agent.md' -and $_.Name -notlike '_*' -and $_.Name -notin 'README.md', 'PLAN.example.md' } |
         ForEach-Object {
             $t = Read-HybridTemplateFile $_.FullName
@@ -31,6 +31,7 @@ function Get-HybridTemplateList {
                 if ($unknown) { throw "Template '$($_.BaseName)' has unknown targets: $($unknown -join ', '). Use VSCode, Claude or CopilotCli." }
                 [pscustomobject]@{
                     Name         = $_.BaseName
+                    Command      = if ($t.Meta.command) { $t.Meta.command } else { $_.BaseName }
                     Role         = $t.Meta.role
                     Description  = $t.Meta.description
                     ArgumentHint = $t.Meta.'argument-hint'
@@ -40,7 +41,14 @@ function Get-HybridTemplateList {
                     Body         = $t.Body
                 }
             }
-        } | Sort-Object Role, Name
+        } | Sort-Object Role, Name)
+    foreach ($target in 'VSCode', 'Claude', 'CopilotCli') {
+        $clash = @($list | Where-Object { $target -in $_.Targets } | Group-Object Command | Where-Object { $_.Count -gt 1 })
+        foreach ($c in $clash) {
+            throw "Templates $($c.Group.Name -join ' and ') both install as '$($c.Name)' for $target. Give one another command or other targets."
+        }
+    }
+    $list
 }
 
 function Get-HybridTemplate([string]$Name) {

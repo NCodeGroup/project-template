@@ -9,7 +9,7 @@
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in %TEMP%\project-template-test, so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab and checks YAML with
     PyYAML through uv. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1, that the generated workflow files under template/ and at the repository root
-    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that run-issues reaches only Claude Code, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
+    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
 .EXAMPLE
@@ -340,22 +340,24 @@ $m = @(Get-MissingText $shipFiles ('gh label create "<label>" --color FBCA04 --d
 $m += @(foreach ($p in $shipFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('--force <repo args>')) { "${p}: gh label create has --force" } })
 Check 'workflow: ship-plan creates the follow-up label only when it is missing and leaves an existing one as it is' (-not $m) ($m -join '; ')
 $runFiles = 'template\.claude\commands\run-issues.md', '.claude\commands\run-issues.md'
+$copilotRunFiles = 'template\.github\prompts\run-issues.prompt.md', 'template\.github\skills\run-issues\SKILL.md', '.github\prompts\run-issues.prompt.md', '.github\skills\run-issues\SKILL.md'
 $m = @(Get-MissingText $runFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`','git worktree add .claude/worktrees/issue-<number>', 'plan-executor', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'ExitWorktree'))
 $m += @(foreach ($p in $runFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and ([regex]::Matches([IO.File]::ReadAllText($full), [regex]::Escape('$ARGUMENTS')).Count -ne 1 -or [IO.File]::ReadAllText($full).Contains('{{'))) { "${p}: the arguments placeholder is not there exactly once, or a template token is left" } })
-$m += @('template\.github\prompts\run-issues.prompt.md', 'template\.github\skills\run-issues', '.github\prompts\run-issues.prompt.md', '.github\skills\run-issues' | Where-Object { Test-Path -LiteralPath (Join-Path $repoRoot $_) } | ForEach-Object { "${_}: a Claude Code-only command reached Copilot" })
-Check 'workflow: run-issues is a Claude Code command that gates on pull requests, plans, executes, reviews and lands each issue, and no Copilot file has it' (-not $m) ($m -join '; ')
-$m = @(Get-MissingText $runFiles ('its top-level comments and its review summaries', 'reviews(first: 100) { nodes { author { login } body url } }', '`individual_note` true', 'A top-level comment or review summary awaits an answer when it is mine', 'no top-level comment starting with `Autopilot:` names its URL', 'gh pr comment <number> --body-file <file>', 'merge_requests/<number>/notes" -F body=@<file>'))
+$m += @(Get-MissingText $copilotRunFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`', 'git switch --no-track -c issue-<number> origin/<default>', 'runSubagent', 'plan-executor', '.github/skills/<name>/SKILL.md', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'Otherwise end the run'))
+$m += @(foreach ($p in $copilotRunFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'ExitWorktree', 'git worktree add', '.claude/commands/', '$ARGUMENTS', '{{', '## Run Ahead') { if ($t.Contains($x)) { "${p}: has $x" } } } })
+Check 'workflow: run-issues reaches Claude Code from run-issues.md, and Copilot Chat and Copilot CLI from run-issues-copilot.md, which works in the open folder one entry at a time' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('its top-level comments and its review summaries', 'reviews(first: 100) { nodes { author { login } body url } }', '`individual_note` true', 'A top-level comment or review summary awaits an answer when it is mine', 'no top-level comment starting with `Autopilot:` names its URL', 'gh pr comment <number> --body-file <file>', 'merge_requests/<number>/notes" -F body=@<file>'))
 Check 'workflow: run-issues reads and answers my top-level pull request comments and review summaries, not only review threads' (-not $m) ($m -join '; ')
-$m = @(Get-MissingText $runFiles ('Then refresh the pull request description', 'gh pr edit <number> --body-file <file>', 'glab mr update <number> --description (Get-Content -Raw <file>)'))
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('Then refresh the pull request description', 'gh pr edit <number> --body-file <file>', 'glab mr update <number> --description (Get-Content -Raw <file>)'))
 Check 'workflow: run-issues refreshes the pull request description after a review round adds fix steps' (-not $m) ($m -join '; ')
-$m = @(Get-MissingText $runFiles ('First take a `wait:<hours>` word', 'It sets the wait limit', 'for up to the wait limit, in hours, with nothing to answer', 'Note the time with `Get-Date` at the first check', 'unless the wait limit has passed since the time you noted'))
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('First take a `wait:<hours>` word', 'It sets the wait limit', 'for up to the wait limit, in hours, with nothing to answer', 'Note the time with `Get-Date` at the first check', 'unless the wait limit has passed since the time you noted'))
 Check 'workflow: run-issues waits for a merge no longer than the wait limit, 24 hours unless wait:<hours> sets it, then stops the entry' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('open it as a draft', '--draft', 'When `protect` is `hook` and `integrate` is `direct`', 'or the `landing` line says `draft=yes`', 'Stop when `draft` is neither'))
 $m += @(if (-not ((git -C $repoRoot ls-files -s template/.githooks/pre-push) -join '').StartsWith('100755')) { 'template/.githooks/pre-push: not executable in the index' })
 Check 'workflow: ship-plan opens a draft pull request when asked or when the Landing section says draft: yes, and the pre-push hook is executable' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('`gate` is `none` or the command to run before a push', 'if (-not $? -or $LASTEXITCODE) { exit 1 } else { exit 0 }', 'stop before pushing: say the gate failed', 'the gate changed files'))
 Check 'workflow: ship-plan runs the Landing section''s gate before it pushes and stops when it fails or changes a file' (-not $m) ($m -join '; ')
-$m = @(Get-MissingText $runFiles ('that the gate runs before each push', 'run the gate as `ship-plan` item 6 says'))
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('that the gate runs before each push', 'run the gate as `ship-plan` item 6 says'))
 Check 'workflow: run-issues runs the gate before the pushes it makes itself' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('`pr-format` is `none` or `<file>#<heading>`', 'say to fix the `- pr-format:` line', 'write the title and the description as its section says instead', 'Either way, the description ends with one `Closes <issue reference>` line'))
 Check 'workflow: ship-plan writes the pull request as the Landing section''s pr-format section says, keeping the Closes lines' (-not $m) ($m -join '; ')
@@ -371,7 +373,7 @@ $m = @(Get-MissingText $runFiles ('planned, executed and reviewed ahead of it', 
 Check 'workflow: run-issues announces, waits with and stops around the entry running ahead' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $runFiles ('When its `next` is `ship-plan` while the pull request is open', 'pushes the renumber step to the draft pull request', 'Review the Pull Request item 3 renumbers that entry the same way', 'must now merge with a merge commit, not by rebasing'))
 Check 'workflow: run-issues renumbers an entry whose open draft pull request lost its release' (-not $m) ($m -join '; ')
-$m = @(Get-MissingText $runFiles ('as the section the `landing` line''s `pr-format` names says'))
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('as the section the `landing` line''s `pr-format` names says'))
 Check 'workflow: run-issues refreshes the description as the pr-format section says' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.github\agents\copilot-reviewer.agent.md', 'template\.github\agents\hybrid-reviewer.agent.md', '.github\agents\copilot-reviewer.agent.md') ('label: Land the plan', 'prompt: /ship-plan', 'label: Show where the plan stands', 'prompt: /continue-plan'))
 Check 'workflow: the reviewer agents have buttons for /ship-plan and /continue-plan' (-not $m) ($m -join '; ')
@@ -379,7 +381,7 @@ $m = @(Get-MissingText $issuePlanFiles ('up to three related issues named one by
 $m += @(Get-MissingText 'template\.claude\commands\plan-feature.md' ('Issue: #25 #24 #26', '- Issue: <reference>', 'largest raise', 'once to each issue on its'))
 $m += @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('line for each reference on the plan', 'issue-states', 'one comment per issue'))
 $m += @(Get-MissingText $triageFiles ('group:<n>', '/plan-issue #25 #24 #26'))
-$m += @(Get-MissingText $runFiles ('one entry per', 'A group stops together'))
+$m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('one entry per', 'A group stops together'))
 Check 'workflow: a plan covers up to three related issues: plan-issue takes them, the plan lists them, ship-plan closes each, triage groups them and run-issues runs a group as one entry' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.template\Get-PlanState.ps1', '.template\Get-PlanState.ps1') {
     $full = Join-Path $repoRoot $p
@@ -435,7 +437,7 @@ Check 'workflow: template/ and this repository have no installer-written .templa
 $list = & (Join-Path $workflow 'New-PlanPrompt.ps1') -List | Out-String
 $prompt = & (Join-Path $workflow 'New-PlanPrompt.ps1') plan-feature 'Add CSV export' | Out-String
 Check 'workflow: New-PlanPrompt lists the templates and composes a prompt' ($list.Contains('execute-step') -and $prompt.Contains('Add CSV export') -and $prompt.Contains('### [ ] 1.'))
-Check 'workflow: New-PlanPrompt -List shows each template''s targets' ($list -match '(?m)^run-issues\s+orchestrator\s+Claude\s{2,}\S' -and $list -match '(?m)^execute-step\s+executor\s+VSCode, Claude, CopilotCli\s')
+Check 'workflow: New-PlanPrompt -List shows each template''s targets' ($list -match '(?m)^run-issues\s+orchestrator\s+Claude\s{2,}\S' -and $list -match '(?m)^run-issues-copilot\s+orchestrator\s+VSCode, CopilotCli\s' -and $list -match '(?m)^execute-step\s+executor\s+VSCode, Claude, CopilotCli\s')
 $runnerRepo = Join-Path $Work 'runner'
 New-Item -ItemType Directory -Force $runnerRepo | Out-Null
 Copy-Item -LiteralPath (Join-Path $workflow 'templates\PLAN.example.md') (Join-Path $runnerRepo 'PLAN.md')
