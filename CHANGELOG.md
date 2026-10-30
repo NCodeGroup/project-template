@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.40.3] - 2026-10-30
+
+### Fixed
+
+- The state script that `/ship-plan`, `/continue-plan`, `/finish-plan` and `/run-issues` run reads the plan's release tag from `origin` instead of the clone. A version tag only the clone had, such as one an older `/ship-plan` left after a failed push, read as `tag: present`, so `/ship-plan` moved the plan to the next version, never pushed the tag, or, under `release: tag`, called a landed plan finished. Such a tag now reads as `tag: local`, and one `origin` can't be asked about as `tag: unknown`; `/ship-plan` stops on either and says to delete a local tag with `git tag -d <version>`, and the next free version, `renumber`, counts only the tags on `origin`. Projects get it with `.\.template\Update-Project.ps1`.
+- The plan commands take a new plan's `Release:` version from the newest version tag on `origin`, with `git ls-remote --tags`, instead of the clone's tags, so a tag only the clone has no longer makes a plan skip a version. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## [0.40.2] - 2026-10-28
 
 ### Fixed
@@ -514,7 +521,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/polewskm/project-template/compare/v0.40.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.40.3...HEAD
+[0.40.3]: https://github.com/NCodeGroup/project-template/compare/v0.40.2...v0.40.3
 [0.40.2]: https://github.com/polewskm/project-template/compare/v0.40.1...v0.40.2
 [0.40.1]: https://github.com/polewskm/project-template/compare/v0.40.0...v0.40.1
 [0.40.0]: https://github.com/polewskm/project-template/compare/v0.39.0...v0.40.0
