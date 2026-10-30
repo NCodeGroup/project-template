@@ -384,6 +384,8 @@ Check 'workflow: ship-plan under integrate: direct merges a moved default branch
 $m = @(Get-MissingText $shipFiles ('When the push fails, such as when it is rejected or not approved, and this run made the tag', '`git ls-remote --exit-code --tags origin refs/tags/<version>` exits 2', 'delete it with `git tag -d <version>`', 'When that push fails, remove the tag as item 6''s `direct` bullet says', 'delete a tag `origin` has'))
 $m += @(foreach ($p in $shipFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('move or delete a tag')) { "${p}: still never deletes a tag it failed to push" } })
 Check 'workflow: ship-plan removes the tag a failed push left in the clone' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $shipFiles ('Stop too when `tag` is `local`', 'delete it with `git tag -d <version>` when nothing else needs it', 'Stop when `tag` is `unknown`'))
+Check 'workflow: ship-plan stops on a release tag only the clone has, or one origin can''t be asked about' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('git merge-base HEAD origin/<default>', 'the diff holds only this plan''s work'))
 Check 'workflow: review-plan-diff diffs from the merge base with the default branch' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\handoff-plan.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-bugfix\SKILL.md') ('moves this plan to the next free version, raised the same way'))
