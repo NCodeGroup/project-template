@@ -137,8 +137,19 @@ function Merge-AdoptedFile([string]$Name, [string]$Original, [string]$Rendered) 
     $marker = "# Kept from this repository's own $leaf when it adopted the project template"
     if ($Name -in '.gitignore', '.gitattributes', '.editorconfig') {
         $lines = if ($Name -eq '.editorconfig') { ($Original -split "`n" | Where-Object { $_ -notmatch '^\s*root\s*=' }) -join "`n" } else { $Original }
+        $note = $null
+        if ($Name -eq '.gitattributes') {
+            # Git uses the last rule that matches, and the kept lines come after the template's. A catch-all text rule of the
+            # repository's own, such as "* text eol=lf", would then override the template's "*.png binary" and the rest, so a
+            # binary file is committed as text and corrupted. The template's first rule says the same thing, so drop them.
+            $catchAll = @($lines -split "`n" | Where-Object { $_ -match '^\*\s+text(?:=auto)?(?:\s+eol=lf)?\s*$' })
+            if ($catchAll) {
+                $lines = ($lines -split "`n" | Where-Object { $_ -notin $catchAll }) -join "`n"
+                $note = "left out its catch-all text rule ($($catchAll.ForEach({ $_.Trim() }) -join '; ')), which would override the template's binary rules"
+            }
+        }
         $text = $Rendered.TrimEnd("`n") + "`n`n$marker`n" + $lines.Trim("`n") + "`n"
-        return [pscustomobject]@{ Text = $text; Strategy = 'Lines'; Note = $null }
+        return [pscustomobject]@{ Text = $text; Strategy = 'Lines'; Note = $note }
     }
     if ($Name -like '*.json') {
         try {
@@ -146,6 +157,14 @@ function Merge-AdoptedFile([string]$Name, [string]$Original, [string]$Rendered) 
             $repository = ConvertFrom-Json $Original -AsHashtable
         }
         catch { return [pscustomobject]@{ Text = $Original; Strategy = 'Keep'; Note = 'not valid JSON' } }
+        # The template's CI reads global.json with actions/setup-dotnet, which rejects a partial SDK version, such as 10.0.0,
+        # when rollForward is set ("a full SDK version is required"). Merging would keep the repository's, so use the template's.
+        if ($leaf -eq 'global.json' -and $repository -is [hashtable] -and $repository['sdk'] -is [hashtable]) {
+            $version = "$($repository['sdk']['version'])"
+            if ($version -and $version -notmatch '^\d+\.\d+\.\d{3}' -and $repository['sdk'].ContainsKey('rollForward')) {
+                return [pscustomobject]@{ Text = $Rendered; Strategy = 'Template'; Note = "its SDK version $version isn't a full version, which actions/setup-dotnet rejects when rollForward is set; used the template's" }
+            }
+        }
         $result = Merge-JsonValue $template $repository
         $text = (ConvertTo-Json $result -Depth 32) -replace "`r`n", "`n"
         $note = $null

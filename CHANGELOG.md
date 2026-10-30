@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.41.1] - 2026-10-30
+
+### Fixed
+
+- `Adopt-Project.ps1` no longer lets a repository's catch-all text rule in `.gitattributes`, such as `* text eol=lf`, override the template's binary rules. The repository's lines are appended after the template's, and Git uses the last rule that matches, so such a rule turned an image into text and the adoption commit rewrote its CRLF header byte, corrupting it. The adoption leaves those rules out of the lines it keeps and says so in its report.
+- `Adopt-Project.ps1` replaces a `global.json` whose SDK version is partial, such as `10.0.0`, and that sets `rollForward`, with the template's. The template's CI reads `global.json` with `actions/setup-dotnet`, which rejects that combination ("a full SDK version is required"), so the adopted repository's first `build-and-test` run failed although the adoption's own build and test passed. The report says when it did.
+- `Adopt-Project.ps1` no longer asks to reconcile `.github/workflows/code-review.yml` with `ci.yml`. The review workflow is separate from CI by design.
+
+### Changed
+
+- The template's `dependabot.yml` groups every update of an ecosystem, major ones included, in one pull request, instead of only minor and patch updates. Each major update used to open a pull request of its own, so a repository that adopted the template got ten or more at once, as Dependabot began to run on merge. New projects get the file as it is; a project that already has it keeps its own, as a merged file, and can drop the `update-types` lines.
+
 ## [0.41.0] - 2026-10-30
 
 ### Added
@@ -540,7 +552,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.41.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.41.1...HEAD
+[0.41.1]: https://github.com/NCodeGroup/project-template/compare/v0.41.0...v0.41.1
 [0.41.0]: https://github.com/NCodeGroup/project-template/compare/v0.40.4...v0.41.0
 [0.40.4]: https://github.com/NCodeGroup/project-template/compare/v0.40.3...v0.40.4
 [0.40.3]: https://github.com/NCodeGroup/project-template/compare/v0.40.2...v0.40.3

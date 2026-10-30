@@ -143,6 +143,9 @@ foreach ($case in $cases) {
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD') -and $ci.Contains('merge_group:') -and $ci.Contains('${{ github.event.pull_request.base.sha'))
         $checkouts = [regex]::Matches($ci, '(?m)^\s+- uses: actions/checkout@').Count
         Check "${name}: CI checkouts set persist-credentials false" ($checkouts -gt 0 -and [regex]::Matches($ci, '(?m)^\s+persist-credentials: false\r?$').Count -eq $checkouts) $ci
+        # One pull request per ecosystem: a filter on the update type would give each major update a pull request of its own.
+        $dependabot = Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw
+        Check "${name}: Dependabot groups every update of an ecosystem, major ones included" (-not $dependabot.Contains('update-types') -and $dependabot.Contains('patterns: ["*"]')) $dependabot
     }
     else {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
