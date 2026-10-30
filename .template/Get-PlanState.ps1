@@ -80,7 +80,14 @@ function Get-ChangelogBackfill([string[]]$Lines) {
     if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0].Tag } else { "$($missing[0].Tag)..$($missing[-1].Tag)" }
 }
 
-function Get-IssueState([string]$Ref, [string]$HostName) {
+# The tag names origin has, from git ls-remote, or $null when origin can't be read.
+function Get-OriginTags {
+    $out = @(& git ls-remote --tags --refs origin 2>$null)
+    if ($LASTEXITCODE) { return $null }
+    , [string[]]@(foreach ($line in $out) { if ("$line" -match '\trefs/tags/(.+)$') { $Matches[1] } })
+}
+
+function Get-IssueState([string]$Ref,[string]$HostName) {
     $issueState = 'unknown'
     $numbers = [regex]::Matches($Ref, '\d+')
     if ($HostName -in 'github', 'gitlab' -and $numbers.Count -gt 0) {
@@ -258,9 +265,16 @@ try {
     }
 
     $tag = '-'
+    $originTags = $null
+    if ($hostName -ne 'none' -and $release -ne '-') { $originTags = Get-OriginTags }
     if ($release -ne '-') {
         & git rev-parse -q --verify "refs/tags/$release" 2>$null | Out-Null
-        $tag = if ($LASTEXITCODE -eq 0) { 'present' } else { 'absent' }
+        $localTag = ($LASTEXITCODE -eq 0)
+        if ($hostName -eq 'none') { $tag = if ($localTag) { 'present' } else { 'absent' } }
+        elseif ($null -eq $originTags) { $tag = 'unknown' }
+        elseif ($originTags -ccontains $release) { $tag = 'present' }
+        elseif ($localTag) { $tag = 'local' }
+        else { $tag = 'absent' }
     }
 
     # Pull request or merge request
@@ -331,7 +345,8 @@ try {
     $planVersion = ConvertTo-PlanVersion $release
     if ($releasePolicy -ne 'none' -and $default -ne '-' -and $landed -ne 'yes' -and $null -ne $planVersion) {
         $found = @()
-        foreach ($tagName in (& git tag --list 2>$null)) {
+        $tagNames = if ($null -ne $originTags) { $originTags } else { @(& git tag --list 2>$null) }
+        foreach ($tagName in $tagNames) {
             $v = ConvertTo-PlanVersion "$tagName"
             if ($null -ne $v) { $found += $v }
         }
@@ -420,7 +435,7 @@ try {
             elseif ($prState -eq 'MERGED') { $next = "none pull request #$prNumber merged without this branch's HEAD: land the commits after it from a new branch" }
             else { $next = 'ship-plan' }
         }
-        elseif (($releasePolicy -ne 'none' -and $tag -eq 'absent') -or $published -eq 'no' -or $issueState -eq 'OPEN') { $next = 'ship-plan' }
+        elseif (($releasePolicy -ne 'none' -and $tag -ne 'present') -or $published -eq 'no' -or $issueState -eq 'OPEN') { $next = 'ship-plan' }
         else { $next = 'finish-plan' }
     }
     else {
