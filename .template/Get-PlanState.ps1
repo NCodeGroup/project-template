@@ -88,7 +88,7 @@ function Get-OriginTags {
     , [string[]]@(foreach ($line in $out) { if ("$line" -match '\trefs/tags/(.+)$') { $Matches[1] } })
 }
 
-function Get-IssueState([string]$Ref,[string]$HostName) {
+function Get-IssueState([string]$Ref, [string]$HostName) {
     $issueState = 'unknown'
     $numbers = [regex]::Matches($Ref, '\d+')
     if ($HostName -in 'github', 'gitlab' -and $numbers.Count -gt 0) {
