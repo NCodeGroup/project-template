@@ -5,7 +5,7 @@
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, refs, release, steps, reviewed, landing, protected, ahead, behind, landed,
-    pr, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, published, issue-state, issue-states, dirty, plans and next. A fact that does not apply prints
+    pr, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, published, issue-state, issue-states, unfiled, dirty, plans and next. A fact that does not apply prints
     "-". With an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
@@ -20,6 +20,7 @@
     tag is present when origin has the plan's Release: version tag, local when only this clone has it, such as one a failed push left, absent when neither has it, and unknown when git ls-remote can't read origin's tags. Without an origin remote, it reads the clone's tags: present or absent.
     conflicts names the files that conflict when origin's default branch merges into HEAD, joined by ", ", from git merge-tree --write-tree, which changes neither the index nor the working tree; none when the merge is clean, unknown when Git can't say, such as Git older than 2.38, and - on the default branch or once the plan has landed. next is ship-plan rather than wait while a pull request is open and conflicts names files, so /ship-plan adds a step that merges the default branch in.
     changelog-format is keep-a-changelog when the changelog has a ## [Unreleased] or ## [<version>] heading, other when it has neither, and missing without the file; changelog-version is its newest release, with a leading v when the plan's Release: version has one, or -. changelog-backfill names the version tags merged into HEAD, shaped like v1.2.3 or 1.2.3, that have no release heading in the changelog, as <oldest>..<newest>, the tag alone when there is one, or - when there is none.
+    unfiled counts the lines of PLAN.md's ## Follow-ups section, up to the next ## heading, that start with "- " or "* " and don't end with a mark /ship-plan appends: an em dash, then "filed as #<number>" or "already tracked as #<number>", either with <owner/repo> before the #, or "dropped". A line that says only None or Nothing doesn't count. It is 0 without the section and - without a plan. next is ship-plan rather than finish-plan for a landed plan while unfiled is above 0 and the Landing section's follow-ups isn't none, so /ship-plan files them.
     protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
     requests into the default branch, no when it does not, unknown when the host or its CLI cannot say, and - without
     a default branch.
@@ -79,6 +80,16 @@ function Get-ChangelogBackfill([string[]]$Lines) {
     $missing = @(foreach ($t in @(& git tag --list --merged HEAD 2>$null)) { $v = ConvertTo-PlanVersion "$t"; if ($null -ne $v -and $v -notin $listed) { [pscustomobject]@{ Tag = "$t"; Version = $v } } })
     $missing = @($missing | Sort-Object Version)
     if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0].Tag } else { "$($missing[0].Tag)..$($missing[-1].Tag)" }
+}
+
+# The number of follow-ups in a plan's ## Follow-ups section that /ship-plan has not filed, tracked or dropped.
+function Get-UnfiledFollowUps([string[]]$Lines) {
+    $count = 0; $inSection = $false
+    foreach ($line in $Lines) {
+        if ("$line" -match '^## ') { $inSection = ("$line" -match '^## Follow-ups\s*$'); continue }
+        if ($inSection -and "$line" -match '^[-*] \S' -and "$line" -notmatch '^[-*] (?:none|nothing)\.?\s*$' -and "$line" -notmatch '\s\u2014\s(?:(?:filed as|already tracked as)\s+\S*#\d+|dropped)\s*$') { $count++ }
+    }
+    $count
 }
 
 # The tag names origin has, from git ls-remote, or $null when origin can't be read.
@@ -197,7 +208,7 @@ try {
     }
 
     # PLAN.md
-    $plan = '-'; $issue = '-'; $related = '-'; $release = '-'; $steps = '-'; $reviewed = '-'
+    $plan = '-'; $issue = '-'; $related = '-'; $release = '-'; $steps = '-'; $reviewed = '-'; $unfiled = '-'
     $done = 0; $total = 0; $open = 0; $escalated = @(); $failed = @()
     $planFile = Join-Path $folder 'PLAN.md'
     if (Test-Path -LiteralPath $planFile) {
@@ -206,6 +217,7 @@ try {
         foreach ($line in $lines) { if ($line -match '^Issue:\s*(\S.*)$') { $issue = $Matches[1].Trim(); break } }
         foreach ($line in $lines) { if ($line -match '^Refs:\s*(\S.*)$') { $related = $Matches[1].Trim(); break } }
         foreach ($line in $lines) { if ($line -match '^Release:\s*(\S+)') { $release = $Matches[1]; break } }
+        $unfiled = Get-UnfiledFollowUps $lines
 
         $done = 0; $total = 0; $open = 0; $escalated = @(); $failed = @()
         foreach ($line in $lines) {
@@ -436,7 +448,7 @@ try {
             elseif ($prState -eq 'MERGED') { $next = "none pull request #$prNumber merged without this branch's HEAD: land the commits after it from a new branch" }
             else { $next = 'ship-plan' }
         }
-        elseif (($releasePolicy -ne 'none' -and $tag -ne 'present') -or $published -eq 'no' -or $issueState -eq 'OPEN') { $next = 'ship-plan' }
+        elseif (($releasePolicy -ne 'none' -and $tag -ne 'present') -or $published -eq 'no' -or $issueState -eq 'OPEN' -or ($policy['follow-ups'] -ne 'none' -and $unfiled -gt 0)) { $next = 'ship-plan' }
         else { $next = 'finish-plan' }
     }
     else {
@@ -475,6 +487,7 @@ try {
     Write-Output "published: $published"
     Write-Output "issue-state: $issueState"
     Write-Output "issue-states: $issueStates"
+    Write-Output "unfiled: $unfiled"
     Write-Output "dirty: $dirty"
     Write-Output "plans: $plans"
     Write-Output "next: $next"
