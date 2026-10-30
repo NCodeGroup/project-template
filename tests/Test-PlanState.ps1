@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, then Keep a Changelog headings and the changelog lines, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
+    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings and the changelog lines, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -185,6 +185,16 @@ $r = Test-State (Get-State $repo) @{ landed = 'yes'; ahead = '0'; conflicts = '-
 Check 'local: work pushed to the default branch is landed' $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ next = 'ship-plan' }
 Check 'next: a landed plan without its tag is shipped again' $r.Ok $r.Detail
+
+# 8b. A release tag only the clone has, such as one a failed push left.
+Push-Location $repo
+try { Invoke-Git tag -a v0.2.0 -m v0.2.0 }
+finally { Pop-Location }
+$r = Test-State (Get-State $repo) @{ tag = 'local'; published = '-'; next = 'ship-plan' }
+Check 'tag: a landed plan whose tag only the clone has is local and shipped again' $r.Ok $r.Detail
+Push-Location $repo
+try { Invoke-Git tag -d v0.2.0 | Out-Null }
+finally { Pop-Location }
 
 # 9. Tagged and pushed.
 Push-Location $repo
@@ -482,6 +492,20 @@ $latePlan = Join-Path $lateRepo 'PLAN.md'
 Write-Text $latePlan (New-PlanText 'x' (Get-Head $lateRepo))
 $r = Test-State (Get-State $lateRepo) @{ release = 'v0.2.0'; renumber = '-'; next = 'ship-plan' }
 Check 'renumber: a version newer than every tag and changelog heading is free' $r.Ok $r.Detail
+
+Push-Location $lateRepo
+try { Invoke-Git tag -a v0.2.0 -m v0.2.0 }
+finally { Pop-Location }
+$r = Test-State (Get-State $lateRepo) @{ tag = 'local'; renumber = '-' }
+Check 'renumber: a version tag only the clone has leaves the version free' $r.Ok $r.Detail
+Push-Location $lateRepo
+try { Invoke-Git remote set-url origin (Join-Path $Work 'no-such-origin.git') }
+finally { Pop-Location }
+$r = Test-State (Get-State $lateRepo) @{ tag = 'unknown' }
+Check 'tag: a tag origin can''t be asked about is unknown' $r.Ok $r.Detail
+Push-Location $lateRepo
+try { Invoke-Git remote set-url origin $lateOrigin; Invoke-Git tag -d v0.2.0 | Out-Null }
+finally { Pop-Location }
 
 Write-Text (Join-Path $lateSeed 'CHANGELOG.md') "# Changelog`n`n## v0.2.0`n`n- Second.`n`n## v0.1.0`n`n- First.`n"
 Push-Location $lateSeed

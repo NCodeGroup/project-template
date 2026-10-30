@@ -16,7 +16,8 @@
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
     gate is the command /ship-plan runs before it pushes, or none.
     pr-format is <file>#<heading>, the section that sets a pull request's title and description, or none.
-    renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag or newest release heading of the changelog, ## [<version>] - <date> or ## <version>, on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed. next is ship-plan rather than wait while a pull request is open and renumber isn't -, so /ship-plan renumbers the plan.
+    renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag on origin (the clone's tags when origin's can't be read) or newest release heading of the changelog, ## [<version>] - <date> or ## <version>, on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed. next is ship-plan rather than wait while a pull request is open and renumber isn't -, so /ship-plan renumbers the plan.
+    tag is present when origin has the plan's Release: version tag, local when only this clone has it, such as one a failed push left, absent when neither has it, and unknown when git ls-remote can't read origin's tags. Without an origin remote, it reads the clone's tags: present or absent.
     conflicts names the files that conflict when origin's default branch merges into HEAD, joined by ", ", from git merge-tree --write-tree, which changes neither the index nor the working tree; none when the merge is clean, unknown when Git can't say, such as Git older than 2.38, and - on the default branch or once the plan has landed. next is ship-plan rather than wait while a pull request is open and conflicts names files, so /ship-plan adds a step that merges the default branch in.
     changelog-format is keep-a-changelog when the changelog has a ## [Unreleased] or ## [<version>] heading, other when it has neither, and missing without the file; changelog-version is its newest release, with a leading v when the plan's Release: version has one, or -. changelog-backfill names the version tags merged into HEAD, shaped like v1.2.3 or 1.2.3, that have no release heading in the changelog, as <oldest>..<newest>, the tag alone when there is one, or - when there is none.
     protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
@@ -78,6 +79,13 @@ function Get-ChangelogBackfill([string[]]$Lines) {
     $missing = @(foreach ($t in @(& git tag --list --merged HEAD 2>$null)) { $v = ConvertTo-PlanVersion "$t"; if ($null -ne $v -and $v -notin $listed) { [pscustomobject]@{ Tag = "$t"; Version = $v } } })
     $missing = @($missing | Sort-Object Version)
     if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0].Tag } else { "$($missing[0].Tag)..$($missing[-1].Tag)" }
+}
+
+# The tag names origin has, from git ls-remote, or $null when origin can't be read.
+function Get-OriginTags {
+    $out = @(& git ls-remote --tags --refs origin 2>$null)
+    if ($LASTEXITCODE) { return $null }
+    , [string[]]@(foreach ($line in $out) { if ("$line" -match '\trefs/tags/(.+)$') { $Matches[1] } })
 }
 
 function Get-IssueState([string]$Ref, [string]$HostName) {
@@ -258,9 +266,16 @@ try {
     }
 
     $tag = '-'
+    $originTags = $null
+    if ($hostName -ne 'none' -and $release -ne '-') { $originTags = Get-OriginTags }
     if ($release -ne '-') {
         & git rev-parse -q --verify "refs/tags/$release" 2>$null | Out-Null
-        $tag = if ($LASTEXITCODE -eq 0) { 'present' } else { 'absent' }
+        $localTag = ($LASTEXITCODE -eq 0)
+        if ($hostName -eq 'none') { $tag = if ($localTag) { 'present' } else { 'absent' } }
+        elseif ($null -eq $originTags) { $tag = 'unknown' }
+        elseif ($originTags -ccontains $release) { $tag = 'present' }
+        elseif ($localTag) { $tag = 'local' }
+        else { $tag = 'absent' }
     }
 
     # Pull request or merge request
@@ -331,7 +346,8 @@ try {
     $planVersion = ConvertTo-PlanVersion $release
     if ($releasePolicy -ne 'none' -and $default -ne '-' -and $landed -ne 'yes' -and $null -ne $planVersion) {
         $found = @()
-        foreach ($tagName in (& git tag --list 2>$null)) {
+        $tagNames = if ($null -ne $originTags) { $originTags } else { @(& git tag --list 2>$null) }
+        foreach ($tagName in $tagNames) {
             $v = ConvertTo-PlanVersion "$tagName"
             if ($null -ne $v) { $found += $v }
         }
@@ -420,7 +436,7 @@ try {
             elseif ($prState -eq 'MERGED') { $next = "none pull request #$prNumber merged without this branch's HEAD: land the commits after it from a new branch" }
             else { $next = 'ship-plan' }
         }
-        elseif (($releasePolicy -ne 'none' -and $tag -eq 'absent') -or $published -eq 'no' -or $issueState -eq 'OPEN') { $next = 'ship-plan' }
+        elseif (($releasePolicy -ne 'none' -and $tag -ne 'present') -or $published -eq 'no' -or $issueState -eq 'OPEN') { $next = 'ship-plan' }
         else { $next = 'finish-plan' }
     }
     else {
