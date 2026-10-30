@@ -1,5 +1,6 @@
 # Dependabot, built into GitHub: each week, a pull request for every newer version, which CI tests and you merge.
-# Minor and patch updates of one kind come together in a single pull request.
+# Every update of one kind, major ones included, comes together in a single pull request, so a project gets one for its
+# actions and one for its packages instead of one per package.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -9,7 +10,6 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
-        update-types: [minor, patch]
 {%- if stack == 'dotnet' %}
   - package-ecosystem: nuget
     directory: /
@@ -18,7 +18,6 @@ updates:
     groups:
       nuget:
         patterns: ["*"]
-        update-types: [minor, patch]
   - package-ecosystem: dotnet-sdk
     directory: /
     schedule:
@@ -31,7 +30,6 @@ updates:
     groups:
       pip:
         patterns: ["*"]
-        update-types: [minor, patch]
 {%- elif stack == 'node' %}
 {%- set ecosystem = 'bun' if package_manager == 'bun' else 'npm' %}
   - package-ecosystem: {{ ecosystem }}
@@ -41,5 +39,4 @@ updates:
     groups:
       {{ ecosystem }}:
         patterns: ["*"]
-        update-types: [minor, patch]
 {%- endif %}
