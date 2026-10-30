@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings and the changelog lines, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
+    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings and the changelog lines, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -106,7 +106,7 @@ finally { Pop-Location }
 $planFile = Join-Path $repo 'PLAN.md'
 
 # 1. On the default branch with no plan.
-$r = Test-State (Get-State $repo) @{ plan = '-'; refs = '-'; default = 'main'; branch = 'main'; host = 'other'; worktree = '-';ahead = '0'; behind = '0'; landed = 'yes'; dirty = 'no'; plans = '-'; conflicts = '-'; protected = 'unknown' }
+$r = Test-State (Get-State $repo) @{ plan = '-'; refs = '-'; default = 'main'; branch = 'main'; host = 'other'; worktree = '-';ahead = '0'; behind = '0'; landed = 'yes'; dirty = 'no'; plans = '-'; conflicts = '-'; protected = 'unknown'; unfiled = '-' }
 Check 'local: a clean default branch with no plan' $r.Ok $r.Detail
 $state = Get-State $repo
 Check 'next: no plan means nothing to do' ($state['next'] -like 'none *') "next='$($state['next'])' expected 'none *'"
@@ -200,7 +200,7 @@ finally { Pop-Location }
 Push-Location $repo
 try { Invoke-Git tag -a v0.2.0 -m v0.2.0; Invoke-Git push -q origin v0.2.0 }
 finally { Pop-Location }
-$r = Test-State (Get-State $repo) @{ tag = 'present'; published = 'unknown'; 'issue-state' = 'unknown'; next = 'finish-plan' }
+$r = Test-State (Get-State $repo) @{ tag = 'present'; published = 'unknown'; 'issue-state' = 'unknown'; unfiled = '0'; next = 'finish-plan' }
 Check 'next: a landed, tagged plan is finished' $r.Ok $r.Detail
 
 # 10. A commit upstream on the default branch.
@@ -446,6 +446,26 @@ try {
     Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'OPEN' }
     $r = Test-State (Get-State $gh.Repo) @{ issue = '#7'; refs = '#8'; 'issue-state' = 'CLOSED'; 'issue-states' = '#7=CLOSED'; next = 'finish-plan' }
     Check 'issues: an open issue on the Refs: line keeps no plan open' $r.Ok $r.Detail
+
+    # 16b. The follow-ups of a merged plan.
+    $dash = [char]0x2014
+    $base = New-PlanText 'x' (Get-Head $gh.Repo) '#7'
+    Set-IssueStates @{ '7' = 'CLOSED' }
+    $open = "`n## Follow-ups`n`n- Unfiled gap: change x in y.ps1, because z.`n- None.`n"
+    Write-Text (Join-Path $gh.Repo 'PLAN.md') ($base + $open)
+    $r = Test-State (Get-State $gh.Repo) @{ landed = 'yes'; 'issue-state' = 'CLOSED'; unfiled = '1'; next = 'ship-plan' }
+    Check 'follow-ups: a merged plan with an unfiled follow-up goes back to ship-plan' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $gh.Repo 'PLAN.md') ($base + "`n## Follow-ups`n`n- Filed gap: a. $dash filed as #12`n- Tracked gap: b. $dash already tracked as owner/backlog#3`n- Dropped gap: c. $dash dropped`n`n## Notes`n`n- Not a follow-up.`n")
+    $r = Test-State (Get-State $gh.Repo) @{ unfiled = '0'; next = 'finish-plan' }
+    Check 'follow-ups: filed, tracked and dropped follow-ups let a merged plan finish' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $gh.Repo 'AGENTS.md') "# Demo`n`n## Landing`n`n- follow-ups: none`n"
+    [IO.File]::AppendAllText((Join-Path $gh.Repo '.git/info/exclude'), "AGENTS.md`n")
+    Write-Text (Join-Path $gh.Repo 'PLAN.md') ($base + $open)
+    $r = Test-State (Get-State $gh.Repo) @{ unfiled = '1'; next = 'finish-plan' }
+    Check 'follow-ups: with follow-ups none, an unfiled follow-up keeps no plan open' $r.Ok $r.Detail
+    Remove-Item -LiteralPath (Join-Path $gh.Repo 'AGENTS.md')
 
     Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo) '#7 #8')
     Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'OPEN' }
