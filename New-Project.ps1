@@ -12,7 +12,9 @@
     Then initializes git on `main` and commits everything as the first commit. With -CreateRemote it reads the
     git_host answer from .copier-answers.yml and creates the repository there — `gh repo create` for github,
     `glab repo create` for gitlab — named after the destination folder, with the given -Visibility (public
-    unless told otherwise), and pushes.
+    unless told otherwise), and pushes. For GitHub it then runs tools/Set-RepositoryBaseline.ps1, which protects the
+    default branch so changes reach it only through a pull request and requires the template's CI jobs to pass;
+    -NoBaseline skips that.
 
 .EXAMPLE
     .\New-Project.ps1 -Path C:\src\qso-viewer                                              # local only
@@ -30,6 +32,7 @@ param(
     [hashtable]$Data = @{},
     [switch]$Defaults,
     [switch]$CreateRemote,
+    [switch]$NoBaseline,
     [string]$Owner,
     [ValidateSet('public', 'private', 'internal')][string]$Visibility = 'public'
 )
@@ -97,6 +100,19 @@ try {
             gh repo create $fullName "--$Visibility" --source . --remote origin --push
         }
         if ($LASTEXITCODE) { throw 'Creating or pushing the remote repository failed.' }
+
+        if ($gitHost -ne 'gitlab' -and -not $NoBaseline) {
+            # The repository exists by now, so a failure here warns and says how to rerun instead of throwing it away.
+            $baseline = Join-Path $PSScriptRoot 'tools/Set-RepositoryBaseline.ps1'
+            $owner = if ($Owner) { $Owner } else { (gh api user --jq .login).Trim() }
+            try {
+                if ($LASTEXITCODE) { throw "Couldn't read the signed-in GitHub user." }
+                & $baseline -Repo $name -Owner $owner -RequireChecks 'build-and-test,Commit attribution'
+            }
+            catch {
+                Write-Warning "Couldn't protect the default branch: $($_.Exception.Message) Run it again with: $baseline -Repo $name -Owner $owner -RequireChecks 'build-and-test,Commit attribution'"
+            }
+        }
     }
 }
 finally { Pop-Location }

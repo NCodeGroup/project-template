@@ -179,6 +179,10 @@ Adopt one from this repository's clone. See [Adopt an existing repository](READM
 
 `Adopt-Project.ps1` works out `workflow_tools` from the repository's Copilot and Hybrid agent files. For a public or shared repository that has neither, add `-Data @{ workflow_tools = 'claude', 'copilot' }`; otherwise it gets the Hybrid agents, which use the shack PC's private model.
 
+On GitHub, `Adopt-Project.ps1` ends by printing the command that protects the repository's default branch so changes reach it only through pull requests (`tools\Set-RepositoryBaseline.ps1`, [Protect the Default Branch](README.md#protect-the-default-branch)). `New-Project.ps1 -CreateRemote` runs it for you. Run the printed command once, from this clone, signed in to `gh` as an administrator of the repository.
+
+To have the NCode Review bot review a GitHub project's pull requests, answer yes to the `code_review` question when you create it. A project that already exists copies `.github/workflows/code-review.yml` from a new project, or from NCodeGroup/Identity, and pins `NCodeGroup/code-review` to an exact release tag. Then, once per repository, run `tools\Enable-CodeReview.ps1 -Repo <the repository's name>` from a clone of `NCodeGroup/code-review`: it creates the `code-review` environment and gives the repository the organization's secrets. Without that step, the review job fails.
+
 To get the commands and skills in every repository, run:
 
 ```powershell

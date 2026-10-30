@@ -64,7 +64,7 @@ New-Item -ItemType Directory -Force $Work | Out-Null
 $copierYml = Join-Path $repoRoot 'copier.yml'
 $skip = @(Get-CopierList $copierYml '_skip_if_exists')
 $merged = @(Get-CopierList $copierYml '_merged_files')
-Check 'unit: Get-CopierList reads the file lists' (($skip -join ',') -eq 'AGENTS.md,README.md,Directory.Build.props' -and '.gitignore' -in $merged -and 'global.json' -in $merged) "$($skip -join ',') | $($merged -join ',')"
+Check 'unit: Get-CopierList reads the file lists' (($skip -join ',') -eq 'AGENTS.md,README.md,Directory.Build.props,.github/workflows/code-review.yml' -and '.gitignore' -in $merged -and 'global.json' -in $merged) "$($skip -join ',') | $($merged -join ',')"
 $one = Get-OwnedMergedFile '.github/workflows/ci.yml' $merged
 $dropped = Get-OwnedMergedFile @('.gitignore', '', $null) $merged
 $none = Get-OwnedMergedFile @() $merged
@@ -264,6 +264,7 @@ if (-not $UnitOnly) {
     $status = git -C $plain status --porcelain
     Check 'plain: one commit, nothing left over' ($subject -eq 'Adopt project-template v0.1.0' -and $count -eq '2' -and -not $status) "$subject | $count | $status"
     Check 'plain: leaves core.hooksPath alone when the clone has hooks in .git/hooks' (-not (git -C $plain config core.hooksPath) -and $out.Contains('has hooks of its own in .git/hooks (pre-commit)')) $out
+    Check 'plain: a GitLab origin gets no command for GitHub settings' (-not $out.Contains('Set-RepositoryBaseline')) $out
     Check 'plain: README.md untouched' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'README.md')) -eq "# Plain`n") ''
     Check 'plain: a Keep a Changelog file stays as it is, with no follow-up' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'CHANGELOG.md')) -eq "# Changelog`n`n## [Unreleased]`n`n## [1.0.0] - 2026-01-01`n`n### Added`n`n- First.`n" -and -not $out.Contains('convert CHANGELOG.md') -and -not $out.Contains('backfill CHANGELOG.md')) $out
     Check 'plain: workflow files for claude, copilot only' ((Test-Path -LiteralPath (Join-Path $plain 'CLAUDE.md')) -and (Test-Path -LiteralPath (Join-Path $plain '.github\skills\plan-feature\SKILL.md')) -and -not (Test-Path -LiteralPath (Join-Path $plain '.github\agents\hybrid-planner.agent.md'))) ''
@@ -305,6 +306,7 @@ if (-not $UnitOnly) {
     $props = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'Directory.Build.props')
     $editorconfig = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.editorconfig')
     Check 'scaffold: Directory.Build.props imports the template settings' ($props.Contains('build/ProjectTemplate.props') -and $props.Contains('<LangVersion>latest</LangVersion>') -and @($editorconfig -split "`n" | Where-Object { $_ -match '^\s*root\s*=' }).Count -eq 1) "$props | $editorconfig"
+    Check 'scaffold: a GitHub origin gets the command that protects the default branch' ($out.Contains('Set-RepositoryBaseline.ps1') -and $out.Contains('-Repo Demo -Owner NCodeGroup') -and $out.Contains('-RequireChecks ''build-and-test,Commit attribution''')) $out
     Check 'scaffold: report lists the follow-ups' ($out.Contains('/plan-migration Finish adopting the project template') -and $out.Contains('.github/copilot-instructions.md') -and $out.Contains('.github/workflows/main.yml')) $out
     Check 'scaffold: its own changelog stays as it is, with a follow-up to convert it' ((Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'CHANGELOG.md')) -eq "# Changes`n`n## 1.0.0`n`n- First.`n" -and $out.Contains('convert CHANGELOG.md to Keep a Changelog 1.1.0')) $out
     Check 'scaffold: asks to backfill the changelog from a tag it has no section for' ($out.Contains('backfill CHANGELOG.md from the releases v0.9.0')) $out
