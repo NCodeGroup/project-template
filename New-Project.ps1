@@ -27,7 +27,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Path,
-    [string]$Template = 'https://github.com/polewskm/project-template.git',
+    [string]$Template = 'https://github.com/NCodeGroup/project-template.git',
     [string]$Ref,
     [hashtable]$Data = @{},
     [switch]$Defaults,

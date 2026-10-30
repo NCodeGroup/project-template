@@ -177,7 +177,7 @@ Adopt one from this repository's clone. See [Adopt an existing repository](READM
 .\Adopt-Project.ps1 -Path C:\src\other
 ```
 
-`Adopt-Project.ps1` works out `workflow_tools` from the repository's Copilot and Hybrid agent files. For a public or shared repository that has neither, add `-Data @{ workflow_tools = 'claude', 'copilot' }`; otherwise it gets the Hybrid agents, which use the shack PC's private model.
+`Adopt-Project.ps1` works out `workflow_tools` from the repository's Copilot and Hybrid agent files. A repository that has neither gets Claude Code and Copilot; to add the Hybrid agents, which use the shack PC's private model, pass `-Data @{ workflow_tools = 'claude', 'copilot', 'local' }`.
 
 On GitHub, `Adopt-Project.ps1` ends by printing the command that protects the repository's default branch so changes reach it only through pull requests (`tools\Set-RepositoryBaseline.ps1`, [Protect the Default Branch](README.md#protect-the-default-branch)). `New-Project.ps1 -CreateRemote` runs it for you. Run the printed command once, from this clone, signed in to `gh` as an administrator of the repository.
 

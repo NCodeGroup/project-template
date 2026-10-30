@@ -254,6 +254,17 @@ try {
     $head = git rev-parse HEAD
     $from = Get-Answer '_commit'
     $src = Get-Answer '_src_path'
+    # The template moved from polewskm/project-template to NCodeGroup/project-template. A project whose answers still name the old
+    # address moves over with this update, so it stops depending on GitHub's redirect. Only the _src_path line changes, and the
+    # update commits it with everything else.
+    $movedSource = 'https://github.com/NCodeGroup/project-template.git'
+    if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?$') {
+        $answersFile = Join-Path $project '.copier-answers.yml'
+        $answersText = [IO.File]::ReadAllText($answersFile)
+        [IO.File]::WriteAllText($answersFile, [regex]::Replace($answersText, '(?m)^_src_path:[^\r\n]*', "_src_path: $movedSource"), [Text.UTF8Encoding]::new($false))
+        $src = $movedSource
+        "The template moved to $movedSource; .copier-answers.yml now names it."
+    }
 
     if ($ownClone) {
         $TemplateClone = Join-Path ([IO.Path]::GetTempPath()) "project-template-$([guid]::NewGuid().ToString('N').Substring(0, 8))"

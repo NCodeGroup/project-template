@@ -82,7 +82,7 @@ workflow_tools:
     Claude Code: claude
     GitHub Copilot (Copilot Chat and Copilot CLI): copilot
     Hybrid agents on the shack PC's local model (personal; leave out of shared repositories): local
-  default: [claude, copilot, local]
+  default: [claude, copilot]
   validator: "{% if not workflow_tools %}Choose at least one tool{% endif %}"
 
 code_review:
@@ -94,7 +94,7 @@ code_review:
 author_name:
   type: str
   help: Author and copyright holder for .NET assembly and package metadata
-  default: Marcin Polewski
+  default: NCode Group
   when: "{{ stack == 'dotnet' }}"
 
 nuget_package:
