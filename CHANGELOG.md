@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-10-30
+
+### Added
+
+- A `code_review` question, asked only for a GitHub project and off by default. Answering yes adds `.github/workflows/code-review.yml`, which reviews each pull request with the NCode Review bot ([NCodeGroup/code-review](https://github.com/NCodeGroup/code-review)): it runs from the default branch on `pull_request_target`, in the `code-review` environment, with no permissions by default and `persist-credentials: false` on both checkouts, and it pins the action to an exact release tag. The file is project-owned, so an update shows its changes but never moves back a pin Dependabot bumped, and the template's `github-actions` Dependabot entry opens each bump. A project asked on GitLab, or given `code_review` in `-Data` there, gets no file. A note after the copy says to run `tools/Enable-CodeReview.ps1` from a clone of `NCodeGroup/code-review` once for the repository, which creates the `code-review` environment and gives it the organization's secrets.
+- `tools/Set-RepositoryBaseline.ps1` gives a GitHub repository a "Protect main" ruleset on its default branch, so changes reach it only through pull requests: no deletion, no force push, a pull request with no approvals, merge-commit or rebase merges only (never squash), no bypass, and optionally required status checks (`-RequireChecks`, as one comma-separated string of jobs that run on pull requests). It also turns on delete-branch-on-merge. A repository that already requires pull requests on its default branch is left alone; `-WhatIf` shows what it would do, and `-All -Owner <owner>` covers every repository of an owner except archived ones and forks.
+- `New-Project.ps1 -CreateRemote` runs the script for a new GitHub repository, requiring the template's `build-and-test` and `Commit attribution` jobs; `-NoBaseline` skips it, and a failure warns and prints the command to run again. `Adopt-Project.ps1` only commits locally, so for a GitHub `origin` it prints the command to run.
+
+### Changed
+
+- The template's address is `https://github.com/NCodeGroup/project-template.git`. The `-Template` default of `New-Project.ps1` and `Adopt-Project.ps1` and the README name it. `.template/Update-Project.ps1` changes a project's recorded `_src_path` from `https://github.com/polewskm/project-template.git` to the new address before it clones, and commits that line with the update, also for a project already at the newest version, so a project stops depending on GitHub's redirect with its next update. No other answer changes.
+- New projects default to `author_name` NCode Group and to `workflow_tools` Claude Code and Copilot, without the local model. Projects keep the answers they recorded, so only new ones change; add the Hybrid agents with `-Data @{ workflow_tools = 'claude', 'copilot', 'local' }`. `Adopt-Project.ps1` says it left the local model out when the repository has no agent files, and how to add it.
+
 ## [0.40.4] - 2026-10-30
 
 ### Fixed
@@ -527,69 +540,70 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.40.4...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.41.0...HEAD
+[0.41.0]: https://github.com/NCodeGroup/project-template/compare/v0.40.4...v0.41.0
 [0.40.4]: https://github.com/NCodeGroup/project-template/compare/v0.40.3...v0.40.4
 [0.40.3]: https://github.com/NCodeGroup/project-template/compare/v0.40.2...v0.40.3
-[0.40.2]: https://github.com/polewskm/project-template/compare/v0.40.1...v0.40.2
-[0.40.1]: https://github.com/polewskm/project-template/compare/v0.40.0...v0.40.1
-[0.40.0]: https://github.com/polewskm/project-template/compare/v0.39.0...v0.40.0
-[0.39.0]: https://github.com/polewskm/project-template/compare/v0.38.0...v0.39.0
-[0.38.0]: https://github.com/polewskm/project-template/compare/v0.37.1...v0.38.0
-[0.37.1]: https://github.com/polewskm/project-template/compare/v0.37.0...v0.37.1
-[0.37.0]: https://github.com/polewskm/project-template/compare/v0.36.2...v0.37.0
-[0.36.2]: https://github.com/polewskm/project-template/compare/v0.36.1...v0.36.2
-[0.36.1]: https://github.com/polewskm/project-template/compare/v0.36.0...v0.36.1
-[0.36.0]: https://github.com/polewskm/project-template/compare/v0.35.2...v0.36.0
-[0.35.2]: https://github.com/polewskm/project-template/compare/v0.35.1...v0.35.2
-[0.35.1]: https://github.com/polewskm/project-template/compare/v0.35.0...v0.35.1
-[0.35.0]: https://github.com/polewskm/project-template/compare/v0.34.0...v0.35.0
-[0.34.0]: https://github.com/polewskm/project-template/compare/v0.33.0...v0.34.0
-[0.33.0]: https://github.com/polewskm/project-template/compare/v0.32.0...v0.33.0
-[0.32.0]: https://github.com/polewskm/project-template/compare/v0.31.0...v0.32.0
-[0.31.0]: https://github.com/polewskm/project-template/compare/v0.30.0...v0.31.0
-[0.30.0]: https://github.com/polewskm/project-template/compare/v0.29.0...v0.30.0
-[0.29.0]: https://github.com/polewskm/project-template/compare/v0.28.0...v0.29.0
-[0.28.0]: https://github.com/polewskm/project-template/compare/v0.27.1...v0.28.0
-[0.27.1]: https://github.com/polewskm/project-template/compare/v0.27.0...v0.27.1
-[0.27.0]: https://github.com/polewskm/project-template/compare/v0.26.0...v0.27.0
-[0.26.0]: https://github.com/polewskm/project-template/compare/v0.25.4...v0.26.0
-[0.25.4]: https://github.com/polewskm/project-template/compare/v0.25.3...v0.25.4
-[0.25.3]: https://github.com/polewskm/project-template/compare/v0.25.2...v0.25.3
-[0.25.2]: https://github.com/polewskm/project-template/compare/v0.25.1...v0.25.2
-[0.25.1]: https://github.com/polewskm/project-template/compare/v0.25.0...v0.25.1
-[0.25.0]: https://github.com/polewskm/project-template/compare/v0.24.4...v0.25.0
-[0.24.4]: https://github.com/polewskm/project-template/compare/v0.24.3...v0.24.4
-[0.24.3]: https://github.com/polewskm/project-template/compare/v0.24.2...v0.24.3
-[0.24.2]: https://github.com/polewskm/project-template/compare/v0.24.1...v0.24.2
-[0.24.1]: https://github.com/polewskm/project-template/compare/v0.24.0...v0.24.1
-[0.24.0]: https://github.com/polewskm/project-template/compare/v0.23.2...v0.24.0
-[0.23.2]: https://github.com/polewskm/project-template/compare/v0.23.1...v0.23.2
-[0.23.1]: https://github.com/polewskm/project-template/compare/v0.23.0...v0.23.1
-[0.23.0]: https://github.com/polewskm/project-template/compare/v0.22.1...v0.23.0
-[0.22.1]: https://github.com/polewskm/project-template/compare/v0.22.0...v0.22.1
-[0.22.0]: https://github.com/polewskm/project-template/compare/v0.21.0...v0.22.0
-[0.21.0]: https://github.com/polewskm/project-template/compare/v0.20.0...v0.21.0
-[0.20.0]: https://github.com/polewskm/project-template/compare/v0.19.0...v0.20.0
-[0.19.0]: https://github.com/polewskm/project-template/compare/v0.18.3...v0.19.0
-[0.18.3]: https://github.com/polewskm/project-template/compare/v0.18.2...v0.18.3
-[0.18.2]: https://github.com/polewskm/project-template/compare/v0.18.1...v0.18.2
-[0.18.1]: https://github.com/polewskm/project-template/compare/v0.18.0...v0.18.1
-[0.18.0]: https://github.com/polewskm/project-template/compare/v0.17.0...v0.18.0
-[0.17.0]: https://github.com/polewskm/project-template/compare/v0.16.0...v0.17.0
-[0.16.0]: https://github.com/polewskm/project-template/compare/v0.15.0...v0.16.0
-[0.15.0]: https://github.com/polewskm/project-template/compare/v0.14.1...v0.15.0
-[0.14.1]: https://github.com/polewskm/project-template/compare/v0.14.0...v0.14.1
-[0.14.0]: https://github.com/polewskm/project-template/compare/v0.13.0...v0.14.0
-[0.13.0]: https://github.com/polewskm/project-template/compare/v0.12.0...v0.13.0
-[0.12.0]: https://github.com/polewskm/project-template/compare/v0.11.0...v0.12.0
-[0.11.0]: https://github.com/polewskm/project-template/compare/v0.10.0...v0.11.0
-[0.10.0]: https://github.com/polewskm/project-template/compare/v0.9.0...v0.10.0
-[0.9.0]: https://github.com/polewskm/project-template/compare/v0.8.0...v0.9.0
-[0.8.0]: https://github.com/polewskm/project-template/compare/v0.7.0...v0.8.0
-[0.7.0]: https://github.com/polewskm/project-template/compare/v0.6.0...v0.7.0
-[0.6.0]: https://github.com/polewskm/project-template/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/polewskm/project-template/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/polewskm/project-template/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/polewskm/project-template/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/polewskm/project-template/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/polewskm/project-template/releases/tag/v0.1.0
+[0.40.2]: https://github.com/NCodeGroup/project-template/compare/v0.40.1...v0.40.2
+[0.40.1]: https://github.com/NCodeGroup/project-template/compare/v0.40.0...v0.40.1
+[0.40.0]: https://github.com/NCodeGroup/project-template/compare/v0.39.0...v0.40.0
+[0.39.0]: https://github.com/NCodeGroup/project-template/compare/v0.38.0...v0.39.0
+[0.38.0]: https://github.com/NCodeGroup/project-template/compare/v0.37.1...v0.38.0
+[0.37.1]: https://github.com/NCodeGroup/project-template/compare/v0.37.0...v0.37.1
+[0.37.0]: https://github.com/NCodeGroup/project-template/compare/v0.36.2...v0.37.0
+[0.36.2]: https://github.com/NCodeGroup/project-template/compare/v0.36.1...v0.36.2
+[0.36.1]: https://github.com/NCodeGroup/project-template/compare/v0.36.0...v0.36.1
+[0.36.0]: https://github.com/NCodeGroup/project-template/compare/v0.35.2...v0.36.0
+[0.35.2]: https://github.com/NCodeGroup/project-template/compare/v0.35.1...v0.35.2
+[0.35.1]: https://github.com/NCodeGroup/project-template/compare/v0.35.0...v0.35.1
+[0.35.0]: https://github.com/NCodeGroup/project-template/compare/v0.34.0...v0.35.0
+[0.34.0]: https://github.com/NCodeGroup/project-template/compare/v0.33.0...v0.34.0
+[0.33.0]: https://github.com/NCodeGroup/project-template/compare/v0.32.0...v0.33.0
+[0.32.0]: https://github.com/NCodeGroup/project-template/compare/v0.31.0...v0.32.0
+[0.31.0]: https://github.com/NCodeGroup/project-template/compare/v0.30.0...v0.31.0
+[0.30.0]: https://github.com/NCodeGroup/project-template/compare/v0.29.0...v0.30.0
+[0.29.0]: https://github.com/NCodeGroup/project-template/compare/v0.28.0...v0.29.0
+[0.28.0]: https://github.com/NCodeGroup/project-template/compare/v0.27.1...v0.28.0
+[0.27.1]: https://github.com/NCodeGroup/project-template/compare/v0.27.0...v0.27.1
+[0.27.0]: https://github.com/NCodeGroup/project-template/compare/v0.26.0...v0.27.0
+[0.26.0]: https://github.com/NCodeGroup/project-template/compare/v0.25.4...v0.26.0
+[0.25.4]: https://github.com/NCodeGroup/project-template/compare/v0.25.3...v0.25.4
+[0.25.3]: https://github.com/NCodeGroup/project-template/compare/v0.25.2...v0.25.3
+[0.25.2]: https://github.com/NCodeGroup/project-template/compare/v0.25.1...v0.25.2
+[0.25.1]: https://github.com/NCodeGroup/project-template/compare/v0.25.0...v0.25.1
+[0.25.0]: https://github.com/NCodeGroup/project-template/compare/v0.24.4...v0.25.0
+[0.24.4]: https://github.com/NCodeGroup/project-template/compare/v0.24.3...v0.24.4
+[0.24.3]: https://github.com/NCodeGroup/project-template/compare/v0.24.2...v0.24.3
+[0.24.2]: https://github.com/NCodeGroup/project-template/compare/v0.24.1...v0.24.2
+[0.24.1]: https://github.com/NCodeGroup/project-template/compare/v0.24.0...v0.24.1
+[0.24.0]: https://github.com/NCodeGroup/project-template/compare/v0.23.2...v0.24.0
+[0.23.2]: https://github.com/NCodeGroup/project-template/compare/v0.23.1...v0.23.2
+[0.23.1]: https://github.com/NCodeGroup/project-template/compare/v0.23.0...v0.23.1
+[0.23.0]: https://github.com/NCodeGroup/project-template/compare/v0.22.1...v0.23.0
+[0.22.1]: https://github.com/NCodeGroup/project-template/compare/v0.22.0...v0.22.1
+[0.22.0]: https://github.com/NCodeGroup/project-template/compare/v0.21.0...v0.22.0
+[0.21.0]: https://github.com/NCodeGroup/project-template/compare/v0.20.0...v0.21.0
+[0.20.0]: https://github.com/NCodeGroup/project-template/compare/v0.19.0...v0.20.0
+[0.19.0]: https://github.com/NCodeGroup/project-template/compare/v0.18.3...v0.19.0
+[0.18.3]: https://github.com/NCodeGroup/project-template/compare/v0.18.2...v0.18.3
+[0.18.2]: https://github.com/NCodeGroup/project-template/compare/v0.18.1...v0.18.2
+[0.18.1]: https://github.com/NCodeGroup/project-template/compare/v0.18.0...v0.18.1
+[0.18.0]: https://github.com/NCodeGroup/project-template/compare/v0.17.0...v0.18.0
+[0.17.0]: https://github.com/NCodeGroup/project-template/compare/v0.16.0...v0.17.0
+[0.16.0]: https://github.com/NCodeGroup/project-template/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/NCodeGroup/project-template/compare/v0.14.1...v0.15.0
+[0.14.1]: https://github.com/NCodeGroup/project-template/compare/v0.14.0...v0.14.1
+[0.14.0]: https://github.com/NCodeGroup/project-template/compare/v0.13.0...v0.14.0
+[0.13.0]: https://github.com/NCodeGroup/project-template/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/NCodeGroup/project-template/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/NCodeGroup/project-template/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/NCodeGroup/project-template/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/NCodeGroup/project-template/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/NCodeGroup/project-template/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/NCodeGroup/project-template/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/NCodeGroup/project-template/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/NCodeGroup/project-template/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/NCodeGroup/project-template/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/NCodeGroup/project-template/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/NCodeGroup/project-template/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/NCodeGroup/project-template/releases/tag/v0.1.0
