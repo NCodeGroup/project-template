@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- The pre-push rule in `project-template.instructions.md` and the `/run-issues` branch check for Copilot now say that `git ls-remote --exit-code` exits 2 only when the branch is absent, and that any other exit stops, because `origin` could not say. `Update-Project.ps1` notes that its changelog backfill is a deliberate copy of `Get-PlanState.ps1`'s.
+
 ## [0.41.1] - 2026-10-30
 
 ### Fixed
