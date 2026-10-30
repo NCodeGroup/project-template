@@ -16,6 +16,7 @@ _skip_if_exists:
   - AGENTS.md
   - README.md
   - Directory.Build.props
+  - .github/workflows/code-review.yml
 _merged_files:
   - .gitignore
   - .gitattributes
@@ -30,8 +31,9 @@ _merged_files:
   - global.json
 
 # The workflow files of tools the project doesn't use; an empty pattern excludes nothing.
-# Each pattern reads workflow_tools through a default, because an update renders the old version's files with these patterns before the project has that answer.
+# Each pattern reads its answer through a default or an `is defined` test, because an update renders the old version's files with these patterns before the project has that answer.
 _exclude:
+  - "{% if (code_review is defined and not code_review) or (git_host is defined and git_host != 'github') %}.github/workflows/code-review.yml{% endif %}"
   - "{% if 'claude' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}CLAUDE.md{% endif %}"
   - "{% if 'claude' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.claude{% endif %}"
   - "{% if 'copilot' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/agents/copilot-*.agent.md{% endif %}"
@@ -82,6 +84,12 @@ workflow_tools:
     Hybrid agents on the shack PC's local model (personal; leave out of shared repositories): local
   default: [claude, copilot, local]
   validator: "{% if not workflow_tools %}Choose at least one tool{% endif %}"
+
+code_review:
+  type: bool
+  help: "Review pull requests with the NCode Review bot (NCodeGroup/code-review)? Adds a workflow that needs the organization's secrets and a one-time tools/Enable-CodeReview.ps1 run"
+  default: false
+  when: "{{ git_host == 'github' }}"
 
 author_name:
   type: str
@@ -148,3 +156,7 @@ project_owned_files:
 
 _message_after_copy: |
   Created {{ project_name }}. Next: open it through the shack PC's VS Code tunnel, review AGENTS.md, and plan the first change with /plan-feature in the Claude Code panel.
+  {%- if code_review is defined and code_review %}
+
+  Code review: .github/workflows/code-review.yml reviews each pull request with the NCode Review bot once the repository has the organization's secrets. From a clone of NCodeGroup/code-review, run tools/Enable-CodeReview.ps1 -Repo <the repository's name>. Until then the review job fails.
+  {%- endif -%}

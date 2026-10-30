@@ -86,7 +86,9 @@ $cases = @(
     @{ Name = 'node'; Stack = 'node'; Host = 'github' }
     @{ Name = 'powershell'; Stack = 'powershell'; Host = 'github' }
     @{ Name = 'other'; Stack = 'other'; Host = 'github' }
+    @{ Name = 'other-code-review'; Stack = 'other'; Host = 'github'; Data = @{ code_review = 'true' } }
     @{ Name = 'dotnet-gitlab'; Stack = 'dotnet'; Host = 'gitlab' }
+    @{ Name = 'other-gitlab-code-review'; Stack = 'other'; Host = 'gitlab'; Data = @{ code_review = 'true' } }
     @{ Name = 'python-gitlab'; Stack = 'python'; Host = 'gitlab' }
     @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
     @{ Name = 'node-pnpm'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'pnpm' } }
@@ -122,6 +124,20 @@ foreach ($case in $cases) {
     $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
     $wrong = @($hostOnly[$case.Host] | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($hostOnly[$otherHost] | Where-Object { Test-Path (Join-Path $dest $_) })
     Check "${name}: $($case.Host) files only" (-not $wrong) ($wrong -join ', ')
+    # The code review caller: only for a GitHub project that asked for it, and never a GitLab one, which isn't asked.
+    $reviewCaller = Join-Path $dest '.github\workflows\code-review.yml'
+    $wantsReview = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
+    Check "${name}: the code review caller is there only when asked for" ((Test-Path -LiteralPath $reviewCaller) -eq $wantsReview) "exists=$(Test-Path -LiteralPath $reviewCaller) wanted=$wantsReview"
+    if ($wantsReview) {
+        $caller = Get-Content -LiteralPath $reviewCaller -Raw
+        $uses = [regex]::Matches($caller, '(?m)^\s+uses: NCodeGroup/code-review@(\S+)\s*$')
+        Check "${name}: the code review caller pins an exact release tag" ($uses.Count -eq 1 -and $uses[0].Groups[1].Value -match '^v\d+\.\d+\.\d+$') ($uses | ForEach-Object Value)
+        Check "${name}: the code review caller runs from the default branch, in its environment, with no permissions by default" ($caller.Contains('pull_request_target:') -and $caller.Contains('environment: code-review') -and $caller -match '(?m)^permissions: \{\}?$' -and -not $caller.Contains('pull_request:')) $caller
+        $checkouts = [regex]::Matches($caller, '(?m)^\s+uses: actions/checkout@').Count
+        Check "${name}: the code review caller's checkouts set persist-credentials false" ($checkouts -eq 2 -and [regex]::Matches($caller, '(?m)^\s+persist-credentials: false?$').Count -eq 2) $caller
+        $answers = Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw
+        Check "${name}: the answer is recorded" ($answers -match '(?m)^code_review: true?$') $answers
+    }
     if ($case.Host -eq 'github') {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD') -and $ci.Contains('merge_group:') -and $ci.Contains('${{ github.event.pull_request.base.sha'))
