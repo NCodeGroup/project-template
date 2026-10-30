@@ -124,9 +124,9 @@ An instruction override is the project's word against the template's, so say it 
 | `project_description` | Blank | The line under each heading |
 | `stack` | .NET | The .NET layer, default commands, CI setup steps, `.gitignore` section, recommended extension |
 | `git_host` | GitHub | The CI file (`.github/workflows/ci.yml` or `.gitlab-ci.yml`) and, on GitHub, `.github/dependabot.yml`; the pull-request command in the template's rules; with `-CreateRemote`, where the repository is created: `gh` on GitHub, `glab` on GitLab |
-| `workflow_tools` | Claude Code, Copilot and the local model | Which workflow files the project gets: `CLAUDE.md` and `.claude/` with Claude Code; the Copilot agents, prompt files, skills and `plan-executor.agent.md` with Copilot; the Hybrid agents, `execute-step-local.prompt.md` and the Ollama settings with the local model. `-Data` takes a list: `workflow_tools = 'claude', 'copilot'` |
+| `workflow_tools` | Claude Code and Copilot | Which workflow files the project gets: `CLAUDE.md` and `.claude/` with Claude Code; the Copilot agents, prompt files, skills and `plan-executor.agent.md` with Copilot; the Hybrid agents, `execute-step-local.prompt.md` and the Ollama settings with the local model. `-Data` takes a list; add the local model with `workflow_tools = 'claude', 'copilot', 'local'` |
 | `code_review` (GitHub only) | Off | `.github/workflows/code-review.yml`, which reviews pull requests with the NCode Review bot, and a note after the copy to run `tools/Enable-CodeReview.ps1` from a clone of `NCodeGroup/code-review`, which creates the `code-review` environment and gives the repository the organization's secrets. Not asked on GitLab |
-| `author_name` (.NET only) | Marcin Polewski | `Authors`, `Company` and `Copyright` in `build/ProjectTemplate.props` |
+| `author_name` (.NET only) | NCode Group | `Authors`, `Company` and `Copyright` in `build/ProjectTemplate.props` |
 | `nuget_package` (.NET only) | Off | The package settings in `build/ProjectTemplate.props` |
 | `package_license` | None; required with `nuget_package` | The SPDX license expression |
 | `package_icon` | Blank | A PNG at the repository root, packed as the icon |
@@ -158,7 +158,7 @@ Needs Git with `user.name` and `user.email` set, Copier (`uv tool install copier
 | Parameter | Default | Purpose |
 |---|---|---|
 | `-Path` | — | New, empty project folder; its name becomes the repository name |
-| `-Template` | `https://github.com/polewskm/project-template.git` | Template source; `.` uses this clone |
+| `-Template` | `https://github.com/NCodeGroup/project-template.git` | Template source; `.` uses this clone |
 | `-Ref` | The newest tag | Template version to use |
 | `-CreateRemote`, `-Owner` | Off, your account | Create the repository on GitHub or GitLab, whichever the `git_host` answer names, and push `main` |
 | `-NoBaseline` | Off | Skip protecting the default branch after `-CreateRemote` creates a GitHub repository |
@@ -180,7 +180,7 @@ To bring an existing repository under the template, use [Adopt-Project.ps1](#ado
 
 ```powershell
 .\Adopt-Project.ps1 -Path C:\src\buffers                                                    # works out the answers, adopts, verifies, commits
-.\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot' }    # for a public or shared repository with no Copilot or Hybrid agent files: no Hybrid agents, which use the shack PC's private model
+.\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot', 'local' }    # adds the Hybrid agents, which use the shack PC's private model; without it a repository with no Copilot or Hybrid agent files gets Claude Code and Copilot only
 .\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ project_owned_files = '.github/workflows/ci.yml' }  # keeps the repository's own CI workflow as it is, and later updates show the template's changes to it
 .\Adopt-Project.ps1 -Path C:\src\buffers -NoCommit                                          # stages the result for review instead
 ```
@@ -188,7 +188,7 @@ To bring an existing repository under the template, use [Adopt-Project.ps1](#ado
 | Parameter | Default | Purpose |
 |---|---|---|
 | `-Path` | — | The repository's root folder |
-| `-Template` | `https://github.com/polewskm/project-template.git` | Template source; `.` uses this clone |
+| `-Template` | `https://github.com/NCodeGroup/project-template.git` | Template source; `.` uses this clone |
 | `-Ref` | The newest tag | Template version to use |
 | `-Data` | None | Answers that win over everything the script works out: `-Data @{ stack = 'node' }` |
 | `-NoVerify` | Off | Skip the build and test commands before the commit |
@@ -216,7 +216,7 @@ The script works out these answers:
 | `build_command`, `test_command` (.NET) | `dotnet build <solution>` and `dotnet test <solution>`, when the only solution isn't at the root |
 | `package_manager` (Node.js) | The one the `packageManager` field in `package.json` names, else the one whose lockfile is at the root (`pnpm-lock.yaml`, `yarn.lock`, `bun.lock` or `bun.lockb`), else npm |
 | `build_command`, `test_command` (Node.js) | `<package_manager> run build` and `<package_manager> run test`, each only when `package.json` has that script and the `test` script isn't the failing placeholder `npm init` writes; else blank |
-| `workflow_tools` | `claude`, plus `copilot` if `.github/agents/copilot-*.agent.md`, `.github/skills/` or `.github/prompts/` exists, plus `local` if `.github/agents/hybrid-*.agent.md` exists; with none of these, the template's default, and the script prints a line saying it included `local` and how to leave it out |
+| `workflow_tools` | `claude`, plus `copilot` if `.github/agents/copilot-*.agent.md`, `.github/skills/` or `.github/prompts/` exists, plus `local` if `.github/agents/hybrid-*.agent.md` exists; with none of these, the template's default (`claude` and `copilot`), and the script prints a line saying so and how to add `local` |
 
 Everything else takes the template's default. The script prints the answers, runs `copier copy --overwrite`, and enables the template's Git hooks (`git config core.hooksPath .githooks`) unless the repository already sets its own, has hooks in `.git/hooks`, which a hooks path would turn off, or uses pre-commit, which won't install while a hooks path is set ([Commit Attribution](#commit-attribution)).
 
@@ -348,6 +348,10 @@ Version tags without a section in CHANGELOG.md: v0.1.0..v0.3.0. To give the chan
 
 To plan an update instead of running it, run `/plan-template-update` in the project, or name a version: `/plan-template-update v0.14.0`. It reads `.copier-answers.yml` and the release notes since the project's version, runs `Update-Project.ps1 -NoCommit` on a clone of the project in a temporary folder, and plans from what that trial changed. The plan's first step runs the update with `-Ref` pinned to the target and `-NoCommit`, so it is committed as a plan step, and a result that differs from the trial escalates. The next steps run the project's checks and fix the project's own files that still describe the old template, and the last runs the project's tests. Every check is judged by its exit code. The planning session files an issue here for each gap in the template that the trial shows. In Claude Code the plan gets its own worktree, unless the project's `plan-executor` subagent predates v0.11.0 and can't run PowerShell there; then it runs on a `build/project-template-<version>` branch in the current checkout. A project on v0.13.0 or earlier doesn't have the command yet: compose it from this repository's clone with `.\workflow\New-PlanPrompt.ps1 plan-template-update`, or install the commands for your user with `.\workflow\Install-HybridWorkflow.ps1 -User`.
 
+### The Template's Address
+
+A project records where its template came from in `.copier-answers.yml` (`_src_path`). The template moved from `polewskm/project-template` to `NCodeGroup/project-template`. GitHub redirects the old address, but only while nobody creates a repository at it, so the update script moves a project over: when `_src_path` is `https://github.com/polewskm/project-template.git`, it changes that one line to `https://github.com/NCodeGroup/project-template.git`, clones from there, and commits the change with the update, even when the project is already at the newest version. A project on an older script gets this with the update that hands over to the newer one ([Update a Project](#update-a-project)).
+
 ### Resolve a Conflict
 
 When the template and the project changed the same lines of a merged file, the script commits nothing, exits 1, and says how to finish:
@@ -464,7 +468,7 @@ Once, from this folder:
 git add -A
 git commit -m "Create the project template"
 git tag v0.1.0
-gh repo create polewskm/project-template --public --source . --remote origin --push
+gh repo create NCodeGroup/project-template --public --source . --remote origin --push
 git push origin v0.1.0
 ```
 

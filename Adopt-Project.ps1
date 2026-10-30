@@ -25,7 +25,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Path,
-    [string]$Template = 'https://github.com/polewskm/project-template.git',
+    [string]$Template = 'https://github.com/NCodeGroup/project-template.git',
     [string]$Ref,
     [hashtable]$Data = @{},
     [switch]$NoCommit,
@@ -88,7 +88,7 @@ try {
     foreach ($k in $answers.Keys) {
         if ($null -ne $answers[$k]) { "  ${k}: $(ConvertTo-CopierValue $answers[$k])" }
     }
-    if (-not $answers.Contains('workflow_tools')) { "  workflow_tools: [claude, copilot, local], the template's default: the repository has no Copilot or Hybrid agent files. The Hybrid agents use the shack PC's private model; for a public or shared repository, leave them out with -Data @{ workflow_tools = 'claude', 'copilot' }" }
+    if (-not $answers.Contains('workflow_tools')) { "  workflow_tools: [claude, copilot], the template's default: the repository has no Copilot or Hybrid agent files. To add the Hybrid agents, which use the shack PC's private model, pass -Data @{ workflow_tools = 'claude', 'copilot', 'local' }" }
 
     # Copier overwrites the merged files, so keep the repository's versions to merge back afterwards.
     $originals = @{}

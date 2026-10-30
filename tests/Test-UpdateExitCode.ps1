@@ -87,6 +87,40 @@ try {
     try { & (Join-Path $project '.template\Update-Project.ps1') 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
     $output = $lines -join "`n"
     Check 'update: a run with nothing to update exits 0' (($exitCode -eq 0) -and $output.Contains('Already up to date: template v0.2.0.')) $output.Trim()
+
+    # A project whose answers still name polewskm/project-template moves to NCodeGroup/project-template with its next update,
+    # even at the newest version. Git serves the new address from the local snapshot, as a host would.
+    $oldSource = 'https://github.com/polewskm/project-template.git'
+    $newSource = 'https://github.com/NCodeGroup/project-template.git'
+    $answersFile = Join-Path $project '.copier-answers.yml'
+    $answers = [IO.File]::ReadAllText($answersFile)
+    [IO.File]::WriteAllText($answersFile, [regex]::Replace($answers, '(?m)^_src_path:[^\r\n]*', "_src_path: $oldSource"))
+    Invoke-Git commit -q -am 'Name the old template address'
+    $before = git rev-parse HEAD
+    $answers = [IO.File]::ReadAllText($answersFile)
+    $snapshot = $tpl -replace '\\', '/'
+    $savedConfig = @{ Count = $env:GIT_CONFIG_COUNT; Key0 = $env:GIT_CONFIG_KEY_0; Value0 = $env:GIT_CONFIG_VALUE_0; Key1 = $env:GIT_CONFIG_KEY_1; Value1 = $env:GIT_CONFIG_VALUE_1 }
+    $env:GIT_CONFIG_COUNT = '2'
+    $env:GIT_CONFIG_KEY_0 = "url.$snapshot.insteadOf"
+    $env:GIT_CONFIG_VALUE_0 = $newSource
+    $env:GIT_CONFIG_KEY_1 = "url.$snapshot.insteadOf"
+    $env:GIT_CONFIG_VALUE_1 = $oldSource
+    try {
+        $lines = [Collections.Generic.List[string]]::new()
+        try { & (Join-Path $project '.template\Update-Project.ps1') 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
+        $output = $lines -join "`n"
+    }
+    finally {
+        $env:GIT_CONFIG_COUNT = $savedConfig.Count
+        $env:GIT_CONFIG_KEY_0 = $savedConfig.Key0; $env:GIT_CONFIG_VALUE_0 = $savedConfig.Value0
+        $env:GIT_CONFIG_KEY_1 = $savedConfig.Key1; $env:GIT_CONFIG_VALUE_1 = $savedConfig.Value1
+    }
+    $answersAfter = [IO.File]::ReadAllText($answersFile)
+    $changed = @(git diff --name-only $before HEAD)
+    Check 'update: a project that names polewskm/project-template moves to NCodeGroup/project-template' (($exitCode -eq 0) -and $output.Contains("The template moved to $newSource") -and ($answersAfter -match "(?m)^_src_path: $([regex]::Escape($newSource))\r?$") -and ((git rev-parse HEAD) -ne $before) -and ($changed.Count -eq 1) -and ($changed[0] -eq '.copier-answers.yml') -and -not (git status --porcelain)) "exit=$exitCode changed=$($changed -join ',') $output"
+    $otherAnswers = @($answersAfter -split '\r?\n' | Where-Object { $_ -notmatch '^_src_path:' }) -join "`n"
+    $otherAnswersBefore = @($answers -split '\r?\n' | Where-Object { $_ -notmatch '^_src_path:' }) -join "`n"
+    Check 'update: moving the template address changes no other answer' ($otherAnswers -eq $otherAnswersBefore)
 }
 finally { Pop-Location }
 ''
