@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.40.4] - 2026-10-30
+
+### Fixed
+
+- `/ship-plan` now files a plan's follow-ups also after its pull request merged without it. The state script that `/ship-plan`, `/continue-plan`, `/finish-plan` and `/run-issues` run prints a new `unfiled` line, the follow-ups in `PLAN.md` not yet filed, tracked or dropped, and names `ship-plan` instead of `finish-plan` for a landed plan while any is left, unless the Landing section says `follow-ups: none`; `/finish-plan` stops before it deletes `PLAN.md` while any is left. A pull request merged with no release left to tag, whose merge closed its issues, sent the plan straight to `/finish-plan`, which deleted `PLAN.md` with the follow-ups only in it. Projects get it with `.\.template\Update-Project.ps1`.
+
 ## [0.40.3] - 2026-10-30
 
 ### Fixed
@@ -521,7 +527,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.40.3...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.40.4...HEAD
+[0.40.4]: https://github.com/NCodeGroup/project-template/compare/v0.40.3...v0.40.4
 [0.40.3]: https://github.com/NCodeGroup/project-template/compare/v0.40.2...v0.40.3
 [0.40.2]: https://github.com/polewskm/project-template/compare/v0.40.1...v0.40.2
 [0.40.1]: https://github.com/polewskm/project-template/compare/v0.40.0...v0.40.1
