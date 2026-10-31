@@ -10,12 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- The `code-review.yml` a project gets pins `NCodeGroup/code-review` to the full commit SHA of v0.4.0, with the tag in a comment (it pinned v0.3.1), and adds `closed` to its `pull_request_target` types, as v0.4.0 asks of its callers: when a pull request closes, merged or not, the run records each posted finding's outcome (fixed, dismissed, acknowledged or ignored) with no model call, whoever closed it, and waits for a review in progress instead of cancelling it. `/review explain` and `/review teach` comments, new in v0.4.0, run in a concurrency group of their own, so they never cancel a review. The job keeps `issues: read`, which v0.4.0 also uses to mark a finding an open issue already tracks. This repository's own `code-review.yml` gets the same change. A project that already has the file keeps its own; update it the same way, adding `closed` only together with the v0.4.0 pin, since earlier releases would review a closed pull request ([#161](https://github.com/NCodeGroup/project-template/issues/161)).
 - No change for projects made from the template. A test suite that stops with an error prints the work folder it keeps, as a failing one does: every `tests/Test-*.ps1` suite with `-Work` has a `trap` line, which `tests/Test-InvokeAllTests.ps1` checks. New checks cover the `.sample` filter that decides whether a clone has hooks of its own (`Test-GitHooks.ps1`), a curly apostrophe in the command `Set-RepositoryBaseline.ps1 -RequireChecks auto -WhatIf` prints (`Test-RepositoryBaseline.ps1`), and, for `Get-TemplateUpdate.ps1`, a `gh` call that fails, a project ahead of the newest tag and a section that brings an issue body to exactly its 60,000-character limit (`Test-TemplateUpdate.ps1`) ([#158](https://github.com/NCodeGroup/project-template/issues/158), [#160](https://github.com/NCodeGroup/project-template/issues/160)).
 
 ### Fixed
 
 - `Update-Project.ps1`'s help says plainly when it says nothing about Git hooks: when `core.hooksPath` names a `.githooks` folder, or when `.pre-commit-config.yaml` runs `.githooks/commit-msg`. Its copy of `Get-GitHooksSetup` notes that it changes together with the one `Adopt-Project.ps1` uses ([#158](https://github.com/NCodeGroup/project-template/issues/158)).
+
+## [0.42.1] - 2026-10-31
+
+### Changed
+
+- The `code-review.yml` a project gets pins `NCodeGroup/code-review` to the full commit SHA of v0.4.0, with the tag in a comment (it pinned v0.3.1), and adds `closed` to its `pull_request_target` types, as v0.4.0 asks of its callers: when a pull request closes, merged or not, the run records each posted finding's outcome (fixed, dismissed, acknowledged or ignored) with no model call, whoever closed it, and waits for a review in progress instead of cancelling it. `/review explain` and `/review teach` comments, new in v0.4.0, run in a concurrency group of their own, so they never cancel a review. The job keeps `issues: read`, which v0.4.0 also uses to mark a finding an open issue already tracks. This repository's own `code-review.yml` gets the same change. A project that already has the file keeps its own; update it the same way, adding `closed` only together with the v0.4.0 pin, since earlier releases would review a closed pull request ([#161](https://github.com/NCodeGroup/project-template/issues/161)).
+
+### Fixed
+
+- `tools/Set-RepositoryBaseline.ps1 -RequireChecks auto` finds the latest merged pull request among all of a repository's closed pull requests. It read only the 100 updated last, so when 100 or more other closed pull requests had been updated more recently, such as by a comment or a label, it read an older merged pull request's checks, or found none and skipped the repository ([#154](https://github.com/NCodeGroup/project-template/issues/154)).
 
 ## [0.42.0] - 2026-10-31
 
@@ -35,7 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The changelog rules that the plans and `/ship-plan` follow say that a section has at most one of each heading: an entry goes under its group's heading when the section already has one, including when a merge combines two sides' changes to the changelog; it never goes under a second heading of the same name ([#132](https://github.com/NCodeGroup/project-template/issues/132)).
 - This repository's CI (`test-template.yml`) also runs for merge queue entries, and its commit attribution check reads a merge queue entry's base and head, so its required checks report there too.
-- `tools/Set-RepositoryBaseline.ps1` adds a code-scanning rule to the "Protect main" ruleset it creates when CodeQL's default setup is configured for the repository: a pull request whose CodeQL results add an alert at warning level or above, or a security alert of any severity, can't merge. Without CodeQL results every pull request would wait for them, so a repository without the default setup gets no rule, and the script says so. It switches a configured default setup to CodeQL's extended query suite, one that names no suite included, before it writes the ruleset, and reports the repository as failed, with nothing else changed, when the switch is refused, so the next run retries it.
+- `tools/Set-RepositoryBaseline.ps1` adds a code-scanning rule to the "Protect main" ruleset it creates when CodeQL's default setup is configured for the repository: a pull request whose CodeQL results add an alert at warning level or above, or a security alert of any severity, can't merge. Without CodeQL results every pull request would wait for them, so a repository without the default setup gets no rule, and the script says so. Before it writes the ruleset, it switches a configured default setup to CodeQL's extended query suite, also one that reports no suite; when GitHub refuses the switch, it reports the repository as failed and changes nothing else, so the next run retries it.
 - The "Protect main" ruleset that `tools/Set-RepositoryBaseline.ps1` creates lets nothing merge past feedback or a stale check: every conversation on a pull request must be resolved, and the required checks must pass on a branch that is up to date with the default branch.
 - The `code-review.yml` a project gets pins `NCodeGroup/code-review` to the full commit SHA of v0.3.1, with the tag in a comment (it pinned the tag v0.1.0), and no longer checks out the pull request's head: from v0.3.0 the engine fetches the exact commit itself, so CodeQL no longer reports the workflow (two alerts, "checkout of untrusted code in a privileged context" and its TOCTOU variant, on every repository that adopted the bot). Rule checks run on by default, and there is an infrastructure reviewer for OpenTofu and Terraform changes. A SHA is the one pin CodeQL's extended suite accepts, and Dependabot updates the SHA and the comment together. A project that already has the file keeps its own; update it the same way.
 - `/run-issues` no longer answers a top-level comment that is only a slash command, such as `/review` asking a review bot for another review: one command line, with nothing but white space before or after it, that matches `^\s*/[\w-]+([ \t][^\r\n]*)?\s*\z` ([#136](https://github.com/NCodeGroup/project-template/issues/136)).
@@ -602,7 +611,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
 [unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.43.0...HEAD
-[0.43.0]: https://github.com/NCodeGroup/project-template/compare/v0.42.0...v0.43.0
+[0.43.0]: https://github.com/NCodeGroup/project-template/compare/v0.42.1...v0.43.0
+[0.42.1]: https://github.com/NCodeGroup/project-template/compare/v0.42.0...v0.42.1
 [0.42.0]: https://github.com/NCodeGroup/project-template/compare/v0.41.1...v0.42.0
 [0.41.1]: https://github.com/NCodeGroup/project-template/compare/v0.41.0...v0.41.1
 [0.41.0]: https://github.com/NCodeGroup/project-template/compare/v0.40.4...v0.41.0

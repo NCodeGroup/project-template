@@ -9,12 +9,13 @@
     no bypass, and delete-branch-on-merge; that -RequireChecks adds required status checks; that a repository whose
     default branch already requires pull requests, or already has this ruleset, is left alone, and that -RequireChecks
     updates the ruleset the script made; that -RequireChecks auto requires the GitHub Actions checks that passed on the
-    latest merged pull request, reading every page of its check runs and workflow runs, Commit attribution among them,
-    leaves out the review bot's Code review and its job, CodeQL and its Analyze jobs, push-only jobs, jobs no workflow
-    run accounts for, other apps' checks and skipped, neutral, failed or unfinished ones, lists them with -WhatIf with a
-    command that names them, quoted so it parses, gives each repository its own checks with -All, and skips a repository
-    with no merged pull request or no check to require; that -All skips archived repositories and forks; and that bad
-    parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
+    latest merged pull request, found on any page of closed pull requests, reading every page of its check runs and
+    workflow runs, Commit attribution among them, leaves out the review bot's Code review and its job, CodeQL and its
+    Analyze jobs, push-only jobs, jobs no workflow run accounts for, other apps' checks and skipped, neutral, failed or
+    unfinished ones, lists them with -WhatIf with a command that names them, quoted so it parses, gives each repository
+    its own checks with -All, and skips a repository with no merged pull request or no check to require; that -All skips
+    archived repositories and forks; and that bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any
+    failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-baseline-test-<process ID> in the
@@ -52,10 +53,13 @@ $method = 'GET'
 $rest = @($args[1..($args.Count - 1)] | Where-Object { $_ -notin '--include', '--paginate', '--slurp' })
 $include = $args -contains '--include'
 # Lists come in pages of 5 here, so a few check runs already span pages. --paginate --slurp answers every page, as an
-# array; without it only the first page comes back.
+# array; without it only the first page comes back. Without $Key a page is a bare array, as GitHub pages pull requests.
 $paginate = $args -contains '--paginate' -and $args -contains '--slurp'
 function Out-Pages([string]$Key, $Items) {
-    $pages = @(for ($i = 0; $i -lt [Math]::Max(1, $Items.Count); $i += 5) { @{ total_count = $Items.Count; $Key = @($Items | Select-Object -Skip $i -First 5) } })
+    $pages = @(for ($i = 0; $i -lt [Math]::Max(1, $Items.Count); $i += 5) {
+        $page = @($Items | Select-Object -Skip $i -First 5)
+        if ($Key) { @{ total_count = $Items.Count; $Key = $page } } else { , $page }
+    })
     if ($paginate) { ConvertTo-Json -InputObject $pages -Depth 8 } else { ConvertTo-Json -InputObject $pages[0] -Depth 8 }
 }
 if ($rest[0] -eq '-X') { $method = $rest[1]; $rest = @($rest[2..($rest.Count - 1)]) }
@@ -91,7 +95,7 @@ if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets/(\d+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].full["$($Matches[2])"] -Depth 10; exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets$') { ConvertTo-Json -InputObject @($data.repos[$Matches[1]].rulesets) -Depth 5; exit 0 }
 # Pull requests, and the check runs and workflow runs of a commit, for -RequireChecks auto.
-if ($path -match '^repos/[^/]+/([^/]+)/pulls\?') { ConvertTo-Json -InputObject @($data.repos[$Matches[1]].pulls | Where-Object { $_ }) -Depth 5; exit 0 }
+if ($path -match '^repos/[^/]+/([^/]+)/pulls\?') { Out-Pages '' @($data.repos[$Matches[1]].pulls | Where-Object { $_ }); exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)/commits/([^/]+)/check-runs\?') {
     Out-Pages 'check_runs' @($data.repos[$Matches[1]].checkRuns[$Matches[2]] | Where-Object { $_ }); exit 0
 }
@@ -182,6 +186,8 @@ $repos = @{
     curlyName = New-Repo -Pulls @((New-Pull 6 'sha6' '2026-10-03T10:00:00Z')) -CheckRuns @{ sha6 = @((New-CheckRun 1 "it$([char]0x2019)s curly"), (New-CheckRun 2 'plain')) } -WorkflowRuns @{ sha6 = $prWorkflowRuns }
     # A second repository with checks of its own, for -All -RequireChecks auto.
     autoOther = New-Repo -Pulls @((New-Pull 3 'sha3' '2026-10-04T10:00:00Z')) -CheckRuns @{ sha3 = @((New-CheckRun 1 'other-build')) } -WorkflowRuns @{ sha3 = $prWorkflowRuns }
+    # Seven closed pull requests, five to a page: the latest merged one (#30) is on the second page.
+    autoPaged = New-Repo -Pulls @((New-Pull 21 'sha21' '2026-10-01T10:00:00Z'), (New-Pull 22 'sha22' '2026-10-02T10:00:00Z'), (New-Pull 23 'sha23' ''), (New-Pull 24 'sha24' '2026-10-03T10:00:00Z'), (New-Pull 25 'sha25' '2026-10-04T10:00:00Z'), (New-Pull 26 'sha26' ''), (New-Pull 30 'sha30' '2026-10-25T10:00:00Z')) -CheckRuns @{ sha25 = @((New-CheckRun 1 'first-page-job')); sha30 = @((New-CheckRun 1 'paged-build')) } -WorkflowRuns @{ sha25 = $prWorkflowRuns; sha30 = $prWorkflowRuns }
 }
 Write-Text (Join-Path $bin 'repos.json') (ConvertTo-Json -Depth 12 -InputObject @{
     repos = $repos
@@ -308,6 +314,8 @@ try {
         Check "auto: leaves out $leftOut" ($r.Output -match ('left out: .*' + [regex]::Escape($leftOut))) $r.Output
     }
     Check 'auto: reads the latest merged pull request, not an older one' ($r.Output -notmatch 'old-job') $r.Output
+    $r = Invoke-Baseline @('-Repo', 'autoPaged', '-RequireChecks', 'auto', '-WhatIf')
+    Check 'auto: reads every page of closed pull requests to find the latest merged one' ($r.Output -match [regex]::Escape('autoPaged: pull request #30 passed: paged-build;')) $r.Output
 
     # The printed command has to run as it is: parse it, and read back the script path and the names it passes.
     $r = Invoke-Baseline @('-Repo', 'oddNames', '-RequireChecks', 'auto', '-WhatIf')

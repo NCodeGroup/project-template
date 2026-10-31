@@ -68,6 +68,14 @@ if ($All -and $RequireChecks.Count -and -not $autoChecks) { throw '-RequireCheck
 $rulesetName = 'Protect main'
 # GitHub Actions' app id: required checks are matched to the app that reports them.
 $actionsAppId = 15368
+# -RequireChecks auto never requires these checks, whatever app reported them or event ran them: each name pattern
+# (matched with -like) maps to the reason it lists. CodeQL's Analyze jobs go by name too: a repository's own CodeQL
+# workflow runs them on pull_request.
+$excludedChecks = [ordered]@{
+    'Code review' = "the review bot's advice"
+    'CodeQL' = 'the code-scanning rule covers it'
+    'Analyze (*)' = 'the code-scanning rule covers it'
+}
 
 function Invoke-GhJson([string[]]$GhArgs) {
     $out = & gh @GhArgs
@@ -76,9 +84,10 @@ function Invoke-GhJson([string[]]$GhArgs) {
 }
 
 # Reads every page of a list the API pages, and returns the items under $Key from all of them: one page holds at most
-# 100, and a list cut short would quietly leave checks out.
-function Get-GhPagedItems([string]$Path, [string]$Key) {
-    @(Invoke-GhJson @('api', '--paginate', '--slurp', $Path) | ForEach-Object { $_.$Key } | Where-Object { $_ })
+# 100, and a list cut short would quietly leave checks out. Without $Key, each page is the list itself, as the pull
+# requests list is.
+function Get-GhPagedItems([string]$Path, [string]$Key = '') {
+    @(Invoke-GhJson @('api', '--paginate', '--slurp', $Path) | ForEach-Object { if ($Key) { $_.$Key } else { $_ } } | Where-Object { $_ })
 }
 
 # Calls the host's API and returns the HTTP status and the body. The status comes from the response's own status line
@@ -105,9 +114,10 @@ function Get-Targets {
 # its number, the checks a ruleset can require, and the others with the reason each is left out; $null when no pull
 # request was merged into it. A required check is matched to GitHub Actions, so only the Actions jobs a pull_request
 # event ran qualify: pull_request_target (the review bot's job), CodeQL's dynamic Analyze jobs and push-only jobs don't
-# run on every pull request. It reads every page of the check runs and workflow runs.
+# run on every pull request. It reads every page of the closed pull requests, since the latest merged one can be past
+# the 100 updated last, and of the check runs and workflow runs.
 function Get-PassingChecks([string]$Name, [string]$Branch) {
-    $pulls = @(Invoke-GhJson @('api', "repos/$Owner/$Name/pulls?state=closed&base=$Branch&sort=updated&direction=desc&per_page=100"))
+    $pulls = Get-GhPagedItems "repos/$Owner/$Name/pulls?state=closed&base=$Branch&sort=updated&direction=desc&per_page=100"
     $latest = $pulls | Where-Object { $_.merged_at } | Sort-Object { [datetime]$_.merged_at } -Descending | Select-Object -First 1
     if (-not $latest) { return $null }
     $sha = $latest.head.sha
@@ -121,10 +131,8 @@ function Get-PassingChecks([string]$Name, [string]$Branch) {
     foreach ($group in $runs | Group-Object name | Sort-Object Name) {
         $checkName = $group.Name
         $why = $null
-        if ($checkName -eq 'Code review') { $why = "the review bot's advice" }
-        # CodeQL's Analyze jobs go by name too: a repository's own CodeQL workflow runs them on pull_request.
-        elseif ($checkName -eq 'CodeQL' -or $checkName -like 'Analyze (*)') { $why = 'the code-scanning rule covers it' }
-        else {
+        foreach ($pattern in $excludedChecks.Keys) { if ($checkName -like $pattern) { $why = $excludedChecks[$pattern]; break } }
+        if (-not $why) {
             $ours = @($group.Group | Where-Object { $_.app.id -eq $actionsAppId -and $events["$($_.check_suite.id)"] -eq 'pull_request' })
             if (-not $ours.Count) {
                 $other = $group.Group | Sort-Object { [long]$_.id } -Descending | Select-Object -First 1
