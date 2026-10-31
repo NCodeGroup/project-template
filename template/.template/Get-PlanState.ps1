@@ -152,7 +152,7 @@ function Get-Protected([string]$HostName, [string]$Default, [string]$Protect) {
     if ($HostName -eq 'github') {
         $unknown = $false
         $out = & gh api "repos/{owner}/{repo}/rules/branches/$Default" 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) { $unknown = $true }
+        if ($LASTEXITCODE -ne 0) { if ($out -notmatch '\b404\b') { $unknown = $true } }
         else {
             try {
                 if (@($out | ConvertFrom-Json -ErrorAction Stop | Where-Object { $_.type -eq 'pull_request' }).Count -gt 0) { return 'host' }

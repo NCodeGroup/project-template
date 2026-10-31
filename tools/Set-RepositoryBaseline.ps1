@@ -68,16 +68,6 @@ function Set-Baseline {
     if ($info.archived -or $info.fork) { Write-Host "${Name}: skipped (archived or fork)"; return }
     $branch = $info.default_branch
 
-    # The code-scanning rule needs CodeQL results on every pull request, or each one would wait for them, so it is added
-    # only when CodeQL's default setup is configured. A repository that runs CodeQL from a workflow of its own adds the
-    # rule itself.
-    $setup = & gh api "repos/$Owner/$Name/code-scanning/default-setup" 2>$null | Out-String
-    $codeql = $false
-    if ($LASTEXITCODE -eq 0) {
-        try { $codeql = ($setup | ConvertFrom-Json -ErrorAction Stop).state -eq 'configured' }
-        catch { Write-Verbose "Couldn't read the code-scanning setup of ${Name}: $_" }
-    }
-
     $rulesets = @(Invoke-GhJson @('api', "repos/$Owner/$Name/rulesets"))
     $own = $null
     foreach ($summary in $rulesets) {
@@ -92,6 +82,24 @@ function Set-Baseline {
     # A ruleset of this name that exists already is changed only when -RequireChecks asks for new checks.
     if ($own -and -not $RequireChecks.Count) { Write-Host "${Name}: left alone (already has '$rulesetName')"; return }
     $checks = @($RequireChecks)
+
+    # CodeQL's default setup decides the code-scanning rule. Configured adds it. An answer that says it isn't, or "not
+    # found" (HTTP 404), leaves it out: every pull request would wait for CodeQL results that never come. A lookup that
+    # fails for any other reason, such as a missing token scope or a 5xx, or an answer that can't be read, says nothing,
+    # so the repository is skipped with the reason: changing the ruleset on a guess could drop the rule. A repository that
+    # runs CodeQL from a workflow of its own adds the rule itself.
+    $setup = & gh api "repos/$Owner/$Name/code-scanning/default-setup" 2>&1 | Out-String
+    $codeql = $null
+    if ($LASTEXITCODE -eq 0) {
+        try { $codeql = ($setup | ConvertFrom-Json -ErrorAction Stop).state -eq 'configured' }
+        catch { $codeql = $null }
+    }
+    elseif ($setup -match '\b404\b') { $codeql = $false }
+    if ($null -eq $codeql) {
+        Write-Host "${Name}: skipped (couldn't read CodeQL's default setup: $(($setup.Trim() -split "`n")[0]))"
+        return
+    }
+    $hadScanning = $own -and (@($own.rules.type) -contains 'code_scanning')
 
     $rules = @(
         @{ type = 'deletion' },
@@ -127,7 +135,7 @@ function Set-Baseline {
     } | ConvertTo-Json -Depth 10
 
     $verb = if ($own) { 'update' } else { 'create' }
-    $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })"
+    $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($codeql) { ', and a code-scanning rule' } elseif ($hadScanning) { ', and removes its code-scanning rule (CodeQL''s default setup is not configured)' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) { Write-Host "would: $summary"; return }
 
     # gh reads the body from a file: piping JSON into a function loses stdin.

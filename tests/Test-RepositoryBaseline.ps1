@@ -51,7 +51,14 @@ if ($rest -contains '--input') {
     '{}'; exit 0
 }
 if ($method -eq 'PATCH') { exit 0 }
-if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') { ConvertTo-Json -InputObject @{ state = $data.repos[$Matches[1]].codeql }; exit 0 }
+if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
+    # codeql is a state, 404 for not found, fail:<text> for another failure, or raw:<text> for a body that isn't JSON.
+    $codeql = "$($data.repos[$Matches[1]].codeql)"
+    if ($codeql -eq '404') { 'gh: Not Found (HTTP 404)'; exit 1 }
+    if ($codeql.StartsWith('fail:')) { $codeql.Substring(5); exit 1 }
+    if ($codeql.StartsWith('raw:')) { $codeql.Substring(4); exit 0 }
+    ConvertTo-Json -InputObject @{ state = $codeql }; exit 0
+}
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets/(\d+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].full["$($Matches[2])"] -Depth 10; exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets$') { ConvertTo-Json -InputObject @($data.repos[$Matches[1]].rulesets) -Depth 5; exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].info -Depth 5; exit 0 }
@@ -73,6 +80,10 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
 $repos = @{
     fresh = New-Repo
     noCodeQL = New-Repo -CodeQL 'not-configured'
+    setupNotFound = New-Repo -CodeQL '404'
+    setupFailed = New-Repo -CodeQL 'fail:gh: Resource not accessible by integration (HTTP 403)'
+    setupUnreadable = New-Repo -CodeQL 'raw:<html>Bad Gateway</html>'
+    oursWithoutCodeQL = New-Repo -CodeQL 'not-configured' -Rulesets @((New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')))
     legacy = New-Repo -Branch master
     owned = New-Repo -Rulesets @((New-Ruleset 'main'))
     ours = New-Repo -Rulesets @((New-Ruleset 'Protect main'))
@@ -131,6 +142,13 @@ try {
     $r = Invoke-Baseline @('-Repo', 'noCodeQL')
     Check 'create: no code-scanning rule where CodeQL is not configured, and says so' (((@($r.Body.rules.type)) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and $r.Output -match 'no code-scanning rule') "$(@($r.Body.rules.type) -join ',') $($r.Output)"
 
+    $r = Invoke-Baseline @('-Repo', 'setupNotFound')
+    Check 'create: CodeQL setup not found (404) gets no code-scanning rule' (((@($r.Body.rules.type)) -join ',') -eq 'deletion,non_fast_forward,pull_request') "$(@($r.Body.rules.type) -join ',') $($r.Output)"
+    foreach ($name in 'setupFailed', 'setupUnreadable') {
+        $r = Invoke-Baseline @('-Repo', $name)
+        Check "skip: a CodeQL setup lookup that fails or can't be read changes nothing ($name)" ($r.Changes.Count -eq 0 -and $r.Output -match "${name}: skipped \(couldn't read CodeQL's default setup") "$($r.Changes -join '|') $($r.Output)"
+    }
+
     # 4. A branch other than main.
     $r = Invoke-Baseline @('-Repo', 'legacy')
     Check 'create: works for a default branch that is not main' (($r.Changes -join '|') -like 'BODY POST repos/NCodeGroup/legacy/rulesets*') ($r.Changes -join '|')
@@ -149,6 +167,8 @@ try {
     $r = Invoke-Baseline @('-Repo', 'ours', '-RequireChecks', 'test')
     Check 'update: -RequireChecks changes the ruleset it made, in place' (($r.Changes -join '|') -like 'BODY PUT repos/NCodeGroup/ours/rulesets/101*') ($r.Changes -join '|')
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
+    $r2 = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
+    Check 'update: a ruleset whose repository no longer has CodeQL loses the rule, and the summary says so' ((@($r2.Body.rules.type) -notcontains 'code_scanning') -and $r2.Output -match 'removes its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"
     Check 'update: the ruleset keeps its code-scanning rule, with the same thresholds' (($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors') -and ($scan[0].security_alerts_threshold -eq 'medium_or_higher')) (@($r.Body.rules.type) -join ',')
 
     # 7. -All.

@@ -439,6 +439,10 @@ try {
     $r = Test-State (Get-State $gh.Repo) @{ protected = 'no' }
     Check 'protected: a GitHub ruleset without a pull request rule' $r.Ok $r.Detail
 
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'fail:gh: Not Found (HTTP 404)' }
+    $r = Test-State (Get-State $gh.Repo) @{ protected = 'no' }
+    Check 'protected: GitHub rules and branch protection both not found (404) are no' $r.Ok $r.Detail
+
     Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'raw:<html>Bad Gateway</html>' }
     $r = Test-State (Get-State $gh.Repo) @{ protected = 'unknown' }
     Check 'protected: GitHub rules that cannot be read, with no branch protection rule, are unknown, not no' $r.Ok $r.Detail
