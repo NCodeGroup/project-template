@@ -8,6 +8,7 @@
     New-FixtureProject makes the project every end-to-end test starts from: a project made from a snapshot of the
     working tree, with a greeting function and its test, the landing policy `protect: hook`, a bare origin in a
     github.com folder that has its main branch, and the gh stand-in (gh.ps1) in a bin folder with an empty host folder.
+    Its -Data adds or overrides template answers, such as code_review for a fixture that runs NCode Review.
     Each test then writes its own host state for the stand-in.
 #>
 
@@ -22,7 +23,7 @@ function Write-Text([string]$Path, [string]$Text) {
     [IO.File]::WriteAllText($Path, $Text.Replace("`r`n", "`n"))
 }
 
-function New-FixtureProject([string]$RepoRoot, [string]$Work, [string]$App, [string]$Origin, [string]$Bin) {
+function New-FixtureProject([string]$RepoRoot, [string]$Work, [string]$App, [string]$Origin, [string]$Bin, [hashtable]$Data = @{}) {
     if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
     $tpl = Join-Path $Work 'template-repo'
     New-Item -ItemType Directory -Force $tpl | Out-Null
@@ -34,7 +35,9 @@ function New-FixtureProject([string]$RepoRoot, [string]$Work, [string]$App, [str
     try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
     finally { Pop-Location }
 
-    & (Join-Path $RepoRoot 'New-Project.ps1') -Path $App -Template $tpl -Ref v0.1.0 -Defaults -Data @{ project_name = 'Fixture App'; stack = 'other'; workflow_tools = @('claude'); test_command = 'pwsh -NoProfile -File tests/Test-Greeting.ps1' } | Out-Null
+    $answers = @{ project_name = 'Fixture App'; stack = 'other'; workflow_tools = @('claude'); test_command = 'pwsh -NoProfile -File tests/Test-Greeting.ps1' }
+    foreach ($key in $Data.Keys) { $answers[$key] = $Data[$key] }
+    & (Join-Path $RepoRoot 'New-Project.ps1') -Path $App -Template $tpl -Ref v0.1.0 -Defaults -Data $answers | Out-Null
 
     New-Item -ItemType Directory -Force (Join-Path $App 'src'), (Join-Path $App 'tests') | Out-Null
     Write-Text (Join-Path $App 'src/Greeting.ps1') @'
