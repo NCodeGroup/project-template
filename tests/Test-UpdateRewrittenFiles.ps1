@@ -8,7 +8,9 @@
     replaces ci.yml with its own workflow and the template changes ci.yml again in v0.3.0: the update must name the
     file and print the exact -Data @{ project_owned_files = ... } to run. Last, v0.3.0 rejects a project name that
     v0.4.0 accepts, so Copier can't render the project's version with it: the update to v0.4.0 must warn with Copier's
-    error and say it skipped the suggestion. Prints PASS or FAIL per check and exits 1 on any failure.
+    error and say it skipped the suggestion, and still finish the update. Then v0.5.0's Update-Project.ps1, which the
+    update hands over to, throws while it looks for rewritten files: the update to v0.5.0 must warn with the error, say
+    it skipped the suggestion, and still finish. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-rewritten-test in the temp folder.
@@ -80,6 +82,14 @@ function Invoke-Update([hashtable]$Data) {
     [pscustomobject]@{ ExitCode = $exitCode; Output = ($lines -join "`n") }
 }
 
+# The update ran to its end: it listed the changes and either committed them or stopped at a conflict, with the answers at the new version.
+function Test-UpdateFinished($Result, [string]$From, [string]$To) {
+    $committed = $Result.ExitCode -eq 0 -and $Result.Output.Contains("Committed `"Update from project-template $To`"")
+    $conflicted = $Result.ExitCode -eq 1 -and $Result.Output.Contains('file(s) conflict')
+    $Result.Output.Contains("Template $From -> ${To}:") -and ($committed -or $conflicted) -and
+        [bool](Select-String -LiteralPath (Join-Path $path '.copier-answers.yml') -Pattern "^_commit: $([regex]::Escape($To))\s*$")
+}
+
 Push-Location $path
 try {
     $r = Invoke-Update $null
@@ -118,6 +128,24 @@ try {
 
     $r = Invoke-Update @{ project_name = 'Renamed' }
     Check 'render failure: warns with Copier''s error and says the rewritten-file suggestion was skipped' ($r.Output.Contains("Copier couldn't render template v0.3.0 with this project's answers:") -and $r.Output.Contains('Not yet') -and $r.Output.Contains('Skipped the rewritten-file suggestion') -and -not $r.Output.Contains('project_owned_files =')) "exit $($r.ExitCode)`n$($r.Output.Trim())"
+    Check 'render failure: the update still reaches v0.4.0' (Test-UpdateFinished $r 'v0.3.0' 'v0.4.0') "exit $($r.ExitCode)`n$($r.Output.Trim())"
+
+    if (git status --porcelain) { [IO.File]::WriteAllText($ci, $ownCi); Invoke-Git add -A; Invoke-Git commit -q -m 'Update from project-template v0.4.0' }
+
+    # v0.5.0's Update-Project.ps1, which the update hands over to, fails while it looks for rewritten files.
+    Push-Location (Join-Path $tpl 'template')
+    try {
+        Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "    - cron: '0 7 * * 1'`n" "    - cron: '0 8 * * 1'`n"
+        Edit-File '.template/Update-Project.ps1' 'function Get-RewrittenFile([string[]]$Files, [string]$Folder) {' 'function Get-RewrittenFile([string[]]$Files, [string]$Folder) { throw ''Injected rewritten-file failure'''
+    }
+    finally { Pop-Location }
+    Push-Location $tpl
+    try { Invoke-Git commit -q -am 'Fail the rewritten-file check'; Invoke-Git tag v0.5.0 }
+    finally { Pop-Location }
+
+    $r = Invoke-Update $null
+    Check 'check failure: warns with the error and says the rewritten-file suggestion was skipped' ($r.Output.Contains('Skipped the rewritten-file suggestion: checking for merged files this project rewrote failed: Injected rewritten-file failure') -and -not $r.Output.Contains('project_owned_files =')) "exit $($r.ExitCode)`n$($r.Output.Trim())"
+    Check 'check failure: the update still reaches v0.5.0' (Test-UpdateFinished $r 'v0.4.0' 'v0.5.0') "exit $($r.ExitCode)`n$($r.Output.Trim())"
 }
 finally { Pop-Location }
 ''

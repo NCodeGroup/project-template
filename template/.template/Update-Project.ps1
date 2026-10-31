@@ -86,7 +86,8 @@ function ConvertTo-CopierValue($Value) {
     if ($Value -is [Collections.IList]) { '[' + ($Value -join ', ') + ']' } else { "$Value" }
 }
 
-# Render the template at a version into a folder with the project's answers; false, with a warning that says why, when Copier can't.
+# Render the template at a version into a folder with the project's answers;
+# false, with a warning that says why, when Copier can't.
 function Invoke-TemplateRender([string]$Version, [string]$Folder) {
     $renderArgs = @('copy', '--defaults', '--quiet', '--vcs-ref', $Version, '--data-file', (Join-Path $project '.copier-answers.yml'))
     foreach ($k in $Data.Keys) { $renderArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }

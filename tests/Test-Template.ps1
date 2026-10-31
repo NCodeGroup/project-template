@@ -402,7 +402,7 @@ Check 'workflow: ship-plan writes the pull request as the Landing section''s pr-
 # A title from PLAN.md can come from someone else's issue: PowerShell would expand $(...) in it inside double quotes.
 $shipFiles = 'template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md'
 $m = @(Get-MissingText $shipFiles ('gh pr create --base <default> --head <branch> --title (Get-Content -Raw <title file>).Trim()', '--search (Get-Content -Raw <title file>).Trim()', 'gh issue create <repo args> --title (Get-Content -Raw <title file>).Trim()', 'Write each title, comment, description, release note and issue body to a temporary file', 'not even in quotes'))
-$m += @(foreach ($p in $shipFiles) { if ([IO.File]::ReadAllText((Join-Path $repoRoot $p)) -match '"<title>"') { "${p}: a title in double quotes" } })
+$m += @(foreach ($p in $shipFiles) { if ([IO.File]::ReadAllText((Join-Path $repoRoot $p)) -match '--(title|search) ["'']') { "${p}: a title or search in quotes" } })
 Check 'workflow: ship-plan passes titles from a file, never in the command line' (-not $m) ($m -join '; ')
 # Adopt-Project.ps1 is in the template's repository only, so a project's files name it as the template's.
 $m = @(foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template') -Recurse -File -Force) {
