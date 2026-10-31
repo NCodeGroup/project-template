@@ -13,14 +13,16 @@
     it skipped the suggestion, and still finish. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to project-template-update-rewritten-test in the temp folder.
+    The scratch folder, deleted and recreated. Defaults to project-template-update-rewritten-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
 
 .EXAMPLE
     .\tests\Test-UpdateRewrittenFiles.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-update-rewritten-test'))
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-update-rewritten-test-$PID"))
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -149,6 +151,7 @@ try {
 }
 finally { Pop-Location }
 ''
-if ($failures.Count) { "Update rewritten-files tests: FAILED ($($failures.Count))"; exit 1 }
+if ($failures.Count) { "Kept the work folder: $Work"; "Update rewritten-files tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Update rewritten-files tests: PASSED'
 exit 0

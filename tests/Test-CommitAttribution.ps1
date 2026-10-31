@@ -7,14 +7,15 @@
     the exit code and the output. Prints PASS or FAIL per check and exits 1 on any failure. The check takes seconds.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to project-template-attribution-test in the temp folder.
+    The scratch folder, deleted and recreated, and deleted again at the end. Defaults to
+    project-template-attribution-test-<process ID> in the temp folder.
 
 .EXAMPLE
     .\tests\Test-CommitAttribution.ps1
 #>
 [CmdletBinding()]
 param(
-    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-attribution-test')
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-attribution-test-$PID")
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
