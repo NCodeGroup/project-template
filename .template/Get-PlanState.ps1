@@ -137,6 +137,19 @@ function Test-RequestLanded([string]$Merge, [string]$Head, [string]$Default) {
     $mergeOnDefault -and ($headInPr -or ($prTree -and $headTreeNow -and $prTree -eq $headTreeNow))
 }
 
+# Calls the host's API and returns the HTTP status and the body. The status comes from the response's own status line
+# (--include), never from the CLI's wording, and stderr stays out of the body, so a warning can't spoil the JSON. A call
+# that got no response at all (no network, no login) has no status.
+function Invoke-HostApi([string]$Cli, [string]$Path) {
+    $lines = @(& $Cli api --include $Path 2>$null)
+    $status = $null
+    if ($lines.Count -and $lines[0] -match '^HTTP/\S+\s+(\d{3})\b') { $status = [int]$Matches[1] }
+    $blank = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if (-not $lines[$i].Trim()) { $blank = $i; break } }
+    $body = if ($blank -ge 0 -and $blank -lt $lines.Count - 1) { $lines[($blank + 1)..($lines.Count - 1)] -join "`n" } else { '' }
+    [pscustomobject]@{ Status = $status; Body = $body }
+}
+
 function Get-Protected([string]$HostName, [string]$Default, [string]$Protect) {
     if ($Protect -eq 'hook') {
         $h = (& git rev-parse --git-path hooks 2>$null | Out-String).Trim()
@@ -146,25 +159,32 @@ function Get-Protected([string]$HostName, [string]$Default, [string]$Protect) {
     if ($HostName -notin 'github', 'gitlab') { return 'unknown' }
     $cli = if ($HostName -eq 'github') { 'gh' } else { 'glab' }
     if (-not (Get-Command $cli -ErrorAction SilentlyContinue)) { return 'unknown' }
+    # The answer is no only when the host says so: rules without a pull request rule, or "not found" (HTTP 404). Any
+    # other status, no response at all, or a body that can't be read may hide a rule that requires pull requests, so that
+    # is unknown.
     if ($HostName -eq 'github') {
-        $out = & gh api "repos/{owner}/{repo}/rules/branches/$Default" 2>$null | Out-String
-        if ($LASTEXITCODE -eq 0) {
+        $unknown = $false
+        $rules = Invoke-HostApi gh "repos/{owner}/{repo}/rules/branches/$Default"
+        if ($rules.Status -eq 200) {
             try {
-                if (@($out | ConvertFrom-Json -ErrorAction Stop | Where-Object { $_.type -eq 'pull_request' }).Count -gt 0) { return 'host' }
+                if (@($rules.Body | ConvertFrom-Json -ErrorAction Stop | Where-Object { $_.type -eq 'pull_request' }).Count -gt 0) { return 'host' }
             }
-            catch { }
+            catch { $unknown = $true }
         }
-        & gh api "repos/{owner}/{repo}/branches/$Default/protection/required_pull_request_reviews" 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { return 'host' }
+        elseif ($rules.Status -ne 404) { $unknown = $true }
+        $protection = Invoke-HostApi gh "repos/{owner}/{repo}/branches/$Default/protection/required_pull_request_reviews"
+        if ($protection.Status -eq 200) { return 'host' }
+        if ($protection.Status -ne 404) { $unknown = $true }
+        if ($unknown) { return 'unknown' }
         return 'no'
     }
-    $out = & glab api "projects/:id/protected_branches/$Default" 2>$null | Out-String
-    if ($LASTEXITCODE -eq 0) {
-        try {
-            if (@(($out | ConvertFrom-Json -ErrorAction Stop).push_access_levels | Where-Object { $_.access_level -ne 0 }).Count -eq 0) { return 'host' }
-        }
-        catch { }
+    $protection = Invoke-HostApi glab "projects/:id/protected_branches/$Default"
+    if ($protection.Status -eq 404) { return 'no' }
+    if ($protection.Status -ne 200) { return 'unknown' }
+    try {
+        if (@(($protection.Body | ConvertFrom-Json -ErrorAction Stop).push_access_levels | Where-Object { $_.access_level -ne 0 }).Count -eq 0) { return 'host' }
     }
+    catch { return 'unknown' }
     'no'
 }
 
@@ -291,7 +311,7 @@ try {
     }
 
     # Pull request or merge request
-    $pr = '-'; $prNumber = ''; $prState = ''; $prMerge = ''; $prHead = ''; $prBase = ''
+    $pr = '-'; $prNumber = ''; $prState = ''; $prMerge = ''; $prBase = ''
     if ($hostName -in 'github', 'gitlab' -and $branch -ne '-' -and $branch -ne $default) {
         $cli = if ($hostName -eq 'github') { 'gh' } else { 'glab' }
         $pr = 'unknown'
@@ -328,11 +348,11 @@ try {
                         foreach ($request in $requests) {
                             if ($request.State -eq 'MERGED' -and $request.Merge -and $request.Head -and (Test-RequestLanded $request.Merge $request.Head $default)) { $landed = 'yes'; $chosen = $request; break }
                         }
-                        $prNumber = $chosen.Number; $prState = $chosen.State; $prMerge = $chosen.Merge; $prHead = $chosen.Head; $prBase = $chosen.Base
+                        $prNumber = $chosen.Number; $prState = $chosen.State; $prMerge = $chosen.Merge; $prBase = $chosen.Base
                         $pr = "$prNumber $prState"
                     }
                 }
-                catch { $pr = 'unknown'; $prNumber = ''; $prState = ''; $prMerge = ''; $prHead = ''; $prBase = '' }
+                catch { $pr = 'unknown'; $prNumber = ''; $prState = ''; $prMerge = ''; $prBase = '' }
             }
         }
     }

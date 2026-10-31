@@ -28,6 +28,8 @@
     .\Invoke-PlanSteps.ps1 -Plan .\PLAN.md -Replan claude                   # Opus on Claude Max re-plans automatically
     .\Invoke-PlanSteps.ps1 -Plan .\PLAN.md -Executor copilot -Replan copilot   # all Copilot
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'MaxAttempts', Justification = 'Invoke-Step, a nested function, retries up to it.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Server', Justification = 'Invoke-CopilotCli, a nested function, points the local model at it.')]
 param(
     [string]$Plan = '.\PLAN.md',
     [int[]]$Step,

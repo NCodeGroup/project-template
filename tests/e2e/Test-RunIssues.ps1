@@ -31,6 +31,7 @@
 .EXAMPLE
     .\tests\e2e\Test-RunIssues.ps1 -SetupOnly
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'MaxBudgetUsd', Justification = 'Invoke-Claude, a nested function, passes it to claude.')]
 [CmdletBinding()]
 param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-run-issues-e2e'),

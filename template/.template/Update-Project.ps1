@@ -250,7 +250,7 @@ $outputEncoding = [Console]::OutputEncoding
 Push-Location -LiteralPath $project
 try {
     # Read Git's output as UTF-8, so file contents and diffs keep their characters.
-    try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { }
+    try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { Write-Verbose "Couldn't set the console's output encoding: $_" }
     if (-not (Test-Path -LiteralPath .copier-answers.yml)) { throw "$project has no .copier-answers.yml, so it wasn't created from the template." }
     if (git status --porcelain) { throw "$project has uncommitted changes. Commit or stash them first." }
     $head = git rev-parse HEAD
@@ -280,7 +280,8 @@ try {
     # The update commits, and the default branch may accept changes only through pull requests.
     $branch = git branch --show-current
     $defaultRef = git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>$null
-    $default = if ($defaultRef) { $defaultRef -replace '^origin/' } elseif ($branch -in 'main', 'master' -and (git rev-parse --quiet --verify "refs/remotes/origin/$branch" 2>$null)) { $branch }
+    $originBranch = if ($branch -in 'main', 'master') { git rev-parse --quiet --verify "refs/remotes/origin/$branch" 2>$null }
+    $default = if ($defaultRef) { $defaultRef -replace '^origin/' } elseif ($originBranch) { $branch }
     if ($branch -and $branch -eq $default -and -not $NoCommit) { throw "$project is on $branch, its default branch, and the update commits. Update on a branch of its own: git switch -c build/project-template-$to — or stage the update here with -NoCommit." }
 
     # Hand over to the target version's copy of this script when it differs, so the newest update logic runs.
@@ -486,7 +487,7 @@ try {
 }
 finally {
     Pop-Location
-    try { [Console]::OutputEncoding = $outputEncoding } catch { }
+    try { [Console]::OutputEncoding = $outputEncoding } catch { Write-Verbose "Couldn't restore the console's output encoding: $_" }
     if ($ownClone -and $TemplateClone -and (Test-Path -LiteralPath $TemplateClone)) { Remove-Item -LiteralPath $TemplateClone -Recurse -Force -ErrorAction SilentlyContinue }
     if (Test-Path -LiteralPath $scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue }
 }

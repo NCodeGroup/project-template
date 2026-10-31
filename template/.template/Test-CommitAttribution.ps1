@@ -64,7 +64,7 @@ function Test-AgentAccount([string]$Name, [string]$Email) {
 
 try {
     # Read Git's output as UTF-8, so the emoji before "Generated with" stays a symbol whatever the console's code page.
-    try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { }
+    try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { Write-Verbose "Couldn't set the console's output encoding: $_" }
 
     $headCommit = & git -C $Root rev-parse --verify "$Head^{commit}" 2>$null
     if ($LASTEXITCODE -ne 0) {
@@ -140,5 +140,5 @@ try {
     exit 1
 }
 finally {
-    try { [Console]::OutputEncoding = $outputEncoding } catch { }
+    try { [Console]::OutputEncoding = $outputEncoding } catch { Write-Verbose "Couldn't restore the console's output encoding: $_" }
 }
