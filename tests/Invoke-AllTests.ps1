@@ -13,7 +13,9 @@
     The folder with the Test-*.ps1 scripts. Defaults to the folder of this script.
 
 .PARAMETER Work
-    The folder for the suites' logs, deleted and recreated. Defaults to project-template-all-tests in the temp folder.
+    The folder for the suites' logs, deleted and recreated. Defaults to project-template-all-tests-<process ID> in the
+    temp folder, the run's own: deleted when every suite passes or there is none to run, kept for the failed suites'
+    logs when one fails.
 
 .PARAMETER SkipDotnetBuild
     Pass -SkipDotnetBuild to the suites that take it, to skip the .NET build and pack.
@@ -27,10 +29,11 @@
 [CmdletBinding()]
 param(
     [string]$Path = $PSScriptRoot,
-    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-all-tests'),
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-all-tests-$PID"),
     [switch]$SkipDotnetBuild
 )
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $pwsh = (Get-Process -Id $PID).Path
 
 if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
@@ -39,6 +42,7 @@ New-Item -ItemType Directory -Force $Work | Out-Null
 $scripts = @(Get-ChildItem -LiteralPath $Path -File -Filter 'Test-*.ps1' | Sort-Object Name)
 if (-not $scripts.Count) {
     "No Test-*.ps1 scripts in $Path."
+    if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
     exit 1
 }
 
@@ -74,5 +78,6 @@ foreach ($script in $scripts) {
 
 ''
 if ($failed) { "All tests: FAILED ($failed)"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'All tests: PASSED'
 exit 0
