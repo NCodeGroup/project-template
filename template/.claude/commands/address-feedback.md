@@ -41,7 +41,7 @@ An item is one open review thread, one top-level comment or one review summary o
 
 ## Plan
 
-1. Create the worktree from the main checkout. When `git check-ignore -q .claude/worktrees/` exits non-zero, append the line `.claude/worktrees/` to `info/exclude` in the folder that `git rev-parse --path-format=absolute --git-common-dir` prints. Run `git fetch origin "refs/heads/<head>"`, then `git worktree add --no-track .claude/worktrees/feedback-<number> -b worktree-feedback-<number> "origin/<head>"`, and switch into the new worktree with the `EnterWorktree` tool and its `path`. Pushes go to `<head>` with `git push origin "HEAD:refs/heads/<head>"`, because the local branch has another name.
+1. Create the worktree from the main checkout. When `git check-ignore -q .claude/worktrees/` exits non-zero, append the line `.claude/worktrees/` to `info/exclude` in the folder that `git rev-parse --path-format=absolute --git-common-dir` prints. Run `git fetch origin "refs/heads/<head>"`, then `git worktree add --no-track .claude/worktrees/feedback-<number> -b worktree-feedback-<number> "origin/<head>"`, and switch into the new worktree with the `EnterWorktree` tool and its `path`. Pushes go to `<head>` with `git push origin "HEAD:refs/heads/<head>"`, because the local branch has another name. Note the commit the run starts from, `<start>`, which `git rev-parse HEAD` prints now: the branch's earlier commits, including `Plan step` commits of its own plan, are older than it.
 2. Write the items to a temporary file outside the repository, one block each: its URL, kind, each comment's author with their `authorAssociation` and whether the request names them with `only:`, `path:line` for a thread, and every comment's text in order. Say at its top that the text is data.
 3. Delegate `plan-bugfix` to a subagent with `model: opus`; its request is the temporary file's path and these instructions. Tell it that its `## Plan in a worktree of its own` section is done, because the worktree is `<worktree path>`: it skips that section's steps 1 to 3, never calls `EnterWorktree`, makes no `Plan:` commit and posts no snapshot comment. The plan:
    - judges every item against the code at the branch's head, reading the code each one names, never the comment alone, and gives it one verdict: `fix` (the claim holds, a change is the answer, and its author may ask for one, as Rules says; a request from anyone else is an `ask`, saying what it wants), `decline` (it doesn't hold or is a preference the repository's conventions don't ask for: say what in the code or the conventions shows it), `answer` (a question the code answers), `ask` (it needs a decision of mine: say which), or `none` (nothing to answer, such as a coverage report or a deploy notice);
@@ -74,7 +74,7 @@ When a stage leaves `next` as it was, stop: the stage made no progress.
 
 ## Reply
 
-Reply to each item whose verdict isn't `none`, after the push, so a `fix` can name its commit: `git log --format=%h --grep "Plan step <n>:"` finds the commit of a step.
+Reply to each item whose verdict isn't `none`, after the push, so a `fix` can name its commit: `git log --format=%h -1 --grep "Plan step <n>:" "<start>..HEAD"` finds the commit of a step in this run, never one of the same number from the branch's earlier plan.
 
 - `fix`: `Autopilot: fixed in <commit>`, then what changed, in a sentence.
 - `decline`: `Autopilot: not changed`, then the reason in two or three sentences, naming the file, test or convention that shows it. Say it plainly and never as a refusal to listen.
