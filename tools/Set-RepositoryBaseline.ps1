@@ -117,11 +117,11 @@ function Get-PassingChecks([string]$Name, [string]$Branch) {
     $passed = [Collections.Generic.List[string]]::new()
     $leftOut = [Collections.Generic.List[string]]::new()
     foreach ($group in $runs | Group-Object name | Sort-Object Name) {
-        $name = $group.Name
+        $checkName = $group.Name
         $why = $null
-        if ($name -eq 'Code review') { $why = "the review bot's advice" }
+        if ($checkName -eq 'Code review') { $why = "the review bot's advice" }
         # CodeQL's Analyze jobs go by name too: a repository's own CodeQL workflow runs them on pull_request.
-        elseif ($name -eq 'CodeQL' -or $name -like 'Analyze (*)') { $why = 'the code-scanning rule covers it' }
+        elseif ($checkName -eq 'CodeQL' -or $checkName -like 'Analyze (*)') { $why = 'the code-scanning rule covers it' }
         else {
             $ours = @($group.Group | Where-Object { $_.app.id -eq $actionsAppId -and $events["$($_.check_suite.id)"] -eq 'pull_request' })
             if (-not $ours.Count) {
@@ -136,7 +136,7 @@ function Get-PassingChecks([string]$Name, [string]$Branch) {
                 elseif ($check.conclusion -ne 'success') { $why = "$($check.conclusion)" }
             }
         }
-        if ($why) { $leftOut.Add("$name ($why)") } else { $passed.Add($name) }
+        if ($why) { $leftOut.Add("$checkName ($why)") } else { $passed.Add($checkName) }
     }
     [pscustomobject]@{ Number = $latest.number; Checks = @($passed); LeftOut = @($leftOut) }
 }
@@ -242,8 +242,8 @@ function Set-Baseline {
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) {
         Write-Host "would: $summary"
         if ($autoChecks) {
-            # Quoted for PowerShell, which ends a single-quoted string at any of its single quotes, not just '. A name
-            # with a comma can't be named: -RequireChecks splits it in two.
+            # Quoted for PowerShell: inside a single-quoted string every single-quote character, the curly ones too, is
+            # doubled. A name with a comma can't be named: -RequireChecks splits it in two.
             $quote = { param($text) "'$([Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($text))'" }
             $named = @($checks | Where-Object { $_ -notlike '*,*' })
             if ($named.Count) { Write-Host "  to require them by name: & $(& $quote $PSCommandPath) -Repo $(& $quote $Name) -Owner $(& $quote $Owner) -RequireChecks $(& $quote ($named -join ','))" }

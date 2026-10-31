@@ -172,6 +172,7 @@ $repos = @{
     oursAuto = New-Repo -Rulesets @((New-Ruleset 'Protect main')) -Pulls $autoPulls -CheckRuns $autoRuns -WorkflowRuns $autoWorkflowRuns
     noMergedPull = New-Repo -Pulls @((New-Pull 4 'sha4' ''))
     nothingPassed = New-Repo -Pulls @((New-Pull 5 'sha5' '2026-10-02T10:00:00Z')) -CheckRuns @{ sha5 = @((New-CheckRun 1 'lint' 'skipped'), (New-CheckRun 2 'Code review' 'neutral' -Suite 50 -App 5534990 -Slug 'ncode-review'), (New-CheckRun 3 'CodeQL' -Suite 60 -App 57789 -Slug 'github-advanced-security')) } -WorkflowRuns @{ sha5 = $prWorkflowRuns }
+    noCheckRuns = New-Repo -Pulls @((New-Pull 8 'sha8' '2026-10-05T10:00:00Z')) -CheckRuns @{ sha8 = @() } -WorkflowRuns @{ sha8 = @() }
     # Job names the printed command has to quote, or can't name at all.
     oddNames = New-Repo -Pulls @((New-Pull 6 'sha6' '2026-10-03T10:00:00Z')) -CheckRuns @{ sha6 = @((New-CheckRun 1 "it's fine"), (New-CheckRun 2 'a, b'), (New-CheckRun 3 'plain')) } -WorkflowRuns @{ sha6 = $prWorkflowRuns }
     # A second repository with checks of its own, for -All -RequireChecks auto.
@@ -302,6 +303,9 @@ try {
     Check 'auto: the printed command parses, with the script path quoted' (-not $errors.Count -and $command.InvocationOperator -eq 'Ampersand' -and $path -and [IO.Path]::GetFullPath($path) -eq [IO.Path]::GetFullPath($script)) $line
     Check 'auto: the printed command passes a name with a quote as it is' ($named -eq "it's fine,plain") "$named | $line"
     Check 'auto: a name with a comma is left out of the command, and listed' ($r.Output -match [regex]::Escape('left out of that command, since -RequireChecks splits a name at its comma: a, b')) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'oddNames', '-RequireChecks', 'auto')
+    $checks = $r.Body.rules | Where-Object type -eq 'required_status_checks'
+    Check 'auto: applied, a name with a quote or a comma is required as one check, as it is' ((@($checks.parameters.required_status_checks.context) -join '|') -eq "a, b|it's fine|plain") ($checks | ConvertTo-Json -Depth 6 -Compress)
 
     $r = Invoke-Baseline @('-Repo', 'autoChecks', '-RequireChecks', 'auto')
     $checks = $r.Body.rules | Where-Object type -eq 'required_status_checks'
@@ -318,6 +322,8 @@ try {
     Check 'auto: a ruleset it made is left as it was when there is no merged pull request' ($r.Changes.Count -eq 0 -and $r.Output -match 'ours: skipped \(-RequireChecks auto found no pull request') "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'nothingPassed', '-RequireChecks', 'auto')
     Check 'auto: a pull request with no check a ruleset can require is skipped, with a clear message' ($r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape('nothingPassed: skipped (no check that passed on pull request #5 can be required; name the jobs with -RequireChecks)')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'noCheckRuns', '-RequireChecks', 'auto')
+    Check 'auto: a pull request with no check runs at all is skipped, with a clear message' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape('noCheckRuns: skipped (no check that passed on pull request #8 can be required; name the jobs with -RequireChecks)') -and $r.Output -notmatch 'FAILED') "$($r.Changes -join '|') $($r.Output)"
 
     $r = Invoke-Baseline @('-All', '-RequireChecks', 'auto', '-WhatIf')
     Check 'auto: works with -All, reading each repository''s own pull request' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match 'fresh: skipped \(-RequireChecks auto found no pull request' -and $r.Output -match 'owned: left alone') $r.Output
