@@ -137,6 +137,19 @@ function Test-RequestLanded([string]$Merge, [string]$Head, [string]$Default) {
     $mergeOnDefault -and ($headInPr -or ($prTree -and $headTreeNow -and $prTree -eq $headTreeNow))
 }
 
+# Calls the host's API and returns the HTTP status and the body. The status comes from the response's own status line
+# (--include), never from the CLI's wording, and stderr stays out of the body, so a warning can't spoil the JSON. A call
+# that got no response at all (no network, no login) has no status.
+function Invoke-HostApi([string]$Cli, [string]$Path) {
+    $lines = @(& $Cli api --include $Path 2>$null)
+    $status = $null
+    if ($lines.Count -and $lines[0] -match '^HTTP/\S+\s+(\d{3})\b') { $status = [int]$Matches[1] }
+    $blank = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if (-not $lines[$i].Trim()) { $blank = $i; break } }
+    $body = if ($blank -ge 0 -and $blank -lt $lines.Count - 1) { $lines[($blank + 1)..($lines.Count - 1)] -join "`n" } else { '' }
+    [pscustomobject]@{ Status = $status; Body = $body }
+}
+
 function Get-Protected([string]$HostName, [string]$Default, [string]$Protect) {
     if ($Protect -eq 'hook') {
         $h = (& git rev-parse --git-path hooks 2>$null | Out-String).Trim()
@@ -146,32 +159,30 @@ function Get-Protected([string]$HostName, [string]$Default, [string]$Protect) {
     if ($HostName -notin 'github', 'gitlab') { return 'unknown' }
     $cli = if ($HostName -eq 'github') { 'gh' } else { 'glab' }
     if (-not (Get-Command $cli -ErrorAction SilentlyContinue)) { return 'unknown' }
-    # The answer is no only when the host says so: rules without a pull request rule, or "not found" (HTTP 404) for the
-    # branch protection. A call that fails for any other reason, such as a network error or a 5xx, or an answer that
-    # can't be read, may hide a rule that requires pull requests, so that is unknown.
+    # The answer is no only when the host says so: rules without a pull request rule, or "not found" (HTTP 404). Any
+    # other status, no response at all, or a body that can't be read may hide a rule that requires pull requests, so that
+    # is unknown.
     if ($HostName -eq 'github') {
         $unknown = $false
-        $out = & gh api "repos/{owner}/{repo}/rules/branches/$Default" 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) { if ($out -notmatch '\b404\b') { $unknown = $true } }
-        else {
+        $rules = Invoke-HostApi gh "repos/{owner}/{repo}/rules/branches/$Default"
+        if ($rules.Status -eq 200) {
             try {
-                if (@($out | ConvertFrom-Json -ErrorAction Stop | Where-Object { $_.type -eq 'pull_request' }).Count -gt 0) { return 'host' }
+                if (@($rules.Body | ConvertFrom-Json -ErrorAction Stop | Where-Object { $_.type -eq 'pull_request' }).Count -gt 0) { return 'host' }
             }
             catch { $unknown = $true }
         }
-        $out = & gh api "repos/{owner}/{repo}/branches/$Default/protection/required_pull_request_reviews" 2>&1 | Out-String
-        if ($LASTEXITCODE -eq 0) { return 'host' }
-        if ($out -notmatch '\b404\b') { $unknown = $true }
+        elseif ($rules.Status -ne 404) { $unknown = $true }
+        $protection = Invoke-HostApi gh "repos/{owner}/{repo}/branches/$Default/protection/required_pull_request_reviews"
+        if ($protection.Status -eq 200) { return 'host' }
+        if ($protection.Status -ne 404) { $unknown = $true }
         if ($unknown) { return 'unknown' }
         return 'no'
     }
-    $out = & glab api "projects/:id/protected_branches/$Default" 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        if ($out -match '\b404\b') { return 'no' }
-        return 'unknown'
-    }
+    $protection = Invoke-HostApi glab "projects/:id/protected_branches/$Default"
+    if ($protection.Status -eq 404) { return 'no' }
+    if ($protection.Status -ne 200) { return 'unknown' }
     try {
-        if (@(($out | ConvertFrom-Json -ErrorAction Stop).push_access_levels | Where-Object { $_.access_level -ne 0 }).Count -eq 0) { return 'host' }
+        if (@(($protection.Body | ConvertFrom-Json -ErrorAction Stop).push_access_levels | Where-Object { $_.access_level -ne 0 }).Count -eq 0) { return 'host' }
     }
     catch { return 'unknown' }
     'no'

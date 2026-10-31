@@ -55,6 +55,20 @@ function Invoke-GhJson([string[]]$GhArgs) {
     if ($out) { $out | ConvertFrom-Json } else { $null }
 }
 
+# Calls the host's API and returns the HTTP status and the body. The status comes from the response's own status line
+# (--include), never from the CLI's wording, and stderr stays out of the body, so a warning can't spoil the JSON. A call
+# that got no response at all (no network, no login) has no status.
+# workflow/Get-PlanState.ps1 has the same function; a change to one belongs in both.
+function Invoke-HostApi([string]$Cli, [string]$Path) {
+    $lines = @(& $Cli api --include $Path 2>$null)
+    $status = $null
+    if ($lines.Count -and $lines[0] -match '^HTTP/\S+\s+(\d{3})\b') { $status = [int]$Matches[1] }
+    $blank = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if (-not $lines[$i].Trim()) { $blank = $i; break } }
+    $body = if ($blank -ge 0 -and $blank -lt $lines.Count - 1) { $lines[($blank + 1)..($lines.Count - 1)] -join "`n" } else { '' }
+    [pscustomobject]@{ Status = $status; Body = $body }
+}
+
 function Get-Targets {
     if ($Repo) { return @($Repo) }
     (Invoke-GhJson @('repo', 'list', $Owner, '--limit', '200', '--json', 'name,isArchived,isFork')) |
@@ -88,15 +102,16 @@ function Set-Baseline {
     # fails for any other reason, such as a missing token scope or a 5xx, or an answer that can't be read, says nothing,
     # so the repository is skipped with the reason: changing the ruleset on a guess could drop the rule. A repository that
     # runs CodeQL from a workflow of its own adds the rule itself.
-    $setup = & gh api "repos/$Owner/$Name/code-scanning/default-setup" 2>&1 | Out-String
+    $setup = Invoke-HostApi gh "repos/$Owner/$Name/code-scanning/default-setup"
     $codeql = $null
-    if ($LASTEXITCODE -eq 0) {
-        try { $codeql = ($setup | ConvertFrom-Json -ErrorAction Stop).state -eq 'configured' }
+    if ($setup.Status -eq 200) {
+        try { $codeql = ($setup.Body | ConvertFrom-Json -ErrorAction Stop).state -eq 'configured' }
         catch { $codeql = $null }
     }
-    elseif ($setup -match '\b404\b') { $codeql = $false }
+    elseif ($setup.Status -eq 404) { $codeql = $false }
     if ($null -eq $codeql) {
-        Write-Host "${Name}: skipped (couldn't read CodeQL's default setup: $(($setup.Trim() -split "`n")[0]))"
+        $why = if ($null -eq $setup.Status) { 'no response' } elseif ($setup.Status -eq 200) { 'an answer that is not JSON' } else { "HTTP $($setup.Status)" }
+        Write-Host "${Name}: skipped (couldn't read CodeQL's default setup: $why)"
         return
     }
     $hadScanning = $own -and (@($own.rules.type) -contains 'code_scanning')

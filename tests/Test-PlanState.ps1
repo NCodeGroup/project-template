@@ -275,15 +275,21 @@ if ($args[0] -eq 'api') {
     $file = Join-Path $PSScriptRoot 'api.json'
     if (-not (Test-Path $file)) { exit 1 }
     $responses = [IO.File]::ReadAllText($file) | ConvertFrom-Json
-    $property = $responses.PSObject.Properties["$($args[1])"]
-    # A missing entry answers as the CLIs do for "not found"; fail:<text> fails with <text>, such as a 5xx; raw:<text>
-    # prints <text> as it is, such as a body that isn't JSON.
-    # The message goes to the output: this stand-in runs in the caller's process, where [Console]::Error would bypass the
-    # 2>&1 that captures the real CLIs' error.
-    if (-not $property) { 'Not Found (HTTP 404)'; exit 1 }
-    if ($property.Value -is [string] -and $property.Value.StartsWith('fail:')) { $property.Value.Substring(5); exit 1 }
-    if ($property.Value -is [string] -and $property.Value.StartsWith('raw:')) { $property.Value.Substring(4); exit 0 }
-    ConvertTo-Json -InputObject $property.Value -Depth 5
+    $path = @($args[1..($args.Count - 1)] | Where-Object { -not "$_".StartsWith('-') })[0]
+    $include = $args -contains '--include'
+    $property = $responses.PSObject.Properties["$path"]
+    # A missing entry is not found (404); fail:<code> answers with that status, such as 502, and fail:none gets no response
+    # at all; raw:<text> answers 200 with <text> as the body, such as a body that isn't JSON. With --include, the answer
+    # starts with the status line and a header, as the CLIs' does.
+    $status = 200; $body = $null
+    if (-not $property) { $status = 404; $body = '{"message":"Not Found"}' }
+    elseif ($property.Value -is [string] -and $property.Value -eq 'fail:none') { exit 1 }
+    elseif ($property.Value -is [string] -and $property.Value.StartsWith('fail:')) { $status = [int]$property.Value.Substring(5); $body = '{"message":"Error"}' }
+    elseif ($property.Value -is [string] -and $property.Value.StartsWith('raw:')) { $body = $property.Value.Substring(4) }
+    else { $body = ConvertTo-Json -InputObject $property.Value -Depth 5 }
+    if ($include) { "HTTP/2.0 $status Status"; 'Content-Type: application/json'; '' }
+    $body
+    if ($status -ne 200) { exit 1 }
     exit 0
 }
 exit 1
@@ -396,7 +402,7 @@ try {
     $r = Test-State (Get-State $gl.Repo) @{ protected = 'unknown' }
     Check 'protected: a GitLab protection that cannot be read is unknown, not no' $r.Ok $r.Detail
 
-    Set-HostApi @{ 'projects/:id/protected_branches/main' = 'fail:502 Bad Gateway' }
+    Set-HostApi @{ 'projects/:id/protected_branches/main' = 'fail:502' }
     $r = Test-State (Get-State $gl.Repo) @{ protected = 'unknown' }
     Check 'protected: a GitLab call that fails with anything but not found is unknown, not no' $r.Ok $r.Detail
 
@@ -439,9 +445,17 @@ try {
     $r = Test-State (Get-State $gh.Repo) @{ protected = 'no' }
     Check 'protected: a GitHub ruleset without a pull request rule' $r.Ok $r.Detail
 
-    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'fail:gh: Not Found (HTTP 404)' }
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'fail:404' }
     $r = Test-State (Get-State $gh.Repo) @{ protected = 'no' }
     Check 'protected: GitHub rules and branch protection both not found (404) are no' $r.Ok $r.Detail
+
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'fail:none' }
+    $r = Test-State (Get-State $gh.Repo) @{ protected = 'unknown' }
+    Check 'protected: a GitHub call that gets no response at all is unknown, not no' $r.Ok $r.Detail
+
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'raw:{"message":"see https://example.com/404 for help"}'; 'repos/{owner}/{repo}/branches/main/protection/required_pull_request_reviews' = 'fail:503' }
+    $r = Test-State (Get-State $gh.Repo) @{ protected = 'unknown' }
+    Check 'protected: a 404 in a body does not count as not found; only the status line does' $r.Ok $r.Detail
 
     Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'raw:<html>Bad Gateway</html>' }
     $r = Test-State (Get-State $gh.Repo) @{ protected = 'unknown' }
@@ -451,11 +465,11 @@ try {
     $r = Test-State (Get-State $gh.Repo) @{ protected = 'host' }
     Check 'protected: GitHub rules that cannot be read, with a branch protection rule that requires reviews, are host' $r.Ok $r.Detail
 
-    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'fail:HTTP 502: Bad Gateway' }
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'fail:502' }
     $r = Test-State (Get-State $gh.Repo) @{ protected = 'unknown' }
     Check 'protected: a GitHub rules call that fails with anything but not found is unknown, not no' $r.Ok $r.Detail
 
-    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = @(@{ type = 'deletion' }); 'repos/{owner}/{repo}/branches/main/protection/required_pull_request_reviews' = 'fail:HTTP 502: Bad Gateway' }
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = @(@{ type = 'deletion' }); 'repos/{owner}/{repo}/branches/main/protection/required_pull_request_reviews' = 'fail:502' }
     $r = Test-State (Get-State $gh.Repo) @{ protected = 'unknown' }
     Check 'protected: a GitHub branch protection call that fails with anything but not found is unknown, not no' $r.Ok $r.Detail
     Set-HostApi @{}

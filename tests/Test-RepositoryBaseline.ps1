@@ -41,7 +41,8 @@ $data = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'repos.json') | C
 if ($args[0] -eq 'repo' -and $args[1] -eq 'list') { ConvertTo-Json -InputObject @($data.list) -Depth 5; exit 0 }
 if ($args[0] -ne 'api') { exit 1 }
 $method = 'GET'
-$rest = @($args[1..($args.Count - 1)])
+$rest = @($args[1..($args.Count - 1)] | Where-Object { $_ -ne '--include' })
+$include = $args -contains '--include'
 if ($rest[0] -eq '-X') { $method = $rest[1]; $rest = @($rest[2..($rest.Count - 1)]) }
 $path = $rest[0]
 if ($rest -contains '--input') {
@@ -52,12 +53,18 @@ if ($rest -contains '--input') {
 }
 if ($method -eq 'PATCH') { exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
-    # codeql is a state, 404 for not found, fail:<text> for another failure, or raw:<text> for a body that isn't JSON.
+    # codeql is a state, 404 for not found, fail:<code> for another status, fail:none for no response at all, or
+    # raw:<text> for a body that isn't JSON. With --include, the answer starts with the status line and a header.
     $codeql = "$($data.repos[$Matches[1]].codeql)"
-    if ($codeql -eq '404') { 'gh: Not Found (HTTP 404)'; exit 1 }
-    if ($codeql.StartsWith('fail:')) { $codeql.Substring(5); exit 1 }
-    if ($codeql.StartsWith('raw:')) { $codeql.Substring(4); exit 0 }
-    ConvertTo-Json -InputObject @{ state = $codeql }; exit 0
+    $status = 200; $body = ConvertTo-Json -InputObject @{ state = $codeql }
+    if ($codeql -eq 'fail:none') { exit 1 }
+    if ($codeql -eq '404') { $status = 404; $body = '{"message":"Not Found"}' }
+    elseif ($codeql.StartsWith('fail:')) { $status = [int]$codeql.Substring(5); $body = '{"message":"Error"}' }
+    elseif ($codeql.StartsWith('raw:')) { $body = $codeql.Substring(4) }
+    if ($include) { "HTTP/2.0 $status Status"; 'Content-Type: application/json'; '' }
+    $body
+    if ($status -ne 200) { exit 1 }
+    exit 0
 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets/(\d+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].full["$($Matches[2])"] -Depth 10; exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets$') { ConvertTo-Json -InputObject @($data.repos[$Matches[1]].rulesets) -Depth 5; exit 0 }
@@ -81,7 +88,8 @@ $repos = @{
     fresh = New-Repo
     noCodeQL = New-Repo -CodeQL 'not-configured'
     setupNotFound = New-Repo -CodeQL '404'
-    setupFailed = New-Repo -CodeQL 'fail:gh: Resource not accessible by integration (HTTP 403)'
+    setupFailed = New-Repo -CodeQL 'fail:403'
+    setupNoResponse = New-Repo -CodeQL 'fail:none'
     setupUnreadable = New-Repo -CodeQL 'raw:<html>Bad Gateway</html>'
     oursWithoutCodeQL = New-Repo -CodeQL 'not-configured' -Rulesets @((New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')))
     legacy = New-Repo -Branch master
@@ -140,11 +148,11 @@ try {
 
     # 3b. A repository where CodeQL's default setup isn't configured gets no code-scanning rule, which would wait forever.
     $r = Invoke-Baseline @('-Repo', 'noCodeQL')
-    Check 'create: no code-scanning rule where CodeQL is not configured, and says so' (((@($r.Body.rules.type)) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and $r.Output -match 'no code-scanning rule') "$(@($r.Body.rules.type) -join ',') $($r.Output)"
+    Check 'create: no code-scanning rule where CodeQL is not configured, and says so' (((@($r.Body.rules.type)) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and $r.Output -match [regex]::Escape("no code-scanning rule (CodeQL's default setup is not configured)")) "$(@($r.Body.rules.type) -join ',') $($r.Output)"
 
     $r = Invoke-Baseline @('-Repo', 'setupNotFound')
     Check 'create: CodeQL setup not found (404) gets no code-scanning rule' (((@($r.Body.rules.type)) -join ',') -eq 'deletion,non_fast_forward,pull_request') "$(@($r.Body.rules.type) -join ',') $($r.Output)"
-    foreach ($name in 'setupFailed', 'setupUnreadable') {
+    foreach ($name in 'setupFailed', 'setupNoResponse', 'setupUnreadable') {
         $r = Invoke-Baseline @('-Repo', $name)
         Check "skip: a CodeQL setup lookup that fails or can't be read changes nothing ($name)" ($r.Changes.Count -eq 0 -and $r.Output -match "${name}: skipped \(couldn't read CodeQL's default setup") "$($r.Changes -join '|') $($r.Output)"
     }

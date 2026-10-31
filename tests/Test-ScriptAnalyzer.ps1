@@ -8,7 +8,9 @@
     own run on people's machines and in their CI, so a warning is treated as an error. The settings file turns off the
     rules that don't fit these scripts, each with its reason; a finding that can't be fixed is suppressed where it is,
     with [Diagnostics.CodeAnalysis.SuppressMessageAttribute] and a justification. Installs the pinned PSScriptAnalyzer
-    for the current user when it is missing. Prints each finding, then PASS or FAIL, and exits 1 on any finding.
+    for the current user from the PowerShell Gallery when it is missing, so the first run needs the network; offline,
+    Install-Module fails with its own error before any analysis. Prints each finding, then PASS or FAIL, and exits 1 on
+    any finding.
 
 .EXAMPLE
     .\tests\Test-ScriptAnalyzer.ps1
