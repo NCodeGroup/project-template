@@ -41,7 +41,7 @@ New-Item -ItemType Directory -Force $Work | Out-Null
 $scripts = @(Get-ChildItem -LiteralPath $Path -File -Filter 'Test-*.ps1' | Sort-Object Name)
 if (-not $scripts.Count) {
     "No Test-*.ps1 scripts in $Path."
-    if ($ownWork) { Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue }
+    if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
     exit 1
 }
 
@@ -77,6 +77,6 @@ foreach ($script in $scripts) {
 
 ''
 if ($failed) { "All tests: FAILED ($failed)"; exit 1 }
-if ($ownWork) { Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'All tests: PASSED'
 exit 0

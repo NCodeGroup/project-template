@@ -127,9 +127,6 @@ try {
 finally { Pop-Location }
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Update exit code tests: FAILED ($($failures.Count))"; exit 1 }
-if ($ownWork) {
-    Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue
-    if (Test-Path -LiteralPath $Work) { "Couldn't delete the work folder: $Work" }
-}
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Update exit code tests: PASSED'
 exit 0

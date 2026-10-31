@@ -95,9 +95,6 @@ try {
 finally { Pop-Location }
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Adopt owned-files tests: FAILED ($($failures.Count))"; exit 1 }
-if ($ownWork) {
-    Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue
-    if (Test-Path -LiteralPath $Work) { "Couldn't delete the work folder: $Work" }
-}
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Adopt owned-files tests: PASSED'
 exit 0
