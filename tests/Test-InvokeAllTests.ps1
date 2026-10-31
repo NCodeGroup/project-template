@@ -7,8 +7,8 @@
     checks the result lines, the summary line, the exit code, the logs and the -SkipDotnetBuild forwarding, and that two
     runs at once without -Work log to folders of their own, deleted when the run passes. Also checks that
     tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that every suite with -Work defaults to a
-    folder of its own, kept on a failure and deleted through it on a pass. Prints PASS or FAIL per check and exits 1 on
-    any failure.
+    folder of its own, kept on a failure and deleted through it on a pass, and, through a trap line, kept with its path
+    printed when the suite stops with an error. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-all-tests-test-<process ID> in the
@@ -21,9 +21,11 @@
 param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-all-tests-test-$PID"))
 $ErrorActionPreference = 'Stop'
 $ownWork = -not $PSBoundParameters.ContainsKey('Work')
+trap { "Kept the work folder: $Work"; break }
 $runner = Join-Path $PSScriptRoot 'Invoke-AllTests.ps1'
 $pwsh = (Get-Process -Id $PID).Path
 $failures = [Collections.Generic.List[string]]::new()
+$trapLine = 'trap { "Kept the work folder: $Work"; break }'
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
@@ -144,8 +146,17 @@ else {
     Check 'cleanup: a folder it can''t delete prints its path and doesn''t fail the run' ((-not $threw) -and ($out -contains "Couldn't delete the work folder: $held") -and (Test-Path -LiteralPath $held)) "$threw$($out -join "`n")"
 }
 
+# A suite that stops with an error keeps its folder and says where, through the trap line every suite has.
+$crash = Join-Path $Work 'crash'
+$crashWork = Join-Path $crash 'work'
+New-Fixture $crash @{ 'Test-Crash.ps1' = "param([string]`$Work)`n`$ErrorActionPreference = 'Stop'`n$trapLine`nNew-Item -ItemType Directory -Force `$Work | Out-Null`nthrow 'boom'`n" }
+$lines = @(& $pwsh -NoProfile -NonInteractive -File (Join-Path $crash 'Test-Crash.ps1') -Work $crashWork 2>&1 | ForEach-Object { "$_" })
+$code = $LASTEXITCODE
+Check 'crash: a suite that stops with an error keeps its folder and prints its path' (($code -ne 0) -and ($lines -contains "Kept the work folder: $crashWork") -and (Test-Path -LiteralPath $crashWork)) ($lines -join "`n")
+
 # Every suite with -Work (but Test-CommitAttribution.ps1, which always deletes its folder) works in a folder of its own
-# by default, keeps it and says where when a check fails, and deletes it through Remove-TestWork.ps1 when all pass.
+# by default, keeps it and says where when a check fails or the suite stops with an error (the trap line), and deletes
+# it through Remove-TestWork.ps1 when all pass.
 $suites = @(Get-ChildItem -LiteralPath $PSScriptRoot -File -Filter 'Test-*.ps1' | Where-Object Name -NE 'Test-CommitAttribution.ps1' | ForEach-Object {
         $ast = [Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$null)
         $param = $ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Work' }
@@ -158,8 +169,9 @@ foreach ($suite in $suites) {
         if (-not $suite.Text.Contains('$ownWork = -not $PSBoundParameters.ContainsKey(''Work'')')) { '$ownWork' }
         if ($suite.Text -notmatch '(?m)^if \(\$failures\.Count\) \{ "Kept the work folder: \$Work"; ') { 'Kept the work folder' }
         if (-not $suite.Text.Contains('if ($ownWork) { & (Join-Path $PSScriptRoot ''Remove-TestWork.ps1'') $Work }')) { 'Remove-TestWork.ps1' }
+        if (-not $suite.Text.Contains($trapLine)) { 'trap' }
     )
-    Check "suites: $($suite.Name) keeps its own folder on a failure and deletes it on a pass" ($missing.Count -eq 0) "missing: $($missing -join ', ')"
+    Check "suites: $($suite.Name) keeps its own folder on a failure or an error and deletes it on a pass" ($missing.Count -eq 0) "missing: $($missing -join ', ')"
 }
 $attribution = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-CommitAttribution.ps1'), [ref]$null, [ref]$null)
 $default = "$(($attribution.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Work' }).DefaultValue)"

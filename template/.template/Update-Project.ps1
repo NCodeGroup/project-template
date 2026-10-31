@@ -42,9 +42,9 @@
     On the default branch (the branch origin/HEAD names) it refuses to run unless -NoCommit is given, because it
     commits. It enables the template's hooks (core.hooksPath .githooks) unless the clone already has a hooks path,
     hooks in .git/hooks, or uses pre-commit; then it leaves them as they are and warns, naming the command that runs
-    the template's hooks, or says nothing once core.hooksPath names a .githooks folder or .pre-commit-config.yaml
-    runs .githooks/commit-msg. With protect: hook in AGENTS.md's Landing section, it also says how to run
-    .githooks/pre-push there.
+    the template's hooks, or says nothing when core.hooksPath names a .githooks folder, or when
+    .pre-commit-config.yaml runs .githooks/commit-msg. With protect: hook in AGENTS.md's Landing section, it also says
+    how to run .githooks/pre-push there.
 
     When the project has version tags merged into HEAD that the changelog (AGENTS.md's Landing changelog key,
     CHANGELOG.md by default) has no section for, it ends with a /plan-migration request to backfill them.
@@ -176,6 +176,9 @@ function Get-RewrittenFile([string[]]$Files, [string]$Folder) {
 # A hooks path the clone already has, from any Git config, is never changed: one that names a .githooks folder runs the
 # template's hooks, and any other, such as husky's or a global hooks folder, gets a note naming the command to run.
 # With "- protect: hook" in AGENTS.md's Landing section, it also says how to run .githooks/pre-push until something does.
+# This is a deliberate copy of Get-GitHooksSetup in the template's tools/adopt/Adoption.psm1, not shared code: this
+# script runs on its own, from an older template's copy. Change both together, or Update and Adopt can decide
+# differently for the same clone; tests/Test-GitHooks.ps1 runs both copies through the same cases.
 function Get-GitHooksSetup {
     $config = '.pre-commit-config.yaml'
     $hooksDir = git rev-parse --path-format=absolute --git-path hooks

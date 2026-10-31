@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-10-31
+
+### Changed
+
+- No change for projects made from the template. A test suite that stops with an error prints the work folder it keeps, as a failing one does: every `tests/Test-*.ps1` suite with `-Work` has a `trap` line, which `tests/Test-InvokeAllTests.ps1` checks. New checks cover the `.sample` filter that decides whether a clone has hooks of its own (`Test-GitHooks.ps1`), a curly apostrophe in the command `Set-RepositoryBaseline.ps1 -RequireChecks auto -WhatIf` prints (`Test-RepositoryBaseline.ps1`), and, for `Get-TemplateUpdate.ps1`, a `gh` call that fails, a project ahead of the newest tag and a section that brings an issue body to exactly its 60,000-character limit (`Test-TemplateUpdate.ps1`) ([#158](https://github.com/NCodeGroup/project-template/issues/158), [#160](https://github.com/NCodeGroup/project-template/issues/160)).
+
+### Fixed
+
+- `Update-Project.ps1`'s help says plainly when it says nothing about Git hooks: when `core.hooksPath` names a `.githooks` folder, or when `.pre-commit-config.yaml` runs `.githooks/commit-msg`. Its copy of `Get-GitHooksSetup` notes that it changes together with the one `Adopt-Project.ps1` uses ([#158](https://github.com/NCodeGroup/project-template/issues/158)).
+
 ## [0.42.1] - 2026-10-31
 
 ### Changed
@@ -600,7 +610,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.42.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.43.0...HEAD
+[0.43.0]: https://github.com/NCodeGroup/project-template/compare/v0.42.1...v0.43.0
 [0.42.1]: https://github.com/NCodeGroup/project-template/compare/v0.42.0...v0.42.1
 [0.42.0]: https://github.com/NCodeGroup/project-template/compare/v0.41.1...v0.42.0
 [0.41.1]: https://github.com/NCodeGroup/project-template/compare/v0.41.0...v0.41.1
