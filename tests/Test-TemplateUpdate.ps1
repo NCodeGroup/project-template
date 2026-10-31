@@ -136,6 +136,8 @@ function Invoke-Notice {
     $output = & pwsh -NoProfile -File $script 2>&1 | Out-String
     [pscustomobject]@{
         Output = $output
+        # The output on one line: PowerShell wraps an error to the console's width, continuing it on lines that start with |.
+        Flat = ($output -replace '\r?\n\s*\|?\s*', ' ' -replace '\s+', ' ')
         ExitCode = $LASTEXITCODE
         Calls = @(if (Test-Path -LiteralPath $calls) { Get-Content -LiteralPath $calls })
         Issues = @((Get-Content -Raw -LiteralPath (Join-Path $bin 'state.json') | ConvertFrom-Json).issues)
@@ -195,8 +197,8 @@ try {
     # 7. A template it can't read fails the run.
     Write-Text (Join-Path $project '.copier-answers.yml') "_commit: v0.1.0`n_src_path: $templateUrl-missing`n"
     $r = Invoke-Notice
-    Check 'unreadable template: exits non-zero and names the address' ($r.ExitCode -ne 0 -and $r.Output.Contains("Can't read the project template's tags at") -and $r.Output.Contains('template-missing')) $r.Output
-    Check 'unreadable template: the error says what Git said' ($r.Output -match 'Git says: \S') $r.Output
+    Check 'unreadable template: exits non-zero and names the address' ($r.ExitCode -ne 0 -and $r.Flat.Contains("Can't read the project template's tags at") -and $r.Flat.Contains('template-missing')) $r.Output
+    Check 'unreadable template: the error says what Git said' ($r.Flat -match 'Git says: \S') $r.Output
 
     # 8. No .template-version: the version is _commit in .copier-answers.yml. The label exists, so it isn't created.
     Remove-Item -LiteralPath (Join-Path $project '.template-version') -Force
@@ -256,28 +258,28 @@ try {
     Set-GhState '{ "issues": [], "labels": ["bug"] }'
     $r = Invoke-Notice
     $body = "$((@($r.Issues) | Select-Object -First 1).body)"
-    Check 'no CHANGELOG.md: exits 0 with a warning' ($r.ExitCode -eq 0 -and $r.Output -match 'no CHANGELOG\.md at v0\.7\.0') $r.Output
+    Check 'no CHANGELOG.md: exits 0 with a warning' ($r.ExitCode -eq 0 -and $r.Flat -match 'no CHANGELOG\.md at v0\.7\.0') $r.Output
     Check 'no CHANGELOG.md: the body says so and links to the release' ($body.TrimEnd().EndsWith('The project template has no CHANGELOG.md at v0.7.0; read [the v0.7.0 release](https://github.com/NCodeGroup/project-template/releases/tag/v0.7.0).')) $body
 
     # 13. Copier's GitLab shorthand: the error names the address it expands to.
     Set-Answer "_commit: v0.1.0`n_src_path: gl:owner/repo"
     $r = Invoke-Notice
-    Check 'GitLab shorthand: reads https://gitlab.com/owner/repo' ($r.ExitCode -ne 0 -and $r.Output.Contains("Can't read the project template's tags at https://gitlab.com/owner/repo.")) $r.Output
+    Check 'GitLab shorthand: reads https://gitlab.com/owner/repo' ($r.ExitCode -ne 0 -and $r.Flat.Contains("Can't read the project template's tags at https://gitlab.com/owner/repo.")) $r.Output
 
     # 14. No _src_path, a version it can't read, and a template with no version tags each fail the run, saying why.
     Set-Answer '_commit: v0.1.0'
     $r = Invoke-Notice
-    Check 'no _src_path: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Output.Contains('.copier-answers.yml has no _src_path')) $r.Output
+    Check 'no _src_path: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Flat.Contains('.copier-answers.yml has no _src_path')) $r.Output
     $untagged = Join-Path $Work 'untagged'
     Invoke-Git init -q -b main $untagged
     Invoke-Git -C $untagged commit -q --allow-empty -m 'No versions'
     Invoke-Git -C $untagged tag 'latest'
     Set-Answer "_commit: v0.1.0`n_src_path: file:///$($untagged -replace '\\', '/')"
     $r = Invoke-Notice
-    Check 'no version tags: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Output.Contains('has no version tags')) $r.Output
+    Check 'no version tags: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Flat.Contains('has no version tags')) $r.Output
     Set-ProjectVersion 'main'
     $r = Invoke-Notice
-    Check 'unreadable version: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Output.Contains("Can't read the project's template version from .template-version ('main')")) $r.Output
+    Check 'unreadable version: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Flat.Contains("Can't read the project's template version from .template-version ('main')")) $r.Output
 }
 finally {
     $env:PATH = $savedPath
