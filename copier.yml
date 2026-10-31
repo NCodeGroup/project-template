@@ -17,6 +17,12 @@ _skip_if_exists:
   - README.md
   - Directory.Build.props
   - .github/workflows/code-review.yml
+  - .github/workflows/publish.yml
+  - docs/decisions/README.md
+  - docs/decisions/0000-template.md
+  - LICENSE.txt
+  - COPYRIGHT.txt
+  - NCodeGroup.png
 _merged_files:
   - .gitignore
   - .gitattributes
@@ -29,6 +35,7 @@ _merged_files:
   - .gitlab-ci.yml
   - Directory.Packages.props
   - global.json
+  - nuget.config
 
 # The workflow files of tools the project doesn't use; an empty pattern excludes nothing.
 # Each pattern reads its answer through a default or an `is defined` test, because an update renders the old version's files with these patterns before the project has that answer.
@@ -111,8 +118,8 @@ package_license:
 
 package_icon:
   type: str
-  help: "Package icon: a PNG file at the repository root, or blank for none"
-  default: ""
+  help: "Package icon: a PNG file at the repository root, or blank for none. NCodeGroup.png is the template's own, written for you"
+  default: "{% if author_name == 'NCode Group' %}NCodeGroup.png{% endif %}"
   when: "{{ stack == 'dotnet' and nuget_package }}"
   validator: '{% if "/" in package_icon or "\\" in package_icon %}A file name at the repository root, without a folder{% endif %}'
 

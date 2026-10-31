@@ -1,0 +1,55 @@
+# 0131. A published library's public API surface is tracked and evolves backward-compatibly
+
+- **Status:** Accepted
+- **Date:** 2026-10-31
+
+## Context
+
+This decision applies to projects published as NuGet packages.
+
+For a shipped library, an accidental change to the public surface (a renamed method, a removed overload, a changed
+signature, a flipped nullability annotation) is a breaking change for every consumer, and it is easy to make one
+without noticing. Reviewer vigilance does not scale, and nullability and overload removals are the changes reviewers
+miss most.
+
+## Decision
+
+The public surface is explicit, visible in every diff, and guarded by an analyzer; after the first stable release it
+evolves additively.
+
+- Every packable project references `Microsoft.CodeAnalysis.PublicApiAnalyzers` and carries a `PublicAPI.Shipped.txt`
+  and `PublicAPI.Unshipped.txt` pair. A public symbol missing from both files fails the build (`RS0016`), and a listed
+  symbol that no longer exists fails it (`RS0017`). With warnings as errors
+  ([ADR-0100](0100-warnings-are-errors-in-every-project.md)), the surface cannot drift without a deliberate edit to
+  those files. The template does not ship this analyzer; a project adds it, with its version in
+  `Directory.Packages.props`, when it starts publishing packages.
+- Before 1.0, `PublicAPI.Shipped.txt` stays empty and the whole surface lives in `PublicAPI.Unshipped.txt`, so every
+  change is visible while the surface may still break. At the first stable release the surface moves to
+  `PublicAPI.Shipped.txt`.
+- After the first stable release, a shipped surface evolves backward-compatibly:
+  - additions only; a new overload instead of a changed signature;
+  - required inputs as constructor parameters, optional inputs as `init` properties, never a new constructor
+    parameter;
+  - enum members appended, never renumbered, when the value crosses a wire or is persisted;
+  - removal by `[Obsolete]` first, then deletion in the next major version.
+- A breaking change is a major version.
+
+## Options considered
+
+- Rely on code review. Rejected: people miss surface changes.
+- Track the surface with the analyzer (chosen). The diff of `PublicAPI.*.txt` puts every surface change in front of the
+  reviewer, and the build keeps the files true.
+
+## Consequences
+
+- Enabling the analyzer on an existing library is bulk work once (the analyzer's code fix adds every member); after
+  that, adding API is a small, obvious diff.
+- Reviewing a pull request includes reviewing the `PublicAPI.*.txt` diff.
+- Until the project adds the analyzer, the compatibility rules above still apply, but only review enforces them.
+
+## References
+
+- [PublicApiAnalyzers](https://github.com/dotnet/roslyn-analyzers/blob/main/src/PublicApiAnalyzers/PublicApiAnalyzers.Help.md)
+- [.NET library guidance: breaking changes](https://learn.microsoft.com/dotnet/standard/library-guidance/breaking-changes)
+- [ADR-0100](0100-warnings-are-errors-in-every-project.md): warnings are errors in every project.
+- [ADR-0134](0134-evolving-optional-parameters-are-a-dto.md): a growing set of optional criteria is an init-only DTO.

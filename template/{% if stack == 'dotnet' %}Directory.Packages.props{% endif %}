@@ -5,6 +5,11 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
+  <!-- Analyzers every project references: the banned APIs in build/BannedSymbols.txt. -->
+  <ItemGroup>
+    <GlobalPackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
+  </ItemGroup>
+
   <ItemGroup>
   </ItemGroup>
 

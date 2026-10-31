@@ -73,7 +73,8 @@ Invoke-Git -C $tpl config uploadpack.allowAnySHA1InWant true
 $tplUrl = 'file:///' + ($tpl -replace '\\', '/') + '/.git'
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.vscode\settings.json', '.vscode\extensions.json'
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.vscode\settings.json', '.vscode\extensions.json',
+    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
     claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
@@ -83,8 +84,10 @@ $toolFiles = @{
     local = '.github\agents\local-implementer.agent.md', '.github\agents\hybrid-planner.agent.md',
         '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-local.prompt.md'
 }
-$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'Directory.Packages.props', 'global.json', '.claude\rules\csharp.md',
-    '.github\instructions\csharp.instructions.md'
+$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\BannedSymbols.txt', 'Directory.Packages.props', 'global.json', 'nuget.config',
+    '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md'
+# Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
+$libraryOnly = 'docs\decisions\project-template\0130-*.md'
 $hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml'; gitlab = @('.gitlab-ci.yml') }
 $cases = @(
     @{ Name = 'dotnet'; Stack = 'dotnet'; Host = 'github' }
@@ -104,6 +107,7 @@ $cases = @(
     @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
     @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'MIT'; package_icon = 'icon.png' } }
+    @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'Apache-2.0' } }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
 )
 if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
@@ -123,9 +127,39 @@ foreach ($case in $cases) {
     else { Check "${name}: no .NET layer" ($present.Count -eq 0) ($present -join ', ') }
     if ($case.Stack -eq 'dotnet') {
         $buildProps = Get-Content -LiteralPath (Join-Path $dest 'build\ProjectTemplate.props') -Raw
-        $nugetOk = if ($case.Data.nuget_package) { $buildProps.Contains('<PackageLicenseExpression>MIT</PackageLicenseExpression>') -and $buildProps.Contains('<PackageIcon>icon.png</PackageIcon>') -and $buildProps.Contains('../icon.png') }
-            else { -not $buildProps.Contains('PackageLicenseExpression') }
+        $library = [bool]$case.Data.nuget_package
+        # Without an answer, an NCode Group library takes the template's own icon.
+        $icon = if ($case.Data.package_icon) { $case.Data.package_icon } else { 'NCodeGroup.png' }
+        $nugetOk = if ($library) { $buildProps.Contains("<PackageLicenseExpression>$($case.Data.package_license)</PackageLicenseExpression>") -and $buildProps.Contains("<PackageIcon>$icon</PackageIcon>") -and $buildProps.Contains("../$icon") -and -not $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
+            else { -not $buildProps.Contains('PackageLicenseExpression') -and $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
         Check "${name}: NuGet package settings" $nugetOk
+        Check "${name}: analyzers, banned APIs and test-project suppressions in the build settings" ($buildProps.Contains('<AnalysisLevel>latest-recommended</AnalysisLevel>') -and $buildProps.Contains('<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>') -and $buildProps.Contains('ProjectTemplate.globalconfig') -and $buildProps.Contains('BannedSymbols.txt') -and $buildProps.Contains('CA1707')) $buildProps
+        $packages = Get-Content -LiteralPath (Join-Path $dest 'Directory.Packages.props') -Raw
+        Check "${name}: every project references the banned API analyzer" ($packages -match '<GlobalPackageReference Include="Microsoft\.CodeAnalysis\.BannedApiAnalyzers" Version="\d+\.\d+\.\d+" />') $packages
+        $libraryWrong = @($libraryOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -ErrorAction SilentlyContinue) -ne $library })
+        Check "${name}: library decisions only for a library" (-not $libraryWrong) ($libraryWrong -join ', ')
+        $license = Join-Path $dest 'LICENSE.txt'
+        $licenseOk = switch ($case.Data.package_license) {
+            'MIT' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).StartsWith("MIT License`n`nCopyright (c) NCode Group`n") }
+            'Apache-2.0' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).Contains('Apache License') }
+            default { -not (Test-Path -LiteralPath $license) }
+        }
+        Check "${name}: LICENSE.txt for the license answered" $licenseOk
+        Check "${name}: COPYRIGHT.txt only for an Apache-2.0 library" ((Test-Path -LiteralPath (Join-Path $dest 'COPYRIGHT.txt')) -eq ($case.Data.package_license -eq 'Apache-2.0'))
+        $templateIcon = Join-Path $dest 'NCodeGroup.png'
+        Check "${name}: the template's icon only for a library that uses it" ((Test-Path -LiteralPath $templateIcon) -eq ($library -and $icon -eq 'NCodeGroup.png'))
+        $editorconfig = Get-Content -LiteralPath (Join-Path $dest '.editorconfig') -Raw
+        $header = if ($case.Data.package_license -eq 'Apache-2.0') { 'Licensed under the Apache License, Version 2.0' } elseif ($library) { "SPDX-License-Identifier: $($case.Data.package_license)" } else { "file_header_template = Copyright $([char]0xA9) NCode Group" }
+        Check "${name}: the C# file header for the license answered" ($editorconfig.Contains($header) -and $editorconfig.Contains('dotnet_diagnostic.IDE0073.severity = suggestion')) $editorconfig
+        $publish = Join-Path $dest '.github\workflows\publish.yml'
+        $wantsPublish = $library -and $case.Host -eq 'github'
+        Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)
+        if ($wantsPublish) {
+            $workflow = Get-Content -LiteralPath $publish -Raw
+            $uses = [regex]::Matches($workflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+            Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 5 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
+            Check "${name}: the publish workflow runs on a published release, holds no permission by default, and pushes through trusted publishing in the nuget environment" ($workflow.Contains('types: [published]') -and $workflow -match '(?m)^permissions: \{\}\r?$' -and $workflow.Contains('environment: nuget') -and $workflow.Contains('id-token: write') -and $workflow.Contains('uses: NuGet/login@') -and $workflow.Contains('persist-credentials: false') -and -not $workflow.Contains('secrets.')) $workflow
+        }
     }
     $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
     $wrong = @($hostOnly[$case.Host] | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($hostOnly[$otherHost] | Where-Object { Test-Path (Join-Path $dest $_) })
@@ -183,7 +217,8 @@ foreach ($case in $cases) {
     $wrong = @($wanted | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($unwanted | Where-Object { Test-Path (Join-Path $dest $_) })
     Check "${name}: workflow files for $($tools -join ', ') only" (-not $wrong) ($wrong -join ', ')
 
-    $files = Get-ChildItem -LiteralPath $dest -Recurse -File -Force
+    # Text files: an image is copied byte for byte.
+    $files = Get-ChildItem -LiteralPath $dest -Recurse -File -Force | Where-Object Extension -NotIn '.png'
     $crlf = $files | Where-Object { $_.Extension -notin '.cmd', '.bat' -and [IO.File]::ReadAllText($_.FullName).Contains("`r") } | ForEach-Object Name
     Check "${name}: LF line endings" (-not $crlf) ($crlf -join ', ')
     $badEnd = $files | Where-Object { $b = [IO.File]::ReadAllBytes($_.FullName); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.FullName.Substring($dest.Length).TrimStart('\', '/') }

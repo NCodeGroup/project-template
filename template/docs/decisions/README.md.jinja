@@ -1,0 +1,32 @@
+# Architecture Decision Records
+
+How {{ project_name }} records its decisions: one short Markdown file per decision, kept in this folder and changed in
+the same pull request as the code it explains.
+
+## When to Write One
+
+Write a record for a non-obvious choice that someone would otherwise question again: a design with real alternatives,
+a trade-off that looks wrong without its reasons, or a departure from the project template. The conventions themselves
+go in `AGENTS.md` or the instruction files it lists; a record explains why a convention is what it is. `/analyze-decision`
+compares the options and writes one.
+
+## How to Write One
+
+- Copy [0000-template.md](0000-template.md) to `NNNN-kebab-case-title.md`, with the next free number, starting from
+  `0001`.
+- The status is `Proposed` while the decision is open, `Accepted` once it holds, and `Superseded by NNNN` when a later
+  record replaces it.
+- Never rewrite the decision of an accepted record. A changed decision is a new record that supersedes the old one, and
+  the old one's status says so. Fixing a typo or a broken link is fine.
+- Add the record to the index below.
+
+## The Template's Decisions
+
+The project template's own decisions are in [project-template/](project-template/README.md). Template updates replace
+that folder. To decide otherwise, write a record here that says "Supersedes project-template ADR-NNNN" and list the
+override in `AGENTS.md`.
+
+## Index
+
+| ADR | Decision | Status |
+| --- | --- | --- |

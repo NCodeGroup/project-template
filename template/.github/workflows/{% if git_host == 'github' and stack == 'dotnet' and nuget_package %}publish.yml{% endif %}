@@ -1,0 +1,90 @@
+# Publish packages: when a GitHub release is published, packs every packable project with the version its tag names
+# and pushes the packages, with their symbol packages, to nuget.org. docs/decisions/project-template/ says why.
+#
+# Two jobs, so the job that builds the code never holds a publishing credential:
+#   - pack checks the tag is a version (v1.2.3 or v1.2.3-rc.1), tests and packs in Release, and uploads the packages;
+#   - publish runs in the protected `nuget` environment, exchanges the job's OIDC token for a short-lived nuget.org API
+#     key through nuget.org trusted publishing, and pushes them. A rerun skips the packages already pushed.
+#
+# Set up once: on nuget.org, a trusted publishing policy for this repository and the workflow file publish.yml; in the
+# repository, the `nuget` environment, with required reviewers, and the variable NUGET_USER naming the nuget.org account
+# that owns the policy. The project owns this file: template updates never change it. A project that publishes from a
+# workflow of its own deletes it.
+name: Publish packages
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+# One publication at a time; a second waits rather than racing the first to nuget.org.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  pack:
+    name: Pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Read the version from the tag
+        id: version
+        shell: pwsh
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if ($env:TAG -notmatch '^v(\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?)$') { throw "The release tag '$env:TAG' isn't a version such as v1.2.3." }
+          "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Test
+        run: dotnet test --configuration Release
+      - name: Pack
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: dotnet pack --configuration Release --output artifacts/packages "-p:Version=$VERSION"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish to nuget.org
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: nuget
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packages
+          path: packages
+      - name: Log in to nuget.org
+        id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+      # dotnet nuget push also pushes each package's .snupkg, found beside it, to the nuget.org symbol server.
+      - name: Push packages
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+          VERSION: ${{ needs.pack.outputs.version }}
+        run: |
+          dotnet nuget push 'packages/*.nupkg' --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+          echo "Published **$VERSION** to nuget.org." >> "$GITHUB_STEP_SUMMARY"

@@ -67,7 +67,7 @@ New-Item -ItemType Directory -Force $Work | Out-Null
 $copierYml = Join-Path $repoRoot 'copier.yml'
 $skip = @(Get-CopierList $copierYml '_skip_if_exists')
 $merged = @(Get-CopierList $copierYml '_merged_files')
-Check 'unit: Get-CopierList reads the file lists' (($skip -join ',') -eq 'AGENTS.md,README.md,Directory.Build.props,.github/workflows/code-review.yml' -and '.gitignore' -in $merged -and 'global.json' -in $merged) "$($skip -join ',') | $($merged -join ',')"
+Check 'unit: Get-CopierList reads the file lists' (($skip -join ',') -eq 'AGENTS.md,README.md,Directory.Build.props,.github/workflows/code-review.yml,.github/workflows/publish.yml,docs/decisions/README.md,docs/decisions/0000-template.md,LICENSE.txt,COPYRIGHT.txt,NCodeGroup.png' -and '.gitignore' -in $merged -and 'global.json' -in $merged -and 'nuget.config' -in $merged) "$($skip -join ',') | $($merged -join ',')"
 $one = Get-OwnedMergedFile '.github/workflows/ci.yml' $merged
 $dropped = Get-OwnedMergedFile @('.gitignore', '', $null) $merged
 $none = Get-OwnedMergedFile @() $merged
