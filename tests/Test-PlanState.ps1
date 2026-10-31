@@ -183,6 +183,7 @@ $agentsFile = Join-Path $repo 'AGENTS.md'
 $agentsText = [IO.File]::ReadAllText($agentsFile)
 New-Item -ItemType Directory -Force (Join-Path $repo 'build') | Out-Null
 Write-Text (Join-Path $repo 'build/env.ps1') "`$env:Path = `"`$PWD/tools;`$env:Path`"`n"
+New-Item -ItemType Directory -Force (Join-Path $repo 'build/folder.ps1') | Out-Null
 $preludes = [ordered]@{
     '`./build/env.ps1`'             = './build/env.ps1'
     '.\build\env.ps1'               = '.\build\env.ps1'
@@ -190,7 +191,13 @@ $preludes = [ordered]@{
     '`./build/missing.ps1`'         = 'invalid'
     'build/env.ps1'                 = 'invalid'
     '`./../outside.ps1`'            = 'invalid'
+    '`.\..\outside.ps1`'            = 'invalid'
+    '`./build/folder.ps1`'          = 'invalid'
     '`. ./build/env.ps1`'           = 'invalid'
+    '`& ./build/env.ps1`'           = 'invalid'
+    '`& nvs use 26`'                = 'invalid'
+    '`./build/env.ps1 # sets PATH`' = 'invalid'
+    '`nvs use 26 || npm -v`'        = 'invalid'
     '`nvs use 26; npm -v`'          = 'invalid'
     '`nvs use 26 | Out-Null`'       = 'invalid'
     '`nvs use 26 && npm -v`'        = 'invalid'
@@ -203,6 +210,9 @@ foreach ($value in $preludes.Keys) {
     $expected = "prelude=$($preludes[$value])"
     Check "local: the Landing section's prelude $value prints as $expected" ($landing.EndsWith(" $expected")) "landing='$landing'"
 }
+Write-Text $agentsFile ($agentsText -replace '(?m)^- prelude:[^\r\n]*(\r?\n)?', '')
+$landing = (Get-State $repo -NoFetch)['landing']
+Check 'local: a Landing section without a prelude line prints prelude=none' ($landing.EndsWith(' prelude=none') -and $landing.StartsWith('integrate=direct ')) "landing='$landing'"
 Write-Text $agentsFile $agentsText
 Remove-Item -LiteralPath (Join-Path $repo 'build') -Recurse -Force
 
