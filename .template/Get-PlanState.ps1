@@ -17,6 +17,10 @@
     gate is the command /ship-plan runs before it pushes, or none.
     prelude is the PowerShell command that sets up the shell, such as putting a tool on PATH, before the gate and each Done-when command, or none. It is invalid unless it is one command on one line, with no ;, |, &, &&, || or # comment: a script in the repository, written as ./<path>.ps1, that exists, or another command with its arguments.
     pr-format is <file>#<heading>, the section that sets a pull request's title and description, or none.
+    review-bots names the review bots whose findings /run-issues and /address-feedback may act on, by login without
+    the [bot] suffix GitHub's REST API adds, joined by commas: ncode-review by default, or none.
+    max-review-rounds is the number of rounds of pull request feedback after which /run-issues recommends the merge
+    and stops adding steps for the bots' findings, 3 by default; a value that isn't a whole number from 1 to 999 reads as 3.
     renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag on origin (the clone's tags when origin's can't be read) or newest release heading of the changelog, ## [<version>] - <date> or ## <version>, on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed. next is ship-plan rather than wait while a pull request is open and renumber isn't -, so /ship-plan renumbers the plan.
     tag is present when origin has the plan's Release: version tag, local when only this clone has it, such as one a failed push left, absent when neither has it, and unknown when git ls-remote can't read origin's tags. Without an origin remote, it reads the clone's tags: present or absent.
     conflicts names the files that conflict when origin's default branch merges into HEAD, joined by ", ", from git merge-tree --write-tree, which changes neither the index nor the working tree; none when the merge is clean, unknown when Git can't say, such as Git older than 2.38, and - on the default branch or once the plan has landed. next is ship-plan rather than wait while a pull request is open and conflicts names files, so /ship-plan adds a step that merges the default branch in.
@@ -311,8 +315,8 @@ try {
 
     # Landing policy from AGENTS.md
     # Each key the workflow reads, with its default, in the order the landing line prints them.
-    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up'; gate = 'none'; protect = 'none'; 'pr-format' = 'none'; prelude = 'none' }
-    $spacedKeys = @('follow-up-label', 'gate', 'pr-format', 'prelude')   # keys whose value keeps its spaces
+    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up'; gate = 'none'; protect = 'none'; 'pr-format' = 'none'; 'review-bots' = 'ncode-review'; 'max-review-rounds' = '3'; prelude = 'none' }
+    $spacedKeys = @('follow-up-label', 'gate', 'pr-format', 'review-bots', 'prelude')   # keys whose value keeps its spaces
     $agents = Join-Path $folder 'AGENTS.md'
     if (Test-Path -LiteralPath $agents) {
         $inLanding = $false
@@ -325,6 +329,10 @@ try {
         }
     }
     if ($policy['prelude'] -ne 'none' -and -not (Test-Prelude $policy['prelude'] $folder)) { $policy['prelude'] = 'invalid' }
+    # review-bots lists logins without the [bot] suffix REST adds, joined by commas.
+    $bots = @($policy['review-bots'] -split '[\s,]+' | ForEach-Object { $_ -replace '\[bot\]\z', '' } | Where-Object { $_ })
+    $policy['review-bots'] = if ($bots.Count) { $bots -join ',' } else { 'none' }
+    if ($policy['max-review-rounds'] -notmatch '^[1-9]\d{0,2}\z') { $policy['max-review-rounds'] = '3' }
     $integrate = $policy['integrate']; $releasePolicy = $policy['release']
     $landing = @(foreach ($key in $policy.Keys) { if ($policy[$key] -match '\s') { "$key=`"$($policy[$key])`"" } else { "$key=$($policy[$key])" } }) -join ' '
     $protected = Get-Protected $hostName $default $policy['protect']
