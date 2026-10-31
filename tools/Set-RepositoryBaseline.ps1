@@ -32,7 +32,9 @@
     wherever it ran on that pull request and passed, so a commit with an AI co-author trailer can't merge. A repository
     with no merged pull request, or none of whose checks qualify, is skipped with the reason and nothing changed. With
     -WhatIf it lists the checks and prints the command that names them, to edit and run; a job whose name has a comma is
-    listed apart, since -RequireChecks would split it.
+    listed apart, since -RequireChecks would split it. The list comes from one pull request: a job whose workflow has
+    paths or branches filters reports nothing on a pull request the filters skip, and that pull request can't merge, so
+    run -WhatIf first and leave such jobs out.
 
     GitHub Free doesn't offer organization rulesets, so this applies one to each repository. New-Project.ps1 runs it for a
     repository it creates; Adopt-Project.ps1 prints the command to run.
@@ -167,6 +169,7 @@ function Set-Baseline {
         if (-not $found) { Write-Host "${Name}: skipped (-RequireChecks auto found no pull request merged into $branch to read checks from; name the jobs with -RequireChecks)"; return }
         Write-Host "${Name}: pull request #$($found.Number) passed: $(if ($found.Checks.Count) { $found.Checks -join ', ' } else { 'nothing a ruleset can require' }); left out: $(if ($found.LeftOut.Count) { $found.LeftOut -join ', ' } else { 'nothing' })"
         if (-not $found.Checks.Count) { Write-Host "${Name}: skipped (no check that passed on pull request #$($found.Number) can be required; name the jobs with -RequireChecks)"; return }
+        Write-Host "${Name}: these checks come from one pull request. A job whose workflow has paths or branches filters reports nothing on a pull request the filters skip, which then can't merge; leave such a job out by naming the rest with -RequireChecks"
         $checks = @($found.Checks)
     }
 

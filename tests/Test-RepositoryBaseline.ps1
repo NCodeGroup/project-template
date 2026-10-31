@@ -288,6 +288,7 @@ try {
     Check 'auto: -WhatIf changes nothing' ($r.Changes.Count -eq 0) ($r.Changes -join '|')
     Check 'auto: -WhatIf lists the checks that passed on the latest merged pull request, Commit attribution among them' ($r.Output -match [regex]::Escape('autoChecks: pull request #9 passed: build-and-test, Commit attribution, flaky;') -and $r.Output -match [regex]::Escape("would: autoChecks (main): create 'Protect main' with 3 required check(s): build-and-test, Commit attribution, flaky")) $r.Output
     Check 'auto: -WhatIf prints the command that names them' ($r.Output -match [regex]::Escape("-Repo 'autoChecks' -Owner 'NCodeGroup' -RequireChecks 'build-and-test,Commit attribution,flaky'")) $r.Output
+    Check 'auto: -WhatIf says the checks come from one pull request and a path-filtered job would block others' ($r.Output -match [regex]::Escape('autoChecks: these checks come from one pull request. A job whose workflow has paths or branches filters')) $r.Output
     foreach ($leftOut in "Code review (the review bot's advice)", 'CodeQL (the code-scanning rule covers it)', 'Analyze (csharp) (the code-scanning rule covers it)', 'Analyze (python) (the code-scanning rule covers it)', 'review (ran on pull_request_target, not pull_request)', 'deploy (ran on push, not pull_request)', 'orphan (no workflow run on the commit says what ran it)', 'external (reported by other-ci, not GitHub Actions)', 'lint (skipped)', 'docs (neutral)', 'broken (failure)', 'slow (in_progress)') {
         Check "auto: leaves out $leftOut" ($r.Output -match ('left out: .*' + [regex]::Escape($leftOut))) $r.Output
     }
@@ -313,6 +314,7 @@ try {
     $checks = $r.Body.rules | Where-Object type -eq 'required_status_checks'
     Check 'auto: requires exactly the checks that passed, reported by GitHub Actions' ((@($checks.parameters.required_status_checks.context) -join ',') -eq 'build-and-test,Commit attribution,flaky' -and (@($checks.parameters.required_status_checks.integration_id | Select-Object -Unique) -join ',') -eq '15368') ($checks | ConvertTo-Json -Depth 6 -Compress)
     Check 'auto: creates the ruleset and says so' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/autoChecks/rulesets*' -and $r.Output -match 'done: autoChecks') $r.Output
+    Check 'auto: an applied run says the checks come from one pull request too' ($r.Output -match [regex]::Escape('autoChecks: these checks come from one pull request.')) $r.Output
 
     $r = Invoke-Baseline @('-Repo', 'oursAuto', '-RequireChecks', 'auto')
     $checks = $r.Body.rules | Where-Object type -eq 'required_status_checks'
