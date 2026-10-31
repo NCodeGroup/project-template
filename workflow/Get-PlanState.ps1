@@ -85,10 +85,15 @@ function Get-ChangelogBackfill([string[]]$Lines) {
 # The Keep a Changelog headings that a changelog section has more than once, as "<section> <heading>" joined by ", ", or -.
 function Get-ChangelogDuplicate([string[]]$Lines) {
     $found = [Collections.Generic.List[string]]::new()
-    $section = $null; $seen = @{}; $fenced = $false
+    $section = $null; $seen = @{}; $fence = $null
     foreach ($line in $Lines) {
-        if ("$line" -match '^\s*(```|~~~)') { $fenced = -not $fenced; continue }
-        if ($fenced) { continue }
+        # As in Markdown, a fence closes only on a bare run of its own character at least as long as the one that opened it,
+        # and a fence that never closes runs to the end of the file.
+        if ($null -ne $fence) {
+            if ("$line" -match '^\s*(`{3,}|~{3,})\s*$' -and $Matches[1][0] -eq $fence[0] -and $Matches[1].Length -ge $fence.Length) { $fence = $null }
+            continue
+        }
+        if ("$line" -match '^\s*(`{3,}|~{3,})') { $fence = $Matches[1]; continue }
         if ("$line" -match '^## +(\[[^\]]+\]|\S+)') { $section = $Matches[1]; $seen = @{}; continue }
         if ($null -ne $section -and "$line" -cmatch '^### +(Added|Changed|Deprecated|Removed|Fixed|Security)\s*$') {
             $heading = $Matches[1]

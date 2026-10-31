@@ -9,7 +9,8 @@
     the sections and headings it names. Then checks that every section of this repository's CHANGELOG.md has at most one of each
     heading: two pull requests that each add the same heading to ## [Unreleased] merge cleanly and leave it twice, and CI runs
     this suite on every pull request and push to main. Prints PASS or FAIL per check, a failure naming the section and heading,
-    and exits 1 on any failure.
+    and exits 1 on any failure. The copies projects run, .template\Get-PlanState.ps1 and template\.template\Get-PlanState.ps1,
+    are generated from workflow\Get-PlanState.ps1 by tools\Update-Template.ps1, and Test-Template.ps1 fails when either differs.
 
 .PARAMETER Changelog
     The changelog to check. Defaults to the repository's CHANGELOG.md.
@@ -42,6 +43,14 @@ $cases = [ordered]@{
     'two sections with the same heading have none'                = @{ Text = "## [Unreleased]`n`n### Removed`n`n- A.`n`n## [0.1.0] - 2026-01-01`n`n### Removed`n`n- B.`n"; Expected = '-' }
     'a heading in a fenced block, a fourth level or another word' = @{ Text = "## [Unreleased]`n`n### Added`n`n- A.`n`n``````markdown`n### Added`n```````n`n#### Added`n`n### Notes`n`n### Notes`n"; Expected = '-' }
     'CRLF line endings are read too'                              = @{ Text = "## [Unreleased]`r`n`r`n### Deprecated`r`n`r`n- A.`r`n`r`n### Deprecated`r`n`r`n- B.`r`n"; Expected = '[Unreleased] Deprecated' }
+    'headings match case-sensitively'                             = @{ Text = "## [Unreleased]`n`n### Changed`n`n- A.`n`n### changed`n`n- B.`n`n### CHANGED`n`n- C.`n"; Expected = '-' }
+    'headings before the first section are not counted'           = @{ Text = "# Changelog`n`n### Added`n`n### Added`n`n## [Unreleased]`n`n### Added`n`n- A.`n"; Expected = '-' }
+    'a fenced section heading leaves the section as it was'       = @{ Text = "## [Unreleased]`n`n### Changed`n`n- A.`n`n``````text`n## [0.1.0] - 2026-01-01`n```````n`n### Changed`n`n- B.`n"; Expected = '[Unreleased] Changed' }
+    'a heading in a tilde fence'                                  = @{ Text = "## [Unreleased]`n`n### Added`n`n- A.`n`n~~~markdown`n### Added`n### Added`n~~~`n"; Expected = '-' }
+    'a tilde line does not close a backtick fence'                = @{ Text = "## [Unreleased]`n`n### Fixed`n`n- A.`n`n```````n~~~`n### Fixed`n```````n`n### Added`n"; Expected = '-' }
+    'a backtick line does not close a tilde fence'                = @{ Text = "## [Unreleased]`n`n### Fixed`n`n- A.`n`n~~~`n```````n### Fixed`n~~~`n`n### Added`n"; Expected = '-' }
+    'a shorter run or one with text does not close a fence'       = @{ Text = "## [Unreleased]`n`n### Removed`n`n- A.`n`n`````````n```````n``````text`n### Removed`n`````````n`n### Removed`n"; Expected = '[Unreleased] Removed' }
+    'a fence that never closes runs to the end'                   = @{ Text = "## [Unreleased]`n`n### Security`n`n- A.`n`n``````powershell`n### Security`n`n### Security`n"; Expected = '-' }
 }
 if ($function) {
     foreach ($name in $cases.Keys) {
