@@ -276,8 +276,12 @@ if ($args[0] -eq 'api') {
     if (-not (Test-Path $file)) { exit 1 }
     $responses = [IO.File]::ReadAllText($file) | ConvertFrom-Json
     $property = $responses.PSObject.Properties["$($args[1])"]
-    if (-not $property) { exit 1 }
-    # A response that starts with raw: is printed as it is, such as a body that isn't JSON.
+    # A missing entry answers as the CLIs do for "not found"; fail:<text> fails with <text>, such as a 5xx; raw:<text>
+    # prints <text> as it is, such as a body that isn't JSON.
+    # The message goes to the output: this stand-in runs in the caller's process, where [Console]::Error would bypass the
+    # 2>&1 that captures the real CLIs' error.
+    if (-not $property) { 'Not Found (HTTP 404)'; exit 1 }
+    if ($property.Value -is [string] -and $property.Value.StartsWith('fail:')) { $property.Value.Substring(5); exit 1 }
     if ($property.Value -is [string] -and $property.Value.StartsWith('raw:')) { $property.Value.Substring(4); exit 0 }
     ConvertTo-Json -InputObject $property.Value -Depth 5
     exit 0
@@ -392,6 +396,10 @@ try {
     $r = Test-State (Get-State $gl.Repo) @{ protected = 'unknown' }
     Check 'protected: a GitLab protection that cannot be read is unknown, not no' $r.Ok $r.Detail
 
+    Set-HostApi @{ 'projects/:id/protected_branches/main' = 'fail:502 Bad Gateway' }
+    $r = Test-State (Get-State $gl.Repo) @{ protected = 'unknown' }
+    Check 'protected: a GitLab call that fails with anything but not found is unknown, not no' $r.Ok $r.Detail
+
     Set-HostApi @{}
     $r = Test-State (Get-State $gl.Repo) @{ protected = 'no' }
     Check 'protected: a GitLab branch that is not protected' $r.Ok $r.Detail
@@ -434,6 +442,18 @@ try {
     Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'raw:<html>Bad Gateway</html>' }
     $r = Test-State (Get-State $gh.Repo) @{ protected = 'unknown' }
     Check 'protected: GitHub rules that cannot be read, with no branch protection rule, are unknown, not no' $r.Ok $r.Detail
+
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'raw:<html>Bad Gateway</html>'; 'repos/{owner}/{repo}/branches/main/protection/required_pull_request_reviews' = @{ required_approving_review_count = 0 } }
+    $r = Test-State (Get-State $gh.Repo) @{ protected = 'host' }
+    Check 'protected: GitHub rules that cannot be read, with a branch protection rule that requires reviews, are host' $r.Ok $r.Detail
+
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'fail:HTTP 502: Bad Gateway' }
+    $r = Test-State (Get-State $gh.Repo) @{ protected = 'unknown' }
+    Check 'protected: a GitHub rules call that fails with anything but not found is unknown, not no' $r.Ok $r.Detail
+
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = @(@{ type = 'deletion' }); 'repos/{owner}/{repo}/branches/main/protection/required_pull_request_reviews' = 'fail:HTTP 502: Bad Gateway' }
+    $r = Test-State (Get-State $gh.Repo) @{ protected = 'unknown' }
+    Check 'protected: a GitHub branch protection call that fails with anything but not found is unknown, not no' $r.Ok $r.Detail
     Set-HostApi @{}
 
     # 16. The issues of a one-issue plan and a group plan.

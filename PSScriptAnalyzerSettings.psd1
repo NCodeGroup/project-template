@@ -1,7 +1,7 @@
-# PSScriptAnalyzer settings for this repository's scripts, run by CI's "Analyze PowerShell" job and by
-#   Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
-# Every warning and error fails the job. The rules below are off, each for the reason beside it; anything else that
-# can't be fixed is suppressed where it is, with [Diagnostics.CodeAnalysis.SuppressMessageAttribute] and a justification.
+# PSScriptAnalyzer settings for this repository's scripts. tests/Test-ScriptAnalyzer.ps1 runs them on every script, and
+# test-template.yml runs that as the suite "Analyze the PowerShell scripts". Every warning and error fails it.
+# The rules below are off, each for the reason beside it; anything else that can't be fixed is suppressed where it is,
+# with [Diagnostics.CodeAnalysis.SuppressMessageAttribute] and a justification.
 @{
     Severity     = @('Error', 'Warning')
     ExcludeRules = @(

@@ -7,9 +7,10 @@
     For each repository it:
       - adds a "Protect main" ruleset on the default branch, the same shape as project-template's: no deletion, no force
         push, a pull request required (no approvals, since the organization has one maintainer), merge-commit or rebase
-        merges only, never squash, so each commit of a plan stays on the branch, a code-scanning rule that blocks a
-        pull request whose CodeQL results add an alert at error level or a security alert of medium severity or higher,
-        and, when -RequireChecks names them, those CI jobs as required status checks;
+        merges only, never squash, so each commit of a plan stays on the branch, when CodeQL's default setup is
+        configured for the repository a code-scanning rule that blocks a pull request whose CodeQL results add an alert
+        at error level or a security alert of medium severity or higher, and, when -RequireChecks names them, those CI
+        jobs as required status checks;
       - turns on "delete branch on merge".
 
     A repository that already has an active ruleset requiring pull requests on its default branch is left alone, because
@@ -67,6 +68,16 @@ function Set-Baseline {
     if ($info.archived -or $info.fork) { Write-Host "${Name}: skipped (archived or fork)"; return }
     $branch = $info.default_branch
 
+    # The code-scanning rule needs CodeQL results on every pull request, or each one would wait for them, so it is added
+    # only when CodeQL's default setup is configured. A repository that runs CodeQL from a workflow of its own adds the
+    # rule itself.
+    $setup = & gh api "repos/$Owner/$Name/code-scanning/default-setup" 2>$null | Out-String
+    $codeql = $false
+    if ($LASTEXITCODE -eq 0) {
+        try { $codeql = ($setup | ConvertFrom-Json -ErrorAction Stop).state -eq 'configured' }
+        catch { Write-Verbose "Couldn't read the code-scanning setup of ${Name}: $_" }
+    }
+
     $rulesets = @(Invoke-GhJson @('api', "repos/$Owner/$Name/rulesets"))
     $own = $null
     foreach ($summary in $rulesets) {
@@ -92,12 +103,13 @@ function Set-Baseline {
             require_last_push_approval = $false
             required_approving_review_count = 0
             required_review_thread_resolution = $false
-        } },
-        # The organization's security configuration turns CodeQL on in every repository, so this rule always has results.
-        @{ type = 'code_scanning'; parameters = @{
-            code_scanning_tools = @(@{ tool = 'CodeQL'; alerts_threshold = 'errors'; security_alerts_threshold = 'medium_or_higher' })
         } }
     )
+    if ($codeql) {
+        $rules += @{ type = 'code_scanning'; parameters = @{
+            code_scanning_tools = @(@{ tool = 'CodeQL'; alerts_threshold = 'errors'; security_alerts_threshold = 'medium_or_higher' })
+        } }
+    }
     if ($checks.Count) {
         $rules += @{ type = 'required_status_checks'; parameters = @{
             strict_required_status_checks_policy = $false
@@ -115,7 +127,7 @@ function Set-Baseline {
     } | ConvertTo-Json -Depth 10
 
     $verb = if ($own) { 'update' } else { 'create' }
-    $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })"
+    $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) { Write-Host "would: $summary"; return }
 
     # gh reads the body from a file: piping JSON into a function loses stdin.

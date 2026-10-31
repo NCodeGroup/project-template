@@ -13,14 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- `tools/Set-RepositoryBaseline.ps1` adds a code-scanning rule to the "Protect main" ruleset it creates: a pull request whose CodeQL results add an alert at error level, or a security alert of medium severity or higher, can't merge. The organization's security configuration turns CodeQL on in every repository, so the rule always has results.
+- `tools/Set-RepositoryBaseline.ps1` adds a code-scanning rule to the "Protect main" ruleset it creates when CodeQL's default setup is configured for the repository: a pull request whose CodeQL results add an alert at error level, or a security alert of medium severity or higher, can't merge. Without CodeQL results every pull request would wait for them, so a repository without the default setup gets no rule, and the script says so.
 - The `code-review.yml` a project gets pins `NCodeGroup/code-review` to the full commit SHA of v0.3.1, with the tag in a comment (it pinned the tag v0.1.0), and no longer checks out the pull request's head: from v0.3.0 the engine fetches the exact commit itself, so CodeQL no longer reports the workflow (two alerts, "checkout of untrusted code in a privileged context" and its TOCTOU variant, on every repository that adopted the bot). Rule checks run on by default, and there is an infrastructure reviewer for OpenTofu and Terraform changes. A SHA is the one pin CodeQL's extended suite accepts, and Dependabot updates the SHA and the comment together. A project that already has the file keeps its own; update it the same way.
 - The pre-push rule in `project-template.instructions.md` and the `/run-issues` branch check for Copilot now say that `git ls-remote --exit-code` exits 2 only when the branch is absent, and that any other exit stops, because `origin` could not say. `Update-Project.ps1` notes that its changelog backfill is a deliberate copy of `Get-PlanState.ps1`'s.
 
 ### Fixed
 
-- `Get-PlanState.ps1` reports `protected: unknown`, not `no`, when GitHub's rules or GitLab's protection can't be read, so a branch that does require pull requests is never reported as unprotected (#125).
-- The scripts the template ships say why they ignore a failure to set the console's encoding, with a verbose message, instead of an empty `catch`; `Update-Project.ps1` and `New-Project.ps1` check `git` with its exit status first, which the analyzer read as a misused redirection; `Get-PlanState.ps1` no longer keeps a pull request head it never reads.
+- `Get-PlanState.ps1` reports `protected: unknown`, not `no`, when GitHub's rules or GitLab's protection can't be read, or the call fails with anything but not found (HTTP 404), so a branch that does require pull requests is never reported as unprotected (#125).
+- The scripts the template ships say why they ignore a failure to set the console's encoding, with a verbose message, instead of an empty `catch`; `Update-Project.ps1` and `New-Project.ps1` run `git` before the condition that tests its output, which the analyzer read as a misused redirection when it ran inside it; `Get-PlanState.ps1` no longer keeps a pull request head it never reads.
 - `tools/Set-RepositoryBaseline.ps1`: its examples showed a tab where `.\tools\` belongs, and its inner function now declares the `-WhatIf` support it uses.
 
 ## [0.41.1] - 2026-10-30

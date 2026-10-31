@@ -23,8 +23,26 @@ if (-not (Get-Module -ListAvailable PSScriptAnalyzer | Where-Object { $_.Version
 Import-Module PSScriptAnalyzer -RequiredVersion $version
 
 $settings = Join-Path $repoRoot 'PSScriptAnalyzerSettings.psd1'
-$files = Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Include *.ps1, *.psm1, *.psd1 |
-    Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' }
+
+# A control first: with these settings, a file with a known warning must be reported, or a pass below proves nothing.
+$control = Join-Path ([IO.Path]::GetTempPath()) "script-analyzer-control-$PID.ps1"
+[IO.File]::WriteAllText($control, "function Get-Control {`n    `$unused = 1`n}`n")
+try { $controlFindings = @(Invoke-ScriptAnalyzer -Path $control -Settings $settings) }
+finally { Remove-Item -LiteralPath $control -Force }
+if (-not $controlFindings.Count) {
+    Write-Host 'FAIL  the analyzer reports nothing for a file with a known warning, so these settings would pass anything'
+    Write-Host "`nScript analyzer: FAILED"
+    exit 1
+}
+Write-Host 'PASS  the analyzer reports the known warning in a control file'
+
+$files = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Include *.ps1, *.psm1, *.psd1 |
+    Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' })
+if (-not $files.Count) {
+    Write-Host "FAIL  no PowerShell files under $repoRoot"
+    Write-Host "`nScript analyzer: FAILED"
+    exit 1
+}
 $findings = @($files | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Settings $settings })
 
 foreach ($f in $findings) {

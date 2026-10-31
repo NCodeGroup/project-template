@@ -146,29 +146,34 @@ function Get-Protected([string]$HostName, [string]$Default, [string]$Protect) {
     if ($HostName -notin 'github', 'gitlab') { return 'unknown' }
     $cli = if ($HostName -eq 'github') { 'gh' } else { 'glab' }
     if (-not (Get-Command $cli -ErrorAction SilentlyContinue)) { return 'unknown' }
+    # The answer is no only when the host says so: rules without a pull request rule, or "not found" (HTTP 404) for the
+    # branch protection. A call that fails for any other reason, such as a network error or a 5xx, or an answer that
+    # can't be read, may hide a rule that requires pull requests, so that is unknown.
     if ($HostName -eq 'github') {
-        $unreadable = $false
-        $out = & gh api "repos/{owner}/{repo}/rules/branches/$Default" 2>$null | Out-String
-        if ($LASTEXITCODE -eq 0) {
+        $unknown = $false
+        $out = & gh api "repos/{owner}/{repo}/rules/branches/$Default" 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) { $unknown = $true }
+        else {
             try {
                 if (@($out | ConvertFrom-Json -ErrorAction Stop | Where-Object { $_.type -eq 'pull_request' }).Count -gt 0) { return 'host' }
             }
-            catch { $unreadable = $true }
+            catch { $unknown = $true }
         }
-        & gh api "repos/{owner}/{repo}/branches/$Default/protection/required_pull_request_reviews" 2>$null | Out-Null
+        $out = & gh api "repos/{owner}/{repo}/branches/$Default/protection/required_pull_request_reviews" 2>&1 | Out-String
         if ($LASTEXITCODE -eq 0) { return 'host' }
-        # Rules that couldn't be read may still require pull requests, so that is unknown, not no.
-        if ($unreadable) { return 'unknown' }
+        if ($out -notmatch '\b404\b') { $unknown = $true }
+        if ($unknown) { return 'unknown' }
         return 'no'
     }
-    $out = & glab api "projects/:id/protected_branches/$Default" 2>$null | Out-String
-    if ($LASTEXITCODE -eq 0) {
-        try {
-            if (@(($out | ConvertFrom-Json -ErrorAction Stop).push_access_levels | Where-Object { $_.access_level -ne 0 }).Count -eq 0) { return 'host' }
-        }
-        # A protection that couldn't be read may still refuse pushes, so that is unknown, not no.
-        catch { return 'unknown' }
+    $out = & glab api "projects/:id/protected_branches/$Default" 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        if ($out -match '\b404\b') { return 'no' }
+        return 'unknown'
     }
+    try {
+        if (@(($out | ConvertFrom-Json -ErrorAction Stop).push_access_levels | Where-Object { $_.access_level -ne 0 }).Count -eq 0) { return 'host' }
+    }
+    catch { return 'unknown' }
     'no'
 }
 
