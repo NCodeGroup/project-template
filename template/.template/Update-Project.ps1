@@ -27,7 +27,8 @@
                       = '.github/workflows/ci.yml' }, and only merged files can be named.
                       When the template changed a merged file that shares less than half its lines with the
                       template's version, the script suggests that answer, with the -Data to run;
-                      it doesn't stop the update.
+                      it doesn't stop the update. When Copier can't render the project's version, it warns
+                      with Copier's error and says it skipped the suggestion.
 
     The update runs `copier recopy` at the project's current template version, which resets the template-owned
     files and shows any local edits, then `copier update --defaults` to the newest version (or -Ref), which merges
@@ -85,11 +86,14 @@ function ConvertTo-CopierValue($Value) {
     if ($Value -is [Collections.IList]) { '[' + ($Value -join ', ') + ']' } else { "$Value" }
 }
 
-# Render the template at a version into a folder with the project's answers; false when Copier can't.
+# Render the template at a version into a folder with the project's answers;
+# false, with a warning that says why, when Copier can't.
 function Invoke-TemplateRender([string]$Version, [string]$Folder) {
     $renderArgs = @('copy', '--defaults', '--quiet', '--vcs-ref', $Version, '--data-file', (Join-Path $project '.copier-answers.yml'))
     foreach ($k in $Data.Keys) { $renderArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
-    try { Invoke-Copier @renderArgs $TemplateClone $Folder | Out-Null; $true } catch { $false }
+    $copierOutput = [Collections.Generic.List[string]]::new()
+    try { Invoke-Copier @renderArgs $TemplateClone $Folder | ForEach-Object { $copierOutput.Add("$_") }; $true }
+    catch { Write-Warning ((@("Copier couldn't render template $Version with this project's answers: $_") + $copierOutput) -join "`n"); $false }
 }
 
 function Get-Answer([string]$Key) {
@@ -224,7 +228,7 @@ function Get-GitHooksSetup {
 }
 
 # The changelog AGENTS.md's Landing section names (CHANGELOG.md by default) as File, and as Range the version tags merged into HEAD
-# that have no release heading in it: <oldest>..<newest>, the tag alone, or -. workflow/Get-PlanState.ps1 prints Range as changelog-backfill.
+# that have no release heading in it: <oldest>..<newest>, the tag alone, or -. .template/Get-PlanState.ps1 prints Range as changelog-backfill.
 # This is a deliberate copy of that logic, not shared code: Update-Project.ps1 runs on its own, from an older template's copy, before any workflow script exists to dot-source.
 # Change the release-heading pattern and the merged-tag filter in both places, or the request printed here can disagree with changelog-backfill.
 function Get-ChangelogBackfill {
@@ -320,14 +324,19 @@ try {
                 })
             if ($changedMerged) { $fromRendered = Invoke-TemplateRender $from $renderedFrom }
             if ($fromRendered) { $rewritten = @(Get-RewrittenFile $changedMerged $renderedFrom) }
-        } catch { $rewritten = @() }
+            elseif ($changedMerged) { Write-Warning "Skipped the rewritten-file suggestion: without template $from rendered, the update can't tell which merged files this project rewrote." }
+        }
+        catch {
+            Write-Warning "Skipped the rewritten-file suggestion: checking for merged files this project rewrote failed: $_"
+            $rewritten = @()
+        }
     }
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here.
         $exclude = foreach ($file in $projectOwned + $merged) { '--exclude', $file }
         Invoke-Copier recopy --force --quiet --vcs-ref :current: @exclude
         $reset = @(Get-Change)
-        # Adopt-Project.ps1 ends these files with the repository's own lines under a "# Kept from …" comment. Set them aside while
+        # The template's Adopt-Project.ps1 ends these files with the repository's own lines under a "# Kept from …" comment. Set them aside while
         # Copier merges, so a template change to the file's last lines can't conflict with them or take them into its conflict.
         $keptLines = @{}
         foreach ($file in '.gitignore', '.gitattributes', '.editorconfig') {
