@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-10-31
+
 ### Added
 
 - Every PowerShell script in the repository, the ones the template ships included, passes PSScriptAnalyzer with warnings treated as errors: `tests/Test-ScriptAnalyzer.ps1`, which CI runs with the other suites, fails on any finding. `PSScriptAnalyzerSettings.psd1` leaves out four rules that don't fit these scripts (Write-Host in interactive scripts, singular nouns, ShouldProcess on internal helpers, and a BOM PowerShell 7 doesn't need), each with its reason; the few findings that are false positives are suppressed where they are, with a justification.
@@ -588,7 +590,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.41.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.42.0...HEAD
+[0.42.0]: https://github.com/NCodeGroup/project-template/compare/v0.41.1...v0.42.0
 [0.41.1]: https://github.com/NCodeGroup/project-template/compare/v0.41.0...v0.41.1
 [0.41.0]: https://github.com/NCodeGroup/project-template/compare/v0.40.4...v0.41.0
 [0.40.4]: https://github.com/NCodeGroup/project-template/compare/v0.40.3...v0.40.4
