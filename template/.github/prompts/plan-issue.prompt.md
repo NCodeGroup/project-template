@@ -161,7 +161,7 @@ the issue above
 
 ### Template Update
 
-An issue labeled `template-update` comes from the project's template-update workflow, and its title names the version to update to, such as `Update to project-template v0.42.0`: that is the version the request names. Step 4 already set up the plan's worktree, if there is one, named after the issue, so skip what these instructions say about when to set up the worktree, what to name it and when to plan without one.
+An issue labeled `template-update` comes from the project's template-update workflow, and its title names the version to update to, such as `Update to project-template v0.42.0`: that is the version the request names. Use it only when it matches `^v?\d+(\.\d+){0,3}$` and is one of the template's tags, which step 1 below lists; otherwise stop and say so. Step 4 already set up the plan's worktree, named after the issue, or stopped because the executor can't run PowerShell. So none of what these instructions say about the worktree applies here: not when to set it up, not its `template-update-<tag>` name, and not planning without one in the current checkout on a `build/project-template-<tag>` branch.
 
 Plan this project's update to a newer version of the project template it was made from:
 
