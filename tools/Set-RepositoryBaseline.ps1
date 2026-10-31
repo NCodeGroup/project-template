@@ -76,9 +76,10 @@ function Invoke-GhJson([string[]]$GhArgs) {
 }
 
 # Reads every page of a list the API pages, and returns the items under $Key from all of them: one page holds at most
-# 100, and a list cut short would quietly leave checks out.
-function Get-GhPagedItems([string]$Path, [string]$Key) {
-    @(Invoke-GhJson @('api', '--paginate', '--slurp', $Path) | ForEach-Object { $_.$Key } | Where-Object { $_ })
+# 100, and a list cut short would quietly leave checks out. Without $Key, each page is the list itself, as the pull
+# requests list is.
+function Get-GhPagedItems([string]$Path, [string]$Key = '') {
+    @(Invoke-GhJson @('api', '--paginate', '--slurp', $Path) | ForEach-Object { if ($Key) { $_.$Key } else { $_ } } | Where-Object { $_ })
 }
 
 # Calls the host's API and returns the HTTP status and the body. The status comes from the response's own status line
@@ -105,9 +106,10 @@ function Get-Targets {
 # its number, the checks a ruleset can require, and the others with the reason each is left out; $null when no pull
 # request was merged into it. A required check is matched to GitHub Actions, so only the Actions jobs a pull_request
 # event ran qualify: pull_request_target (the review bot's job), CodeQL's dynamic Analyze jobs and push-only jobs don't
-# run on every pull request. It reads every page of the check runs and workflow runs.
+# run on every pull request. It reads every page of the closed pull requests, since the latest merged one can be past
+# the 100 updated last, and of the check runs and workflow runs.
 function Get-PassingChecks([string]$Name, [string]$Branch) {
-    $pulls = @(Invoke-GhJson @('api', "repos/$Owner/$Name/pulls?state=closed&base=$Branch&sort=updated&direction=desc&per_page=100"))
+    $pulls = Get-GhPagedItems "repos/$Owner/$Name/pulls?state=closed&base=$Branch&sort=updated&direction=desc&per_page=100"
     $latest = $pulls | Where-Object { $_.merged_at } | Sort-Object { [datetime]$_.merged_at } -Descending | Select-Object -First 1
     if (-not $latest) { return $null }
     $sha = $latest.head.sha
