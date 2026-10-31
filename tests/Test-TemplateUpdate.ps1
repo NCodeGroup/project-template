@@ -5,10 +5,15 @@
 .DESCRIPTION
     Builds a fixture template repository whose tags carry a fixture CHANGELOG.md, and a fixture project whose
     .copier-answers.yml names it, so the script reads tags and release notes with Git and no network. A stand-in for
-    gh keeps the fixture repository's issues and labels and records every call. Runs the script with the project
-    already current, one version behind, again one version behind, three versions behind, and current again, and
-    checks that it opens one issue with the right title, label and release notes, leaves it alone when nothing changed,
-    edits and retitles that same issue, closes it once the project is current, and ignores tags that aren't versions.
+    gh keeps the fixture repository's issues and labels and records every call; the test first checks that `gh`
+    resolves to it. Runs the script with the project already current, one version behind, again one version behind,
+    three versions behind, and current again, and checks that it opens one issue with the right title, label and
+    release notes, leaves it alone when nothing changed, edits and retitles that same issue, closes it once the project
+    is current, and ignores tags that aren't versions. Then checks the version from _commit, an existing label, the
+    oldest of several open notices, the old address and Copier's shorthands (rewritten to the fixture with Git's
+    insteadOf, so nothing reaches the network), a changelog too long for one issue, one with no section for the new
+    version, a tag without CHANGELOG.md, and the runs that fail: an unreadable template (with Git's message), no
+    _src_path, no version tags and an unreadable project version.
     Prints PASS or FAIL per check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
@@ -87,15 +92,23 @@ exit 1
 Write-Text (Join-Path $bin 'state.json') '{ "issues": [], "labels": ["bug"] }'
 
 # The fixture template: each version's tag carries a changelog with every section up to it, under an Unreleased section.
-function Get-FixtureChangelog([string[]]$Versions) {
+# -Filler adds that many lines to each section, for a changelog too long for one issue.
+function Get-FixtureChangelog([string[]]$Versions, [int]$Filler = 0) {
     $text = "# Changelog`n`nWhat each template version changes.`n`n## [Unreleased]`n`n### Added`n`n- Unreleased work.`n`n"
-    foreach ($v in $Versions) { $text += "## [$v] - 2026-10-0$($v.Split('.')[1])`n`n### Changed`n`n- Change in $v, with an em dash — and a link ([#$($v.Split('.')[1])](https://example.invalid/$v)).`n`n" }
+    foreach ($v in $Versions) {
+        $text += "## [$v] - 2026-10-0$($v.Split('.')[1])`n`n### Changed`n`n- Change in $v, with an em dash — and a link ([#$($v.Split('.')[1])](https://example.invalid/$v)).`n"
+        $text += "- Another change in $v, one of many.`n" * $Filler
+        $text += "`n"
+    }
     $text += ($Versions | ForEach-Object { "[$_]: https://example.invalid/compare/$_" }) -join "`n"
     $text + "`n"
 }
-function Add-TemplateVersion([string]$Version, [string[]]$Versions, [switch]$Annotated) {
-    Write-Text (Join-Path $template 'CHANGELOG.md') (Get-FixtureChangelog $Versions)
-    Invoke-Git -C $template add CHANGELOG.md
+function Add-TemplateVersion([string]$Version, [string[]]$Versions, [int]$Filler = 0, [switch]$Annotated, [switch]$NoChangelog) {
+    if ($NoChangelog) { Invoke-Git -C $template rm -q CHANGELOG.md }
+    else {
+        Write-Text (Join-Path $template 'CHANGELOG.md') (Get-FixtureChangelog $Versions $Filler)
+        Invoke-Git -C $template add CHANGELOG.md
+    }
     Invoke-Git -C $template commit -q -m "Release $Version"
     if ($Annotated) { Invoke-Git -C $template tag -a "v$Version" -m "v$Version" } else { Invoke-Git -C $template tag "v$Version" }
 }
@@ -110,6 +123,11 @@ Copy-Item -LiteralPath (Join-Path $repoRoot 'template\.template\Get-TemplateUpda
 $templateUrl = 'file:///' + ($template -replace '\\', '/')
 Write-Text (Join-Path $project '.copier-answers.yml') "# Written by Copier`n_commit: v0.1.0`n_src_path: $templateUrl`nproject_name: Fixture`n"
 function Set-ProjectVersion([string]$Version) { Write-Text (Join-Path $project '.template-version') "$Version`n" }
+function Set-Answer([string]$Text) { Write-Text (Join-Path $project '.copier-answers.yml') "# Written by Copier`n$Text`nproject_name: Fixture`n" }
+function Set-GhState([string]$Json) { Write-Text (Join-Path $bin 'state.json') $Json }
+function New-Issue([int]$Number, [string]$Title, [string[]]$Labels) {
+    @{ number = $Number; title = $Title; body = "Body of #$Number"; labels = $Labels; state = 'open'; comments = @() }
+}
 
 $script = Join-Path $project '.template\Get-TemplateUpdate.ps1'
 $calls = Join-Path $bin 'calls.log'
@@ -128,7 +146,12 @@ function Get-Change($Run) { @($Run.Calls | Where-Object { $_ -match '^(issue (cr
 
 $savedPath = $env:PATH
 $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+$gitConfig = 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0', 'GIT_CONFIG_KEY_1', 'GIT_CONFIG_VALUE_1'
 try {
+    # The script runs `gh`; it must reach the stand-in, never a real gh with the runner's credentials.
+    $gh = Get-Command gh -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $gh -or $gh.Source -ne (Join-Path $bin 'gh.ps1')) { throw "gh resolves to $(if ($gh) { $gh.Source } else { 'nothing' }), not the stand-in in $bin." }
+
     # 1. Already current: a version between tags counts as the tag before it.
     Set-ProjectVersion 'v0.2.0-3-gabc1234'
     $r = Invoke-Notice
@@ -173,9 +196,92 @@ try {
     Write-Text (Join-Path $project '.copier-answers.yml') "_commit: v0.1.0`n_src_path: $templateUrl-missing`n"
     $r = Invoke-Notice
     Check 'unreadable template: exits non-zero and names the address' ($r.ExitCode -ne 0 -and $r.Output.Contains("Can't read the project template's tags at") -and $r.Output.Contains('template-missing')) $r.Output
+    Check 'unreadable template: the error says what Git said' ($r.Output -match 'Git says: \S') $r.Output
+
+    # 8. No .template-version: the version is _commit in .copier-answers.yml. The label exists, so it isn't created.
+    Remove-Item -LiteralPath (Join-Path $project '.template-version')
+    Set-Answer "_commit: v0.3.0`n_src_path: $templateUrl"
+    Set-GhState '{ "issues": [], "labels": ["bug", "template-update"] }'
+    $r = Invoke-Notice
+    $issue = $r.Issues | Select-Object -First 1
+    Check 'no .template-version: reads the version from _commit' ($r.ExitCode -eq 0 -and "$($issue.body)".Contains('This project is on project-template v0.3.0. The newest version is v0.4.0, one version later.')) "$($r.Output) $($issue.body)"
+    Check 'label exists: opens the issue without creating the label' (((Get-Change $r) -join ' | ') -match '^issue create --title Update to project-template v0\.4\.0 --label template-update --body-file [^|]*$' -and @($r.Labels | Where-Object { $_ -eq 'template-update' }).Count -eq 1) ($r.Calls -join ' | ')
+
+    # 9. Several open notices, listed out of number order, and an issue with another label: the oldest notice is the one
+    # edited, then closed, and the others are left alone.
+    Set-ProjectVersion 'v0.1.0'
+    Set-GhState (ConvertTo-Json -Depth 5 -InputObject @{ labels = @('bug', 'template-update'); issues = @(
+                (New-Issue 5 'Update to project-template v0.3.0' @('template-update')),
+                (New-Issue 3 'Update to project-template v0.2.0' @('template-update')),
+                (New-Issue 2 'A bug' @('bug'))) })
+    $r = Invoke-Notice
+    $byNumber = @{}; foreach ($i in $r.Issues) { $byNumber[[int]$i.number] = $i }
+    Check 'several open: edits the oldest notice only' ($r.ExitCode -eq 0 -and ((Get-Change $r) -join ' | ') -match '^issue edit 3 --title Update to project-template v0\.4\.0 --body-file [^|]*$' -and $byNumber[3].title -eq 'Update to project-template v0.4.0') "$($r.Output) $($r.Calls -join ' | ')"
+    Check 'several open: leaves the newer notice and the other issue alone' ($byNumber[5].title -eq 'Update to project-template v0.3.0' -and $byNumber[5].body -eq 'Body of #5' -and $byNumber[2].body -eq 'Body of #2' -and $r.Issues.Count -eq 3) ($r.Issues | ConvertTo-Json -Depth 5)
+    Set-ProjectVersion 'v0.4.0'
+    $r = Invoke-Notice
+    $byNumber = @{}; foreach ($i in $r.Issues) { $byNumber[[int]$i.number] = $i }
+    Check 'several open, current: closes the oldest notice only' ($r.ExitCode -eq 0 -and ((Get-Change $r) -join ' | ') -match '^issue close 3 ' -and $byNumber[3].state -eq 'closed' -and $byNumber[5].state -eq 'open' -and $byNumber[2].state -eq 'open') "$($r.Output) $($r.Calls -join ' | ')"
+
+    # From here the project names the template by Copier's shorthand for its old GitHub address. Git rewrites the new
+    # address to the fixture, and every other https address to one that doesn't exist, so nothing reaches the network.
+    $env:GIT_CONFIG_COUNT = '2'
+    $env:GIT_CONFIG_KEY_0 = "url.$templateUrl.insteadOf"
+    $env:GIT_CONFIG_VALUE_0 = 'https://github.com/NCodeGroup/project-template.git'
+    $env:GIT_CONFIG_KEY_1 = "url.$templateUrl-offline/.insteadOf"
+    $env:GIT_CONFIG_VALUE_1 = 'https://'
+    Set-Answer "_commit: v0.1.0`n_src_path: gh:polewskm/project-template"
+
+    # 10. A changelog too long for one issue: the oldest sections are left out, with a link to the whole file.
+    Add-TemplateVersion '0.5.0' @('0.5.0', '0.4.0', '0.3.0', '0.2.0', '0.1.0') -Filler 700
+    Set-ProjectVersion 'v0.1.0'
+    Set-GhState '{ "issues": [], "labels": ["bug"] }'
+    $r = Invoke-Notice
+    $body = "$((@($r.Issues) | Select-Object -First 1).body)"
+    Check 'old address: reads the template at its new address' ($r.ExitCode -eq 0 -and $r.Issues.Count -eq 1 -and $body.Contains('The newest version is v0.5.0, 4 versions later.')) "$($r.Output) $($r.Calls -join ' | ')"
+    Check 'long changelog: the body fits in an issue and keeps the newest sections' ($body.Length -lt 65536 -and $body.Contains('## [0.5.0]') -and $body.Contains('## [0.4.0]') -and -not $body.Contains('## [0.3.0]') -and -not $body.Contains('## [0.2.0]')) "length $($body.Length)"
+    Check 'long changelog: says how many sections are left out and links to CHANGELOG.md at the tag' ($body.TrimEnd().EndsWith("The 2 older section(s) don't fit in an issue; read them in [CHANGELOG.md](https://github.com/NCodeGroup/project-template/blob/v0.5.0/CHANGELOG.md).")) $body.Substring([Math]::Max(0, $body.Length - 300))
+
+    # 11. A changelog with no section for the new version: the body links to it.
+    Add-TemplateVersion '0.6.0' @('0.4.0', '0.3.0', '0.2.0', '0.1.0')
+    Set-ProjectVersion 'v0.5.0'
+    Set-GhState '{ "issues": [], "labels": ["bug"] }'
+    $r = Invoke-Notice
+    $body = "$((@($r.Issues) | Select-Object -First 1).body)"
+    Check 'no section: the body says so and links to CHANGELOG.md at the tag' ($r.ExitCode -eq 0 -and $body.TrimEnd().EndsWith('The release notes have no section for these versions; read [CHANGELOG.md](https://github.com/NCodeGroup/project-template/blob/v0.6.0/CHANGELOG.md).')) "$($r.Output) $body"
+
+    # 12. A tag without CHANGELOG.md: a warning, and a body that links to the release instead.
+    Add-TemplateVersion '0.7.0' -NoChangelog
+    Set-ProjectVersion 'v0.6.0'
+    Set-GhState '{ "issues": [], "labels": ["bug"] }'
+    $r = Invoke-Notice
+    $body = "$((@($r.Issues) | Select-Object -First 1).body)"
+    Check 'no CHANGELOG.md: exits 0 with a warning' ($r.ExitCode -eq 0 -and $r.Output -match 'no CHANGELOG\.md at v0\.7\.0') $r.Output
+    Check 'no CHANGELOG.md: the body says so and links to the release' ($body.TrimEnd().EndsWith('The project template has no CHANGELOG.md at v0.7.0; read [the v0.7.0 release](https://github.com/NCodeGroup/project-template/releases/tag/v0.7.0).')) $body
+
+    # 13. Copier's GitLab shorthand: the error names the address it expands to.
+    Set-Answer "_commit: v0.1.0`n_src_path: gl:owner/repo"
+    $r = Invoke-Notice
+    Check 'GitLab shorthand: reads https://gitlab.com/owner/repo' ($r.ExitCode -ne 0 -and $r.Output.Contains("Can't read the project template's tags at https://gitlab.com/owner/repo.")) $r.Output
+
+    # 14. No _src_path, a version it can't read, and a template with no version tags each fail the run, saying why.
+    Set-Answer '_commit: v0.1.0'
+    $r = Invoke-Notice
+    Check 'no _src_path: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Output.Contains('.copier-answers.yml has no _src_path')) $r.Output
+    $untagged = Join-Path $Work 'untagged'
+    Invoke-Git init -q -b main $untagged
+    Invoke-Git -C $untagged commit -q --allow-empty -m 'No versions'
+    Invoke-Git -C $untagged tag 'latest'
+    Set-Answer "_commit: v0.1.0`n_src_path: file:///$($untagged -replace '\\', '/')"
+    $r = Invoke-Notice
+    Check 'no version tags: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Output.Contains('has no version tags')) $r.Output
+    Set-ProjectVersion 'main'
+    $r = Invoke-Notice
+    Check 'unreadable version: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Output.Contains("Can't read the project's template version from .template-version ('main')")) $r.Output
 }
 finally {
     $env:PATH = $savedPath
+    foreach ($name in $gitConfig) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
 }
 
 ''

@@ -11,7 +11,9 @@
     version up to and including that tag, and keeps one open issue labeled template-update, titled
     "Update to project-template <newest tag>", with those sections: it opens the issue when there is none, and
     otherwise edits the open one (the oldest, when there are several), retitling it to the newest version. It creates
-    the label when the repository lacks it. A run that would change nothing leaves the issue alone.
+    the label when the repository lacks it. A run that would change nothing leaves the issue alone. When the newest tag
+    has no CHANGELOG.md, the issue links to that release instead of listing its changes; a failure to read the template
+    fails the run with Git's message.
 
     When the project is on the newest version, it closes the open template-update issue with a comment, and does
     nothing when there is none.
@@ -51,6 +53,18 @@ function Get-Answer([string]$File, [string]$Key) {
     if ($match) { $match.Matches[0].Groups[1].Value.Trim("'", '"') }
 }
 
+# Runs git and returns what it prints; when it fails, the error says what failed and what git said, so the run's log
+# tells an authentication failure from a missing tag.
+function Invoke-Git([string[]]$Arguments, [string]$Failure) {
+    $output = & git @Arguments 2>&1
+    $code = $LASTEXITCODE
+    if ($code) {
+        $said = @($output | Where-Object { $_ -is [Management.Automation.ErrorRecord] } | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+        throw "$Failure $(if ($said) { "Git says: $($said -join ' ')" } else { "Git exited with code $code." })"
+    }
+    @($output | Where-Object { $_ -isnot [Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+}
+
 function Invoke-Gh {
     $output = & gh @args
     if ($LASTEXITCODE) { throw "gh $($args[0]) $($args[1]) exited with code $LASTEXITCODE." }
@@ -88,7 +102,8 @@ if (-not $current) { throw "Can't read the project's template version from .temp
 
 $src = Get-Answer $answersFile '_src_path'
 if (-not $src) { throw '.copier-answers.yml has no _src_path, the address of the template.' }
-# Copier's shorthands, and the template's old address, which GitHub only redirects.
+# Copier's shorthands, and the template's old address, which GitHub only redirects. Update-Project.ps1 moves a project
+# off the same old address; change both together.
 if ($src -match '^gh:(.+)$') { $src = "https://github.com/$($Matches[1])" }
 elseif ($src -match '^gl:(.+)$') { $src = "https://gitlab.com/$($Matches[1])" }
 if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?$') { $src = 'https://github.com/NCodeGroup/project-template.git' }
@@ -100,8 +115,7 @@ try {
     # Read Git's output as UTF-8, so the release notes keep their characters.
     try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { Write-Verbose "Couldn't set the console's output encoding: $_" }
 
-    $refs = git ls-remote --tags --refs -- $src 2>$null
-    if ($LASTEXITCODE) { throw "Can't read the project template's tags at $src." }
+    $refs = Invoke-Git ('ls-remote', '--tags', '--refs', '--', $src) "Can't read the project template's tags at $src."
     $tags = @(foreach ($ref in $refs) {
             if ($ref -match 'refs/tags/(.+)$') {
                 $version = ConvertTo-TemplateVersion $Matches[1]
@@ -121,11 +135,16 @@ try {
     }
 
     New-Item -ItemType Directory -Force $scratch | Out-Null
-    git -C $scratch init --quiet 2>$null
-    git -C $scratch fetch --quiet --depth 1 -- $src "refs/tags/$($newest.Tag)" 2>$null
-    if ($LASTEXITCODE) { throw "Can't fetch $($newest.Tag) from the project template at $src." }
-    $changelog = (git -C $scratch show 'FETCH_HEAD:CHANGELOG.md' 2>$null) -join "`n"
-    if ($LASTEXITCODE) { $changelog = '' }
+    Invoke-Git ('-C', $scratch, 'init', '--quiet') "Can't create a scratch repository in $scratch." | Out-Null
+    Invoke-Git ('-C', $scratch, 'fetch', '--quiet', '--depth', '1', '--', $src, "refs/tags/$($newest.Tag)") "Can't fetch $($newest.Tag) from the project template at $src." | Out-Null
+    # A tag without CHANGELOG.md gets an issue that links to the release; any other failure to read it fails the run,
+    # so a transient error never replaces a good issue body.
+    $hasChangelog = [bool](Invoke-Git ('-C', $scratch, 'ls-tree', '--name-only', 'FETCH_HEAD', '--', 'CHANGELOG.md') "Can't list the files of $($newest.Tag) from the project template at $src.")
+    $changelog = ''
+    if ($hasChangelog) {
+        $changelog = (Invoke-Git ('-C', $scratch, 'show', 'FETCH_HEAD:CHANGELOG.md') "Can't read CHANGELOG.md at $($newest.Tag) from the project template at $src.") -join "`n"
+    }
+    else { Write-Warning "The project template has no CHANGELOG.md at $($newest.Tag), so the issue links to the release instead of listing its changes." }
 
     $behind = @($tags | Where-Object { $_.Version -gt $current -and $_.Version -le $newest.Version }).Count
     $sections = @(Get-ChangelogSection $changelog | Where-Object { $_.Version -gt $current -and $_.Version -le $newest.Version })
@@ -144,7 +163,11 @@ try {
         ''
     ) -join "`n"
     $body = $head
-    if (-not $sections) { $body += "The release notes have no section for these versions; read $notes." }
+    if (-not $hasChangelog) {
+        $release = if ($web) { "[the $($newest.Tag) release]($web/releases/tag/$($newest.Tag))" } else { "the $($newest.Tag) release of $src" }
+        $body += "The project template has no CHANGELOG.md at $($newest.Tag); read $release."
+    }
+    elseif (-not $sections) { $body += "The release notes have no section for these versions; read $notes." }
     for ($i = 0; $i -lt $sections.Count; $i++) {
         $text = "$($sections[$i].Text)`n`n"
         if ($body.Length + $text.Length -gt $bodyLimit) {

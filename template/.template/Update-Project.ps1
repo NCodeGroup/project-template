@@ -258,7 +258,8 @@ try {
     $src = Get-Answer '_src_path'
     # The template moved from polewskm/project-template to NCodeGroup/project-template. A project whose answers still name the old
     # address moves over with this update, so it stops depending on GitHub's redirect. Only the _src_path line changes, and the
-    # update commits it with everything else.
+    # update commits it with everything else. Get-TemplateUpdate.ps1 reads the same old address for the weekly notice;
+    # change both together.
     $movedSource = 'https://github.com/NCodeGroup/project-template.git'
     if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?$') {
         $answersFile = Join-Path $project '.copier-answers.yml'
