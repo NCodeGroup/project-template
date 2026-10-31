@@ -106,7 +106,8 @@ function Set-Baseline {
     # a 5xx, or an answer that can't be read, says nothing, so the repository is skipped with the reason.
     $kept = if ($own) { @($own.rules | Where-Object type -eq 'code_scanning') } else { @() }
     $codeql = [bool]$kept.Count
-    # The default setup's query suite, when it was read as configured and isn't the extended one already.
+    # The query suite a configured default setup is switched from, when it isn't the extended one already. An answer
+    # that names no suite is switched too, and the summary says the suite wasn't reported.
     $suite = $null
     if (-not $kept.Count) {
         $setup = Invoke-HostApi gh "repos/$Owner/$Name/code-scanning/default-setup"
@@ -115,7 +116,9 @@ function Set-Baseline {
             try {
                 $answer = $setup.Body | ConvertFrom-Json -ErrorAction Stop
                 $codeql = $answer.state -eq 'configured'
-                if ($codeql -and $answer.query_suite -ne 'extended') { $suite = "$($answer.query_suite)" }
+                if ($codeql -and $answer.query_suite -ne 'extended') {
+                    $suite = if ("$($answer.query_suite)") { "the $($answer.query_suite) query suite" } else { 'a query suite it did not report' }
+                }
             }
             catch { $codeql = $null }
         }
@@ -164,7 +167,7 @@ function Set-Baseline {
     } | ConvertTo-Json -Depth 10
 
     $verb = if ($own) { 'update' } else { 'create' }
-    $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($suite) { "; switch CodeQL from the $suite query suite to extended" })"
+    $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) { Write-Host "would: $summary"; return }
 
     # gh reads the body from a file: piping JSON into a function loses stdin.

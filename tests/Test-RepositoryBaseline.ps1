@@ -51,12 +51,18 @@ if ($rest -contains '--input') {
     Add-Content -LiteralPath $log -Value "BODY $method $path"
     '{}'; exit 0
 }
-if ($method -eq 'PATCH') { exit 0 }
+if ($method -eq 'PATCH') {
+    if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$' -and $data.repos[$Matches[1]].switchFails) { exit 1 }
+    exit 0
+}
 if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
     # codeql is a state, 404 for not found, fail:<code> for another status, fail:none for no response at all, or
-    # raw:<text> for a body that isn't JSON. With --include, the answer starts with the status line and a header.
+    # raw:<text> for a body that isn't JSON. An empty suite leaves query_suite out of the answer. With --include, the
+    # answer starts with the status line and a header.
     $codeql = "$($data.repos[$Matches[1]].codeql)"
-    $status = 200; $body = ConvertTo-Json -InputObject @{ state = $codeql; query_suite = "$($data.repos[$Matches[1]].suite)" }
+    $answer = @{ state = $codeql }
+    if ("$($data.repos[$Matches[1]].suite)") { $answer.query_suite = "$($data.repos[$Matches[1]].suite)" }
+    $status = 200; $body = ConvertTo-Json -InputObject $answer
     if ($codeql -eq 'fail:none') { exit 1 }
     if ($codeql -eq '404') { $status = 404; $body = '{"message":"Not Found"}' }
     elseif ($codeql.StartsWith('fail:')) { $status = [int]$codeql.Substring(5); $body = '{"message":"Error"}' }
@@ -77,16 +83,18 @@ function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_f
         conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
         rules = @($Types | ForEach-Object { @{ type = $_ } }) }
 }
-function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default') {
+function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', [bool]$SwitchFails = $false) {
     $full = @{}
     $summaries = @()
     $id = 100
     foreach ($ruleset in $Rulesets) { $id++; $ruleset.id = $id; $full["$id"] = $ruleset; $summaries += @{ id = $id; name = $ruleset.name } }
-    @{ info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork }; rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite }
+    @{ info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork }; rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; switchFails = $SwitchFails }
 }
 $repos = @{
     fresh = New-Repo
     extendedAlready = New-Repo -Suite 'extended'
+    suiteUnreported = New-Repo -Suite ''
+    switchRefused = New-Repo -SwitchFails $true
     noCodeQL = New-Repo -CodeQL 'not-configured'
     setupNotFound = New-Repo -CodeQL '404'
     setupFailed = New-Repo -CodeQL 'fail:403'
@@ -147,6 +155,12 @@ try {
 
     $r = Invoke-Baseline @('-Repo', 'extendedAlready')
     Check 'create: a setup already on the extended suite is not changed' (($r.Changes -join '|') -notmatch 'default-setup' -and $r.Output -notmatch 'query suite') "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'suiteUnreported')
+    Check 'create: a configured setup that names no query suite is switched to extended, and the summary says so' ((($r.Changes -join '|') -match [regex]::Escape('api -X PATCH repos/NCodeGroup/suiteUnreported/code-scanning/default-setup -f query_suite=extended')) -and $r.Output -match 'switch CodeQL from a query suite it did not report to extended') "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'switchRefused')
+    Check 'create: a refused switch to the extended suite reports the repository as failed' ($r.Output -match [regex]::Escape("switchRefused: FAILED: Couldn't switch CodeQL's default setup to the extended query suite for switchRefused.") -and $r.Output -notmatch 'done: switchRefused') $r.Output
 
     # 3. Required checks, as one comma-separated string, which is how pwsh -File passes a list.
     $r = Invoke-Baseline @('-Repo', 'fresh', '-RequireChecks', 'build-and-test,Commit attribution')
