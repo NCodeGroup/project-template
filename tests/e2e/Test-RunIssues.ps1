@@ -39,6 +39,7 @@ param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-run-issues-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
+    [ValidateSet('minor-round', 'max-rounds')][string]$Scenario = 'minor-round',
     [string]$Claude = 'claude',
     [double]$MaxBudgetUsd = 30
 )
@@ -55,7 +56,7 @@ $hostDir = Join-Path $bin 'host'
 $worktree = Join-Path $app '.claude/worktrees/issue-1'
 
 if (-not $CheckOnly) {
-    New-FixtureProject -RepoRoot $repoRoot -Work $Work -App $app -Origin $origin -Bin $bin -Data @{ code_review = $true }
+    New-FixtureProject -RepoRoot $repoRoot -Work $Work -App $app -Origin $origin -Bin $bin -Data @{ code_review = $true } -Landing $(if ($Scenario -eq 'max-rounds') { @{ 'max-review-rounds' = '1' } } else { @{} })
     $issueBody = @'
 ## What
 `Get-Greeting` in `src/Greeting.ps1` returns `Hello, !` when `-Name` is empty or missing. It should return `Hello, world!`.
@@ -104,6 +105,18 @@ if (-not $CheckOnly) {
         comments = @(@{ key = 'slash'; author = $owner; authorAssociation = 'OWNER'; body = '/review' })
     }
     Write-Text (Join-Path $hostDir 'review-seed.json') (ConvertTo-Json -InputObject $seed -Depth 10)
+    if ($Scenario -eq 'minor-round') {
+        # NCode Review's review of the run's first push: a should-fix finding that asks only for another test of what tests/Test-Greeting.ps1 tests, and a nit.
+        $pushSeed = @{
+            threads  = @(
+                @{ key = 'minor'; path = 'tests/Test-Greeting.ps1'; line = 2; author = $ncode; authorAssociation = 'NONE'; body = "<!-- ncode-review:finding id=F5 fp=9d41e6b2 severity=should-fix -->`n**Should fix:** add another test that ``Get-Greeting -Name Ada`` returns ``Hello, Ada!``." }
+                @{ key = 'later-nit'; path = 'src/Greeting.ps1'; line = 2; author = $ncode; authorAssociation = 'NONE'; body = "<!-- ncode-review:finding id=F6 fp=1e7c08a4 severity=nit -->`n**Nit:** say in a comment that ``-Name`` may be empty." }
+            )
+            reviews  = @(@{ author = $ncode; authorAssociation = 'NONE'; body = 'NCode Review: 2 findings (1 should-fix, 1 nit).' })
+            comments = @()
+        }
+        Write-Text (Join-Path $hostDir 'review-seed-push.json') (ConvertTo-Json -InputObject $pushSeed -Depth 10)
+    }
 }
 
 if (-not $CheckOnly) {
@@ -117,6 +130,8 @@ if (-not $CheckOnly) {
         Check 'fixture: the fixture test passes' ($LASTEXITCODE -eq 0) "exit code $LASTEXITCODE"
         $missing = @(foreach ($f in '.github/workflows/code-review.yml', '.github/workflows/ci.yml') { git --git-dir=$origin cat-file -e "main:$f" 2>$null; if ($LASTEXITCODE) { $f } })
         Check 'fixture: origin main runs NCode Review and has the CI workflow its protected finding names' ($missing.Count -eq 0 -and $st['landing'] -like '*review-bots=ncode-review*') "missing: $($missing -join ', '); landing='$($st['landing'])'"
+        $rounds = if ($Scenario -eq 'max-rounds') { '1' } else { '3' }
+        Check "fixture: the Landing section's max-review-rounds is $rounds, and only minor-round has a review of the first push" ("$($st['landing'])" -match "(^| )max-review-rounds=$rounds( |$)" -and (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json')) -eq ($Scenario -eq 'minor-round')) "landing='$($st['landing'])'"
     }
 
     # The stand-in, in a folder of its own, gives a new pull request the seeded review and records thread replies.
@@ -127,6 +142,10 @@ if (-not $CheckOnly) {
     Write-Text (Join-Path $probe 'host/prs.json') '[]'
     Write-Text (Join-Path $probe 'host/comments.json') '[]'
     Copy-Item -LiteralPath (Join-Path $hostDir 'review-seed.json') -Destination (Join-Path $probe 'host/review-seed.json')
+    $pushSeedFile = Join-Path $hostDir 'review-seed-push.json'
+    if (Test-Path -LiteralPath $pushSeedFile) { Copy-Item -LiteralPath $pushSeedFile -Destination (Join-Path $probe 'host/review-seed-push.json') }
+    [IO.File]::WriteAllText((Join-Path $probe 'host/origin.txt'), $origin)
+    Invoke-Git --git-dir=$origin branch probe main
     $probeGh = Join-Path $probe 'gh.ps1'
     $readQuery = 'query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state reviewThreads(first: 100) { nodes { id isResolved path line comments(first: 50) { nodes { author { __typename login } authorAssociation body url } } } } } } }'
     $prUrl = "$(pwsh -NoProfile -File $probeGh pr create --draft --base main --head probe --title Probe --body Probe)".Trim()
@@ -142,6 +161,15 @@ if (-not $CheckOnly) {
     $replied = @($again.data.repository.pullRequest.reviewThreads.nodes | Where-Object { $_.id -eq $blocker.id }) | Select-Object -First 1
     $last = if ($replied) { @($replied.comments.nodes)[-1] } else { $null }
     Check 'fixture: the stand-in records a reply on a review thread' ($last -and $last.body -eq 'Autopilot: fixed in abc1234' -and $last.author.login -eq 'fixture-owner' -and $last.authorAssociation -eq 'OWNER') "comments: $(if ($replied) { @($replied.comments.nodes).Count })"
+    if ($Scenario -eq 'minor-round') {
+        $moved = "$(Invoke-Git --git-dir=$origin commit-tree 'main^{tree}' -p main -m 'Probe push')".Trim()
+        Invoke-Git --git-dir=$origin update-ref refs/heads/probe $moved
+        $pushed = pwsh -NoProfile -File $probeGh api graphql -F owner=fixture -F name=app -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json
+        $nodes = @($pushed.data.repository.pullRequest.reviewThreads.nodes)
+        $minor = @($nodes | Where-Object { $_.path -eq 'tests/Test-Greeting.ps1' -and "$($_.comments.nodes[0].body)" -match 'severity=should-fix' })
+        Check 'fixture: the stand-in gives NCode Review''s review of a push on the first read after it, and not before' (@($again.data.repository.pullRequest.reviewThreads.nodes).Count -eq 5 -and $nodes.Count -eq 7 -and $minor.Count -eq 1 -and $minor[0].comments.nodes[0].author.login -eq 'ncode-review' -and -not (Test-Path -LiteralPath (Join-Path $probe 'host/review-seed-push.json'))) "threads after the push: $($nodes.Count)"
+    }
+    Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
     Remove-Item -LiteralPath $probe -Recurse -Force
 }
 
