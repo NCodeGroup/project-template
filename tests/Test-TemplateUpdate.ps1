@@ -13,7 +13,7 @@
     oldest of several open notices, the old address and Copier's shorthands (rewritten to the fixture with Git's
     insteadOf, so nothing reaches the network), a changelog too long for one issue, one with no section for the new
     version, a tag without CHANGELOG.md, and the runs that fail: an unreadable template (with Git's message), no
-    _src_path, no version tags and an unreadable project version.
+    _src_path, no version tags, and an unreadable or empty project version.
     Prints PASS or FAIL per check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
@@ -280,6 +280,9 @@ try {
     Set-ProjectVersion 'main'
     $r = Invoke-Notice
     Check 'unreadable version: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Flat.Contains("Can't read the project's template version from .template-version ('main')")) $r.Output
+    Write-Text (Join-Path $project '.template-version') ''
+    $r = Invoke-Notice
+    Check 'empty .template-version: exits non-zero and says it can''t read the version' ($r.ExitCode -ne 0 -and $r.Flat.Contains("Can't read the project's template version from .template-version ('')")) $r.Output
 }
 finally {
     $env:PATH = $savedPath

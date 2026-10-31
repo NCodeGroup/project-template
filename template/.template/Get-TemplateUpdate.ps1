@@ -94,7 +94,7 @@ $project = (Resolve-Path -LiteralPath $Path).Path
 $answersFile = Join-Path $project '.copier-answers.yml'
 if (-not (Test-Path -LiteralPath $answersFile)) { throw "$project has no .copier-answers.yml, so it wasn't created from the template." }
 $versionFile = Join-Path $project '.template-version'
-$currentText = if (Test-Path -LiteralPath $versionFile) { (Get-Content -LiteralPath $versionFile -TotalCount 1).Trim() } else { Get-Answer $answersFile '_commit' }
+$currentText = if (Test-Path -LiteralPath $versionFile) { "$(Get-Content -LiteralPath $versionFile -TotalCount 1)".Trim() } else { Get-Answer $answersFile '_commit' }
 # A version between tags, such as v0.12.0-3-gabc1234, is the tag before the first dash.
 $currentTag = "$currentText" -replace '-.*$'
 $current = ConvertTo-TemplateVersion $currentTag
