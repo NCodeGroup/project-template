@@ -199,7 +199,7 @@ try {
     Check 'unreadable template: the error says what Git said' ($r.Output -match 'Git says: \S') $r.Output
 
     # 8. No .template-version: the version is _commit in .copier-answers.yml. The label exists, so it isn't created.
-    Remove-Item -LiteralPath (Join-Path $project '.template-version')
+    Remove-Item -LiteralPath (Join-Path $project '.template-version') -Force
     Set-Answer "_commit: v0.3.0`n_src_path: $templateUrl"
     Set-GhState '{ "issues": [], "labels": ["bug", "template-update"] }'
     $r = Invoke-Notice
