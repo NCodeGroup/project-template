@@ -78,3 +78,4 @@ if ($findings.Count) {
 }
 Write-Host "PASS  $($files.Count) files, no warnings or errors"
 Write-Host "`nScript analyzer: PASSED"
+exit 0
