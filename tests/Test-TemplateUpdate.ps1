@@ -263,12 +263,20 @@ try {
     Check 'no CHANGELOG.md: exits 0 with a warning' ($r.ExitCode -eq 0 -and $r.Flat -match 'no CHANGELOG\.md at v0\.7\.0') $r.Output
     Check 'no CHANGELOG.md: the body says so and links to the release' ($body.TrimEnd().EndsWith('The project template has no CHANGELOG.md at v0.7.0; read [the v0.7.0 release](https://github.com/NCodeGroup/project-template/releases/tag/v0.7.0).')) $body
 
-    # 13. Copier's GitLab shorthand: the error names the address it expands to.
+    # 13. A newest section too long for an issue on its own: no section is listed, and none is called older.
+    Add-TemplateVersion '0.8.0' @('0.8.0') -Filler 1600
+    Set-ProjectVersion 'v0.7.0'
+    Set-GhState '{ "issues": [], "labels": ["bug"] }'
+    $r = Invoke-Notice
+    $body = "$((@($r.Issues) | Select-Object -First 1).body)"
+    Check 'one long section: the body fits and links to CHANGELOG.md at the tag without calling it older' ($r.ExitCode -eq 0 -and $body.Length -lt 60500 -and -not $body.Contains('## [0.8.0]') -and -not $body.Contains('older') -and $body.TrimEnd().EndsWith("The release notes for these versions don't fit in an issue; read them in [CHANGELOG.md](https://github.com/NCodeGroup/project-template/blob/v0.8.0/CHANGELOG.md).")) "$($r.Output) length $($body.Length): $($body.Substring([Math]::Max(0, $body.Length - 300)))"
+
+    # 14. Copier's GitLab shorthand: the error names the address it expands to.
     Set-Answer "_commit: v0.1.0`n_src_path: gl:owner/repo"
     $r = Invoke-Notice
     Check 'GitLab shorthand: reads https://gitlab.com/owner/repo' ($r.ExitCode -ne 0 -and $r.Flat.Contains("Can't read the project template's tags at https://gitlab.com/owner/repo.")) $r.Output
 
-    # 14. No _src_path, a version it can't read, and a template with no version tags each fail the run, saying why.
+    # 15. No _src_path, a version it can't read, and a template with no version tags each fail the run, saying why.
     Set-Answer '_commit: v0.1.0'
     $r = Invoke-Notice
     Check 'no _src_path: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Flat.Contains('.copier-answers.yml has no _src_path')) $r.Output

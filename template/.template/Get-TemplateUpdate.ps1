@@ -171,7 +171,8 @@ try {
     for ($i = 0; $i -lt $sections.Count; $i++) {
         $text = "$($sections[$i].Text)`n`n"
         if ($body.Length + $text.Length -gt $bodyLimit) {
-            $body += "The $($sections.Count - $i) older section(s) don't fit in an issue; read them in $notes."
+            $body += if ($i -eq 0) { "The release notes for these versions don't fit in an issue; read them in $notes." }
+            else { "The $($sections.Count - $i) older section(s) don't fit in an issue; read them in $notes." }
             break
         }
         $body += $text
