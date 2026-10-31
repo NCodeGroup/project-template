@@ -4,7 +4,9 @@
 
 .DESCRIPTION
     Writes fixture folders of tiny Test-*.ps1 scripts, runs tests/Invoke-AllTests.ps1 on each in a child process, and
-    checks the result lines, the summary line, the exit code, the logs and the -SkipDotnetBuild forwarding, and that two
+    checks the result lines, the summary line, the exit code, the logs and the -SkipDotnetBuild forwarding, that suites
+    run at the same time and print in name order, not the order they finish, and that -Serial and -ThrottleLimit 1 run
+    one at a time, and that two
     runs at once without -Work log to folders of their own, deleted when the run passes. Also checks that
     tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that every suite with -Work defaults to a
     folder of its own, kept on a failure and deleted through it on a pass. Prints PASS or FAIL per check and exits 1 on
@@ -70,6 +72,49 @@ $both = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'ready-*.txt').Count 
 exit 0
 '@
 }
+# Two copies of one suite record when they ran: each marks itself ready and waits up to 5 s for the other's mark, so they
+# overlap when run at once. Test-A then waits 500 ms more, so it finishes last. Run one at a time, the wait times out.
+$pair = Join-Path $Work 'pair'
+$pairScript = @'
+$start = [DateTime]::UtcNow.Ticks
+$name = [IO.Path]::GetFileNameWithoutExtension($PSCommandPath)
+$other = if ($name -eq 'Test-A') { 'Test-B' } else { 'Test-A' }
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot "ready-$name.txt"), '')
+$deadline = [DateTime]::UtcNow.AddSeconds(5)
+while (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot "ready-$other.txt")) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 50 }
+if ($name -eq 'Test-A') { Start-Sleep -Milliseconds 500 }
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot "span-$name.txt"), "$start|$([DateTime]::UtcNow.Ticks)")
+exit 0
+'@
+New-Fixture $pair @{ 'Test-A.ps1' = $pairScript; 'Test-B.ps1' = $pairScript }
+function Invoke-PairRunner([string[]]$RunnerArgs = @()) {
+    Get-ChildItem -LiteralPath $pair -File | Where-Object { $_.Name -like 'ready-*' -or $_.Name -like 'span-*' } | Remove-Item -Force
+    $r = Invoke-Runner $pair $RunnerArgs
+    $spans = foreach ($name in 'A', 'B') {
+        $file = Join-Path $pair "span-Test-$name.txt"
+        if (Test-Path -LiteralPath $file) {
+            $start, $end = [IO.File]::ReadAllText($file) -split '\|'
+            [pscustomobject]@{ Start = [long]$start; End = [long]$end }
+        }
+    }
+    [pscustomobject]@{ Runner = $r; Spans = @($spans) }
+}
+
+$p = Invoke-PairRunner
+$ok = ($p.Spans.Count -eq 2) -and ($p.Runner.ExitCode -eq 0)
+$a, $b = $p.Spans
+Check 'parallel: suites run at the same time' ($ok -and ($a.Start -lt $b.End) -and ($b.Start -lt $a.End)) $p.Runner.Text
+$printedA = [array]::IndexOf($p.Runner.Lines, ($p.Runner.Lines -match '^PASS  Test-A\.ps1  ')[0])
+$printedB = [array]::IndexOf($p.Runner.Lines, ($p.Runner.Lines -match '^PASS  Test-B\.ps1  ')[0])
+Check 'parallel: results print in name order, not the order suites finish' ($ok -and ($a.End -gt $b.End) -and ($printedA -ge 0) -and ($printedA -lt $printedB)) $p.Runner.Text
+
+$p = Invoke-PairRunner @('-Serial')
+$a, $b = $p.Spans
+Check 'serial: -Serial runs one suite at a time' (($p.Spans.Count -eq 2) -and ($p.Runner.ExitCode -eq 0) -and ($a.End -le $b.Start)) $p.Runner.Text
+
+$p = Invoke-PairRunner @('-ThrottleLimit', '1')
+$a, $b = $p.Spans
+Check 'throttle: -ThrottleLimit 1 runs one suite at a time' (($p.Spans.Count -eq 2) -and ($p.Runner.ExitCode -eq 0) -and ($a.End -le $b.Start)) $p.Runner.Text
 
 $r = Invoke-Runner $mixed
 Check 'mixed: exits 1 and ends with the failed count' (($r.ExitCode -eq 1) -and ($r.Lines[-1] -eq 'All tests: FAILED (2)')) $r.Text
