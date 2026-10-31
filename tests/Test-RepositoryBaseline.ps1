@@ -56,7 +56,7 @@ if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
     # codeql is a state, 404 for not found, fail:<code> for another status, fail:none for no response at all, or
     # raw:<text> for a body that isn't JSON. With --include, the answer starts with the status line and a header.
     $codeql = "$($data.repos[$Matches[1]].codeql)"
-    $status = 200; $body = ConvertTo-Json -InputObject @{ state = $codeql }
+    $status = 200; $body = ConvertTo-Json -InputObject @{ state = $codeql; query_suite = "$($data.repos[$Matches[1]].suite)" }
     if ($codeql -eq 'fail:none') { exit 1 }
     if ($codeql -eq '404') { $status = 404; $body = '{"message":"Not Found"}' }
     elseif ($codeql.StartsWith('fail:')) { $status = [int]$codeql.Substring(5); $body = '{"message":"Error"}' }
@@ -77,15 +77,16 @@ function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_f
         conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
         rules = @($Types | ForEach-Object { @{ type = $_ } }) }
 }
-function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured') {
+function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default') {
     $full = @{}
     $summaries = @()
     $id = 100
     foreach ($ruleset in $Rulesets) { $id++; $ruleset.id = $id; $full["$id"] = $ruleset; $summaries += @{ id = $id; name = $ruleset.name } }
-    @{ info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork }; rulesets = $summaries; full = $full; codeql = $CodeQL }
+    @{ info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork }; rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite }
 }
 $repos = @{
     fresh = New-Repo
+    extendedAlready = New-Repo -Suite 'extended'
     noCodeQL = New-Repo -CodeQL 'not-configured'
     setupNotFound = New-Repo -CodeQL '404'
     setupFailed = New-Repo -CodeQL 'fail:403'
@@ -134,22 +135,29 @@ try {
     # 2. A repository with no ruleset.
     $r = Invoke-Baseline @('-Repo', 'fresh')
     $types = @($r.Body.rules.type)
-    Check 'create: posts one ruleset and turns on delete-branch-on-merge' (($r.Changes -join '|') -eq 'BODY POST repos/NCodeGroup/fresh/rulesets|api -X PATCH repos/NCodeGroup/fresh -F delete_branch_on_merge=true') ($r.Changes -join '|')
+    Check 'create: posts one ruleset, turns on delete-branch-on-merge and switches CodeQL to the extended suite' (($r.Changes -join '|') -eq 'BODY POST repos/NCodeGroup/fresh/rulesets|api -X PATCH repos/NCodeGroup/fresh -F delete_branch_on_merge=true|api -X PATCH repos/NCodeGroup/fresh/code-scanning/default-setup -f query_suite=extended') ($r.Changes -join '|')
+    Check 'create: the summary says CodeQL moves to the extended suite' ($r.Output -match 'switch CodeQL from the default query suite to extended') $r.Output
     Check 'create: protects the default branch and cannot be bypassed' (($r.Body.name -eq 'Protect main') -and ($r.Body.target -eq 'branch') -and ($r.Body.enforcement -eq 'active') -and ($r.Body.conditions.ref_name.include -contains '~DEFAULT_BRANCH') -and ($r.Body.bypass_actors.Count -eq 0))
     Check 'create: no deletion, no force push, a pull request, a code-scanning rule, and nothing more' (($types -join ',') -eq 'deletion,non_fast_forward,pull_request,code_scanning') ($types -join ',')
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
-    Check 'create: the code-scanning rule blocks CodeQL alerts at error level and security alerts of medium severity or higher' (($scan.Count -eq 1) -and ($scan[0].tool -eq 'CodeQL') -and ($scan[0].alerts_threshold -eq 'errors') -and ($scan[0].security_alerts_threshold -eq 'medium_or_higher')) ($scan | ConvertTo-Json -Compress)
+    Check 'create: the code-scanning rule blocks CodeQL alerts at warning level or above and security alerts of any severity' (($scan.Count -eq 1) -and ($scan[0].tool -eq 'CodeQL') -and ($scan[0].alerts_threshold -eq 'errors_and_warnings') -and ($scan[0].security_alerts_threshold -eq 'all')) ($scan | ConvertTo-Json -Compress)
     $pr = $r.Body.rules | Where-Object type -eq 'pull_request'
     Check 'create: no approvals, and merge-commit or rebase merges only, never squash' (($pr.parameters.required_approving_review_count -eq 0) -and ((@($pr.parameters.allowed_merge_methods) -join ',') -eq 'merge,rebase')) ($pr.parameters | ConvertTo-Json -Compress)
+    Check 'create: every conversation must be resolved before a merge' ($pr.parameters.required_review_thread_resolution -eq $true) ($pr.parameters | ConvertTo-Json -Compress)
+
+    $r = Invoke-Baseline @('-Repo', 'extendedAlready')
+    Check 'create: a setup already on the extended suite is not changed' (($r.Changes -join '|') -notmatch 'default-setup' -and $r.Output -notmatch 'query suite') "$($r.Changes -join '|') $($r.Output)"
 
     # 3. Required checks, as one comma-separated string, which is how pwsh -File passes a list.
     $r = Invoke-Baseline @('-Repo', 'fresh', '-RequireChecks', 'build-and-test,Commit attribution')
     $checks = $r.Body.rules | Where-Object type -eq 'required_status_checks'
     Check 'checks: names the jobs, reported by GitHub Actions' ((@($checks.parameters.required_status_checks.context) -join ',') -eq 'build-and-test,Commit attribution' -and (@($checks.parameters.required_status_checks.integration_id | Select-Object -Unique) -join ',') -eq '15368') ($checks | ConvertTo-Json -Depth 6 -Compress)
+    Check 'checks: must pass on a branch that is up to date with the default branch' ($checks.parameters.strict_required_status_checks_policy -eq $true) ($checks | ConvertTo-Json -Depth 6 -Compress)
 
     # 3b. A repository where CodeQL's default setup isn't configured gets no code-scanning rule, which would wait forever.
     $r = Invoke-Baseline @('-Repo', 'noCodeQL')
     Check 'create: no code-scanning rule where CodeQL is not configured, and says so' (((@($r.Body.rules.type)) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and $r.Output -match [regex]::Escape("no code-scanning rule (CodeQL's default setup is not configured)")) "$(@($r.Body.rules.type) -join ',') $($r.Output)"
+    Check 'create: CodeQL that is not configured is not switched to a suite' (($r.Changes -join '|') -notmatch 'default-setup') ($r.Changes -join '|')
 
     $r = Invoke-Baseline @('-Repo', 'setupNotFound')
     Check 'create: CodeQL setup not found (404) gets no code-scanning rule' (((@($r.Body.rules.type)) -join ',') -eq 'deletion,non_fast_forward,pull_request') "$(@($r.Body.rules.type) -join ',') $($r.Output)"
@@ -188,7 +196,7 @@ try {
     Check 'update: a ruleset with a code-scanning rule keeps it, whatever the default setup says (advanced setup runs CodeQL too)' ((@($r2.Body.rules.type) -contains 'code_scanning') -and $r2.Output -match 'keeps its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"
     $r3 = Invoke-Baseline @('-Repo', 'oursCodeQL404', '-RequireChecks', 'test')
     Check 'update: a 404 from the CodeQL setup doesn''t touch the rule a ruleset has' ((@($r3.Body.rules.type) -contains 'code_scanning') -and $r3.Output -match 'keeps its code-scanning rule') "$(@($r3.Body.rules.type) -join ',') $($r3.Output)"
-    Check 'update: the ruleset keeps its code-scanning rule, with the same thresholds' (($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors') -and ($scan[0].security_alerts_threshold -eq 'medium_or_higher')) (@($r.Body.rules.type) -join ',')
+    Check 'update: a ruleset without a code-scanning rule gets one, with the baseline thresholds' (($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors_and_warnings') -and ($scan[0].security_alerts_threshold -eq 'all')) (@($r.Body.rules.type) -join ',')
 
     # 7. -All.
     $r = Invoke-Baseline @('-All')

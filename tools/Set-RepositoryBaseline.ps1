@@ -6,11 +6,13 @@
 .DESCRIPTION
     For each repository it:
       - adds a "Protect main" ruleset on the default branch, the same shape as project-template's: no deletion, no force
-        push, a pull request required (no approvals, since the organization has one maintainer), merge-commit or rebase
+        push, a pull request required (no approvals, since the organization has one maintainer) with every conversation
+        resolved, so a review finding from the bot, CodeQL or a person can't be merged past, merge-commit or rebase
         merges only, never squash, so each commit of a plan stays on the branch, when CodeQL's default setup is
         configured for the repository a code-scanning rule that blocks a pull request whose CodeQL results add an alert
-        at error level or a security alert of medium severity or higher, and, when -RequireChecks names them, those CI
-        jobs as required status checks;
+        at warning level or above or a security alert of any severity, and, when -RequireChecks names them, those CI
+        jobs as required status checks, which must pass on a branch that is up to date with the default branch;
+      - switches CodeQL's default setup, when it read it as configured, to the extended query suite;
       - turns on "delete branch on merge".
 
     A repository that already has an active ruleset requiring pull requests on its default branch is left alone, because
@@ -104,11 +106,17 @@ function Set-Baseline {
     # a 5xx, or an answer that can't be read, says nothing, so the repository is skipped with the reason.
     $kept = if ($own) { @($own.rules | Where-Object type -eq 'code_scanning') } else { @() }
     $codeql = [bool]$kept.Count
+    # The default setup's query suite, when it was read as configured and isn't the extended one already.
+    $suite = $null
     if (-not $kept.Count) {
         $setup = Invoke-HostApi gh "repos/$Owner/$Name/code-scanning/default-setup"
         $codeql = $null
         if ($setup.Status -eq 200) {
-            try { $codeql = ($setup.Body | ConvertFrom-Json -ErrorAction Stop).state -eq 'configured' }
+            try {
+                $answer = $setup.Body | ConvertFrom-Json -ErrorAction Stop
+                $codeql = $answer.state -eq 'configured'
+                if ($codeql -and $answer.query_suite -ne 'extended') { $suite = "$($answer.query_suite)" }
+            }
             catch { $codeql = $null }
         }
         elseif ($setup.Status -eq 404) { $codeql = $false }
@@ -128,18 +136,20 @@ function Set-Baseline {
             require_code_owner_review = $false
             require_last_push_approval = $false
             required_approving_review_count = 0
-            required_review_thread_resolution = $false
+            required_review_thread_resolution = $true
         } }
     )
     if ($kept.Count) { $rules += $kept[0] }
     elseif ($codeql) {
         $rules += @{ type = 'code_scanning'; parameters = @{
-            code_scanning_tools = @(@{ tool = 'CodeQL'; alerts_threshold = 'errors'; security_alerts_threshold = 'medium_or_higher' })
+            code_scanning_tools = @(@{ tool = 'CodeQL'; alerts_threshold = 'errors_and_warnings'; security_alerts_threshold = 'all' })
         } }
     }
     if ($checks.Count) {
+        # Strict: the checks must have run on the branch as it would merge, so two pull requests that each pass can't
+        # break the default branch together.
         $rules += @{ type = 'required_status_checks'; parameters = @{
-            strict_required_status_checks_policy = $false
+            strict_required_status_checks_policy = $true
             do_not_enforce_on_create = $false
             required_status_checks = @($checks | ForEach-Object { @{ context = $_; integration_id = $actionsAppId } })
         } }
@@ -154,7 +164,7 @@ function Set-Baseline {
     } | ConvertTo-Json -Depth 10
 
     $verb = if ($own) { 'update' } else { 'create' }
-    $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })"
+    $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($suite) { "; switch CodeQL from the $suite query suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) { Write-Host "would: $summary"; return }
 
     # gh reads the body from a file: piping JSON into a function loses stdin.
@@ -167,6 +177,10 @@ function Set-Baseline {
     } finally { Remove-Item -LiteralPath $file -Force }
     & gh api -X PATCH "repos/$Owner/$Name" -F delete_branch_on_merge=true | Out-Null
     if ($LASTEXITCODE) { throw "Couldn't turn on delete-branch-on-merge for $Name." }
+    if ($suite) {
+        & gh api -X PATCH "repos/$Owner/$Name/code-scanning/default-setup" -f query_suite=extended | Out-Null
+        if ($LASTEXITCODE) { throw "Couldn't switch CodeQL's default setup to the extended query suite for $Name." }
+    }
     Write-Host "done: $summary"
 }
 
