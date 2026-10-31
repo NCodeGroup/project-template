@@ -5,7 +5,7 @@
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, refs, release, steps, reviewed, landing, protected, ahead, behind, landed,
-    pr, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, published, issue-state, issue-states, unfiled, dirty, plans and next. A fact that does not apply prints
+    pr, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, changelog-duplicates, published, issue-state, issue-states, unfiled, dirty, plans and next. A fact that does not apply prints
     "-". With an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
@@ -19,7 +19,7 @@
     renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag on origin (the clone's tags when origin's can't be read) or newest release heading of the changelog, ## [<version>] - <date> or ## <version>, on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed. next is ship-plan rather than wait while a pull request is open and renumber isn't -, so /ship-plan renumbers the plan.
     tag is present when origin has the plan's Release: version tag, local when only this clone has it, such as one a failed push left, absent when neither has it, and unknown when git ls-remote can't read origin's tags. Without an origin remote, it reads the clone's tags: present or absent.
     conflicts names the files that conflict when origin's default branch merges into HEAD, joined by ", ", from git merge-tree --write-tree, which changes neither the index nor the working tree; none when the merge is clean, unknown when Git can't say, such as Git older than 2.38, and - on the default branch or once the plan has landed. next is ship-plan rather than wait while a pull request is open and conflicts names files, so /ship-plan adds a step that merges the default branch in.
-    changelog-format is keep-a-changelog when the changelog has a ## [Unreleased] or ## [<version>] heading, other when it has neither, and missing without the file; changelog-version is its newest release, with a leading v when the plan's Release: version has one, or -. changelog-backfill names the version tags merged into HEAD, shaped like v1.2.3 or 1.2.3, that have no release heading in the changelog, as <oldest>..<newest>, the tag alone when there is one, or - when there is none.
+    changelog-format is keep-a-changelog when the changelog has a ## [Unreleased] or ## [<version>] heading, other when it has neither, and missing without the file; changelog-version is its newest release, with a leading v when the plan's Release: version has one, or -. changelog-backfill names the version tags merged into HEAD, shaped like v1.2.3 or 1.2.3, that have no release heading in the changelog, as <oldest>..<newest>, the tag alone when there is one, or - when there is none. changelog-duplicates names each Keep a Changelog heading (### Added, Changed, Deprecated, Removed, Fixed or Security) that a section of the changelog has more than once, as <section> <heading> joined by ", ", such as [Unreleased] Changed, or - when every section has at most one of each; two pull requests that each add the same heading to a section leave it twice once both merge.
     unfiled counts the lines of PLAN.md's ## Follow-ups section, up to the next ## heading, that start with "- " or "* " and don't end with a mark /ship-plan appends: an em dash, then "filed as #<number>" or "already tracked as #<number>", either with <owner/repo> before the #, or "dropped". A line that says only None or Nothing doesn't count. It is 0 without the section and - without a plan. next is ship-plan rather than finish-plan for a landed plan while unfiled is above 0 and the Landing section's follow-ups isn't none, so /ship-plan files them.
     protected is hook when protect is hook and Git runs .githooks/pre-push, host when GitHub or GitLab requires pull
     requests into the default branch, no when it does not, unknown when the host or its CLI cannot say, and - without
@@ -80,6 +80,23 @@ function Get-ChangelogBackfill([string[]]$Lines) {
     $missing = @(foreach ($t in @(& git tag --list --merged HEAD 2>$null)) { $v = ConvertTo-PlanVersion "$t"; if ($null -ne $v -and $v -notin $listed) { [pscustomobject]@{ Tag = "$t"; Version = $v } } })
     $missing = @($missing | Sort-Object Version)
     if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0].Tag } else { "$($missing[0].Tag)..$($missing[-1].Tag)" }
+}
+
+# The Keep a Changelog headings that a changelog section has more than once, as "<section> <heading>" joined by ", ", or -.
+function Get-ChangelogDuplicate([string[]]$Lines) {
+    $found = [Collections.Generic.List[string]]::new()
+    $section = $null; $seen = @{}; $fenced = $false
+    foreach ($line in $Lines) {
+        if ("$line" -match '^\s*(```|~~~)') { $fenced = -not $fenced; continue }
+        if ($fenced) { continue }
+        if ("$line" -match '^## +(\[[^\]]+\]|\S+)') { $section = $Matches[1]; $seen = @{}; continue }
+        if ($null -ne $section -and "$line" -cmatch '^### +(Added|Changed|Deprecated|Removed|Fixed|Security)\s*$') {
+            $heading = $Matches[1]
+            $seen[$heading] = 1 + [int]$seen[$heading]
+            if ($seen[$heading] -eq 2) { $found.Add("$section $heading") }
+        }
+    }
+    if ($found.Count) { $found -join ', ' } else { '-' }
 }
 
 # The number of follow-ups in a plan's ## Follow-ups section that /ship-plan has not filed, tracked or dropped.
@@ -372,6 +389,7 @@ try {
         }
     }
     $changelogBackfill = Get-ChangelogBackfill $changelogLines
+    $changelogDuplicates = Get-ChangelogDuplicate $changelogLines
 
     # Version still free for the plan
     $renumber = '-'
@@ -504,6 +522,7 @@ try {
     Write-Output "changelog-format: $changelogFormat"
     Write-Output "changelog-version: $changelogVersion"
     Write-Output "changelog-backfill: $changelogBackfill"
+    Write-Output "changelog-duplicates: $changelogDuplicates"
     Write-Output "published: $published"
     Write-Output "issue-state: $issueState"
     Write-Output "issue-states: $issueStates"

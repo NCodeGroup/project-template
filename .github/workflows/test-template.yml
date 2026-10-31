@@ -41,6 +41,8 @@ jobs:
             run: ./tests/Test-PlanState.ps1
           - name: Test the changelog backfill check
             run: ./tests/Test-ChangelogBackfill.ps1
+          - name: Check the changelog for duplicate headings
+            run: ./tests/Test-ChangelogHeadings.ps1
           - name: Test the commit attribution check
             run: ./tests/Test-CommitAttribution.ps1
           - name: Test the Git hooks
