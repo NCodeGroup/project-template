@@ -9,7 +9,7 @@
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab and checks YAML with
     PyYAML through uv. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1, that the generated workflow files under template/ and at the repository root
-    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
+    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
 .EXAMPLE
@@ -608,6 +608,96 @@ try {
 }
 finally { Pop-Location }
 Check 'workflow: Invoke-PlanSteps commits step files, records a re-plan as an empty commit, and never commits the plan' ($subjects -eq 'Re-plan step 2: x|Plan step 1: x|Start' -and $tracked -eq 'a.txt,b.txt' -and $stepFiles -eq 'a.txt,b.txt' -and -not $replanFiles) "$subjects | $tracked | $stepFiles | $replanFiles"
+
+# The Landing section's prelude: every command that runs a gate or a Done-when command dot-sources it first, in the same PowerShell.
+$preludeRun = '$global:LASTEXITCODE = 0; try { . <prelude> } catch { $_; "prelude failed"; exit 2 }; if (-not $? -or $LASTEXITCODE) { "prelude failed"; exit 2 }; '
+$shipFilesAll = 'template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md'
+$m = @(Get-MissingText $shipFilesAll ('`prelude` is `none`, `invalid`, or the PowerShell command', "$preludeRun<gate>; if (-not `$? -or `$LASTEXITCODE) { exit 1 } else { exit 0 }", 'When it exits 2, the prelude failed and the gate never ran: stop before pushing', 'Stop when `prelude` is `invalid`: say to fix the `- prelude:` line', 'and the prelude `<prelude>` that runs first'))
+Check 'workflow: ship-plan runs the prelude before the gate in the same PowerShell, and stops when it is invalid or fails' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $doneWhenExecutors ('has a `- Prelude:` line', "$preludeRun<the Done-when command>", 'its output prints `prelude failed` on the line before `exit=2`'))
+$m += @(Get-MissingText ('template\.claude\commands\orchestrate-plan.md', 'template\.github\skills\orchestrate-plan\SKILL.md', 'template\.github\agents\copilot-orchestrator.agent.md', 'template\.github\agents\hybrid-orchestrator.agent.md') ("$preludeRun<the Done-when command>", 'When it exits 2 and the output''s last line, apart from any exit code your shell adds, is `prelude failed`, the check never ran: stop, show me the prelude''s error'))
+$m += @(Get-MissingText ('template\.claude\commands\replan-step.md', 'template\.github\skills\replan-step\SKILL.md') 'has a `- Prelude:` line, run its command first in the same PowerShell')
+$m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\skills\review-plan-diff\SKILL.md') 'after its `- Prelude:` command')
+Check 'workflow: executors and coordinators run the plan''s prelude before each Done-when command and stop when it fails' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\handoff-plan.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-bugfix\SKILL.md', 'template\.github\agents\copilot-planner.agent.md') ('sets `prelude` to a command, not `none`, put that command in Context for the executor as its `- Prelude:` line', 'never copy a `PATH` or tool-setup guard into a Done-when command', '- Prelude: `<the Landing section''s prelude command; only when it isn''t none>`'))
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('`prelude`: `none`; one PowerShell command', '- prelude: none'))
+$m += @(Get-MissingText 'template\.github\instructions\project-template.instructions.md.jinja' '`prelude: <command>` names one PowerShell command')
+Check 'workflow: planners name the Landing section''s prelude under Context for the executor, which AGENTS.md documents' (-not $m) ($m -join '; ')
+$preludeDir = Join-Path $Work 'prelude'
+New-Item -ItemType Directory -Force $preludeDir | Out-Null
+Set-Content (Join-Path $preludeDir 'env.ps1') '$env:PRELUDE_TEST = "on"; function Get-PreludeTest { "on" }'
+Set-Content (Join-Path $preludeDir 'throws.ps1') 'throw "the prelude broke"'
+Set-Content (Join-Path $preludeDir 'exits.ps1') 'exit 4'
+Set-Content (Join-Path $preludeDir 'exits-zero.ps1') 'exit 0'
+Set-Content (Join-Path $preludeDir 'gate-fails.ps1') 'exit 2'
+Set-Content (Join-Path $preludeDir 'native-fails.ps1') 'pwsh -NoProfile -NonInteractive -Command ''exit 3'''
+# A case's fourth item runs before the wrapper, in the same PowerShell, as an earlier command in a shell the agent keeps would.
+$gateCases = [ordered]@{
+    'a prelude that sets up the shell, then a passing gate' = @('./env.ps1', 'if ($env:PRELUDE_TEST -eq "on" -and (Get-PreludeTest) -eq "on") { exit 0 } else { exit 3 }', 0)
+    'a prelude command, not a script, that sets up the shell' = @('Set-Item env:PRELUDE_TEST on', 'if ($env:PRELUDE_TEST -eq "on") { exit 0 } else { exit 3 }', 0)
+    'a working prelude after a native command that failed'  = @('./env.ps1', 'exit 0', 0, "pwsh -NoProfile -NonInteractive -Command 'exit 5'; ")
+    'a prelude that works, then a failing gate'            = @('./env.ps1', './gate-fails.ps1', 1)
+    'a prelude that exits 0, then a failing gate'          = @('./exits-zero.ps1', './gate-fails.ps1', 1)
+    'a prelude that throws'                                = @('./throws.ps1', 'exit 0', 2)
+    'a prelude that exits non-zero'                        = @('./exits.ps1', 'exit 0', 2)
+    'a prelude whose last native command fails'            = @('./native-fails.ps1', 'exit 0', 2)
+    'a prelude command that writes an error'               = @('Get-Item ./no-such-file', 'exit 0', 2)
+    'a prelude script that is missing'                     = @('./missing.ps1', 'exit 0', 2)
+    'a prelude command that is not found'                  = @('no-such-prelude-command', 'exit 0', 2)
+}
+$gateFailures = @(foreach ($name in $gateCases.Keys) {
+        $case = $gateCases[$name]
+        $command = "$($case[3])$preludeRun<gate>; if (-not `$? -or `$LASTEXITCODE) { exit 1 } else { exit 0 }".Replace('<prelude>', $case[0]).Replace('<gate>', $case[1])
+        Push-Location $preludeDir
+        try { $out = & pwsh -NoProfile -NonInteractive -Command $command 2>&1 | Out-String; $code = $LASTEXITCODE }
+        finally { Pop-Location }
+        if ($code -ne $case[2]) { "${name}: exit $code, expected $($case[2])" }
+        elseif ($case[2] -eq 2 -and $out.TrimEnd() -notmatch '(^|\n)prelude failed$') { "${name}: the output doesn't end with 'prelude failed'" }
+    })
+Check 'workflow: the prelude sets up the gate''s shell, and its failure exits 2 and says so, apart from the gate''s own failure' (-not $gateFailures) ($gateFailures -join '; ')
+$runnerFunctions = [Management.Automation.Language.Parser]::ParseFile((Join-Path $workflow 'Invoke-PlanSteps.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -in 'Invoke-DoneWhen', 'Get-PreludeRule' }, $true)
+$runnerFailures = @(& {
+        # The dot-sourced Invoke-DoneWhen below reads $repo and the plan through Read-Plan, and checks the prelude with Test-Prelude, which the runner's own loader, Get-PreludeRule, takes from Get-PlanState.ps1.
+        Set-Variable repo $preludeDir
+        $planText = ''
+        function Read-Plan { $planText }
+        foreach ($f in $runnerFunctions) { . ([scriptblock]::Create($f.Extent.Text)) }
+        . (Get-PreludeRule (Join-Path $workflow 'Get-PlanState.ps1'))
+        if (-not (Get-Command Test-Prelude -CommandType Function -ErrorAction SilentlyContinue)) { 'Get-PreludeRule does not load Test-Prelude from Get-PlanState.ps1' }
+        $threw = $false
+        try { Get-PreludeRule (Join-Path $preludeDir 'env.ps1') | Out-Null } catch { $threw = "$_" -match 'has no Test-Prelude function' }
+        if (-not $threw) { 'Get-PreludeRule does not stop when the script has no Test-Prelude' }
+        $check = 'if ($env:PRELUDE_TEST -eq "on" -and (Get-PreludeTest) -eq "on") { exit 0 } else { exit 3 }'
+        $planText = "## Context for the executor`n- Prelude: ``./env.ps1```n- Build: ``none```n"
+        $r = Invoke-DoneWhen $check
+        if ($r.ExitCode -ne 0) { "with a prelude that sets up the shell: exit $($r.ExitCode)" }
+        $r = Invoke-DoneWhen 'exit 5'
+        if ($r.ExitCode -ne 5) { "a Done-when command that fails after the prelude: exit $($r.ExitCode), expected 5" }
+        try { $r = Invoke-DoneWhen 'exit 2'; if ($r.ExitCode -ne 2) { "a Done-when command that exits 2 after the prelude: exit $($r.ExitCode), expected 2" } }
+        catch { "a Done-when command that exits 2 after the prelude stops the runner as if the prelude failed: $_" }
+        $planText = "## Context for the executor`n- Build: ``none```n"
+        $r = Invoke-DoneWhen $check
+        if ($r.ExitCode -ne 3) { "without a prelude: exit $($r.ExitCode), expected 3" }
+        foreach ($failing in './throws.ps1', './exits.ps1', './native-fails.ps1') {
+            $planText = "## Context for the executor`n- Prelude: ``$failing```n"
+            $threw = $false
+            try { Invoke-DoneWhen 'exit 0' | Out-Null } catch { $threw = "$_" -match "The plan's prelude, $([regex]::Escape($failing)), failed" }
+            if (-not $threw) { "a prelude that fails, $failing, does not stop the runner" }
+        }
+        foreach ($invalid in './missing.ps1', './env.ps1 # sets PATH', 'Set-Item env:A 1 } ; exit 0 ; {', 'nvs use 26; npm -v') {
+            $planText = "## Context for the executor`n- Prelude: ``$invalid```n"
+            $threw = $false
+            try { Invoke-DoneWhen 'exit 0' | Out-Null } catch { $threw = "$_" -match "isn't a prelude the workflow can run" }
+            if (-not $threw) { "a plan prelude that isn't one command, $invalid, does not stop the runner" }
+        }
+        foreach ($bare in '- Prelude: ./env.ps1', '- Prelude:') {
+            $planText = "## Context for the executor`n$bare`n"
+            $threw = $false
+            try { Invoke-DoneWhen 'exit 0' | Out-Null } catch { $threw = "$_" -match "doesn't hold one command in backticks" }
+            if (-not $threw) { "a plan prelude line without one command in backticks, $bare, does not stop the runner" }
+        }
+    })
+Check 'workflow: Invoke-PlanSteps runs the plan''s prelude before each Done-when command and stops when it fails' (-not $runnerFailures) ($runnerFailures -join '; ')
 
 if (-not $SkipDotnetBuild) {
     Push-Location (Join-Path $Work 'dotnet')

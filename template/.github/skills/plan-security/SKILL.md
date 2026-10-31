@@ -26,6 +26,7 @@ A smaller, cheaper model — a local model or a lower-cost Copilot model — wil
 - Show a short code sketch only where the shape is not obvious (a signature, a type, a tricky expression), never a full implementation.
 - Order steps so each one builds and passes its check on its own. Put tests before or with the code they cover.
 - Every step ends with one PowerShell command, run from the repository root, that exits 0 only when the step is done and finishes in under two minutes. Prefer a check that fails until the step is done — run the step's new test by name, or assert the new output — over a suite that already passes.
+- When `AGENTS.md`'s `## Landing` section sets `prelude` to a command, not `none`, put that command in Context for the executor as its `- Prelude:` line. The executor and the coordinator dot-source it in the same PowerShell before each Done-when command, so a tool it puts on `PATH` is there: never copy a `PATH` or tool-setup guard into a Done-when command instead.
 - Keep each step under about 25 lines. Split anything bigger.
 - Expect escalations: when a step needs a decision the plan didn't make, the executor stops, marks it `[?]` with an `- Escalation:` note, and the step comes back to you for re-planning. Every escalation costs a round trip, so settle decisions now.
 - When `AGENTS.md`'s `## Landing` section sets `release` to `tag` or `tag+release`, add the `Release:` line. Use the newest version tag on `origin`, not one only this clone has (the first `git ls-remote --tags --refs --sort=-version:refname origin` entry whose name after `refs/tags/` is shaped like `v1.2.3` or `1.2.3`, or the first such `git tag --list --sort=-version:refname` entry when the repository has no `origin`; `v0.1.0` when there is none), raised by one patch version for a bugfix, docs, tests or refactor plan, or by one minor version, with the patch set to 0, for any other plan. For a plan that covers several issues, use the largest raise any one of them would get on its own: one issue that needs a minor raise makes the plan's raise minor. When the change breaks how existing users work, ask me which version to use. The version holds unless another plan lands it, or a later one, first: `/ship-plan` then moves this plan to the next free version, raised the same way, which the state script prints as `renumber`, and adds a step that merges in the default branch and retitles the changelog section, so a plan can run ahead of one still waiting for review.
@@ -44,6 +45,7 @@ Refs: <issue reference, or several separated by spaces, such as owner/repo#90; o
 <What changes for the user or system, and why. 2-4 sentences.>
 
 ## Context for the executor
+- Prelude: `<the Landing section's prelude command; only when it isn't none>`
 - Build: `<command>`
 - Test: `<command>`
 - Conventions: <naming, error handling, logging, formatting rules the code must follow>

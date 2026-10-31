@@ -25,7 +25,7 @@ If that is empty, take the first step marked `[?]` or `[!]`.
 You are the planner. Do the deep reasoning the executor must not do, then hand the step back for execution.
 
 1. Read `PLAN.md`, the step and its Escalation note, and the current state of the files it touches — `git status` and `git diff` show any partial work.
-2. If the step failed, run its Done-when command and read the failure.
+2. If the step failed, run its Done-when command and read the failure. When the Context for the executor has a `- Prelude:` line, run its command first in the same PowerShell, dot-sourced, as the executor does.
 3. Decide why it came back, with evidence: the step was ambiguous, too big, wrong about the code, missing context, needs a redesign, or is beyond the executor model.
 4. Fix the plan rather than the code:
    - Ambiguous or wrong about the code: rewrite the step with exact files, symbols and behavior.

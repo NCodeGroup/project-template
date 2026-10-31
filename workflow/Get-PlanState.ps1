@@ -15,6 +15,7 @@
     landing gives each key of AGENTS.md's Landing section that the workflow reads as key=value, with its default when
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
     gate is the command /ship-plan runs before it pushes, or none.
+    prelude is the PowerShell command that sets up the shell, such as putting a tool on PATH, before the gate and each Done-when command, or none. It is invalid unless it is one command on one line, with no ;, |, &, &&, || or # comment: a script in the repository, written as ./<path>.ps1, that exists, or another command with its arguments.
     pr-format is <file>#<heading>, the section that sets a pull request's title and description, or none.
     review-bots names the review bots whose findings /run-issues and /address-feedback may act on, by login without
     the [bot] suffix GitHub's REST API adds, joined by commas: ncode-review by default, or none.
@@ -55,6 +56,25 @@ function Get-LandingValue([string]$Text, [switch]$Spaced) {
     if ($value -match '^`(.+)`$' -or $value -match '^"(.+)"$') { $value = $Matches[1].Trim() }
     if (-not $Spaced) { $value = ($value -split '\s+')[0] }
     $value
+}
+
+# Whether a Landing section's prelude is one command the workflow can dot-source: a script in the repository, as
+# ./<path>.ps1, that exists, or another command with its arguments, and nothing that chains or pipes commands.
+# Invoke-PlanSteps.ps1 loads this function from this file to check a plan's - Prelude: line by the same rule.
+function Test-Prelude([string]$Command, [string]$Root) {
+    $tokens = $null; $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseInput($Command, [ref]$tokens, [ref]$errors)
+    # A comment would hide the rest of the one-line command the workflow wraps the prelude in.
+    if ($errors.Count -or ($tokens | Where-Object Kind -EQ 'Comment') -or $ast.ParamBlock -or $ast.BeginBlock -or $ast.ProcessBlock -or $ast.DynamicParamBlock -or -not $ast.EndBlock -or $ast.EndBlock.Traps) { return $false }
+    $statements = @($ast.EndBlock.Statements)
+    if ($statements.Count -ne 1 -or $statements[0] -isnot [Management.Automation.Language.PipelineAst] -or $statements[0].Background) { return $false }
+    $elements = @($statements[0].PipelineElements)
+    if ($elements.Count -ne 1 -or $elements[0] -isnot [Management.Automation.Language.CommandAst] -or $elements[0].InvocationOperator -ne 'Unknown') { return $false }
+    $name = $elements[0].GetCommandName()
+    if (-not $name) { return $false }
+    if ($name -notmatch '\.ps1$') { return $true }
+    if ($name -notmatch '^\.[\\/]' -or ($name -split '[\\/]') -contains '..') { return $false }
+    Test-Path -LiteralPath (Join-Path $Root ($name.Substring(2) -replace '\\', '/')) -PathType Leaf
 }
 
 function ConvertTo-PlanVersion([string]$Text) {
@@ -295,8 +315,8 @@ try {
 
     # Landing policy from AGENTS.md
     # Each key the workflow reads, with its default, in the order the landing line prints them.
-    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up'; gate = 'none'; protect = 'none'; 'pr-format' = 'none'; 'review-bots' = 'ncode-review'; 'max-review-rounds' = '3' }
-    $spacedKeys = @('follow-up-label', 'gate', 'pr-format', 'review-bots')   # keys whose value keeps its spaces
+    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up'; gate = 'none'; protect = 'none'; 'pr-format' = 'none'; 'review-bots' = 'ncode-review'; 'max-review-rounds' = '3'; prelude = 'none' }
+    $spacedKeys = @('follow-up-label', 'gate', 'pr-format', 'review-bots', 'prelude')   # keys whose value keeps its spaces
     $agents = Join-Path $folder 'AGENTS.md'
     if (Test-Path -LiteralPath $agents) {
         $inLanding = $false
@@ -308,6 +328,7 @@ try {
             }
         }
     }
+    if ($policy['prelude'] -ne 'none' -and -not (Test-Prelude $policy['prelude'] $folder)) { $policy['prelude'] = 'invalid' }
     # review-bots lists logins without the [bot] suffix REST adds, joined by commas.
     $bots = @($policy['review-bots'] -split '[\s,]+' | ForEach-Object { $_ -replace '\[bot\]\z', '' } | Where-Object { $_ })
     $policy['review-bots'] = if ($bots.Count) { $bots -join ',' } else { 'none' }
