@@ -50,6 +50,7 @@ $cases = [ordered]@{
     'a tilde line does not close a backtick fence'                = @{ Text = "## [Unreleased]`n`n### Fixed`n`n- A.`n`n```````n~~~`n### Fixed`n```````n`n### Added`n"; Expected = '-' }
     'a backtick line does not close a tilde fence'                = @{ Text = "## [Unreleased]`n`n### Fixed`n`n- A.`n`n~~~`n```````n### Fixed`n~~~`n`n### Added`n"; Expected = '-' }
     'a shorter run or one with text does not close a fence'       = @{ Text = "## [Unreleased]`n`n### Removed`n`n- A.`n`n`````````n```````n``````text`n### Removed`n`````````n`n### Removed`n"; Expected = '[Unreleased] Removed' }
+    'a longer bare run closes a fence'                            = @{ Text = "## [Unreleased]`n`n``````text`n### Fixed`n`````````n`n### Fixed`n`n- A.`n`n### Fixed`n`n- B.`n"; Expected = '[Unreleased] Fixed' }
     'a fence that never closes runs to the end'                   = @{ Text = "## [Unreleased]`n`n### Security`n`n- A.`n`n``````powershell`n### Security`n`n### Security`n"; Expected = '-' }
 }
 if ($function) {
