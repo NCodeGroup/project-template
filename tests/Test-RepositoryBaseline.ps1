@@ -114,7 +114,9 @@ try {
     $types = @($r.Body.rules.type)
     Check 'create: posts one ruleset and turns on delete-branch-on-merge' (($r.Changes -join '|') -eq 'BODY POST repos/NCodeGroup/fresh/rulesets|api -X PATCH repos/NCodeGroup/fresh -F delete_branch_on_merge=true') ($r.Changes -join '|')
     Check 'create: protects the default branch and cannot be bypassed' (($r.Body.name -eq 'Protect main') -and ($r.Body.target -eq 'branch') -and ($r.Body.enforcement -eq 'active') -and ($r.Body.conditions.ref_name.include -contains '~DEFAULT_BRANCH') -and ($r.Body.bypass_actors.Count -eq 0))
-    Check 'create: no deletion, no force push, a pull request, and nothing more' (($types -join ',') -eq 'deletion,non_fast_forward,pull_request') ($types -join ',')
+    Check 'create: no deletion, no force push, a pull request, a code-scanning rule, and nothing more' (($types -join ',') -eq 'deletion,non_fast_forward,pull_request,code_scanning') ($types -join ',')
+    $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
+    Check 'create: the code-scanning rule blocks CodeQL alerts at error level and security alerts of medium severity or higher' (($scan.Count -eq 1) -and ($scan[0].tool -eq 'CodeQL') -and ($scan[0].alerts_threshold -eq 'errors') -and ($scan[0].security_alerts_threshold -eq 'medium_or_higher')) ($scan | ConvertTo-Json -Compress)
     $pr = $r.Body.rules | Where-Object type -eq 'pull_request'
     Check 'create: no approvals, and merge-commit or rebase merges only, never squash' (($pr.parameters.required_approving_review_count -eq 0) -and ((@($pr.parameters.allowed_merge_methods) -join ',') -eq 'merge,rebase')) ($pr.parameters | ConvertTo-Json -Compress)
 

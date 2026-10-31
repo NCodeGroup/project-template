@@ -277,6 +277,8 @@ if ($args[0] -eq 'api') {
     $responses = [IO.File]::ReadAllText($file) | ConvertFrom-Json
     $property = $responses.PSObject.Properties["$($args[1])"]
     if (-not $property) { exit 1 }
+    # A response that starts with raw: is printed as it is, such as a body that isn't JSON.
+    if ($property.Value -is [string] -and $property.Value.StartsWith('raw:')) { $property.Value.Substring(4); exit 0 }
     ConvertTo-Json -InputObject $property.Value -Depth 5
     exit 0
 }
@@ -386,6 +388,10 @@ try {
     $r = Test-State (Get-State $gl.Repo) @{ protected = 'no' }
     Check 'protected: a GitLab protected branch maintainers can push to is not enough' $r.Ok $r.Detail
 
+    Set-HostApi @{ 'projects/:id/protected_branches/main' = 'raw:<html>Bad Gateway</html>' }
+    $r = Test-State (Get-State $gl.Repo) @{ protected = 'unknown' }
+    Check 'protected: a GitLab protection that cannot be read is unknown, not no' $r.Ok $r.Detail
+
     Set-HostApi @{}
     $r = Test-State (Get-State $gl.Repo) @{ protected = 'no' }
     Check 'protected: a GitLab branch that is not protected' $r.Ok $r.Detail
@@ -424,6 +430,10 @@ try {
     Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = @(@{ type = 'deletion' }) }
     $r = Test-State (Get-State $gh.Repo) @{ protected = 'no' }
     Check 'protected: a GitHub ruleset without a pull request rule' $r.Ok $r.Detail
+
+    Set-HostApi @{ 'repos/{owner}/{repo}/rules/branches/main' = 'raw:<html>Bad Gateway</html>' }
+    $r = Test-State (Get-State $gh.Repo) @{ protected = 'unknown' }
+    Check 'protected: GitHub rules that cannot be read, with no branch protection rule, are unknown, not no' $r.Ok $r.Detail
     Set-HostApi @{}
 
     # 16. The issues of a one-issue plan and a group plan.

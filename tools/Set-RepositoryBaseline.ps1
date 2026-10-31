@@ -7,8 +7,9 @@
     For each repository it:
       - adds a "Protect main" ruleset on the default branch, the same shape as project-template's: no deletion, no force
         push, a pull request required (no approvals, since the organization has one maintainer), merge-commit or rebase
-        merges only, never squash, so each commit of a plan stays on the branch, and, when -RequireChecks names them,
-        those CI jobs as required status checks;
+        merges only, never squash, so each commit of a plan stays on the branch, a code-scanning rule that blocks a
+        pull request whose CodeQL results add an alert at error level or a security alert of medium severity or higher,
+        and, when -RequireChecks names them, those CI jobs as required status checks;
       - turns on "delete branch on merge".
 
     A repository that already has an active ruleset requiring pull requests on its default branch is left alone, because
@@ -22,10 +23,11 @@
     repository it creates; Adopt-Project.ps1 prints the command to run.
 
 .EXAMPLE
-    .	ools\Set-RepositoryBaseline.ps1 -Repo Buffers -WhatIf     # shows what it would do
-    .	ools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks 'build-and-test,Commit attribution'
-    .	ools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup
+    .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -WhatIf     # shows what it would do
+    .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks 'build-and-test,Commit attribution'
+    .\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Owner', Justification = 'Get-Targets and Set-Baseline, nested functions, use it.')]
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [string]$Repo,
@@ -58,7 +60,9 @@ function Get-Targets {
         Where-Object { -not $_.isArchived -and -not $_.isFork } | Sort-Object name | ForEach-Object { $_.name }
 }
 
-function Set-Baseline([string]$Name) {
+function Set-Baseline {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$Name)
     $info = Invoke-GhJson @('api', "repos/$Owner/$Name")
     if ($info.archived -or $info.fork) { Write-Host "${Name}: skipped (archived or fork)"; return }
     $branch = $info.default_branch
@@ -88,6 +92,10 @@ function Set-Baseline([string]$Name) {
             require_last_push_approval = $false
             required_approving_review_count = 0
             required_review_thread_resolution = $false
+        } },
+        # The organization's security configuration turns CodeQL on in every repository, so this rule always has results.
+        @{ type = 'code_scanning'; parameters = @{
+            code_scanning_tools = @(@{ tool = 'CodeQL'; alerts_threshold = 'errors'; security_alerts_threshold = 'medium_or_higher' })
         } }
     )
     if ($checks.Count) {

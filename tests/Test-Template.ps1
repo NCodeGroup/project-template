@@ -528,7 +528,8 @@ try {
     # The plan is untracked and not ignored here, so only the runner's own exclusion keeps it out of the commits.
     Set-Content PLAN.md '# Plan: x'; Set-Content a.txt 'two'; Set-Content b.txt 'new'
     & {
-        $repo = $commitRepo; $planRel = 'PLAN.md'; $NoCommit = $false
+        # The dot-sourced Save-Commit below reads these three.
+        Set-Variable repo $commitRepo; Set-Variable planRel 'PLAN.md'; Set-Variable NoCommit $false
         . ([scriptblock]::Create($saveCommit.Extent.Text))
         Save-Commit 'Plan step 1: x'
         Add-Content PLAN.md 'edit'

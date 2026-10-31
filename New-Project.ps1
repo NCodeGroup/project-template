@@ -92,7 +92,8 @@ try {
             if ($Owner) { $glabArgs += '--group', $Owner }
             glab @glabArgs
             if ($LASTEXITCODE) { throw 'glab repo create failed.' }
-            if (-not (git remote get-url origin 2>$null)) { throw 'glab created the project but added no origin remote. Add it with: git remote add origin <url>' }
+            $originUrl = git remote get-url origin 2>$null
+            if (-not $originUrl) { throw 'glab created the project but added no origin remote. Add it with: git remote add origin <url>' }
             git push -u origin main
         }
         else {

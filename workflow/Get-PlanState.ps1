@@ -147,15 +147,18 @@ function Get-Protected([string]$HostName, [string]$Default, [string]$Protect) {
     $cli = if ($HostName -eq 'github') { 'gh' } else { 'glab' }
     if (-not (Get-Command $cli -ErrorAction SilentlyContinue)) { return 'unknown' }
     if ($HostName -eq 'github') {
+        $unreadable = $false
         $out = & gh api "repos/{owner}/{repo}/rules/branches/$Default" 2>$null | Out-String
         if ($LASTEXITCODE -eq 0) {
             try {
                 if (@($out | ConvertFrom-Json -ErrorAction Stop | Where-Object { $_.type -eq 'pull_request' }).Count -gt 0) { return 'host' }
             }
-            catch { }
+            catch { $unreadable = $true }
         }
         & gh api "repos/{owner}/{repo}/branches/$Default/protection/required_pull_request_reviews" 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) { return 'host' }
+        # Rules that couldn't be read may still require pull requests, so that is unknown, not no.
+        if ($unreadable) { return 'unknown' }
         return 'no'
     }
     $out = & glab api "projects/:id/protected_branches/$Default" 2>$null | Out-String
@@ -163,7 +166,8 @@ function Get-Protected([string]$HostName, [string]$Default, [string]$Protect) {
         try {
             if (@(($out | ConvertFrom-Json -ErrorAction Stop).push_access_levels | Where-Object { $_.access_level -ne 0 }).Count -eq 0) { return 'host' }
         }
-        catch { }
+        # A protection that couldn't be read may still refuse pushes, so that is unknown, not no.
+        catch { return 'unknown' }
     }
     'no'
 }
@@ -291,7 +295,7 @@ try {
     }
 
     # Pull request or merge request
-    $pr = '-'; $prNumber = ''; $prState = ''; $prMerge = ''; $prHead = ''; $prBase = ''
+    $pr = '-'; $prNumber = ''; $prState = ''; $prMerge = ''; $prBase = ''
     if ($hostName -in 'github', 'gitlab' -and $branch -ne '-' -and $branch -ne $default) {
         $cli = if ($hostName -eq 'github') { 'gh' } else { 'glab' }
         $pr = 'unknown'
@@ -328,11 +332,11 @@ try {
                         foreach ($request in $requests) {
                             if ($request.State -eq 'MERGED' -and $request.Merge -and $request.Head -and (Test-RequestLanded $request.Merge $request.Head $default)) { $landed = 'yes'; $chosen = $request; break }
                         }
-                        $prNumber = $chosen.Number; $prState = $chosen.State; $prMerge = $chosen.Merge; $prHead = $chosen.Head; $prBase = $chosen.Base
+                        $prNumber = $chosen.Number; $prState = $chosen.State; $prMerge = $chosen.Merge; $prBase = $chosen.Base
                         $pr = "$prNumber $prState"
                     }
                 }
-                catch { $pr = 'unknown'; $prNumber = ''; $prState = ''; $prMerge = ''; $prHead = ''; $prBase = '' }
+                catch { $pr = 'unknown'; $prNumber = ''; $prState = ''; $prMerge = ''; $prBase = '' }
             }
         }
     }

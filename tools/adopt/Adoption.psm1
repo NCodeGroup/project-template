@@ -267,7 +267,7 @@ function Move-PackageVersionsToCentral([string]$Path) {
     $nl = if ($centralText.Contains("`r`n")) { "`r`n" } else { "`n" }
     $block = '  <ItemGroup>' + $nl + ($chosenLines -join $nl) + $nl + '  </ItemGroup>'
     $replacement = $block
-    $evaluator = [Text.RegularExpressions.MatchEvaluator] { param($m) $replacement }
+    $evaluator = [Text.RegularExpressions.MatchEvaluator] { $replacement }
 
     foreach ($change in $changes) {
         if ($change.File -ne (Resolve-Path -LiteralPath $central).Path) { [IO.File]::WriteAllText($change.File, $change.Text, [Text.UTF8Encoding]::new($false)) }

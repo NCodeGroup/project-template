@@ -63,7 +63,7 @@ $outputEncoding = [Console]::OutputEncoding
 Push-Location -LiteralPath $project
 try {
     # Read Git's output as UTF-8, so file names keep their characters.
-    try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { }
+    try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { Write-Verbose "Couldn't set the console's output encoding: $_" }
     $top = git rev-parse --show-toplevel 2>$null
     if ($LASTEXITCODE -or -not $top -or (Get-NormalPath $top) -ne (Get-NormalPath $project)) { throw "$project isn't the root of a Git repository." }
     if (Test-Path -LiteralPath .copier-answers.yml) { throw "$project already uses the project template; update it with .\.template\Update-Project.ps1." }
@@ -240,5 +240,5 @@ try {
 }
 finally {
     Pop-Location
-    try { [Console]::OutputEncoding = $outputEncoding } catch { }
+    try { [Console]::OutputEncoding = $outputEncoding } catch { Write-Verbose "Couldn't restore the console's output encoding: $_" }
 }
