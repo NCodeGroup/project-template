@@ -10,7 +10,8 @@ UNSUPPORTED) or that the workflow must never make (logged as FORBIDDEN): merging
 closing it, and a GraphQL mutation that resolves a thread, dismisses a review, merges, or changes a pull request or
 a branch. An optional `forbidden.txt` names more commands to refuse, one `<command> <subcommand>` per line, such as
 `pr edit`. An optional `review-seed.json` holds the review threads, review summaries and top-level comments the first
-pull request gets when it is opened.
+pull request gets when it is opened. An optional `review-seed-push.json` holds the review a pull request gets on the first
+GraphQL read after its branch on origin has moved past the head it was opened at, as a review bot's review of a push.
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -117,12 +118,12 @@ function Add-Comment([string]$Kind, [int]$Number, [string]$Path) {
 # Gives the first pull request opened the review in host/review-seed.json, then deletes the seed: threads, with the
 # earlier replies a seed thread lists, go to threads.json, review summaries to reviews.json and top-level comments to comments.json.
 # Each keeps the authorAssociation the seed gives it, and has none when the seed gives none.
-function Add-ReviewSeed([int]$Number, [string]$PrUrl) {
-    $seedFile = Join-Path $hostDir 'review-seed.json'
+function Add-ReviewSeed([int]$Number, [string]$PrUrl, [string]$SeedName = 'review-seed.json') {
+    $seedFile = Join-Path $hostDir $SeedName
     if (-not (Test-Path -LiteralPath $seedFile)) { return }
-    $seed = Read-Json 'review-seed.json' @{}
+    $seed = Read-Json $SeedName @{}
     $threads = @(Read-Json 'threads.json' @())
-    foreach ($t in @($seed.threads)) {
+    foreach ($t in @($seed.threads | Where-Object { $_ })) {
         $id = 2000 + $threads.Count + 1
         $threadComments = @(@{ author = $t.author; authorAssociation = $t.authorAssociation; body = $t.body; url = "$PrUrl#discussion_r$id" })
         foreach ($reply in $t.replies) { $threadComments += @{ author = $reply.author; authorAssociation = $reply.authorAssociation; body = $reply.body; url = "$PrUrl#discussion_r$id-$($threadComments.Count)" } }
@@ -133,16 +134,25 @@ function Add-ReviewSeed([int]$Number, [string]$PrUrl) {
     }
     Write-Json 'threads.json' $threads
     $reviews = @(Read-Json 'reviews.json' @())
-    foreach ($r in @($seed.reviews)) {
+    foreach ($r in @($seed.reviews | Where-Object { $_ })) {
         $reviews += @{ number = $Number; author = $r.author; authorAssociation = $r.authorAssociation; body = $r.body; url = "$PrUrl#pullrequestreview-$(3000 + $reviews.Count + 1)" }
     }
     Write-Json 'reviews.json' $reviews
     $comments = @(Read-Json 'comments.json' @())
-    foreach ($c in @($seed.comments)) {
+    foreach ($c in @($seed.comments | Where-Object { $_ })) {
         $comments += @{ kind = 'pr'; key = $c.key; number = $Number; body = $c.body; url = "$PrUrl#issuecomment-$(1000 + $comments.Count + 1)"; author = $c.author; authorAssociation = $c.authorAssociation }
     }
     Write-Json 'comments.json' $comments
     Remove-Item -LiteralPath $seedFile
+}
+# Gives a pull request the review in host/review-seed-push.json, as a review bot reviews a push: on the first read after
+# its branch on origin has moved past the head it was opened at. Then deletes that seed.
+function Add-PushReview($Pr) {
+    $originFile = Join-Path $hostDir 'origin.txt'
+    if (-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json')) -or -not (Test-Path -LiteralPath $originFile)) { return }
+    $oid = git --git-dir=$(([IO.File]::ReadAllText($originFile)).Trim()) rev-parse --verify -q "refs/heads/$($Pr.headRefName)"
+    if ($LASTEXITCODE -ne 0 -or "$oid" -eq "$($Pr.headRefOid)") { return }
+    Add-ReviewSeed ([int]$Pr.number) "$($Pr.url)" 'review-seed-push.json'
 }
 # A comment without an authorAssociation is served without one, never as the owner's.
 function Get-CommentNode($Comment) {
@@ -300,6 +310,7 @@ switch ("$($args[0]) $($args[1])") {
         $number = Get-Field 'number'
         $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq "$number" } | Select-Object -First 1
         if (-not $pr) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+        Add-PushReview $pr
         $none = @{ hasNextPage = $false }
         $nodes = @(@(Read-Json 'comments.json' @()) | Where-Object { $_.kind -eq 'pr' -and "$($_.number)" -eq "$($pr.number)" } |
             ForEach-Object { Get-CommentNode $_ })
