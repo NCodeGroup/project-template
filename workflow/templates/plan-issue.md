@@ -28,7 +28,7 @@ Read every issue first, before you read any code. Where these instructions start
 
    When one is assigned to someone other than me (`gh api user --jq .login`, or the `username` in `glab api user`), say so and ask before going on.
 3. Choose the kind of plan, as Choosing the Kind of Plan below says. For several issues, choose one kind for the whole plan: the kind of the main change across them.
-4. Where these instructions set up a plan worktree, do it now, and name it `issue-<number>`, or `<repo>-issue-<number>` for an issue in another repository, after the first issue the request names, instead of a name made from the request.
+4. Where these instructions set up a plan worktree, do it now, and name it `issue-<number>`, or `<repo>-issue-<number>` for an issue in another repository, after the first issue the request names, instead of a name made from the request. For the template-update kind, first read `.claude/agents/plan-executor.md` when it exists: when its `tools:` line doesn't list `PowerShell`, set up no worktree, and stop and say to run plan-template-update in the main checkout instead, because that executor can't run the update in a worktree.
 5. Plan the issue with the instructions for its kind, below. The request is the issue: its title, its body and the decisions in its comments. The plan's `Issue:` line, the snapshot comment and the pull request's `Closes` line follow the plan format at the end. For several issues, the request is every issue, and the plan format's rules for several issues apply: one `Issue:` line naming them all, steps grouped by issue, the largest version raise, one changelog section, and a snapshot comment on each issue.
 
 ## Choosing the Kind of Plan
@@ -72,3 +72,9 @@ Follow only the section for the kind you chose. In it, "the issue above" means t
 ### Docs
 
 {{BODY:plan-docs|the issue above}}
+
+### Template Update
+
+An issue labeled `template-update` comes from the project's template-update workflow, and its title names the version to update to, such as `Update to project-template v0.42.0`: that is the version the request names. Step 4 already set up the plan's worktree, if there is one, named after the issue, so skip what these instructions say about when to set up the worktree, what to name it and when to plan without one.
+
+{{BODY:plan-template-update|the issue above}}
