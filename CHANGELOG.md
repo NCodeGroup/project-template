@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-10-31
+
+### Changed
+
+- No change for projects made from the template. A test suite that stops with an error prints the work folder it keeps, as a failing one does: every `tests/Test-*.ps1` suite with `-Work` has a `trap` line, which `tests/Test-InvokeAllTests.ps1` checks. New checks cover the `.sample` filter that decides whether a clone has hooks of its own (`Test-GitHooks.ps1`), a curly apostrophe in the command `Set-RepositoryBaseline.ps1 -RequireChecks auto -WhatIf` prints (`Test-RepositoryBaseline.ps1`), and, for `Get-TemplateUpdate.ps1`, a `gh` call that fails, a project ahead of the newest tag and an issue body exactly at the 60,000-character limit (`Test-TemplateUpdate.ps1`) ([#158](https://github.com/NCodeGroup/project-template/issues/158), [#160](https://github.com/NCodeGroup/project-template/issues/160)).
+
+### Fixed
+
+- `Update-Project.ps1`'s help says plainly when it says nothing about Git hooks: when `core.hooksPath` names a `.githooks` folder, or when `.pre-commit-config.yaml` runs `.githooks/commit-msg`. Its copy of `Get-GitHooksSetup` notes that it changes together with the one `Adopt-Project.ps1` uses ([#158](https://github.com/NCodeGroup/project-template/issues/158)).
+
 ## [0.42.0] - 2026-10-31
 
 ### Added
@@ -32,7 +42,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - No change for projects made from the template. A new end-to-end test, `tests/e2e/Test-AddressFeedback.ps1`, runs `/address-feedback` in headless Claude Code on a fixture pull request with a writer's request for a real fix, a stranger's request to change the CI workflow, a bot's wrong finding, a question and a thread already answered with `Autopilot:`. It checks that only the writer's fix is pushed, never forced; that the stranger's request becomes an `ask` and the wrong finding a decline with its reason; that the answered thread is left alone; and that nothing is resolved, merged or edited. It costs model usage, so it runs by hand; CI runs its fixture setup with `-SetupOnly`. It shares its fixture with `Test-RunIssues.ps1` through `tests/e2e/Fixture.ps1`, and the `gh` stand-in now serves review threads with each author's `authorAssociation`, records thread replies, and refuses resolving a thread, closing a pull request and the commands a test forbids ([#133](https://github.com/NCodeGroup/project-template/issues/133)).
 - The commands that create a plan's worktree or branch (Claude Code's planning commands, `/run-issues` and `/address-feedback`) and `/orchestrate-plan` check `git config core.hooksPath`, and run `git config core.hooksPath .githooks` when nothing runs hooks in the clone; the rules in `project-template.instructions.md` tell every agent to do the same before its first commit in a clone or worktree. The rules, the README and USAGE also say that a squash merge carries the co-author trailers of every commit on the branch into its one commit on the default branch, so the pull request's `Commit attribution` check is the last chance to catch one ([#131](https://github.com/NCodeGroup/project-template/issues/131)).
 - The template's `dependabot.yml` gives every entry a three-day cooldown (`cooldown: default-days: 3`), so a version published minutes ago no longer lands in the weekly pull request; Dependabot offers it once it is three days old. New projects get the file as it is; a project that already has it gets the change merged into its own ([#125](https://github.com/NCodeGroup/project-template/issues/125)).
-- No change for projects made from the template. A test suite that stops with an error prints the work folder it keeps, as a failing one does: every `tests/Test-*.ps1` suite with `-Work` has a `trap` line, which `tests/Test-InvokeAllTests.ps1` checks. New checks cover the `.sample` filter that decides whether a clone has hooks of its own (`Test-GitHooks.ps1`), a curly apostrophe in the command `Set-RepositoryBaseline.ps1 -RequireChecks auto -WhatIf` prints (`Test-RepositoryBaseline.ps1`), and, for `Get-TemplateUpdate.ps1`, a `gh` call that fails, a project ahead of the newest tag and an issue body exactly at the 60,000-character limit (`Test-TemplateUpdate.ps1`) ([#158](https://github.com/NCodeGroup/project-template/issues/158), [#160](https://github.com/NCodeGroup/project-template/issues/160)).
 
 ### Fixed
 
@@ -44,7 +53,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `/ship-plan` passes the titles it takes from `PLAN.md` to `gh` and `glab` from a file, as `(Get-Content -Raw <title file>).Trim()`, instead of in double quotes, where PowerShell expanded `$(...)` and backtick sequences; a title can come from an issue someone else wrote ([#125](https://github.com/NCodeGroup/project-template/issues/125)).
 - `.template/Update-Project.ps1` warns, with Copier's error, when Copier can't render a template version, and says it skipped the suggestion of rewritten merged files for `project_owned_files`, instead of reporting none ([#125](https://github.com/NCodeGroup/project-template/issues/125)).
 - A project's files call `Adopt-Project.ps1` the template's, since a project has no copy: the changelog-backfill paragraph of every planning command and `project-template.instructions.md`, and a comment in `Update-Project.ps1`, whose comment above `Get-ChangelogBackfill` also names `.template/Get-PlanState.ps1`, where a project has it ([#125](https://github.com/NCodeGroup/project-template/issues/125)).
-- `Update-Project.ps1`'s help says plainly when it says nothing about Git hooks: when `core.hooksPath` names a `.githooks` folder, or when `.pre-commit-config.yaml` runs `.githooks/commit-msg`. Its copy of `Get-GitHooksSetup` notes that it changes together with the one `Adopt-Project.ps1` uses ([#158](https://github.com/NCodeGroup/project-template/issues/158)).
 
 ## [0.41.1] - 2026-10-30
 
@@ -592,7 +600,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.42.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.43.0...HEAD
+[0.43.0]: https://github.com/NCodeGroup/project-template/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/NCodeGroup/project-template/compare/v0.41.1...v0.42.0
 [0.41.1]: https://github.com/NCodeGroup/project-template/compare/v0.41.0...v0.41.1
 [0.41.0]: https://github.com/NCodeGroup/project-template/compare/v0.40.4...v0.41.0
