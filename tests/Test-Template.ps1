@@ -682,6 +682,14 @@ $runnerFailures = @(& {
         $planText = "## Context for the executor`n- Build: ``none```n"
         $r = Invoke-DoneWhen $check
         if ($r.ExitCode -ne 3) { "without a prelude: exit $($r.ExitCode), expected 3" }
+        $envCheck = 'if ($env:PRELUDE_TEST -eq "on") { exit 0 } else { exit 3 }'
+        $r = Invoke-DoneWhen $envCheck
+        if ($r.ExitCode -ne 3) { "without a prelude, the shell isn't set up: exit $($r.ExitCode), expected 3" }
+        try { $r = Invoke-DoneWhen '"prelude failed"; exit 2'; if ($r.ExitCode -ne 2) { "without a prelude, a Done-when command that prints prelude failed and exits 2: exit $($r.ExitCode), expected 2" } }
+        catch { "without a prelude, a Done-when command that prints prelude failed and exits 2 stops the runner as if a prelude failed: $_" }
+        $planText = "## Context for the executor`n- Prelude: ``Set-Item env:PRELUDE_TEST on```n"
+        $r = Invoke-DoneWhen $envCheck
+        if ($r.ExitCode -ne 0) { "with a prelude command, not a script, that sets up the shell: exit $($r.ExitCode), expected 0" }
         foreach ($failing in './throws.ps1', './exits.ps1', './native-fails.ps1') {
             $planText = "## Context for the executor`n- Prelude: ``$failing```n"
             $threw = $false
