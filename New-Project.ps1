@@ -9,12 +9,14 @@
     answers in .copier-answers.yml. -Data answers questions in advance so they aren't asked; -Defaults takes the
     default for every other question and asks nothing (project_name has no default, so pass it in -Data).
 
-    Then initializes git on `main` and commits everything as the first commit. With -CreateRemote it reads the
-    git_host answer from .copier-answers.yml and creates the repository there — `gh repo create` for github,
-    `glab repo create` for gitlab — named after the destination folder, with the given -Visibility (public
-    unless told otherwise), and pushes. For GitHub it then runs tools/Set-RepositoryBaseline.ps1, which protects the
-    default branch so changes reach it only through a pull request and requires the template's CI jobs to pass;
-    -NoBaseline skips that.
+    Then initializes git on `main`, enables the template's Git hooks (core.hooksPath .githooks) and commits everything
+    as the first commit. When Git already has a hooks path for the new repository, such as a global one, or hooks
+    from a template folder in .git/hooks, it leaves them and warns, naming the command that runs the template's hooks.
+    With -CreateRemote it reads the git_host answer from .copier-answers.yml and creates the repository there —
+    `gh repo create` for github, `glab repo create` for gitlab — named after the destination folder, with the given
+    -Visibility (public unless told otherwise), and pushes. For GitHub it then runs tools/Set-RepositoryBaseline.ps1,
+    which protects the default branch so changes reach it only through a pull request and requires the template's
+    CI jobs to pass; -NoBaseline skips that.
 
 .EXAMPLE
     .\New-Project.ps1 -Path C:\src\qso-viewer                                              # local only
@@ -37,6 +39,8 @@ param(
     [ValidateSet('public', 'private', 'internal')][string]$Visibility = 'public'
 )
 $ErrorActionPreference = 'Stop'
+
+Import-Module (Join-Path $PSScriptRoot 'tools\adopt\Adoption.psm1') -Force
 
 function Invoke-Copier {
     if (Get-Command copier -ErrorAction SilentlyContinue) { & copier @args }
@@ -74,8 +78,13 @@ try {
     $answers = Get-Content -LiteralPath .copier-answers.yml
     $message = ('Create project from project-template ' + (Get-Answer $answers '_commit')).TrimEnd()
     git init -b main | Out-Null
-    # The template's versioned hooks, such as the one that strips AI agent attribution from commit messages.
-    git config core.hooksPath .githooks
+    # The template's versioned hooks, such as the one that strips AI agent attribution from commit messages, unless Git
+    # already runs other hooks here, such as a global hooks path (Get-GitHooksSetup): then a warning says how to run them.
+    if (Test-Path -LiteralPath .githooks) {
+        $hooksSetup = Get-GitHooksSetup
+        if ($hooksSetup.HooksPath) { git config core.hooksPath .githooks }
+        elseif ($hooksSetup.Note) { Write-Warning $hooksSetup.Note }
+    }
     git add -A
     # Executable on Linux and macOS; Windows doesn't record the bit on its own.
     if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
