@@ -72,6 +72,19 @@ function Get-Thread([object[]]$Threads, [string]$Id) {
 function Test-Autopilot($Body) {
     "$Body".TrimStart() -match '^Autopilot:'
 }
+# A decline of the bot's finding must refute it, naming the file that shows it: Get-Farewell uses $Name in "Goodbye, $Name!".
+function Test-DeclineReason([string]$Reason) {
+    $names = $Reason.Length -ge 40 -and $Reason -cmatch '\bName\b' -and $Reason -match 'Farewell'
+    $refutes = $Reason -match '(?i)Goodbye|interpolat|\b(is|it''s|gets|being)\s+used\b|\buses\b'
+    $agrees = $Reason -match '(?i)\b(is|it''s|stays|remains)\s+(unused|never used|not used)\b' -and $Reason -notmatch '(?i)\b(wrong|incorrect|mistaken|false|claims?|says|said)\b'
+    $names -and $refutes -and -not $agrees
+}
+# The answer to the question must say that only the test calls Get-Farewell, citing the test file it rests on.
+function Test-QuestionAnswer([string]$Body) {
+    $text = $Body.Replace($questionUrl, '') -replace '^\s*Autopilot:', ''
+    $Body.Contains($questionUrl) -and -not $Body.Contains($replyOpenings.fix) -and -not $Body.Contains($replyOpenings.decline) -and
+    $text.Trim().Length -ge 20 -and $text -match 'Test-Greeting\.ps1' -and $text -match "(?i)\b(no|not|only|nowhere|none)\b|n't\b" -and $text -notmatch '(?i)\byes\b'
+}
 function Get-FarewellResult([string]$Folder) {
     Push-Location $Folder
     try {
@@ -237,6 +250,27 @@ exit 0
     New-Item -ItemType Directory -Force $hostDir | Out-Null
     foreach ($name in $saved.Keys) { [IO.File]::WriteAllText((Join-Path $hostDir $name), $saved[$name]) }
 
+    # The checks on the run's replies must tell a right reply from a wrong one.
+    $declines = [ordered]@{
+        'a reason that shows $Name is used' = @($true, ': the finding is wrong: Get-Farewell uses `$Name` in its greeting, "Goodbye, $Name!", in src/Farewell.ps1.')
+        'a reason that agrees $Name is unused' = @($false, ': `$Name` in Get-Farewell is unused, but removing it now would break tests/Test-Greeting.ps1.')
+        'a reason that agrees, quoting the greeting' = @($false, ': `$Name` is unused in Get-Farewell; it returns Goodbye either way, so it can be a follow-up.')
+        'a filler reason' = @($false, ': out of scope for this pull request, which only adds Get-Farewell and its Name.')
+    }
+    foreach ($label in $declines.Keys) {
+        $expected, $reason = $declines[$label]
+        Check "fixture: the decline check $(if ($expected) { 'accepts' } else { 'refuses' }) $label" ((Test-DeclineReason $reason) -eq $expected) "reason: '$reason'"
+    }
+    $answers = [ordered]@{
+        'only the test calls it, citing the test' = @($true, "Autopilot: answering ${questionUrl}: no, only tests/Test-Greeting.ps1 calls Get-Farewell so far; nothing in src/ does.")
+        'a negation citing the wrong file' = @($false, "Autopilot: answering ${questionUrl}: no, it isn't called from src/Farewell.ps1.")
+        'yes, citing the test' = @($false, "Autopilot: answering ${questionUrl}: yes, src/Greeting.ps1 calls it as well as tests/Test-Greeting.ps1, not only the test.")
+    }
+    foreach ($label in $answers.Keys) {
+        $expected, $body = $answers[$label]
+        Check "fixture: the answer check $(if ($expected) { 'accepts' } else { 'refuses' }) $label" ((Test-QuestionAnswer $body) -eq $expected) "answer: '$body'"
+    }
+
     $clone = Join-Path $Work 'setup-check'
     Invoke-Git clone -q --branch $head $origin $clone
     $result = Get-FarewellResult $clone
@@ -320,11 +354,10 @@ Use-FixtureEnvironment $Work $bin {
     $writerReply = if ($writer.Count -gt 1) { "$($writer[-1].body)".TrimStart() } else { '' }
     Check 'the writer''s thread gets "Autopilot: fixed in <commit>"' ($writerReply -match "^$([regex]::Escape($replyOpenings.fix)) [0-9a-f]{7,}") "comments: $($writer.Count); last: '$writerReply'"
 
-    # The command asks a decline for the reason, naming the file that shows it: Get-Farewell uses $Name in its greeting.
     $bot = @((Get-Thread $threads 'PRRT_bot').comments)
     $botReply = if ($bot.Count -gt 1) { "$($bot[-1].body)".TrimStart() } else { '' }
     $botReason = if ($botReply.StartsWith($replyOpenings.decline)) { $botReply.Substring($replyOpenings.decline.Length) } else { '' }
-    Check 'the bot''s wrong finding gets "Autopilot: not changed" with a reason that names $Name and Farewell' ($botReason.Length -ge 40 -and $botReason -cmatch '\bName\b' -and $botReason -match 'Farewell') "comments: $($bot.Count); last: '$botReply'"
+    Check 'the bot''s wrong finding gets "Autopilot: not changed" with a reason that says Get-Farewell uses $Name' (Test-DeclineReason $botReason) "comments: $($bot.Count); last: '$botReply'"
 
     $answered = @((Get-Thread $threads 'PRRT_answered').comments)
     Check 'the thread already answered with Autopilot: is left alone' ($answered.Count -eq 2) "comments: $($answered.Count)"
@@ -336,14 +369,8 @@ Use-FixtureEnvironment $Work $bin {
     $new = @($comments | Where-Object { $_.url -notin $strangerUrl, $questionUrl })
     $askReply = @($new | Where-Object { "$($_.body)".Contains($strangerUrl) -and "$($_.body)".Contains($replyOpenings.ask) })
     Check "the stranger's CI request becomes an ask: `"$($replyOpenings.ask)`"" ($askReply.Count -ge 1) "new top-level comments: $($new.Count)"
-    # The answer must say that only the test calls Get-Farewell, citing the file it rests on, as the command asks.
-    $answer = @($new | Where-Object {
-            $body = "$($_.body)"
-            $text = $body.Replace($questionUrl, '') -replace '^\s*Autopilot:', ''
-            $body.Contains($questionUrl) -and -not $body.Contains($replyOpenings.fix) -and -not $body.Contains($replyOpenings.decline) -and
-            $text.Trim().Length -ge 20 -and $text -match '\.ps1' -and $text -match "(?i)\b(no|not|only|nowhere|none)\b|n't\b"
-        })
-    Check 'the question gets an answer: only the test calls Get-Farewell, with the file it rests on' ($answer.Count -ge 1) "new top-level comments: $($new.Count)"
+    $answer = @($new | Where-Object { Test-QuestionAnswer "$($_.body)" })
+    Check 'the question gets an answer: only tests/Test-Greeting.ps1 calls Get-Farewell' ($answer.Count -ge 1) "new top-level comments: $($new.Count)"
 
     $written = @($new | ForEach-Object { $_.body }) + @($threads | ForEach-Object { @($_.comments) | Select-Object -Skip $(if ($_.id -eq 'PRRT_answered') { 2 } else { 1 }) } | ForEach-Object { $_.body })
     $unmarked = @($written | Where-Object { -not (Test-Autopilot $_) })
