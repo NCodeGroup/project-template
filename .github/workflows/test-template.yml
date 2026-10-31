@@ -45,6 +45,8 @@ jobs:
             run: ./tests/Test-ChangelogHeadings.ps1
           - name: Test the commit attribution check
             run: ./tests/Test-CommitAttribution.ps1
+          - name: Test the template update notice
+            run: ./tests/Test-TemplateUpdate.ps1
           - name: Test the Git hooks
             run: ./tests/Test-GitHooks.ps1
           - name: Test the repository baseline script

@@ -72,7 +72,7 @@ Invoke-Git -C $tpl config uploadpack.allowAnySHA1InWant true
 $tplUrl = 'file:///' + ($tpl -replace '\\', '/') + '/.git'
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.vscode\settings.json', '.vscode\extensions.json'
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.vscode\settings.json', '.vscode\extensions.json'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
     claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
@@ -84,7 +84,7 @@ $toolFiles = @{
 }
 $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'Directory.Packages.props', 'global.json', '.claude\rules\csharp.md',
     '.github\instructions\csharp.instructions.md'
-$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml'; gitlab = @('.gitlab-ci.yml') }
+$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml'; gitlab = @('.gitlab-ci.yml') }
 $cases = @(
     @{ Name = 'dotnet'; Stack = 'dotnet'; Host = 'github' }
     @{ Name = 'python'; Stack = 'python'; Host = 'github' }
@@ -154,6 +154,10 @@ foreach ($case in $cases) {
         # A version published minutes ago waits out the cooldown before it reaches the project.
         $ecosystems = [regex]::Matches($dependabot, '(?m)^  - package-ecosystem: ').Count
         Check "${name}: every Dependabot entry has a cooldown" ($ecosystems -gt 0 -and [regex]::Matches($dependabot, '(?m)^    cooldown:\r?\n      default-days: 3\r?$').Count -eq $ecosystems) $dependabot
+        $notice = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\template-update.yml') -Raw
+        $uses = [regex]::Matches($notice, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        Check "${name}: the template update workflow runs weekly and by hand, with only contents: read and issues: write, and runs .template/Get-TemplateUpdate.ps1" ($notice.Contains("- cron: '0 7 * * 1'") -and $notice.Contains('workflow_dispatch:') -and $notice -match '(?m)^permissions:\r?\n  contents: read\r?\n  issues: write\r?\n\r?\n' -and $notice.Contains('GH_TOKEN: ${{ github.token }}') -and $notice.Contains('run: ./.template/Get-TemplateUpdate.ps1')) $notice
+        Check "${name}: the template update workflow pins each action to a full commit SHA, with its tag in a comment, and persists no credentials" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($notice, '(?m)^\s+persist-credentials: false\r?$').Count -eq $uses.Count) $notice
     }
     else {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
@@ -332,6 +336,9 @@ $m += @(Get-MissingText 'template\.claude\agents\plan-executor.md' 'in the `pwsh
 Check 'workflow: every executor runs the Done-when command in a child pwsh and judges it by its exit= line' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\finish-plan.md', 'template\.github\prompts\finish-plan.prompt.md', 'template\.github\skills\finish-plan\SKILL.md') ('pwsh -NoProfile -File .template/Get-PlanState.ps1', '`landed`'))
 Check 'workflow: finish-plan reads whether the work landed from .template/Get-PlanState.ps1' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ('template\.claude\commands\plan-issue.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-issue\SKILL.md', 'template\.claude\commands\triage-issues.md') ('| `template-update` | template-update |'))
+$m += @(Get-MissingText ('template\.claude\commands\plan-issue.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-issue\SKILL.md') ('### Template Update', 'Plan this project''s update to a newer version of the project template it was made from', 'For the template-update kind, first read `.claude/agents/plan-executor.md`'))
+Check 'workflow: plan-issue maps the template-update label to the plan-template-update instructions' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText 'template\.claude\commands\finish-plan.md' ('Filename too long', 'git config --global core.longpaths true'))
 Check 'workflow: finish-plan deletes what a path too long for Windows left behind' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\finish-plan.md', 'template\.github\prompts\finish-plan.prompt.md', 'template\.github\skills\finish-plan\SKILL.md', 'template\.claude\commands\ship-plan.md') ('`unfiled`'))
