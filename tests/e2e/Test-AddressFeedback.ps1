@@ -337,7 +337,9 @@ if (-not $CheckOnly) {
             Check 'Claude Code run 2 returned a session' ($second -and $second.session_id) 'no session_id in the output'
             if ($second -and $second.total_cost_usd) { $script:cost += [double]$second.total_cost_usd }
         }
-        # Run 4 always runs, so a run on #2 that asked instead of stopping acts on the go-ahead and fails the checks below.
+        # Run 3 always runs, and run 4 gives its session the go-ahead whatever run 3 did (unlike run 2, which runs only
+        # when run 1 didn't reply), so a run on #2 that asked instead of stopping acts on the go-ahead and fails the
+        # checks below.
         $third = Invoke-Claude @claudeArgs -Prompt '/address-feedback #2' -Index 3
         Check 'Claude Code run 3 returned a session' ($third -and $third.session_id) 'no session_id in the output'
         if ($third -and $third.total_cost_usd) { $script:cost += [double]$third.total_cost_usd }
