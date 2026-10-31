@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.41.2] - 2026-10-31
+
 ### Added
 
 - Every PowerShell script in the repository, the ones the template ships included, passes PSScriptAnalyzer with warnings treated as errors: `tests/Test-ScriptAnalyzer.ps1`, which CI runs with the other suites, fails on any finding. `PSScriptAnalyzerSettings.psd1` leaves out four rules that don't fit these scripts (Write-Host in interactive scripts, singular nouns, ShouldProcess on internal helpers, and a BOM PowerShell 7 doesn't need), each with its reason; the few findings that are false positives are suppressed where they are, with a justification.
@@ -30,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - No change for projects made from the template. A new end-to-end test, `tests/e2e/Test-AddressFeedback.ps1`, runs `/address-feedback` in headless Claude Code on a fixture pull request with a writer's request for a real fix, a stranger's request to change the CI workflow, a bot's wrong finding, a question and a thread already answered with `Autopilot:`. It checks that only the writer's fix is pushed, never forced; that the stranger's request becomes an `ask` and the wrong finding a decline with its reason; that the answered thread is left alone; and that nothing is resolved, merged or edited. It costs model usage, so it runs by hand; CI runs its fixture setup with `-SetupOnly`. It shares its fixture with `Test-RunIssues.ps1` through `tests/e2e/Fixture.ps1`, and the `gh` stand-in now serves review threads with each author's `authorAssociation`, records thread replies, and refuses resolving a thread, closing a pull request and the commands a test forbids ([#133](https://github.com/NCodeGroup/project-template/issues/133)).
 - The commands that create a plan's worktree or branch (Claude Code's planning commands, `/run-issues` and `/address-feedback`) and `/orchestrate-plan` check `git config core.hooksPath`, and run `git config core.hooksPath .githooks` when nothing runs hooks in the clone; the rules in `project-template.instructions.md` tell every agent to do the same before its first commit in a clone or worktree. The rules, the README and USAGE also say that a squash merge carries the co-author trailers of every commit on the branch into its one commit on the default branch, so the pull request's `Commit attribution` check is the last chance to catch one ([#131](https://github.com/NCodeGroup/project-template/issues/131)).
 - The template's `dependabot.yml` gives every entry a three-day cooldown (`cooldown: default-days: 3`), so a version published minutes ago no longer lands in the weekly pull request; Dependabot offers it once it is three days old. New projects get the file as it is; a project that already has it gets the change merged into its own ([#125](https://github.com/NCodeGroup/project-template/issues/125)).
+- `/replan-step` and `/review-plan-diff` run the plan's `- Prelude:` command in the same wrapper as the executors, and stop when it fails: when the output ends with `prelude failed`, the check never ran, so they show the prelude's error and say to fix the Landing section's `prelude` and the plan's `- Prelude:` line, instead of re-planning the step or adding fix steps for it. `/ship-plan`'s landing summary says the prelude runs in the gate's command ([#155](https://github.com/NCodeGroup/project-template/issues/155)).
+- No change for projects made from the template. `workflow/Invoke-PlanSteps.ps1`'s help says how a failed prelude ends a run: with an error that names it, so PowerShell exits 1. `tests/Test-Template.ps1` runs a prelude command that isn't a script, and a Done-when command that prints `prelude failed` without a prelude, through the runner, and runs the runner's loop with a stand-in `copilot` whose planner completes a step, which the loop re-checks after the plan's prelude ([#155](https://github.com/NCodeGroup/project-template/issues/155)).
+- No change for projects made from the template. `tests/e2e/Test-RunIssues.ps1` checks the merge recommendation: by default the `gh` stand-in gives NCode Review's review of the run's first push, a finding that only asks for another test, and `-Scenario max-rounds` sets `max-review-rounds: 1`; either way the run must recommend the merge once and put the open nits in the plan's `## Follow-ups`. `tests/e2e/Test-AddressFeedback.ps1` also runs `/address-feedback` on a pull request from `farewell;touch${IFS}pwned`, a branch name with shell characters, and checks that it stops before any worktree, push, comment or file ([#159](https://github.com/NCodeGroup/project-template/issues/159)).
 
 ### Fixed
 
@@ -41,6 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `/ship-plan` passes the titles it takes from `PLAN.md` to `gh` and `glab` from a file, as `(Get-Content -Raw <title file>).Trim()`, instead of in double quotes, where PowerShell expanded `$(...)` and backtick sequences; a title can come from an issue someone else wrote ([#125](https://github.com/NCodeGroup/project-template/issues/125)).
 - `.template/Update-Project.ps1` warns, with Copier's error, when Copier can't render a template version, and says it skipped the suggestion of rewritten merged files for `project_owned_files`, instead of reporting none ([#125](https://github.com/NCodeGroup/project-template/issues/125)).
 - A project's files call `Adopt-Project.ps1` the template's, since a project has no copy: the changelog-backfill paragraph of every planning command and `project-template.instructions.md`, and a comment in `Update-Project.ps1`, whose comment above `Get-ChangelogBackfill` also names `.template/Get-PlanState.ps1`, where a project has it ([#125](https://github.com/NCodeGroup/project-template/issues/125)).
+- `USAGE.md` no longer says `/ship-plan` runs the prelude before every push: it runs only in the gate's command, so with `gate: none` nothing runs it ([#155](https://github.com/NCodeGroup/project-template/issues/155)).
 
 ## [0.41.1] - 2026-10-30
 
@@ -588,7 +594,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.41.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.41.2...HEAD
+[0.41.2]: https://github.com/NCodeGroup/project-template/compare/v0.41.1...v0.41.2
 [0.41.1]: https://github.com/NCodeGroup/project-template/compare/v0.41.0...v0.41.1
 [0.41.0]: https://github.com/NCodeGroup/project-template/compare/v0.40.4...v0.41.0
 [0.40.4]: https://github.com/NCodeGroup/project-template/compare/v0.40.3...v0.40.4
