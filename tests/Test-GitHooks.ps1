@@ -12,16 +12,18 @@
     failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to project-template-hooks-test in the temp folder.
+    The scratch folder, deleted and recreated. Defaults to project-template-hooks-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
 
 .EXAMPLE
     .\tests\Test-GitHooks.ps1
 #>
 [CmdletBinding()]
 param(
-    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-hooks-test')
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-hooks-test-$PID")
 )
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -274,6 +276,7 @@ foreach ($name in $runCases.Keys) {
 }
 
 ''
-if ($failures.Count) { "Git hooks tests: FAILED ($($failures.Count))"; exit 1 }
+if ($failures.Count) { "Kept the work folder: $Work"; "Git hooks tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Git hooks tests: PASSED'
 exit 0
