@@ -6,7 +6,7 @@
     alone, and stop on a conflict.
 
 .DESCRIPTION
-    Tests a committed, tagged (v0.1.0) snapshot of the current working tree in project-template-test in the temp folder, so
+    Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab and checks YAML with
     PyYAML through uv. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1, that the generated workflow files under template/ and at the repository root
     match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
@@ -19,15 +19,20 @@
 
 .PARAMETER Only
     Render only these cases, by name; the update tests need python and node.
+
+.PARAMETER Work
+    The scratch folder, deleted and recreated. Defaults to project-template-test-<process ID> in the temp folder, the
+    run's own: deleted when every check passes, kept when one fails.
 #>
 [CmdletBinding()]
 param(
     [switch]$SkipDotnetBuild,
     [switch]$SkipUpdate,
     [string[]]$Only,
-    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-test')
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-test-$PID")
 )
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -715,6 +720,7 @@ if (-not $SkipUpdate) {
     Check 'update: leaves core.hooksPath alone when the clone has hooks in .git/hooks' (-not (git -C $other config core.hooksPath) -and $output.Contains('has hooks of its own in .git/hooks (pre-commit)')) $output.Trim()
 }
 ''
-if ($failures.Count) { "Template tests: FAILED ($($failures.Count))"; exit 1 }
+if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Template tests: PASSED'
 exit 0

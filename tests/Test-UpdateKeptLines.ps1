@@ -10,14 +10,16 @@
     failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to project-template-update-kept-test in the temp folder.
+    The scratch folder, deleted and recreated. Defaults to project-template-update-kept-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
 
 .EXAMPLE
     .\tests\Test-UpdateKeptLines.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-update-kept-test'))
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-update-kept-test-$PID"))
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -121,6 +123,7 @@ try {
 }
 finally { Pop-Location }
 ''
-if ($failures.Count) { "Update kept-lines tests: FAILED ($($failures.Count))"; exit 1 }
+if ($failures.Count) { "Kept the work folder: $Work"; "Update kept-lines tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Update kept-lines tests: PASSED'
 exit 0
