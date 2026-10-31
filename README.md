@@ -83,7 +83,7 @@ Written once, when the project is created, and never touched by an update, even 
 | `AGENTS.md` | The index every agent reads: the template's rules first, then the project's own instruction files, build and test commands, and conventions |
 | `README.md` | Build and test commands, and the workflow at a glance |
 | `Directory.Build.props` (.NET) | Imports `build/ProjectTemplate.props`, then holds the project's own build settings, which override the template's |
-| `.github/workflows/code-review.yml` (GitHub, `code_review` answer only) | Reviews each pull request with the NCode Review bot ([NCodeGroup/code-review](https://github.com/NCodeGroup/code-review)): runs from the default branch on `pull_request_target`, in the `code-review` environment, and pins the action to an exact release tag. Project-owned so an update never moves a pin Dependabot bumped; `Update-Project.ps1` lists the template's changes to it |
+| `.github/workflows/code-review.yml` (GitHub, `code_review` answer only) | Reviews each pull request with the NCode Review bot ([NCodeGroup/code-review](https://github.com/NCodeGroup/code-review)): runs from the default branch on `pull_request_target`, in the `code-review` environment, and pins the action to a release's full commit SHA, with its tag in a comment, the one pin CodeQL's `actions/unpinned-tag` query accepts. Project-owned so an update never moves a pin Dependabot bumped; `Update-Project.ps1` lists the template's changes to it |
 
 ## Claude Code or GitHub Copilot
 
