@@ -178,6 +178,8 @@ $repos = @{
     noCheckRuns = New-Repo -Pulls @((New-Pull 8 'sha8' '2026-10-05T10:00:00Z')) -CheckRuns @{ sha8 = @() } -WorkflowRuns @{ sha8 = @() }
     # Job names the printed command has to quote, or can't name at all.
     oddNames = New-Repo -Pulls @((New-Pull 6 'sha6' '2026-10-03T10:00:00Z')) -CheckRuns @{ sha6 = @((New-CheckRun 1 "it's fine"), (New-CheckRun 2 'a, b'), (New-CheckRun 3 'plain')) } -WorkflowRuns @{ sha6 = $prWorkflowRuns }
+    # A curly apostrophe, which PowerShell also reads as a single quote.
+    curlyName = New-Repo -Pulls @((New-Pull 6 'sha6' '2026-10-03T10:00:00Z')) -CheckRuns @{ sha6 = @((New-CheckRun 1 "it$([char]0x2019)s curly"), (New-CheckRun 2 'plain')) } -WorkflowRuns @{ sha6 = $prWorkflowRuns }
     # A second repository with checks of its own, for -All -RequireChecks auto.
     autoOther = New-Repo -Pulls @((New-Pull 3 'sha3' '2026-10-04T10:00:00Z')) -CheckRuns @{ sha3 = @((New-CheckRun 1 'other-build')) } -WorkflowRuns @{ sha3 = $prWorkflowRuns }
 }
@@ -202,6 +204,18 @@ function Invoke-Baseline([string[]]$Arguments) {
         Changes = @($log | Where-Object { $_ -like 'BODY *' -or $_ -like '*-X PATCH*' })
         Body = if (Test-Path -LiteralPath $posted) { Get-Content -Raw -LiteralPath $posted | ConvertFrom-Json } else { $null }
     }
+}
+# The command a -RequireChecks auto -WhatIf run prints, parsed: the line, the parse errors, the command, the names it
+# passes to -RequireChecks and the script path.
+function Read-PrintedCommand([string]$Output) {
+    $line = ($Output -split "`r?`n" | Where-Object { $_ -like '*to require them by name: *' } | Select-Object -First 1) -replace '^.*to require them by name: ', ''
+    $errors = $null
+    $command = [Management.Automation.Language.Parser]::ParseInput("$line", [ref]$null, [ref]$errors).Find({ param($node) $node -is [Management.Automation.Language.CommandAst] }, $true)
+    $elements = if ($command) { @($command.CommandElements) } else { @() }
+    $at = [array]::FindIndex([object[]]$elements, [Predicate[object]] { param($e) $e -is [Management.Automation.Language.CommandParameterAst] -and $e.ParameterName -eq 'RequireChecks' })
+    $named = if ($at -ge 0 -and $at + 1 -lt $elements.Count) { $elements[$at + 1].SafeGetValue() } else { $null }
+    $path = if ($elements.Count) { $elements[0].SafeGetValue() } else { $null }
+    [pscustomobject]@{ Line = $line; Errors = $errors; Command = $command; Named = $named; Path = $path }
 }
 
 $savedPath = $env:PATH
@@ -297,19 +311,24 @@ try {
 
     # The printed command has to run as it is: parse it, and read back the script path and the names it passes.
     $r = Invoke-Baseline @('-Repo', 'oddNames', '-RequireChecks', 'auto', '-WhatIf')
-    $line = ($r.Output -split "`r?`n" | Where-Object { $_ -like '*to require them by name: *' } | Select-Object -First 1) -replace '^.*to require them by name: ', ''
-    $errors = $null
-    $command = [Management.Automation.Language.Parser]::ParseInput("$line", [ref]$null, [ref]$errors).Find({ param($node) $node -is [Management.Automation.Language.CommandAst] }, $true)
-    $elements = if ($command) { @($command.CommandElements) } else { @() }
-    $at = [array]::FindIndex([object[]]$elements, [Predicate[object]] { param($e) $e -is [Management.Automation.Language.CommandParameterAst] -and $e.ParameterName -eq 'RequireChecks' })
-    $named = if ($at -ge 0 -and $at + 1 -lt $elements.Count) { $elements[$at + 1].SafeGetValue() } else { $null }
-    $path = if ($elements.Count) { $elements[0].SafeGetValue() } else { $null }
-    Check 'auto: the printed command parses, with the script path quoted' (-not $errors.Count -and $command.InvocationOperator -eq 'Ampersand' -and $path -and [IO.Path]::GetFullPath($path) -eq [IO.Path]::GetFullPath($script)) $line
-    Check 'auto: the printed command passes a name with a quote as it is' ($named -eq "it's fine,plain") "$named | $line"
+    $p = Read-PrintedCommand $r.Output
+    Check 'auto: the printed command parses, with the script path quoted' (-not $p.Errors.Count -and $p.Command.InvocationOperator -eq 'Ampersand' -and $p.Path -and [IO.Path]::GetFullPath($p.Path) -eq [IO.Path]::GetFullPath($script)) $p.Line
+    Check 'auto: the printed command passes a name with a quote as it is' ($p.Named -eq "it's fine,plain") "$($p.Named) | $($p.Line)"
     Check 'auto: a name with a comma is left out of the command, and listed' ($r.Output -match [regex]::Escape('left out of that command, since -RequireChecks splits a name at its comma: a, b')) $r.Output
     $r = Invoke-Baseline @('-Repo', 'oddNames', '-RequireChecks', 'auto')
     $checks = $r.Body.rules | Where-Object type -eq 'required_status_checks'
     Check 'auto: applied, a name with a quote or a comma is required as one check, as it is' ((@($checks.parameters.required_status_checks.context) -join '|') -eq "a, b|it's fine|plain") ($checks | ConvertTo-Json -Depth 6 -Compress)
+
+    # The run prints a curly quote, so its output is read as UTF-8, also from a Windows console.
+    $encoding = [Console]::OutputEncoding
+    try {
+        try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { Write-Verbose "Couldn't set the console's output encoding: $_" }
+        $r = Invoke-Baseline @('-Repo', 'curlyName', '-RequireChecks', 'auto', '-WhatIf')
+    }
+    finally { try { [Console]::OutputEncoding = $encoding } catch { Write-Verbose "Couldn't restore the console's output encoding: $_" } }
+    $p = Read-PrintedCommand $r.Output
+    $curly = "it$([char]0x2019)s curly"
+    Check 'auto: the printed command doubles a curly quote and passes the name as it is' ((-not $p.Errors.Count) -and $p.Line.Contains("it$([char]0x2019)$([char]0x2019)s curly") -and ($p.Named -eq "$curly,plain")) "$($p.Named) | $($p.Line)"
 
     $r = Invoke-Baseline @('-Repo', 'autoChecks', '-RequireChecks', 'auto')
     $checks = $r.Body.rules | Where-Object type -eq 'required_status_checks'
