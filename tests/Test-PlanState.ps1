@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
-    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings and the changelog lines, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
+    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -644,11 +644,15 @@ $r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'keep-a-changelog'
 Check 'changelog: reads the newest Keep a Changelog release with the plan''s prefix' $r.Ok $r.Detail
 
 Write-Text $lateLog "# Changelog`n`n## [Unreleased]`n`n### Added`n`n- Coming.`n"
-$r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'keep-a-changelog'; 'changelog-version' = '-' }
+$r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'keep-a-changelog'; 'changelog-version' = '-'; 'changelog-duplicates' = '-' }
 Check 'changelog: an Unreleased section alone is no release' $r.Ok $r.Detail
 
+Write-Text $lateLog "# Changelog`n`n## [Unreleased]`n`n### Added`n`n- A.`n`n### Changed`n`n- B.`n`n### Changed`n`n- C.`n`n## [0.3.1] - 2026-10-28`n`n### Fixed`n`n- D.`n`n### Fixed`n`n- E.`n"
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'changelog-duplicates' = '[Unreleased] Changed, [0.3.1] Fixed' }
+Check 'changelog: names each heading a section has more than once' $r.Ok $r.Detail
+
 Remove-Item -LiteralPath $lateLog
-$r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'missing'; 'changelog-version' = '-' }
+$r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'missing'; 'changelog-version' = '-'; 'changelog-duplicates' = '-' }
 Check 'changelog: a missing changelog' $r.Ok $r.Detail
 
 # 20. Version tags without a changelog section.
