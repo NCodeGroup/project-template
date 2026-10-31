@@ -309,9 +309,9 @@ try {
         }
     }
     # review-bots lists logins without the [bot] suffix REST adds, joined by commas.
-    $bots = @($policy['review-bots'] -split '[\s,]+' | Where-Object { $_ } | ForEach-Object { $_ -replace '\[bot\]$', '' })
+    $bots = @($policy['review-bots'] -split '[\s,]+' | ForEach-Object { $_ -replace '\[bot\]\z', '' } | Where-Object { $_ })
     $policy['review-bots'] = if ($bots.Count) { $bots -join ',' } else { 'none' }
-    if ($policy['max-review-rounds'] -notmatch '^[1-9]\d{0,2}$') { $policy['max-review-rounds'] = '3' }
+    if ($policy['max-review-rounds'] -notmatch '^[1-9]\d{0,2}\z') { $policy['max-review-rounds'] = '3' }
     $integrate = $policy['integrate']; $releasePolicy = $policy['release']
     $landing = @(foreach ($key in $policy.Keys) { if ($policy[$key] -match '\s') { "$key=`"$($policy[$key])`"" } else { "$key=$($policy[$key])" } }) -join ' '
     $protected = Get-Protected $hostName $default $policy['protect']

@@ -104,8 +104,8 @@ function Add-Comment([string]$Kind, [int]$Number, [string]$Path) {
     Write-Json 'comments.json' $comments
     return $url
 }
-# Gives the first pull request opened the review in host/review-seed.json, then deletes the seed: threads go to
-# threads.json, review summaries to reviews.json and top-level comments to comments.json.
+# Gives the first pull request opened the review in host/review-seed.json, then deletes the seed: threads, with the
+# earlier replies a seed thread lists, go to threads.json, review summaries to reviews.json and top-level comments to comments.json.
 function Add-ReviewSeed([int]$Number, [string]$PrUrl) {
     $seedFile = Join-Path $hostDir 'review-seed.json'
     if (-not (Test-Path -LiteralPath $seedFile)) { return }
@@ -113,9 +113,11 @@ function Add-ReviewSeed([int]$Number, [string]$PrUrl) {
     $threads = @(Read-Json 'threads.json' @())
     foreach ($t in @($seed.threads)) {
         $id = 2000 + $threads.Count + 1
+        $threadComments = @(@{ author = $t.author; body = $t.body; url = "$PrUrl#discussion_r$id" })
+        foreach ($reply in $t.replies) { $threadComments += @{ author = $reply.author; body = $reply.body; url = "$PrUrl#discussion_r$id-$($threadComments.Count)" } }
         $threads += @{
             id = "PRRT_$id"; key = $t.key; number = $Number; isResolved = $false; isOutdated = $false; path = $t.path; line = $t.line
-            comments = @(@{ author = $t.author; body = $t.body; url = "$PrUrl#discussion_r$id" })
+            comments = $threadComments
         }
     }
     Write-Json 'threads.json' $threads
