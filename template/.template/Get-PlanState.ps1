@@ -15,6 +15,7 @@
     landing gives each key of AGENTS.md's Landing section that the workflow reads as key=value, with its default when
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
     gate is the command /ship-plan runs before it pushes, or none.
+    prelude is the PowerShell command that sets up the shell, such as putting a tool on PATH, before the gate and each Done-when command, or none. It is invalid unless it is one command on one line, with no ;, |, &, && or ||: a script in the repository, written as ./<path>.ps1, that exists, or another command with its arguments.
     pr-format is <file>#<heading>, the section that sets a pull request's title and description, or none.
     renumber is the version the plan moves to when another plan has landed its Release: version, or a later one, first: the newest version tag on origin (the clone's tags when origin's can't be read) or newest release heading of the changelog, ## [<version>] - <date> or ## <version>, on origin's default branch, raised as the plan's version was raised (patch, else minor, else major). It is - when that version is older, release is none, or the plan has landed. next is ship-plan rather than wait while a pull request is open and renumber isn't -, so /ship-plan renumbers the plan.
     tag is present when origin has the plan's Release: version tag, local when only this clone has it, such as one a failed push left, absent when neither has it, and unknown when git ls-remote can't read origin's tags. Without an origin remote, it reads the clone's tags: present or absent.
@@ -51,6 +52,23 @@ function Get-LandingValue([string]$Text, [switch]$Spaced) {
     if ($value -match '^`(.+)`$' -or $value -match '^"(.+)"$') { $value = $Matches[1].Trim() }
     if (-not $Spaced) { $value = ($value -split '\s+')[0] }
     $value
+}
+
+# Whether a Landing section's prelude is one command the workflow can dot-source: a script in the repository, as
+# ./<path>.ps1, that exists, or another command with its arguments, and nothing that chains or pipes commands.
+function Test-Prelude([string]$Command, [string]$Root) {
+    $tokens = $null; $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseInput($Command, [ref]$tokens, [ref]$errors)
+    if ($errors.Count -or $ast.ParamBlock -or $ast.BeginBlock -or $ast.ProcessBlock -or $ast.DynamicParamBlock -or -not $ast.EndBlock -or $ast.EndBlock.Traps) { return $false }
+    $statements = @($ast.EndBlock.Statements)
+    if ($statements.Count -ne 1 -or $statements[0] -isnot [Management.Automation.Language.PipelineAst] -or $statements[0].Background) { return $false }
+    $elements = @($statements[0].PipelineElements)
+    if ($elements.Count -ne 1 -or $elements[0] -isnot [Management.Automation.Language.CommandAst] -or $elements[0].InvocationOperator -ne 'Unknown') { return $false }
+    $name = $elements[0].GetCommandName()
+    if (-not $name) { return $false }
+    if ($name -notmatch '\.ps1$') { return $true }
+    if ($name -notmatch '^\.[\\/]' -or ($name -split '[\\/]') -contains '..') { return $false }
+    Test-Path -LiteralPath (Join-Path $Root ($name.Substring(2) -replace '\\', '/')) -PathType Leaf
 }
 
 function ConvertTo-PlanVersion([string]$Text) {
@@ -291,8 +309,8 @@ try {
 
     # Landing policy from AGENTS.md
     # Each key the workflow reads, with its default, in the order the landing line prints them.
-    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up'; gate = 'none'; protect = 'none'; 'pr-format' = 'none' }
-    $spacedKeys = @('follow-up-label', 'gate', 'pr-format')   # keys whose value keeps its spaces
+    $policy = [ordered]@{ integrate = 'pull-request'; release = 'none'; changelog = 'CHANGELOG.md'; draft = 'no'; 'follow-ups' = 'issues'; 'follow-up-label' = 'follow-up'; gate = 'none'; protect = 'none'; 'pr-format' = 'none'; prelude = 'none' }
+    $spacedKeys = @('follow-up-label', 'gate', 'pr-format', 'prelude')   # keys whose value keeps its spaces
     $agents = Join-Path $folder 'AGENTS.md'
     if (Test-Path -LiteralPath $agents) {
         $inLanding = $false
@@ -304,6 +322,7 @@ try {
             }
         }
     }
+    if ($policy['prelude'] -ne 'none' -and -not (Test-Prelude $policy['prelude'] $folder)) { $policy['prelude'] = 'invalid' }
     $integrate = $policy['integrate']; $releasePolicy = $policy['release']
     $landing = @(foreach ($key in $policy.Keys) { if ($policy[$key] -match '\s') { "$key=`"$($policy[$key])`"" } else { "$key=$($policy[$key])" } }) -join ' '
     $protected = Get-Protected $hostName $default $policy['protect']

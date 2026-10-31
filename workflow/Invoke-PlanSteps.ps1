@@ -10,7 +10,9 @@
          (-Executor copilot; Claude Sonnet 5.5 unless -Model says otherwise).
       2. Escalation: if the executor marks the step [?] with an "- Escalation:" note (it needs a decision,
          a refactor or a redesign the plan didn't make), the step goes to re-planning.
-      3. Verify: runs the step's "- Done when: `command`" itself; the model's own claim is not trusted.
+      3. Verify: runs the step's "- Done when: `command`" itself; the model's own claim is not trusted. When the plan's
+         Context for the executor has a "- Prelude: `command`" line, that command is dot-sourced first in the same
+         PowerShell, and the runner stops with its error when it fails.
          Pass: marks [x] and commits "Plan step N: Title". Fail: retries with the error (-MaxAttempts),
          then marks [!].
       4. Re-plan: with -Replan claude|copilot|local, the planner model runs the replan-step prompt on the
@@ -106,10 +108,15 @@ function Add-StepLine([string]$Text, [int]$Number, [string[]]$NewLines) {
 }
 
 function Invoke-DoneWhen([string]$Command) {
+    # The plan's prelude, from the "- Prelude: `command`" line of its Context for the executor, sets up the shell first.
+    $prelude = [regex]::Match((Read-Plan), '(?m)^\s*-\s*Prelude:\s*`([^`]+)`')
+    if ($prelude.Success) { $Command = "try { . $($prelude.Groups[1].Value) } catch { `$_; `"prelude failed`"; exit 2 }; if (-not `$? -or `$LASTEXITCODE) { `"prelude failed`"; exit 2 }; $Command" }
     Push-Location $repo
     try {
         $out = & pwsh -NoProfile -NonInteractive -Command $Command 2>&1 | Out-String
-        [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $out }
+        $code = $LASTEXITCODE
+        if ($prelude.Success -and $code -eq 2 -and $out.TrimEnd() -match '(^|\n)prelude failed$') { throw "The plan's prelude, $($prelude.Groups[1].Value), failed, so no Done-when command can run; fix it and run again.`n$out" }
+        [pscustomobject]@{ ExitCode = $code; Output = $out }
     }
     finally { Pop-Location }
 }

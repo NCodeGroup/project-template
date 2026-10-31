@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
-    escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md, a push to the default
+    escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md and its prelude, valid or not, a push to the default
     branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
     Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
@@ -137,7 +137,7 @@ Check 'next: finished steps without a review run review-plan-diff' $r.Ok $r.Deta
 
 # 5. Reviewed at the current HEAD, with no AGENTS.md.
 Write-Text $planFile (New-PlanText 'x' (Get-Head $repo))
-$r = Test-State (Get-State $repo) @{ landing = 'integrate=pull-request release=none changelog=CHANGELOG.md draft=no follow-ups=issues follow-up-label=follow-up gate=none protect=none pr-format=none' }
+$r = Test-State (Get-State $repo) @{ landing = 'integrate=pull-request release=none changelog=CHANGELOG.md draft=no follow-ups=issues follow-up-label=follow-up gate=none protect=none pr-format=none prelude=none' }
 Check 'local: the default landing policy applies without AGENTS.md' $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ reviewed = 'current'; pr = '-'; merge = '-'; next = 'ship-plan' }
 Check 'next: a reviewed plan is shipped' $r.Ok $r.Detail
@@ -162,6 +162,7 @@ Write-Text (Join-Path $repo 'AGENTS.md') @'
 - gate: `./build/dod.ps1 -Fast -Affected`
 - protect: hook
 - pr-format: `AGENTS.md#Pull requests`
+- prelude: `nvs use 26`
 '@
 Push-Location $repo
 try { Invoke-Git add AGENTS.md; Invoke-Git commit -q -m 'Add AGENTS.md' }
@@ -170,12 +171,40 @@ Write-Text $planFile (New-PlanText 'x' (Get-Head $repo))
 Push-Location $repo
 try { Invoke-Git commit -q --allow-empty -m 'Re-plan step 2: B' }
 finally { Pop-Location }
-$r = Test-State (Get-State $repo) @{ landing = 'integrate=direct release=tag+release changelog=docs/CHANGES.md draft=yes follow-ups=owner/backlog follow-up-label="tech debt" gate="./build/dod.ps1 -Fast -Affected" protect=hook pr-format="AGENTS.md#Pull requests"' }
+$r = Test-State (Get-State $repo) @{ landing = 'integrate=direct release=tag+release changelog=docs/CHANGES.md draft=yes follow-ups=owner/backlog follow-up-label="tech debt" gate="./build/dod.ps1 -Fast -Affected" protect=hook pr-format="AGENTS.md#Pull requests" prelude="nvs use 26"' }
 Check 'local: reads the Landing section of AGENTS.md' $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ protected = 'unknown' }
 Check 'protected: protect hook without the hook enabled, on another host, is unknown' $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ reviewed = 'current'; next = 'ship-plan' }
 Check 'next: an empty commit after the review keeps it current' $r.Ok $r.Detail
+
+# 7b. A prelude that names a script in the repository, and preludes that aren't one command the workflow can dot-source.
+$agentsFile = Join-Path $repo 'AGENTS.md'
+$agentsText = [IO.File]::ReadAllText($agentsFile)
+New-Item -ItemType Directory -Force (Join-Path $repo 'build') | Out-Null
+Write-Text (Join-Path $repo 'build/env.ps1') "`$env:Path = `"`$PWD/tools;`$env:Path`"`n"
+$preludes = [ordered]@{
+    '`./build/env.ps1`'             = './build/env.ps1'
+    '.\build\env.ps1'               = '.\build\env.ps1'
+    '`./build/env.ps1 -Node 26`'    = '"./build/env.ps1 -Node 26"'
+    '`./build/missing.ps1`'         = 'invalid'
+    'build/env.ps1'                 = 'invalid'
+    '`./../outside.ps1`'            = 'invalid'
+    '`. ./build/env.ps1`'           = 'invalid'
+    '`nvs use 26; npm -v`'          = 'invalid'
+    '`nvs use 26 | Out-Null`'       = 'invalid'
+    '`nvs use 26 && npm -v`'        = 'invalid'
+    '`$env:Path = "C:\node;$env:Path"`' = 'invalid'
+    '`nvs use "26`'                 = 'invalid'
+}
+foreach ($value in $preludes.Keys) {
+    Write-Text $agentsFile $agentsText.Replace('- prelude: `nvs use 26`', "- prelude: $value")
+    $landing = (Get-State $repo -NoFetch)['landing']
+    $expected = "prelude=$($preludes[$value])"
+    Check "local: the Landing section's prelude $value prints as $expected" ($landing.EndsWith(" $expected")) "landing='$landing'"
+}
+Write-Text $agentsFile $agentsText
+Remove-Item -LiteralPath (Join-Path $repo 'build') -Recurse -Force
 
 # 8. Pushed to the default branch.
 Push-Location $repo
