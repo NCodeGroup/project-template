@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- `Get-PlanState.ps1` reports `protected: unknown`, not `no`, when GitHub's rules or GitLab's protection can't be read, or the call fails with anything but not found (HTTP 404), so a branch that does require pull requests is never reported as unprotected (#125).
+- `Get-PlanState.ps1` reports `protected: unknown`, not `no`, when GitHub's rules or GitLab's protection can't be read, or the call fails with anything but not found (HTTP 404), so a branch that does require pull requests is never reported as unprotected ([#125](https://github.com/NCodeGroup/project-template/issues/125)).
 - The scripts the template ships say why they ignore a failure to set the console's encoding, with a verbose message, instead of an empty `catch`; `Update-Project.ps1` and `New-Project.ps1` run `git` before the condition that tests its output, which the analyzer read as a misused redirection when it ran inside it; `Get-PlanState.ps1` no longer keeps a pull request head it never reads.
 - `tools/Set-RepositoryBaseline.ps1`: its examples showed a tab where `.\tools\` belongs, and its inner function now declares the `-WhatIf` support it uses.
 

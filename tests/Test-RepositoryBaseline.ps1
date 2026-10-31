@@ -91,6 +91,7 @@ $repos = @{
     setupFailed = New-Repo -CodeQL 'fail:403'
     setupNoResponse = New-Repo -CodeQL 'fail:none'
     setupUnreadable = New-Repo -CodeQL 'raw:<html>Bad Gateway</html>'
+    oursCodeQL404 = New-Repo -CodeQL '404' -Rulesets @((New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')))
     oursWithoutCodeQL = New-Repo -CodeQL 'not-configured' -Rulesets @((New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')))
     legacy = New-Repo -Branch master
     owned = New-Repo -Rulesets @((New-Ruleset 'main'))
@@ -157,6 +158,14 @@ try {
         Check "skip: a CodeQL setup lookup that fails or can't be read changes nothing ($name)" ($r.Changes.Count -eq 0 -and $r.Output -match "${name}: skipped \(couldn't read CodeQL's default setup") "$($r.Changes -join '|') $($r.Output)"
     }
 
+    # 3c. Invoke-HostApi is copied from workflow/Get-PlanState.ps1, which projects get on its own; the copies must match.
+    $bodies = foreach ($file in (Join-Path $repoRoot 'tools/Set-RepositoryBaseline.ps1'), (Join-Path $repoRoot 'workflow/Get-PlanState.ps1')) {
+        $ast = [Management.Automation.Language.Parser]::ParseFile($file, [ref]$null, [ref]$null)
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-HostApi' }, $true)
+        if ($fn) { $fn.Extent.Text -replace '\r\n', "`n" } else { '' }
+    }
+    Check 'copies: Invoke-HostApi is the same in Set-RepositoryBaseline.ps1 and Get-PlanState.ps1' ($bodies[0] -and $bodies[0] -eq $bodies[1]) 'the two functions differ, or one is missing'
+
     # 4. A branch other than main.
     $r = Invoke-Baseline @('-Repo', 'legacy')
     Check 'create: works for a default branch that is not main' (($r.Changes -join '|') -like 'BODY POST repos/NCodeGroup/legacy/rulesets*') ($r.Changes -join '|')
@@ -177,6 +186,8 @@ try {
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
     $r2 = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
     Check 'update: a ruleset whose repository no longer has CodeQL loses the rule, and the summary says so' ((@($r2.Body.rules.type) -notcontains 'code_scanning') -and $r2.Output -match 'removes its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"
+    $r3 = Invoke-Baseline @('-Repo', 'oursCodeQL404', '-RequireChecks', 'test')
+    Check 'update: a 404 from the CodeQL setup never removes the rule a ruleset has; the repository is skipped' ($r3.Changes.Count -eq 0 -and $r3.Output -match 'oursCodeQL404: skipped .*keeps its code-scanning rule') "$($r3.Changes -join '|') $($r3.Output)"
     Check 'update: the ruleset keeps its code-scanning rule, with the same thresholds' (($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors') -and ($scan[0].security_alerts_threshold -eq 'medium_or_higher')) (@($r.Body.rules.type) -join ',')
 
     # 7. -All.

@@ -115,6 +115,12 @@ function Set-Baseline {
         return
     }
     $hadScanning = $own -and (@($own.rules.type) -contains 'code_scanning')
+    # GitHub also answers 404 to a token that can't see the setup, so a 404 never removes a rule the ruleset already has;
+    # only an answer that says CodeQL isn't configured does.
+    if ($hadScanning -and $setup.Status -eq 404) {
+        Write-Host "${Name}: skipped (CodeQL's default setup answered 404, which can also mean no access; the ruleset keeps its code-scanning rule)"
+        return
+    }
 
     $rules = @(
         @{ type = 'deletion' },
