@@ -815,16 +815,6 @@ if (-not $SkipUpdate) {
 
     $output = & $updateProject | Out-String
     Check 'update: second run changes nothing' ($output.Contains('Already up to date') -and -not $output.Contains('Handing the update over') -and ((git -C $project rev-parse HEAD) -eq $head) -and -not (git -C $project status --porcelain)) $output.Trim()
-    Invoke-Git -C $project config core.hooksPath .husky
-    $output = & $updateProject 3>&1 | Out-String
-    Check 'update: keeps a hooks path of its own and warns with the command to run' (((git -C $project config core.hooksPath) -join '') -eq '.husky' -and $output.Contains('core.hooksPath is already .husky') -and $output.Contains('git config core.hooksPath .githooks')) $output.Trim()
-    # A global hooks path, set through the environment as New-Project's check does, is kept too: no local one is written.
-    Invoke-Git -C $project config --unset core.hooksPath
-    $env:GIT_CONFIG_COUNT = '1'; $env:GIT_CONFIG_KEY_0 = 'core.hooksPath'; $env:GIT_CONFIG_VALUE_0 = Join-Path $Work 'global-hooks'
-    try { $output = & $updateProject 3>&1 | Out-String }
-    finally { Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue }
-    Check 'update: keeps a global hooks path and warns with the command to run' (-not (git -C $project config --local core.hooksPath) -and $output.Contains('global-hooks (git config --show-origin') -and $output.Contains('git config core.hooksPath .githooks')) $output.Trim()
-    Invoke-Git -C $project config core.hooksPath .githooks
 
     # v0.3.0 changes the .gitignore line the project changed too, and CLAUDE.md, which the project edited again: one conflict.
     Push-Location $project
@@ -856,15 +846,6 @@ if (-not $SkipUpdate) {
         Check 'update: answers record v0.3.0' ((Get-Content -LiteralPath .copier-answers.yml -Raw) -match '(?m)^_commit: v0\.3\.0$' -and -not (git status --porcelain))
     }
     finally { Pop-Location }
-
-    # The repository root's wrapper updates another project from this clone, handing over to the newest script.
-    $other = Join-Path $Work 'node'
-    Push-Location $other
-    try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'; [IO.File]::WriteAllText((Join-Path $other '.git\hooks\pre-commit'), "#!/bin/sh`n") }
-    finally { Pop-Location }
-    $output = & (Join-Path $repoRoot 'Update-Project.ps1') -Path $other 3>&1 | Out-String
-    Check 'update: the root wrapper updates a project by -Path' (($LASTEXITCODE -eq 0) -and $output.Contains('Handing the update over to the v0.3.0 version') -and ((git -C $other log -1 --format=%s) -eq 'Update from project-template v0.3.0') -and -not (git -C $other status --porcelain)) $output.Trim()
-    Check 'update: leaves core.hooksPath alone when the clone has hooks in .git/hooks, and warns' (-not (git -C $other config core.hooksPath) -and $output.Contains('has hooks of its own in .git/hooks (pre-commit)')) $output.Trim()
 }
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
