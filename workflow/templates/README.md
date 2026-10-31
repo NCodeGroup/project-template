@@ -75,6 +75,7 @@ The four VS Code agent templates are variant-neutral; the installer renders each
 | [_plan-format.md](_plan-format.md) | The PLAN.md handoff contract: writing rules for a weaker executor plus the exact Markdown structure the step runner parses |
 | [_issue-kinds.md](_issue-kinds.md) | The table that maps an issue's labels to a kind of plan, included in `plan-issue` and `triage-issues` |
 | [_changelog.md](_changelog.md) | The changelog rules: the Keep a Changelog format, what a plan's last step writes for each format, and the links; included in the plan format and `ship-plan` |
+| [_git-hooks.md](_git-hooks.md) | The check that Git runs the repository's `.githooks` in the clone, setting `core.hooksPath` when nothing else runs hooks there; included where a command creates a worktree or branch (`_claude-worktree-create`, `run-issues`, `run-issues-copilot`, `address-feedback`) and before `orchestrate-plan`'s first commit |
 | [PLAN.example.md](PLAN.example.md) | A complete three-step plan for the demo project that personal-notes' `New-AgentTestRepo.ps1` creates — the format in practice, and the runner's test fixture |
 | [_claude-worktree-create.md](_claude-worktree-create.md), [_claude-worktree-join.md](_claude-worktree-join.md), [_claude-worktree-finish.md](_claude-worktree-finish.md) | The Claude Code plan-worktree sections ([Claude Code Plan Worktrees](#claude-code-plan-worktrees)) |
 
