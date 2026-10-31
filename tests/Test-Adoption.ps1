@@ -14,7 +14,8 @@
     Skip the .NET build and pack.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to project-template-adopt-test in the temp folder.
+    The scratch folder, deleted and recreated. Defaults to project-template-adopt-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
 
 .EXAMPLE
     .\tests\Test-Adoption.ps1
@@ -25,9 +26,10 @@
 param(
     [switch]$UnitOnly,
     [switch]$SkipDotnetBuild,
-    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-adopt-test')
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-adopt-test-$PID")
 )
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -426,6 +428,10 @@ if (-not $UnitOnly) {
     finally { Pop-Location }
 }
 ''
-if ($failures.Count) { "Adoption tests: FAILED ($($failures.Count))"; exit 1 }
+if ($failures.Count) { "Kept the work folder: $Work"; "Adoption tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) {
+    Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $Work) { "Couldn't delete the work folder: $Work" }
+}
 'Adoption tests: PASSED'
 exit 0

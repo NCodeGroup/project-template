@@ -11,14 +11,16 @@
     failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to project-template-update-exit-test in the temp folder.
+    The scratch folder, deleted and recreated. Defaults to project-template-update-exit-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
 
 .EXAMPLE
     .\tests\Test-UpdateExitCode.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-update-exit-test'))
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-update-exit-test-$PID"))
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -124,6 +126,10 @@ try {
 }
 finally { Pop-Location }
 ''
-if ($failures.Count) { "Update exit code tests: FAILED ($($failures.Count))"; exit 1 }
+if ($failures.Count) { "Kept the work folder: $Work"; "Update exit code tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) {
+    Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $Work) { "Couldn't delete the work folder: $Work" }
+}
 'Update exit code tests: PASSED'
 exit 0

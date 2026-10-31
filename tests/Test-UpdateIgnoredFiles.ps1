@@ -12,7 +12,8 @@
     and exits 1 on any failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to project-template-update-ignored-test in the temp folder.
+    The scratch folder, deleted and recreated. Defaults to project-template-update-ignored-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
 
 .PARAMETER Packages
     The number of fake packages in node_modules. Defaults to 700.
@@ -23,10 +24,11 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-update-ignored-test'),
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-update-ignored-test-$PID"),
     [int]$Packages = 700
 )
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -126,6 +128,10 @@ try {
 }
 finally { Pop-Location }
 ''
-if ($failures.Count) { "Update ignored-files tests: FAILED ($($failures.Count))"; exit 1 }
+if ($failures.Count) { "Kept the work folder: $Work"; "Update ignored-files tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) {
+    Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $Work) { "Couldn't delete the work folder: $Work" }
+}
 'Update ignored-files tests: PASSED'
 exit 0

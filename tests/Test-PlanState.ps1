@@ -10,14 +10,16 @@
     per check and exits 1 on any failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to project-template-plan-state-test in the temp folder.
+    The scratch folder, deleted and recreated. Defaults to project-template-plan-state-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
 
 .EXAMPLE
     .\tests\Test-PlanState.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-plan-state-test'))
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-plan-state-test-$PID"))
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -759,6 +761,10 @@ try {
 finally { $env:PATH = $savedPath }
 
 ''
-if ($failures.Count) { "Plan state tests: FAILED ($($failures.Count))"; exit 1 }
+if ($failures.Count) { "Kept the work folder: $Work"; "Plan state tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) {
+    Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $Work) { "Couldn't delete the work folder: $Work" }
+}
 'Plan state tests: PASSED'
 exit 0
