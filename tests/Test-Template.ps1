@@ -146,6 +146,9 @@ foreach ($case in $cases) {
         # One pull request per ecosystem: a filter on the update type would give each major update a pull request of its own.
         $dependabot = Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw
         Check "${name}: Dependabot groups every update of an ecosystem, major ones included" (-not $dependabot.Contains('update-types') -and $dependabot.Contains('patterns: ["*"]')) $dependabot
+        # A version published minutes ago waits out the cooldown before it reaches the project.
+        $ecosystems = [regex]::Matches($dependabot, '(?m)^  - package-ecosystem: ').Count
+        Check "${name}: every Dependabot entry has a cooldown" ($ecosystems -gt 0 -and [regex]::Matches($dependabot, '(?m)^    cooldown:\r?\n      default-days: 3\r?$').Count -eq $ecosystems) $dependabot
     }
     else {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
@@ -413,6 +416,20 @@ $m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('that the gate runs befor
 Check 'workflow: run-issues runs the gate before the pushes it makes itself' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('`pr-format` is `none` or `<file>#<heading>`', 'say to fix the `- pr-format:` line', 'write the title and the description as its section says instead', 'Either way, the description ends with one `Closes <issue reference>` line'))
 Check 'workflow: ship-plan writes the pull request as the Landing section''s pr-format section says, keeping the Closes lines' (-not $m) ($m -join '; ')
+# A title from PLAN.md can come from someone else's issue: PowerShell would expand $(...) in it inside double quotes.
+$shipFiles = 'template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md'
+$m = @(Get-MissingText $shipFiles ('gh pr create --base <default> --head <branch> --title (Get-Content -Raw <title file>).Trim()', '--search (Get-Content -Raw <title file>).Trim()', 'gh issue create <repo args> --title (Get-Content -Raw <title file>).Trim()', 'Write each title, comment, description, release note and issue body to a temporary file', 'not even in quotes'))
+$m += @(foreach ($p in $shipFiles) { if ([IO.File]::ReadAllText((Join-Path $repoRoot $p)) -match '--(title|search) ["'']') { "${p}: a title or search in quotes" } })
+Check 'workflow: ship-plan passes titles from a file, never in the command line' (-not $m) ($m -join '; ')
+# Adopt-Project.ps1 is in the template's repository only, so a project's files name it as the template's.
+$m = @(foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template') -Recurse -File -Force) {
+        foreach ($match in [regex]::Matches([IO.File]::ReadAllText($file.FullName), "(?<!template's ``?)Adopt-Project\.ps1")) { "$($file.FullName.Substring($repoRoot.Length + 1)) at $($match.Index)" }
+    })
+$m += @(Get-MissingText ('template\.claude\commands\plan-bugfix.md', 'template\.github\prompts\plan-feature.prompt.md', 'template\.github\skills\plan-tests\SKILL.md') ('`Update-Project.ps1` and the template''s `Adopt-Project.ps1` print a request to backfill them'))
+Check 'workflow: a project''s files name Adopt-Project.ps1 as the template''s' (-not $m) ($m -join '; ')
+$m = @(Select-String -LiteralPath (Join-Path $repoRoot 'template\.template\Update-Project.ps1') -SimpleMatch 'workflow/Get-PlanState.ps1' | ForEach-Object { "line $($_.LineNumber)" })
+$m += @(Get-MissingText 'template\.template\Update-Project.ps1' ('.template/Get-PlanState.ps1 prints Range as changelog-backfill'))
+Check 'workflow: Update-Project.ps1 names Get-PlanState.ps1 where a project has it' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('When `renumber` isn''t `-`', 'change the `Release:` line of `PLAN.md` to `Release: <renumber>`', '## The Renumber Step', 'git merge --no-commit --no-ff origin/<default>', 'git rev-list --merges origin/<default>..HEAD', 'must merge with a merge commit, not by rebasing', 'the next ship-plan pushes the renumber step to that pull request', 'commits the pull request doesn''t have yet'))
 Check 'workflow: ship-plan moves a plan whose release another plan took to the renumber version with a merge step' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('## The Merge Step', 'git merge-tree', 'When it names files and `pr` is `-`, `CLOSED` or `OPEN`, don''t push or open a pull request', 'Never merge `origin/<default>` in when `conflicts` is `none`', '### [ ] <N>. Merge origin/<default> in'))
