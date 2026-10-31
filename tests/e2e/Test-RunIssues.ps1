@@ -308,7 +308,7 @@ Use-FixtureEnvironment $Work $bin {
         Check 'NCode Review''s review of the run''s push arrived' (-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) 'review-seed-push.json is still in the host folder'
         $minorReplies = Get-ThreadReply 'minor'
         $minorBody = if ($minorReplies) { "$($minorReplies[0].body)" } else { '' }
-        Check 'NCode Review''s minor finding after the push got one reply, a follow-up named in Follow-ups or a decline' ($null -ne $minorReplies -and $minorReplies.Count -eq 1 -and $minorBody -match '^Autopilot: (left as a follow-up|not changed)' -and ($minorBody -notmatch '^Autopilot: left as a follow-up' -or $followUps.Contains((Get-ThreadUrl 'minor')))) "reply: '$minorBody'"
+        Check 'NCode Review''s minor finding after the push got one reply, a follow-up named in Follow-ups or a decline, and no step' ($null -ne $minorReplies -and $minorReplies.Count -eq 1 -and $minorBody -match '^Autopilot: (left as a follow-up|not changed)' -and ($minorBody -notmatch '^Autopilot: left as a follow-up' -or $followUps.Contains((Get-ThreadUrl 'minor')))) "reply: '$minorBody'"
         $laterNitReplies = Get-ThreadReply 'later-nit'
         Check 'NCode Review''s nit after the push got no reply' ($null -ne $laterNitReplies -and $laterNitReplies.Count -eq 0) "replies: $(if ($null -ne $laterNitReplies) { $laterNitReplies.Count } else { 'no thread' })"
     }
