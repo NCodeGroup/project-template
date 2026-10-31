@@ -55,6 +55,8 @@ jobs:
             run: ./tests/Test-ScriptAnalyzer.ps1
           - name: Set up the run-issues end-to-end fixture
             run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly
+          - name: Set up the address-feedback end-to-end fixture
+            run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly
     defaults:
       run:
         shell: pwsh
