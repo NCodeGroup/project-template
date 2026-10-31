@@ -216,6 +216,12 @@ $hooksPath = (git -C $listProject config core.hooksPath) -join ''
 $hookMode = (git -C $listProject ls-files -s .githooks/commit-msg) -join ''
 $pushMode = (git -C $listProject ls-files -s .githooks/pre-push) -join ''
 Check 'New-Project: enables the hooks with an executable commit-msg and pre-push' (($hooksPath -eq '.githooks') -and $hookMode.StartsWith('100755') -and $pushMode.StartsWith('100755')) "$hooksPath $hookMode $pushMode"
+# A hooks path Git already has, here from the environment as a global one would be, is kept, with a warning that names the command.
+$keptHooksProject = Join-Path $Work 'new-project-kept-hooks'
+$env:GIT_CONFIG_COUNT = '1'; $env:GIT_CONFIG_KEY_0 = 'core.hooksPath'; $env:GIT_CONFIG_VALUE_0 = Join-Path $Work 'global-hooks'
+try { $keptHooksOut = & (Join-Path $repoRoot 'New-Project.ps1') -Path $keptHooksProject -Template $tpl -Ref v0.1.0 -Defaults -Data @{ project_name = 'Kept Hooks'; stack = 'other' } 3>&1 | Out-String }
+finally { Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue }
+Check 'New-Project: keeps a hooks path Git already has and warns with the command to run' (-not (git -C $keptHooksProject config --local core.hooksPath) -and $keptHooksOut.Contains('global-hooks (git config --show-origin') -and $keptHooksOut.Contains('git config core.hooksPath .githooks') -and ((git -C $keptHooksProject rev-list --count HEAD) -eq '1')) $keptHooksOut
 $secretsIgnored = @(foreach ($p in 'secrets/key.txt', 'src/secrets/x.cs', 'src/Secrets/New.cs') { git -C $listProject check-ignore -q --no-index $p; $LASTEXITCODE }) -join ','
 $secretsDeny = @((Get-Content -LiteralPath (Join-Path $listProject '.claude\settings.json') -Raw | ConvertFrom-Json).permissions.deny)
 Check 'project: only the root secrets/ folder is gitignored and denied to Claude Code' (($secretsIgnored -eq '0,1,1') -and ('Read(/secrets/**)' -in $secretsDeny) -and ('Read(./secrets/**)' -notin $secretsDeny)) "check-ignore exit codes $secretsIgnored; deny $($secretsDeny -join ', ')"
@@ -499,9 +505,11 @@ $worktreeKinds = [ordered]@{
     join   = 'orchestrate-plan', 'execute-step', 'replan-step', 'review-plan-diff', 'ship-plan'
     finish = 'finish-plan'
 }
+# The installer expands a section's includes, such as {{PROMPT:_git-hooks}}, so compare with the expanded text.
+Import-Module (Join-Path $workflow 'HybridWorkflow.psm1') -Force
 $worktreeMissing = @(
     foreach ($kind in $worktreeKinds.Keys) {
-        $section = [IO.File]::ReadAllText((Join-Path $workflow "templates\_claude-worktree-$kind.md")).Replace("`r`n", "`n").Trim()
+        $section = (Expand-HybridInclude (Read-HybridTemplateFile (Join-Path $workflow "templates\_claude-worktree-$kind.md")).Body).Trim()
         $worktreeKinds[$kind] | Where-Object { -not [IO.File]::ReadAllText((Join-Path $repoRoot "template\.claude\commands\$_.md")).Contains($section) }
     }
 )
@@ -512,6 +520,16 @@ $worktreeLeaked = @(
 )
 Check 'workflow: Claude Code planning commands create the plan''s worktree, and the commands that work on a plan move into it' (-not $worktreeMissing) ($worktreeMissing -join ', ')
 Check 'workflow: no Copilot file, plan-executor subagent or analysis command enters a worktree' (-not $worktreeLeaked) ($worktreeLeaked -join ', ')
+# Every command that creates or joins a plan's branch or worktree checks that Git runs .githooks, through {{PROMPT:_git-hooks}}.
+$gitHooksText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_git-hooks.md')).Body.Trim()
+$gitHooksFiles = @($worktreeKinds.create + 'orchestrate-plan', 'run-issues', 'address-feedback' | ForEach-Object { ".claude\commands\$_.md" }) +
+    '.github\agents\copilot-orchestrator.agent.md', '.github\agents\hybrid-orchestrator.agent.md', '.github\prompts\orchestrate-plan.prompt.md',
+    '.github\prompts\run-issues.prompt.md', '.github\skills\orchestrate-plan\SKILL.md', '.github\skills\run-issues\SKILL.md'
+$gitHooksMissing = @($gitHooksFiles | Where-Object { -not [IO.File]::ReadAllText((Join-Path $repoRoot "template\$_")).Contains($gitHooksText) })
+Check 'workflow: the commands that create or join a plan''s branch check that Git runs .githooks' (-not $gitHooksMissing) ($gitHooksMissing -join ', ')
+$includeLeft = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.claude'), (Join-Path $repoRoot 'template\.github') -Recurse -File |
+    Where-Object { [IO.File]::ReadAllText($_.FullName) -match '\{\{(PROMPT|BODY):' } | ForEach-Object Name)
+Check 'workflow: no generated file keeps an unexpanded {{PROMPT:...}} or {{BODY:...}} include' (-not $includeLeft) ($includeLeft -join ', ')
 $both = Join-Path $Work 'installed-both'
 New-Item -ItemType Directory -Force $both | Out-Null
 $installed = & (Join-Path $workflow 'Install-HybridWorkflow.ps1') -Repo $both | Out-String
@@ -678,6 +696,16 @@ if (-not $SkipUpdate) {
 
     $output = & $updateProject | Out-String
     Check 'update: second run changes nothing' ($output.Contains('Already up to date') -and -not $output.Contains('Handing the update over') -and ((git -C $project rev-parse HEAD) -eq $head) -and -not (git -C $project status --porcelain)) $output.Trim()
+    Invoke-Git -C $project config core.hooksPath .husky
+    $output = & $updateProject 3>&1 | Out-String
+    Check 'update: keeps a hooks path of its own and warns with the command to run' (((git -C $project config core.hooksPath) -join '') -eq '.husky' -and $output.Contains('core.hooksPath is already .husky') -and $output.Contains('git config core.hooksPath .githooks')) $output.Trim()
+    # A global hooks path, set through the environment as New-Project's check does, is kept too: no local one is written.
+    Invoke-Git -C $project config --unset core.hooksPath
+    $env:GIT_CONFIG_COUNT = '1'; $env:GIT_CONFIG_KEY_0 = 'core.hooksPath'; $env:GIT_CONFIG_VALUE_0 = Join-Path $Work 'global-hooks'
+    try { $output = & $updateProject 3>&1 | Out-String }
+    finally { Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue }
+    Check 'update: keeps a global hooks path and warns with the command to run' (-not (git -C $project config --local core.hooksPath) -and $output.Contains('global-hooks (git config --show-origin') -and $output.Contains('git config core.hooksPath .githooks')) $output.Trim()
+    Invoke-Git -C $project config core.hooksPath .githooks
 
     # v0.3.0 changes the .gitignore line the project changed too, and CLAUDE.md, which the project edited again: one conflict.
     Push-Location $project
@@ -715,9 +743,9 @@ if (-not $SkipUpdate) {
     Push-Location $other
     try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'; [IO.File]::WriteAllText((Join-Path $other '.git\hooks\pre-commit'), "#!/bin/sh`n") }
     finally { Pop-Location }
-    $output = & (Join-Path $repoRoot 'Update-Project.ps1') -Path $other | Out-String
+    $output = & (Join-Path $repoRoot 'Update-Project.ps1') -Path $other 3>&1 | Out-String
     Check 'update: the root wrapper updates a project by -Path' (($LASTEXITCODE -eq 0) -and $output.Contains('Handing the update over to the v0.3.0 version') -and ((git -C $other log -1 --format=%s) -eq 'Update from project-template v0.3.0') -and -not (git -C $other status --porcelain)) $output.Trim()
-    Check 'update: leaves core.hooksPath alone when the clone has hooks in .git/hooks' (-not (git -C $other config core.hooksPath) -and $output.Contains('has hooks of its own in .git/hooks (pre-commit)')) $output.Trim()
+    Check 'update: leaves core.hooksPath alone when the clone has hooks in .git/hooks, and warns' (-not (git -C $other config core.hooksPath) -and $output.Contains('has hooks of its own in .git/hooks (pre-commit)')) $output.Trim()
 }
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
