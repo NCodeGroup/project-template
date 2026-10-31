@@ -12,9 +12,9 @@
     is current, and ignores tags that aren't versions. Then checks the version from _commit, an existing label, the
     oldest of several open notices, the old address and Copier's shorthands (rewritten to the fixture with Git's
     insteadOf, so nothing reaches the network), a changelog too long for one issue, one with no section for the new
-    version, a tag without CHANGELOG.md, a body exactly at the 60,000-character limit and one character over, a project
-    ahead of the newest tag, and the runs that fail: an unreadable template (with Git's message), no _src_path, no
-    version tags, an unreadable or empty project version, and a failing gh call.
+    version, a tag without CHANGELOG.md, a section that brings the body to exactly the 60,000-character limit and one a
+    character longer, a project ahead of the newest tag, and the runs that fail: an unreadable template (with Git's
+    message), no _src_path, no version tags, an unreadable or empty project version, and a failing gh call.
     Prints PASS or FAIL per check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
@@ -279,8 +279,9 @@ try {
     $body = "$((@($r.Issues) | Select-Object -First 1).body)"
     Check 'one long section: the body fits and links to CHANGELOG.md at the tag without calling it older' ($r.ExitCode -eq 0 -and $body.Length -lt 60500 -and -not $body.Contains('## [0.8.0]') -and -not $body.Contains('older') -and $body.TrimEnd().EndsWith("The release notes for these versions don't fit in an issue; read them in [CHANGELOG.md](https://github.com/NCodeGroup/project-template/blob/v0.8.0/CHANGELOG.md).")) "$($r.Output) length $($body.Length): $($body.Substring([Math]::Max(0, $body.Length - 300)))"
 
-    # 14. A body exactly at the 60,000-character limit keeps the newest section; one character more leaves it out. A first
-    # run measures the body's head and the section, so the next runs can pad the section to the limit.
+    # 14. A section that, with its two line breaks, brings the body to exactly the 60,000-character limit is kept; one
+    # character more leaves it out. A first run measures the body's head and the section, so the next runs can pad the
+    # section to the limit.
     Add-TemplateVersion '0.9.0' @('0.9.0')
     Set-ProjectVersion 'v0.8.0'
     Set-GhState '{ "issues": [], "labels": ["bug"] }'
@@ -295,7 +296,8 @@ try {
     Set-GhState '{ "issues": [], "labels": ["bug"] }'
     $r = Invoke-Notice
     $body = "$((@($r.Issues) | Select-Object -First 1).body)"
-    Check 'limit: a body exactly at the limit keeps the newest section' ($r.ExitCode -eq 0 -and $body.Contains('## [0.9.0]') -and -not $body.Contains("don't fit") -and $body.Length -eq 59999) "$($r.Output) length $($body.Length)"
+    # The script then trims the second line break, so the issue's body is one character under the limit.
+    Check 'limit: a section that brings the body to exactly 60,000 characters with its two line breaks is kept' ($r.ExitCode -eq 0 -and $body.Contains('## [0.9.0]') -and -not $body.Contains("don't fit") -and $body.Length + 1 -eq 60000) "$($r.Output) length $($body.Length)"
     Add-TemplateVersion '0.9.0' @('0.9.0') -Pad ($pad + 1) -Retag
     Set-GhState '{ "issues": [], "labels": ["bug"] }'
     $r = Invoke-Notice
