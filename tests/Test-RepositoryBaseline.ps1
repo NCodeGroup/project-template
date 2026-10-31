@@ -185,9 +185,9 @@ try {
     Check 'update: -RequireChecks changes the ruleset it made, in place' (($r.Changes -join '|') -like 'BODY PUT repos/NCodeGroup/ours/rulesets/101*') ($r.Changes -join '|')
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
     $r2 = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
-    Check 'update: a ruleset whose repository no longer has CodeQL loses the rule, and the summary says so' ((@($r2.Body.rules.type) -notcontains 'code_scanning') -and $r2.Output -match 'removes its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"
+    Check 'update: a ruleset with a code-scanning rule keeps it, whatever the default setup says (advanced setup runs CodeQL too)' ((@($r2.Body.rules.type) -contains 'code_scanning') -and $r2.Output -match 'keeps its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"
     $r3 = Invoke-Baseline @('-Repo', 'oursCodeQL404', '-RequireChecks', 'test')
-    Check 'update: a 404 from the CodeQL setup never removes the rule a ruleset has; the repository is skipped' ($r3.Changes.Count -eq 0 -and $r3.Output -match 'oursCodeQL404: skipped .*keeps its code-scanning rule') "$($r3.Changes -join '|') $($r3.Output)"
+    Check 'update: a 404 from the CodeQL setup doesn''t touch the rule a ruleset has' ((@($r3.Body.rules.type) -contains 'code_scanning') -and $r3.Output -match 'keeps its code-scanning rule') "$(@($r3.Body.rules.type) -join ',') $($r3.Output)"
     Check 'update: the ruleset keeps its code-scanning rule, with the same thresholds' (($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors') -and ($scan[0].security_alerts_threshold -eq 'medium_or_higher')) (@($r.Body.rules.type) -join ',')
 
     # 7. -All.
