@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- The `code-review.yml` a project gets pins `NCodeGroup/code-review@v0.2.1` (was v0.1.0): rule checks run on by default, and there is an infrastructure reviewer for OpenTofu and Terraform changes. The action's inputs are unchanged.
+- The `code-review.yml` a project gets pins `NCodeGroup/code-review@v0.3.0` (was v0.1.0) and no longer checks out the pull request's head: from v0.3.0 the engine fetches the exact commit itself, so CodeQL no longer reports the workflow (two alerts, "checkout of untrusted code in a privileged context" and its TOCTOU variant, on every repository that adopted the bot). Rule checks run on by default, and there is an infrastructure reviewer for OpenTofu and Terraform changes. A project that already has the file keeps its own; update it the same way.
 
 ### Changed
 
