@@ -12,14 +12,16 @@
     stop it. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to project-template-baseline-test in the temp folder.
+    The scratch folder, deleted and recreated. Defaults to project-template-baseline-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
 
 .EXAMPLE
     .\tests\Test-RepositoryBaseline.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-baseline-test'))
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-baseline-test-$PID"))
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -51,12 +53,18 @@ if ($rest -contains '--input') {
     Add-Content -LiteralPath $log -Value "BODY $method $path"
     '{}'; exit 0
 }
-if ($method -eq 'PATCH') { exit 0 }
+if ($method -eq 'PATCH') {
+    if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$' -and $data.repos[$Matches[1]].switchFails) { exit 1 }
+    exit 0
+}
 if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
     # codeql is a state, 404 for not found, fail:<code> for another status, fail:none for no response at all, or
-    # raw:<text> for a body that isn't JSON. With --include, the answer starts with the status line and a header.
+    # raw:<text> for a body that isn't JSON. An empty suite leaves query_suite out of the answer. With --include, the
+    # answer starts with the status line and a header.
     $codeql = "$($data.repos[$Matches[1]].codeql)"
-    $status = 200; $body = ConvertTo-Json -InputObject @{ state = $codeql }
+    $answer = @{ state = $codeql }
+    if ("$($data.repos[$Matches[1]].suite)") { $answer.query_suite = "$($data.repos[$Matches[1]].suite)" }
+    $status = 200; $body = ConvertTo-Json -InputObject $answer
     if ($codeql -eq 'fail:none') { exit 1 }
     if ($codeql -eq '404') { $status = 404; $body = '{"message":"Not Found"}' }
     elseif ($codeql.StartsWith('fail:')) { $status = [int]$codeql.Substring(5); $body = '{"message":"Error"}' }
@@ -77,15 +85,18 @@ function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_f
         conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
         rules = @($Types | ForEach-Object { @{ type = $_ } }) }
 }
-function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured') {
+function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', [bool]$SwitchFails = $false) {
     $full = @{}
     $summaries = @()
     $id = 100
     foreach ($ruleset in $Rulesets) { $id++; $ruleset.id = $id; $full["$id"] = $ruleset; $summaries += @{ id = $id; name = $ruleset.name } }
-    @{ info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork }; rulesets = $summaries; full = $full; codeql = $CodeQL }
+    @{ info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork }; rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; switchFails = $SwitchFails }
 }
 $repos = @{
     fresh = New-Repo
+    extendedAlready = New-Repo -Suite 'extended'
+    suiteUnreported = New-Repo -Suite ''
+    switchRefused = New-Repo -SwitchFails $true
     noCodeQL = New-Repo -CodeQL 'not-configured'
     setupNotFound = New-Repo -CodeQL '404'
     setupFailed = New-Repo -CodeQL 'fail:403'
@@ -134,22 +145,36 @@ try {
     # 2. A repository with no ruleset.
     $r = Invoke-Baseline @('-Repo', 'fresh')
     $types = @($r.Body.rules.type)
-    Check 'create: posts one ruleset and turns on delete-branch-on-merge' (($r.Changes -join '|') -eq 'BODY POST repos/NCodeGroup/fresh/rulesets|api -X PATCH repos/NCodeGroup/fresh -F delete_branch_on_merge=true') ($r.Changes -join '|')
+    Check 'create: switches CodeQL to the extended suite first, then posts one ruleset and turns on delete-branch-on-merge' (($r.Changes -join '|') -eq 'api -X PATCH repos/NCodeGroup/fresh/code-scanning/default-setup -f query_suite=extended|BODY POST repos/NCodeGroup/fresh/rulesets|api -X PATCH repos/NCodeGroup/fresh -F delete_branch_on_merge=true') ($r.Changes -join '|')
+    Check 'create: the summary says CodeQL moves to the extended suite' ($r.Output -match 'switch CodeQL from the default query suite to extended') $r.Output
     Check 'create: protects the default branch and cannot be bypassed' (($r.Body.name -eq 'Protect main') -and ($r.Body.target -eq 'branch') -and ($r.Body.enforcement -eq 'active') -and ($r.Body.conditions.ref_name.include -contains '~DEFAULT_BRANCH') -and ($r.Body.bypass_actors.Count -eq 0))
     Check 'create: no deletion, no force push, a pull request, a code-scanning rule, and nothing more' (($types -join ',') -eq 'deletion,non_fast_forward,pull_request,code_scanning') ($types -join ',')
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
-    Check 'create: the code-scanning rule blocks CodeQL alerts at error level and security alerts of medium severity or higher' (($scan.Count -eq 1) -and ($scan[0].tool -eq 'CodeQL') -and ($scan[0].alerts_threshold -eq 'errors') -and ($scan[0].security_alerts_threshold -eq 'medium_or_higher')) ($scan | ConvertTo-Json -Compress)
+    Check 'create: the code-scanning rule blocks CodeQL alerts at warning level or above and security alerts of any severity' (($scan.Count -eq 1) -and ($scan[0].tool -eq 'CodeQL') -and ($scan[0].alerts_threshold -eq 'errors_and_warnings') -and ($scan[0].security_alerts_threshold -eq 'all')) ($scan | ConvertTo-Json -Compress)
     $pr = $r.Body.rules | Where-Object type -eq 'pull_request'
     Check 'create: no approvals, and merge-commit or rebase merges only, never squash' (($pr.parameters.required_approving_review_count -eq 0) -and ((@($pr.parameters.allowed_merge_methods) -join ',') -eq 'merge,rebase')) ($pr.parameters | ConvertTo-Json -Compress)
+    Check 'create: every conversation must be resolved before a merge' ($pr.parameters.required_review_thread_resolution -eq $true) ($pr.parameters | ConvertTo-Json -Compress)
+
+    $r = Invoke-Baseline @('-Repo', 'extendedAlready')
+    Check 'create: a setup already on the extended suite is not changed' (($r.Changes -join '|') -notmatch 'default-setup' -and $r.Output -notmatch 'query suite') "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'suiteUnreported')
+    Check 'create: a configured setup that names no query suite is switched to extended, and the summary says so' ((($r.Changes -join '|') -match [regex]::Escape('api -X PATCH repos/NCodeGroup/suiteUnreported/code-scanning/default-setup -f query_suite=extended')) -and $r.Output -match 'switch CodeQL from a query suite it did not report to extended') "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'switchRefused')
+    Check 'create: a refused switch to the extended suite reports the repository as failed, and says nothing else changed' ($r.Output -match [regex]::Escape("switchRefused: FAILED: Couldn't switch CodeQL's default setup to the extended query suite for switchRefused; its ruleset and delete-branch-on-merge were left as they were, so run it again.") -and $r.Output -notmatch 'done: switchRefused') $r.Output
+    Check 'create: a refused switch writes no ruleset and leaves delete-branch-on-merge alone, so the next run retries it' (($r.Changes -join '|') -eq 'api -X PATCH repos/NCodeGroup/switchRefused/code-scanning/default-setup -f query_suite=extended') ($r.Changes -join '|')
 
     # 3. Required checks, as one comma-separated string, which is how pwsh -File passes a list.
     $r = Invoke-Baseline @('-Repo', 'fresh', '-RequireChecks', 'build-and-test,Commit attribution')
     $checks = $r.Body.rules | Where-Object type -eq 'required_status_checks'
     Check 'checks: names the jobs, reported by GitHub Actions' ((@($checks.parameters.required_status_checks.context) -join ',') -eq 'build-and-test,Commit attribution' -and (@($checks.parameters.required_status_checks.integration_id | Select-Object -Unique) -join ',') -eq '15368') ($checks | ConvertTo-Json -Depth 6 -Compress)
+    Check 'checks: must pass on a branch that is up to date with the default branch' ($checks.parameters.strict_required_status_checks_policy -eq $true) ($checks | ConvertTo-Json -Depth 6 -Compress)
 
     # 3b. A repository where CodeQL's default setup isn't configured gets no code-scanning rule, which would wait forever.
     $r = Invoke-Baseline @('-Repo', 'noCodeQL')
     Check 'create: no code-scanning rule where CodeQL is not configured, and says so' (((@($r.Body.rules.type)) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and $r.Output -match [regex]::Escape("no code-scanning rule (CodeQL's default setup is not configured)")) "$(@($r.Body.rules.type) -join ',') $($r.Output)"
+    Check 'create: CodeQL that is not configured is not switched to a suite' (($r.Changes -join '|') -notmatch 'default-setup') ($r.Changes -join '|')
 
     $r = Invoke-Baseline @('-Repo', 'setupNotFound')
     Check 'create: CodeQL setup not found (404) gets no code-scanning rule' (((@($r.Body.rules.type)) -join ',') -eq 'deletion,non_fast_forward,pull_request') "$(@($r.Body.rules.type) -join ',') $($r.Output)"
@@ -168,7 +193,7 @@ try {
 
     # 4. A branch other than main.
     $r = Invoke-Baseline @('-Repo', 'legacy')
-    Check 'create: works for a default branch that is not main' (($r.Changes -join '|') -like 'BODY POST repos/NCodeGroup/legacy/rulesets*') ($r.Changes -join '|')
+    Check 'create: works for a default branch that is not main' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/legacy/rulesets*') ($r.Changes -join '|')
 
     # 5. Repositories left alone.
     $r = Invoke-Baseline @('-Repo', 'owned')
@@ -176,19 +201,19 @@ try {
     $r = Invoke-Baseline @('-Repo', 'ours')
     Check 'alone: a repository that already has Protect main' ($r.Changes.Count -eq 0 -and $r.Output -match "ours: left alone \(already has 'Protect main'\)") $r.Output
     $r = Invoke-Baseline @('-Repo', 'tags')
-    Check 'create: a tag ruleset does not count as protecting the default branch' (($r.Changes -join '|') -like 'BODY POST repos/NCodeGroup/tags/rulesets*') ($r.Changes -join '|')
+    Check 'create: a tag ruleset does not count as protecting the default branch' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/tags/rulesets*') ($r.Changes -join '|')
     $r = Invoke-Baseline @('-Repo', 'noPullRequest')
-    Check 'create: a ruleset without a pull request rule does not count' (($r.Changes -join '|') -like 'BODY POST repos/NCodeGroup/noPullRequest/rulesets*') ($r.Changes -join '|')
+    Check 'create: a ruleset without a pull request rule does not count' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/noPullRequest/rulesets*') ($r.Changes -join '|')
 
     # 6. -RequireChecks updates the ruleset the script made.
     $r = Invoke-Baseline @('-Repo', 'ours', '-RequireChecks', 'test')
-    Check 'update: -RequireChecks changes the ruleset it made, in place' (($r.Changes -join '|') -like 'BODY PUT repos/NCodeGroup/ours/rulesets/101*') ($r.Changes -join '|')
+    Check 'update: -RequireChecks changes the ruleset it made, in place' (($r.Changes -join '|') -like '*BODY PUT repos/NCodeGroup/ours/rulesets/101*') ($r.Changes -join '|')
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
     $r2 = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
     Check 'update: a ruleset with a code-scanning rule keeps it, whatever the default setup says (advanced setup runs CodeQL too)' ((@($r2.Body.rules.type) -contains 'code_scanning') -and $r2.Output -match 'keeps its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"
     $r3 = Invoke-Baseline @('-Repo', 'oursCodeQL404', '-RequireChecks', 'test')
     Check 'update: a 404 from the CodeQL setup doesn''t touch the rule a ruleset has' ((@($r3.Body.rules.type) -contains 'code_scanning') -and $r3.Output -match 'keeps its code-scanning rule') "$(@($r3.Body.rules.type) -join ',') $($r3.Output)"
-    Check 'update: the ruleset keeps its code-scanning rule, with the same thresholds' (($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors') -and ($scan[0].security_alerts_threshold -eq 'medium_or_higher')) (@($r.Body.rules.type) -join ',')
+    Check 'update: a ruleset without a code-scanning rule gets one, with the baseline thresholds' (($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors_and_warnings') -and ($scan[0].security_alerts_threshold -eq 'all')) (@($r.Body.rules.type) -join ',')
 
     # 7. -All.
     $r = Invoke-Baseline @('-All')
@@ -200,11 +225,12 @@ try {
     $r = Invoke-Baseline @('-All', '-RequireChecks', 'test')
     Check 'params: -RequireChecks needs -Repo' ($r.ExitCode -ne 0 -and $r.Changes.Count -eq 0 -and $r.Output -match '-RequireChecks needs -Repo') $r.Output
     $r = Invoke-Baseline @('-Repo', 'fresh', '-Owner', 'someone')
-    Check 'params: -Owner picks the owner of the repository' (($r.Changes -join '|') -like 'BODY POST repos/someone/fresh/rulesets*') ($r.Changes -join '|')
+    Check 'params: -Owner picks the owner of the repository' (($r.Changes -join '|') -like '*BODY POST repos/someone/fresh/rulesets*') ($r.Changes -join '|')
 }
 finally { $env:PATH = $savedPath }
 
 ''
-if ($failures.Count) { "Repository baseline tests: FAILED ($($failures.Count))"; exit 1 }
+if ($failures.Count) { "Kept the work folder: $Work"; "Repository baseline tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Repository baseline tests: PASSED'
 exit 0

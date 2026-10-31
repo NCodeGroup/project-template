@@ -9,16 +9,18 @@
     without a section that the function returns. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to project-template-changelog-backfill-test in the temp folder.
+    The scratch folder, deleted and recreated. Defaults to project-template-changelog-backfill-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
 
 .EXAMPLE
     .\tests\Test-ChangelogBackfill.ps1
 #>
 [CmdletBinding()]
 param(
-    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-changelog-backfill-test')
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-changelog-backfill-test-$PID")
 )
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -91,6 +93,7 @@ foreach ($source in $sources.Keys) {
 }
 
 ''
-if ($failures.Count) { "Changelog backfill tests: FAILED ($($failures.Count))"; exit 1 }
+if ($failures.Count) { "Kept the work folder: $Work"; "Changelog backfill tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Changelog backfill tests: PASSED'
 exit 0
