@@ -14,7 +14,8 @@
 
 .PARAMETER Work
     The folder for the suites' logs, deleted and recreated. Defaults to project-template-all-tests-<process ID> in the
-    temp folder, the run's own: deleted when every suite passes, kept for the failed suites' logs when one fails.
+    temp folder, the run's own: deleted when every suite passes or there is none to run, kept for the failed suites'
+    logs when one fails.
 
 .PARAMETER SkipDotnetBuild
     Pass -SkipDotnetBuild to the suites that take it, to skip the .NET build and pack.

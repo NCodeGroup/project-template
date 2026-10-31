@@ -91,6 +91,7 @@ Check 'empty: exits 1 and says no suites were found' (($r.ExitCode -eq 1) -and (
 # Two runs at once without -Work, as from two worktrees: each must log to a folder of its own and delete it.
 $runs = foreach ($n in 1, 2) {
     $run = Start-Process -FilePath $pwsh -ArgumentList '-NoProfile', '-NonInteractive', '-File', "`"$runner`"", '-Path', "`"$where`"" -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $Work "where-$n.out") -RedirectStandardError (Join-Path $Work "where-$n.err")
+    # Reading the handle keeps ExitCode available after the process exits.
     $null = $run.Handle
     $run
 }
@@ -114,6 +115,7 @@ Check 'default: a run that fails keeps its log folder, in the temp folder' (($r.
 foreach ($folder in $kept) { if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force } }
 
 $run = Start-Process -FilePath $pwsh -ArgumentList '-NoProfile', '-NonInteractive', '-File', "`"$runner`"", '-Path', "`"$empty`"" -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $Work 'empty-default.out') -RedirectStandardError (Join-Path $Work 'empty-default.err')
+# Reading the handle keeps ExitCode available after the process exits.
 $null = $run.Handle
 $run.WaitForExit()
 $emptyLogs = Join-Path ([IO.Path]::GetTempPath()) "project-template-all-tests-$($run.Id)"
@@ -159,6 +161,9 @@ foreach ($suite in $suites) {
     )
     Check "suites: $($suite.Name) keeps its own folder on a failure and deletes it on a pass" ($missing.Count -eq 0) "missing: $($missing -join ', ')"
 }
+$attribution = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-CommitAttribution.ps1'), [ref]$null, [ref]$null)
+$default = "$(($attribution.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Work' }).DefaultValue)"
+Check 'suites: Test-CommitAttribution.ps1 works in a folder named for its process ID by default' ($default -match '-\$PID"\)$') $default
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Runner tests: FAILED ($($failures.Count))"; exit 1 }
