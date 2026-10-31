@@ -4,8 +4,8 @@
     stand-in, and check what it pushed and replied.
 
 .DESCRIPTION
-    Makes the fixture project Test-RunIssues.ps1 makes, with a local origin under a github.com folder and the gh stand-in,
-    and opens a fixture pull request, #1 from add-farewell, that adds Get-Farewell. The pull request has a review thread
+    Makes the fixture project with New-FixtureProject in Fixture.ps1, with a local origin under a github.com folder and
+    the gh stand-in, and opens a fixture pull request, #1 from add-farewell, that adds Get-Farewell. The pull request has a review thread
     from a writer (COLLABORATOR) that asks for a real fix, a top-level comment from a stranger (NONE) that asks for a
     change to the CI workflow, a review thread from a bot whose finding is wrong, a question, and a review thread whose
     last comment already starts with "Autopilot:". It runs /address-feedback #1 in headless Claude Code, answers the
@@ -61,6 +61,7 @@ $prUrl = 'https://github.com/fixture/app/pull/1'
 $strangerUrl = "$prUrl#issuecomment-1001"
 $questionUrl = "$prUrl#issuecomment-1002"
 $commandFile = Join-Path $app '.claude/commands/address-feedback.md'
+$replyOpenings = [ordered]@{ fix = 'Autopilot: fixed in'; decline = 'Autopilot: not changed'; ask = 'Autopilot: this needs a decision from the maintainer:' }
 
 function Read-Threads {
     @(Read-HostJson $hostDir 'threads.json' | Where-Object { $_ })
@@ -185,6 +186,9 @@ exit 0
         $readQuery = if ($commandText -match "gh api graphql -F owner='\{owner\}' -F name='\{repo\}' -F number=<number> -f query='(query[^']+)'") { $Matches[1] } else { '' }
         $replyQuery = if ($commandText -match "-f query='(mutation[^']+addPullRequestReviewThreadReply[^']+)'") { $Matches[1] } else { '' }
         Check 'fixture: the installed /address-feedback has the read query and the thread reply mutation' ($readQuery -and $replyQuery) "command file: $commandFile"
+        # The checks on the run's replies match these openings, which the command mandates for a fix, a decline and an ask.
+        $missing = @($replyOpenings.Values | Where-Object { -not $commandText.Contains("``$_") })
+        Check 'fixture: the installed /address-feedback mandates the reply openings the checks match' ($missing.Count -eq 0) "missing: $($missing -join '; ')"
 
         $data = $null
         if ($readQuery) { $data = (gh api graphql -F 'owner={owner}' -F 'name={repo}' -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json).data.repository.pullRequest }
@@ -206,17 +210,27 @@ exit 0
         Check 'fixture: the command''s thread reply lands on its thread' ("$($last.body)" -eq 'Autopilot: a reply from the setup check.') "last comment: '$($last.body)'"
 
         $standIn = Join-Path $bin 'gh.ps1'
-        $refusals = @(
-            @('api', 'graphql', '-F', 'threadId=PRRT_writer', '-f', 'query=mutation($threadId: ID!) { resolveReviewThread(input: {threadId: $threadId}) { thread { isResolved } } }'),
-            @('pr', 'merge', '1', '--merge'),
-            @('pr', 'ready', '1'),
-            @('pr', 'edit', '1', '--title', 'Changed')
-        )
-        foreach ($call in $refusals) {
+        $callsLog = Join-Path $hostDir 'calls.log'
+        # Every mutation and command the stand-in refuses, so that CI fails when a refusal is dropped.
+        $refusals = [ordered]@{
+            'pr merge' = @('pr', 'merge', '1', '--merge')
+            'pr ready' = @('pr', 'ready', '1')
+            'pr close' = @('pr', 'close', '1')
+            'pr edit, which this test forbids' = @('pr', 'edit', '1', '--title', 'Changed')
+            'issue close, which this test forbids' = @('issue', 'close', '1')
+        }
+        foreach ($mutation in 'resolveReviewThread', 'dismissPullRequestReview', 'mergePullRequest', 'markPullRequestReadyForReview',
+            'convertPullRequestToDraft', 'enablePullRequestAutoMerge', 'closePullRequest', 'updatePullRequest', 'minimizeComment',
+            'updateRef', 'deleteRef') {
+            $refusals["the mutation $mutation"] = @('api', 'graphql', '-F', 'id=PRRT_writer', '-f', "query=mutation(`$id: ID!) { $mutation(input: {id: `$id}) { clientMutationId } }")
+        }
+        foreach ($label in $refusals.Keys) {
+            $call = $refusals[$label]
+            $before = @(Get-Content -LiteralPath $callsLog).Count
             $null = pwsh -NoProfile -File $standIn @call 2>$null
             $code = $LASTEXITCODE
-            $logged = @(Get-Content -LiteralPath (Join-Path $hostDir 'calls.log') | Where-Object { $_ -like "FORBIDDEN $($call[0]) $($call[1])*" }).Count
-            Check "fixture: the stand-in refuses gh $($call[0]) $($call[1]) $(if ($call[0] -eq 'api') { 'resolveReviewThread' } else { $call[2] })" ($code -ne 0 -and $logged -ge 1) "exit code $code, FORBIDDEN lines $logged"
+            $logged = @(Get-Content -LiteralPath $callsLog | Select-Object -Skip $before | Where-Object { $_ -like "FORBIDDEN $($call[0]) $($call[1])*" }).Count
+            Check "fixture: the stand-in refuses $label" ($code -ne 0 -and $logged -eq 1) "exit code $code, new FORBIDDEN lines $logged"
         }
     }
     Remove-Item -LiteralPath $hostDir -Recurse -Force
@@ -304,11 +318,13 @@ Use-FixtureEnvironment $Work $bin {
     $threads = Read-Threads
     $writer = @((Get-Thread $threads 'PRRT_writer').comments)
     $writerReply = if ($writer.Count -gt 1) { "$($writer[-1].body)".TrimStart() } else { '' }
-    Check 'the writer''s thread gets "Autopilot: fixed in <commit>"' ($writerReply -match '^Autopilot: fixed in [0-9a-f]{7,}') "comments: $($writer.Count); last: '$writerReply'"
+    Check 'the writer''s thread gets "Autopilot: fixed in <commit>"' ($writerReply -match "^$([regex]::Escape($replyOpenings.fix)) [0-9a-f]{7,}") "comments: $($writer.Count); last: '$writerReply'"
 
+    # The command asks a decline for the reason, naming the file that shows it: Get-Farewell uses $Name in its greeting.
     $bot = @((Get-Thread $threads 'PRRT_bot').comments)
     $botReply = if ($bot.Count -gt 1) { "$($bot[-1].body)".TrimStart() } else { '' }
-    Check 'the bot''s wrong finding gets "Autopilot: not changed" with a reason' ($botReply -match '(?s)^Autopilot: not changed\W*(\S.{40,})') "comments: $($bot.Count); last: '$botReply'"
+    $botReason = if ($botReply.StartsWith($replyOpenings.decline)) { $botReply.Substring($replyOpenings.decline.Length) } else { '' }
+    Check 'the bot''s wrong finding gets "Autopilot: not changed" with a reason that names $Name and Farewell' ($botReason.Length -ge 40 -and $botReason -cmatch '\bName\b' -and $botReason -match 'Farewell') "comments: $($bot.Count); last: '$botReply'"
 
     $answered = @((Get-Thread $threads 'PRRT_answered').comments)
     Check 'the thread already answered with Autopilot: is left alone' ($answered.Count -eq 2) "comments: $($answered.Count)"
@@ -318,10 +334,16 @@ Use-FixtureEnvironment $Work $bin {
 
     $comments = @(Read-HostJson $hostDir 'comments.json' | Where-Object { $_ })
     $new = @($comments | Where-Object { $_.url -notin $strangerUrl, $questionUrl })
-    $askReply = @($new | Where-Object { "$($_.body)".Contains($strangerUrl) -and "$($_.body)" -match 'needs a decision from the maintainer' })
-    Check 'the stranger''s CI request becomes an ask: "this needs a decision from the maintainer"' ($askReply.Count -ge 1) "new top-level comments: $($new.Count)"
-    $answer = @($new | Where-Object { "$($_.body)".Contains($questionUrl) -and "$($_.body)" -notmatch 'fixed in|not changed' })
-    Check 'the question gets an answer' ($answer.Count -ge 1) "new top-level comments: $($new.Count)"
+    $askReply = @($new | Where-Object { "$($_.body)".Contains($strangerUrl) -and "$($_.body)".Contains($replyOpenings.ask) })
+    Check "the stranger's CI request becomes an ask: `"$($replyOpenings.ask)`"" ($askReply.Count -ge 1) "new top-level comments: $($new.Count)"
+    # The answer must say that only the test calls Get-Farewell, citing the file it rests on, as the command asks.
+    $answer = @($new | Where-Object {
+            $body = "$($_.body)"
+            $text = $body.Replace($questionUrl, '') -replace '^\s*Autopilot:', ''
+            $body.Contains($questionUrl) -and -not $body.Contains($replyOpenings.fix) -and -not $body.Contains($replyOpenings.decline) -and
+            $text.Trim().Length -ge 20 -and $text -match '\.ps1' -and $text -match "(?i)\b(no|not|only|nowhere|none)\b|n't\b"
+        })
+    Check 'the question gets an answer: only the test calls Get-Farewell, with the file it rests on' ($answer.Count -ge 1) "new top-level comments: $($new.Count)"
 
     $written = @($new | ForEach-Object { $_.body }) + @($threads | ForEach-Object { @($_.comments) | Select-Object -Skip $(if ($_.id -eq 'PRRT_answered') { 2 } else { 1 }) } | ForEach-Object { $_.body })
     $unmarked = @($written | Where-Object { -not (Test-Autopilot $_) })
