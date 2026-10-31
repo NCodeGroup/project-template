@@ -258,14 +258,14 @@ if (-not $UnitOnly) {
     Invoke-Git -C $plain tag v1.0.0
     $adopt = Join-Path $repoRoot 'Adopt-Project.ps1'
     [IO.File]::WriteAllText((Join-Path $plain '.git\hooks\pre-commit'), "#!/bin/sh`n")
-    $out = & $adopt -Path $plain -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot' } -NoVerify | Out-String
+    $out = & $adopt -Path $plain -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot' } -NoVerify 3>&1 | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $plain '.copier-answers.yml')
     Check 'plain: answers recorded' ($answersText -match '(?m)^_commit: v0\.1\.0\s*$' -and $answersText -match '(?m)^stack: python\s*$' -and $answersText -match '(?m)^git_host: gitlab\s*$' -and $answersText -match '(?m)^project_name: plain\s*$') "$answersText | $out"
     $subject = git -C $plain log -1 --format=%s
     $count = git -C $plain rev-list --count HEAD
     $status = git -C $plain status --porcelain
     Check 'plain: one commit, nothing left over' ($subject -eq 'Adopt project-template v0.1.0' -and $count -eq '2' -and -not $status) "$subject | $count | $status"
-    Check 'plain: leaves core.hooksPath alone when the clone has hooks in .git/hooks' (-not (git -C $plain config core.hooksPath) -and $out.Contains('has hooks of its own in .git/hooks (pre-commit)')) $out
+    Check 'plain: leaves core.hooksPath alone when the clone has hooks in .git/hooks, and warns' (-not (git -C $plain config core.hooksPath) -and $out.Contains('has hooks of its own in .git/hooks (pre-commit)')) $out
     Check 'plain: a GitLab origin gets no command for GitHub settings' (-not $out.Contains('Set-RepositoryBaseline')) $out
     Check 'plain: README.md untouched' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'README.md')) -eq "# Plain`n") ''
     Check 'plain: a Keep a Changelog file stays as it is, with no follow-up' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'CHANGELOG.md')) -eq "# Changelog`n`n## [Unreleased]`n`n## [1.0.0] - 2026-01-01`n`n### Added`n`n- First.`n" -and -not $out.Contains('convert CHANGELOG.md') -and -not $out.Contains('backfill CHANGELOG.md')) $out
@@ -351,7 +351,9 @@ if (-not $UnitOnly) {
         '.github/workflows/ci.yml'    = "name: CI`n"
         '.github/workflows/frontend.yml' = "name: Frontend`n"
     } 'https://github.com/example/ci-existing.git'
-    $ciOut = & $adopt -Path $ciExisting -Template $tpl -Ref v0.1.0 -NoVerify | Out-String
+    Invoke-Git -C $ciExisting config core.hooksPath .husky
+    $ciOut = & $adopt -Path $ciExisting -Template $tpl -Ref v0.1.0 -NoVerify 3>&1 | Out-String
+    Check 'ci-existing: keeps a hooks path of its own and warns with the command to run' ((((git -C $ciExisting config --local core.hooksPath) -join '') -eq '.husky') -and $ciOut.Contains('core.hooksPath is already .husky') -and $ciOut.Contains('git config core.hooksPath .githooks')) $ciOut
     Check 'ci-existing: no reconcile follow-up when the repository already had ci.yml' (-not $ciOut.Contains('reconcile .github/workflows')) $ciOut
     Check 'ci-existing: asks to add the commit attribution job to the kept ci.yml' ($ciOut.Contains("add the template's commit-attribution job to .github/workflows/ci.yml")) $ciOut
     Check 'ci-existing: says it left local out and how to add it' ($ciOut.Contains("workflow_tools: [claude, copilot], the template's default") -and $ciOut.Contains("-Data @{ workflow_tools = 'claude', 'copilot', 'local' }")) $ciOut

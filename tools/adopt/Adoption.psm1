@@ -291,8 +291,10 @@ function Get-BuildFileList([string]$Path) {
 }
 
 # How to run the template's .githooks in this clone: HooksPath when core.hooksPath can point at it, otherwise the
-# Note to print. A hooks path turns off the hooks in .git/hooks, and pre-commit won't install while one is set, so
+# Note to warn with. A hooks path turns off the hooks in .git/hooks, and pre-commit won't install while one is set, so
 # a clone that uses pre-commit gets a local pre-commit hook to add instead, and no note once its config runs it.
+# A hooks path the clone already has, from any Git config, is never changed: one that names a .githooks folder runs the
+# template's hooks, and any other, such as husky's or a global hooks folder, gets a note naming the command to run.
 # With "- protect: hook" in AGENTS.md's Landing section, it also says how to run .githooks/pre-push until something does.
 function Get-GitHooksSetup {
     $config = '.pre-commit-config.yaml'
@@ -310,6 +312,14 @@ function Get-GitHooksSetup {
             if ($inLanding -and $line -match '^## ') { break }
             if ($inLanding -and $line -match '^- protect:\s*(\S+)') { $protect = $Matches[1]; break }
         }
+    }
+
+    $current = git config --get core.hooksPath
+    if ($current) {
+        if ((Split-Path -Leaf $current.TrimEnd('\', '/')) -eq '.githooks') { return [pscustomobject]@{ HooksPath = $false; Note = $null } }
+        $push = if ($protect -eq 'hook') { ', or .githooks/pre-push, which refuses a push to the default branch as AGENTS.md''s Landing section says (protect: hook)' } else { '' }
+        $call = if ($protect -eq 'hook') { "call .githooks/commit-msg from $current/commit-msg and .githooks/pre-push from $current/pre-push" } else { "call .githooks/commit-msg from $current/commit-msg" }
+        return [pscustomobject]@{ HooksPath = $false; Note = "Git hooks: .githooks not enabled. core.hooksPath is already $current (git config --show-origin core.hooksPath says where it's set), so Git never runs .githooks/commit-msg, which strips AI agent attribution from commit messages$push. To run both, $call. To run the template's hooks instead, run: git config core.hooksPath .githooks" }
     }
 
     # True when the clone's pre-push hook, or the pre-push.legacy that pre-commit runs first, calls .githooks/pre-push.
