@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- The `code-review.yml` a project gets pins `NCodeGroup/code-review` to the full commit SHA of v0.4.0, with the tag in a comment (it pinned v0.3.1), and adds `closed` to its `pull_request_target` types, as v0.4.0 asks of its callers: when a pull request closes, merged or not, the run records each posted finding's outcome (fixed, dismissed, acknowledged or ignored) with no model call, whoever closed it, and waits for a review in progress instead of cancelling it. `/review explain` and `/review teach` comments, new in v0.4.0, run in a concurrency group of their own, so they never cancel a review. The job keeps `issues: read`, which v0.4.0 also uses to mark a finding an open issue already tracks. This repository's own `code-review.yml` gets the same change. A project that already has the file keeps its own; update it the same way, adding `closed` only together with the v0.4.0 pin, since earlier releases would review a closed pull request ([#161](https://github.com/NCodeGroup/project-template/issues/161)).
+
 ## [0.42.0] - 2026-10-31
 
 ### Added
