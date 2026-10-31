@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A new `/address-feedback` command takes every open comment and discussion on one pull request, from anyone or any bot: review threads, top-level comments and review summaries. It judges each against the code as a fix, a decline with its reason, an answer, a question for the maintainer or nothing to do, plans and executes only the fixes in a worktree, pushes them to the pull request's branch (never forced) and replies to each item starting with `Autopilot:`. It never merges, resolves a thread, dismisses an alert or edits the pull request. Claude Code only.
+
 ### Changed
 
 - The `code-review.yml` a project gets pins `NCodeGroup/code-review@v0.2.1` (was v0.1.0): rule checks run on by default, and there is an infrastructure reviewer for OpenTofu and Terraform changes. The action's inputs are unchanged.
