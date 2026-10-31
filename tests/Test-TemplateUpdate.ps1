@@ -12,8 +12,9 @@
     is current, and ignores tags that aren't versions. Then checks the version from _commit, an existing label, the
     oldest of several open notices, the old address and Copier's shorthands (rewritten to the fixture with Git's
     insteadOf, so nothing reaches the network), a changelog too long for one issue, one with no section for the new
-    version, a tag without CHANGELOG.md, and the runs that fail: an unreadable template (with Git's message), no
-    _src_path, no version tags, and an unreadable or empty project version.
+    version, a tag without CHANGELOG.md, a body exactly at the 60,000-character limit and one character over, a project
+    ahead of the newest tag, and the runs that fail: an unreadable template (with Git's message), no _src_path, no
+    version tags, an unreadable or empty project version, and a failing gh call.
     Prints PASS or FAIL per check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
@@ -58,6 +59,8 @@ $stateFile = Join-Path $PSScriptRoot 'state.json'
 $state = Get-Content -Raw -LiteralPath $stateFile | ConvertFrom-Json -AsHashtable
 function Save { Set-Content -LiteralPath $stateFile -Value (ConvertTo-Json -InputObject $state -Depth 5) }
 $command = "$($args[0]) $($args[1])"
+# A "fail" key names a command that fails, as gh does when GitHub refuses it.
+if ($state.ContainsKey('fail') -and $state.fail -eq $command) { exit 1 }
 $i = [array]::IndexOf($args, '--label')
 $labelOption = if ($i -ge 0) { $args[$i + 1] }
 $i = [array]::IndexOf($args, '--title')
@@ -298,6 +301,24 @@ try {
     $r = Invoke-Notice
     $body = "$((@($r.Issues) | Select-Object -First 1).body)"
     Check 'limit: one character over leaves the section out and links to CHANGELOG.md' ($r.ExitCode -eq 0 -and -not $body.Contains('## [0.9.0]') -and $body.TrimEnd().EndsWith("The release notes for these versions don't fit in an issue; read them in [CHANGELOG.md](https://github.com/NCodeGroup/project-template/blob/v0.9.0/CHANGELOG.md).")) "$($r.Output) length $($body.Length)"
+
+    # 15. A project ahead of the newest tag, as after a tag is removed, counts as current: the open notice is closed.
+    Set-ProjectVersion 'v1.0.0'
+    Set-GhState (ConvertTo-Json -Depth 5 -InputObject @{ labels = @('bug', 'template-update'); issues = @((New-Issue 1 'Update to project-template v0.9.0' @('template-update'))) })
+    $r = Invoke-Notice
+    $issue = $r.Issues | Select-Object -First 1
+    Check 'ahead: a project ahead of the newest tag closes the open notice' ($r.ExitCode -eq 0 -and $issue.state -eq 'closed' -and "$(@($issue.comments)[0])".Contains('on project-template v1.0.0') -and $r.Output -match 'Closed #1') "$($r.Output) $($r.Calls -join ' | ')"
+
+    # 16. A gh call that fails fails the run, and nothing is reported as done.
+    Set-ProjectVersion 'v0.8.0'
+    Set-GhState (ConvertTo-Json -Depth 5 -InputObject @{ fail = 'issue edit'; labels = @('bug', 'template-update'); issues = @((New-Issue 1 'Update to project-template v0.8.0' @('template-update'))) })
+    $r = Invoke-Notice
+    $issue = $r.Issues | Select-Object -First 1
+    Check 'gh fails: a failed issue edit fails the run and isn''t reported as done' ($r.ExitCode -ne 0 -and $r.Flat.Contains('gh issue edit exited with code 1') -and $r.Output -notmatch 'Updated #' -and $issue.title -eq 'Update to project-template v0.8.0') "$($r.Output) $($r.Calls -join ' | ')"
+    Set-GhState (ConvertTo-Json -Depth 5 -InputObject @{ fail = 'issue list'; labels = @('bug', 'template-update'); issues = @((New-Issue 1 'Update to project-template v0.8.0' @('template-update'))) })
+    $r = Invoke-Notice
+    Check 'gh fails: a failed issue list fails the run before any change' ($r.ExitCode -ne 0 -and $r.Flat.Contains('gh issue list exited with code 1') -and (Get-Change $r).Count -eq 0) "$($r.Output) $($r.Calls -join ' | ')"
+    Set-GhState '{ "issues": [], "labels": ["bug"] }'
 
     # 17. Copier's GitLab shorthand: the error names the address it expands to.
     Set-Answer "_commit: v0.1.0`n_src_path: gl:owner/repo"
