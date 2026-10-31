@@ -6,8 +6,9 @@
     Renders a project from v0.1.0 and appends a line to its .github/workflows/ci.yml, then updates it to a v0.2.0 that
     changes the template's ci.yml: the lightly edited file must update without the suggestion. The project then
     replaces ci.yml with its own workflow and the template changes ci.yml again in v0.3.0: the update must name the
-    file and print the exact -Data @{ project_owned_files = ... } to run. Prints PASS or FAIL per check and exits 1 on
-    any failure.
+    file and print the exact -Data @{ project_owned_files = ... } to run. Last, v0.3.0 rejects a project name that
+    v0.4.0 accepts, so Copier can't render the project's version with it: the update to v0.4.0 must warn with Copier's
+    error and say it skipped the suggestion. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-rewritten-test in the temp folder.
@@ -71,8 +72,8 @@ function Invoke-Update([hashtable]$Data) {
     $lines = [Collections.Generic.List[string]]::new()
     $exitCode = 0
     try {
-        if ($Data) { & (Join-Path $path '.template\Update-Project.ps1') -Data $Data 2>&1 | ForEach-Object { $lines.Add("$_") } }
-        else { & (Join-Path $path '.template\Update-Project.ps1') 2>&1 | ForEach-Object { $lines.Add("$_") } }
+        if ($Data) { & (Join-Path $path '.template\Update-Project.ps1') -Data $Data *>&1 | ForEach-Object { $lines.Add("$_") } }
+        else { & (Join-Path $path '.template\Update-Project.ps1') *>&1 | ForEach-Object { $lines.Add("$_") } }
         $exitCode = $LASTEXITCODE
     }
     catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
@@ -91,13 +92,32 @@ try {
     Push-Location (Join-Path $tpl 'template')
     try { Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "  workflow_dispatch:`n" "  workflow_dispatch:`n  schedule:`n    - cron: '0 6 * * 1'`n" }
     finally { Pop-Location }
+    $validator = 'validator: "{% if not project_name.strip() %}Required{% endif %}"'
+    $strictValidator = 'validator: "{% if not project_name.strip() %}Required{% elif project_name == ''Renamed'' %}Not yet{% endif %}"'
     Push-Location $tpl
-    try { Invoke-Git commit -q -am 'Schedule ci.yml'; Invoke-Git tag v0.3.0 }
+    try { Edit-File 'copier.yml' $validator $strictValidator; Invoke-Git commit -q -am 'Schedule ci.yml'; Invoke-Git tag v0.3.0 }
     finally { Pop-Location }
 
     # The update may exit 1 for a conflict in the rewritten file; the suggestion is what's checked.
     $r = Invoke-Update $null
     Check 'rewritten: suggests project_owned_files for the rewritten ci.yml' (($r.Output -match '(?m)^  \.github/workflows/ci\.yml\r?$') -and $r.Output.Contains("-Data @{ project_owned_files = '.github/workflows/ci.yml' }")) "exit $($r.ExitCode)`n$($r.Output.Trim())"
+
+    # Finish that update with the project's own ci.yml, so the project is at v0.3.0.
+    if (git status --porcelain) { [IO.File]::WriteAllText($ci, $ownCi); Invoke-Git add -A; Invoke-Git commit -q -m 'Update from project-template v0.3.0' }
+
+    # v0.3.0 rejects the project name that v0.4.0 accepts, so Copier can't render the project's version with it.
+    Push-Location $tpl
+    try { Edit-File 'copier.yml' $strictValidator $validator; Invoke-Git commit -q -am 'Accept the name again' }
+    finally { Pop-Location }
+    Push-Location (Join-Path $tpl 'template')
+    try { Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "    - cron: '0 6 * * 1'`n" "    - cron: '0 7 * * 1'`n" }
+    finally { Pop-Location }
+    Push-Location $tpl
+    try { Invoke-Git commit -q -am 'Move the ci.yml schedule'; Invoke-Git tag v0.4.0 }
+    finally { Pop-Location }
+
+    $r = Invoke-Update @{ project_name = 'Renamed' }
+    Check 'render failure: warns with Copier''s error and says the rewritten-file suggestion was skipped' ($r.Output.Contains("Copier couldn't render template v0.3.0 with this project's answers:") -and $r.Output.Contains('Not yet') -and $r.Output.Contains('Skipped the rewritten-file suggestion') -and -not $r.Output.Contains('project_owned_files =')) "exit $($r.ExitCode)`n$($r.Output.Trim())"
 }
 finally { Pop-Location }
 ''
