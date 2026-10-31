@@ -23,12 +23,23 @@
     Name only jobs that run on pull requests. A job that runs on a release or a schedule never reports on a pull
     request, so requiring it would block every merge.
 
+    -RequireChecks auto names them for you, for each repository: it reads the check runs on the head commit of the latest
+    pull request merged into the default branch and requires the GitHub Actions jobs that a pull_request event ran there
+    and that passed (a job that ran more than once counts by its latest run). It leaves out, and lists with the reason,
+    the review bot's advisory "Code review" and its pull_request_target job, CodeQL (the code-scanning rule covers it)
+    and its Analyze jobs, a check another app reports, and any job that was skipped, neutral, failed or didn't finish,
+    since a skipped required check counts as passing. The template's "Commit attribution" job is required this way
+    wherever it ran on that pull request and passed, so a commit with an AI co-author trailer can't merge. A repository
+    with no merged pull request, or none of whose checks qualify, is skipped with the reason and nothing changed. With
+    -WhatIf it lists the checks and prints the command that names them, to edit and run.
+
     GitHub Free doesn't offer organization rulesets, so this applies one to each repository. New-Project.ps1 runs it for a
     repository it creates; Adopt-Project.ps1 prints the command to run.
 
 .EXAMPLE
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -WhatIf     # shows what it would do
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks 'build-and-test,Commit attribution'
+    .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks auto -WhatIf   # lists the checks it would require
     .\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Owner', Justification = 'Get-Targets and Set-Baseline, nested functions, use it.')]
@@ -37,7 +48,8 @@ param(
     [string]$Repo,
     [switch]$All,
     # Names of the jobs a pull request must pass, as the checks list shows them, separated by commas (pwsh -File passes
-    # one value for a parameter, so a list has to arrive as one string). Only with -Repo.
+    # one value for a parameter, so a list has to arrive as one string). Only with -Repo. Or auto, alone, which reads them
+    # from each repository's latest merged pull request, and works with -All too.
     [string[]]$RequireChecks = @(),
     # The owner of the repositories: an organization or a user.
     [Alias('Org')][string]$Owner = 'NCodeGroup'
@@ -46,7 +58,9 @@ $ErrorActionPreference = 'Stop'
 if (-not $Repo -and -not $All) { throw 'Pass -Repo <name> or -All.' }
 if ($Repo -and $All) { throw 'Pass -Repo or -All, not both.' }
 $RequireChecks = @($RequireChecks | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-if ($All -and $RequireChecks.Count) { throw '-RequireChecks needs -Repo: each repository names its own jobs.' }
+$autoChecks = $RequireChecks -contains 'auto'
+if ($autoChecks -and $RequireChecks.Count -gt 1) { throw "-RequireChecks auto reads the checks itself: pass auto alone, or name the jobs." }
+if ($All -and $RequireChecks.Count -and -not $autoChecks) { throw '-RequireChecks needs -Repo: each repository names its own jobs (or pass -RequireChecks auto).' }
 
 $rulesetName = 'Protect main'
 # GitHub Actions' app id: required checks are matched to the app that reports them.
@@ -78,6 +92,47 @@ function Get-Targets {
         Where-Object { -not $_.isArchived -and -not $_.isFork } | Sort-Object name | ForEach-Object { $_.name }
 }
 
+# -RequireChecks auto: reads the check runs on the head commit of the latest pull request merged into $Branch and returns
+# its number, the checks a ruleset can require, and the others with the reason each is left out; $null when no pull
+# request was merged into it. A required check is matched to GitHub Actions, so only the Actions jobs a pull_request
+# event ran qualify: pull_request_target (the review bot's job), CodeQL's dynamic Analyze jobs and push-only jobs don't
+# run on every pull request.
+function Get-PassingChecks([string]$Name, [string]$Branch) {
+    $pulls = @(Invoke-GhJson @('api', "repos/$Owner/$Name/pulls?state=closed&base=$Branch&sort=updated&direction=desc&per_page=100"))
+    $latest = $pulls | Where-Object { $_.merged_at } | Sort-Object { [datetime]$_.merged_at } -Descending | Select-Object -First 1
+    if (-not $latest) { return $null }
+    $sha = $latest.head.sha
+    $runs = @((Invoke-GhJson @('api', "repos/$Owner/$Name/commits/$sha/check-runs?per_page=100")).check_runs | Where-Object { $_ })
+    $events = @{}
+    foreach ($run in @((Invoke-GhJson @('api', "repos/$Owner/$Name/actions/runs?head_sha=$sha&per_page=100")).workflow_runs | Where-Object { $_ })) {
+        $events["$($run.check_suite_id)"] = "$($run.event)"
+    }
+    $passed = [Collections.Generic.List[string]]::new()
+    $leftOut = [Collections.Generic.List[string]]::new()
+    foreach ($group in $runs | Group-Object name | Sort-Object Name) {
+        $name = $group.Name
+        $why = $null
+        if ($name -eq 'Code review') { $why = "the review bot's advice" }
+        elseif ($name -eq 'CodeQL') { $why = 'the code-scanning rule covers it' }
+        else {
+            $ours = @($group.Group | Where-Object { $_.app.id -eq $actionsAppId -and $events["$($_.check_suite.id)"] -eq 'pull_request' })
+            if (-not $ours.Count) {
+                $other = $group.Group | Sort-Object { [long]$_.id } -Descending | Select-Object -First 1
+                $ranOn = $events["$($other.check_suite.id)"]
+                $why = if ($other.app.id -ne $actionsAppId) { "reported by $($other.app.slug), not GitHub Actions" } elseif ($ranOn) { "ran on $ranOn, not pull_request" } else { 'no workflow run on the commit says what ran it' }
+            }
+            else {
+                # A job that ran more than once, such as a re-run, counts by its latest run.
+                $check = $ours | Sort-Object { [long]$_.id } -Descending | Select-Object -First 1
+                if ($check.status -ne 'completed') { $why = "$($check.status)" }
+                elseif ($check.conclusion -ne 'success') { $why = "$($check.conclusion)" }
+            }
+        }
+        if ($why) { $leftOut.Add("$name ($why)") } else { $passed.Add($name) }
+    }
+    [pscustomobject]@{ Number = $latest.number; Checks = @($passed); LeftOut = @($leftOut) }
+}
+
 function Set-Baseline {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Name)
@@ -99,6 +154,13 @@ function Set-Baseline {
     # A ruleset of this name that exists already is changed only when -RequireChecks asks for new checks.
     if ($own -and -not $RequireChecks.Count) { Write-Host "${Name}: left alone (already has '$rulesetName')"; return }
     $checks = @($RequireChecks)
+    if ($autoChecks) {
+        $found = Get-PassingChecks $Name $branch
+        if (-not $found) { Write-Host "${Name}: skipped (-RequireChecks auto found no pull request merged into $branch to read checks from; name the jobs with -RequireChecks)"; return }
+        Write-Host "${Name}: pull request #$($found.Number) passed: $(if ($found.Checks.Count) { $found.Checks -join ', ' } else { 'nothing a ruleset can require' }); left out: $(if ($found.LeftOut.Count) { $found.LeftOut -join ', ' } else { 'nothing' })"
+        if (-not $found.Checks.Count) { Write-Host "${Name}: skipped (no check that passed on pull request #$($found.Number) can be required; name the jobs with -RequireChecks)"; return }
+        $checks = @($found.Checks)
+    }
 
     # The code-scanning rule. A ruleset that has one keeps it as it is, whatever runs CodeQL (default setup or a
     # repository's own workflow): an update never removes it. Otherwise CodeQL's default setup decides: configured adds
@@ -169,7 +231,11 @@ function Set-Baseline {
 
     $verb = if ($own) { 'update' } else { 'create' }
     $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
-    if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) { Write-Host "would: $summary"; return }
+    if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) {
+        Write-Host "would: $summary"
+        if ($autoChecks) { Write-Host "  to require them by name: $PSCommandPath -Repo $Name -Owner $Owner -RequireChecks '$(($checks -join ',').Replace("'", "''"))'" }
+        return
+    }
 
     # The suite switch comes first: once the ruleset has its code-scanning rule, a later run no longer reads the default
     # setup, so a switch that failed after it could never be retried.

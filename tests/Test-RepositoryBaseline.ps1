@@ -8,7 +8,11 @@
     branch, with no deletion, no force push, a pull request with no approvals, merge-commit and rebase merges only and
     no bypass, and delete-branch-on-merge; that -RequireChecks adds required status checks; that a repository whose
     default branch already requires pull requests, or already has this ruleset, is left alone, and that -RequireChecks
-    updates the ruleset the script made; that -All skips archived repositories and forks; and that bad parameters
+    updates the ruleset the script made; that -RequireChecks auto requires the GitHub Actions checks that passed on the
+    latest merged pull request, Commit attribution among them, leaves out the review bot's Code review and its job,
+    CodeQL and its Analyze jobs, other apps' checks and skipped, neutral, failed or unfinished ones, lists them with
+    -WhatIf with the command that names them, and skips a repository with no merged pull request or no check to
+    require; that -All skips archived repositories and forks; and that bad parameters
     stop it. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -74,6 +78,16 @@ if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets/(\d+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].full["$($Matches[2])"] -Depth 10; exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets$') { ConvertTo-Json -InputObject @($data.repos[$Matches[1]].rulesets) -Depth 5; exit 0 }
+# Pull requests, and the check runs and workflow runs of a commit, for -RequireChecks auto.
+if ($path -match '^repos/[^/]+/([^/]+)/pulls\?') { ConvertTo-Json -InputObject @($data.repos[$Matches[1]].pulls | Where-Object { $_ }) -Depth 5; exit 0 }
+if ($path -match '^repos/[^/]+/([^/]+)/commits/([^/]+)/check-runs\?') {
+    $runs = @($data.repos[$Matches[1]].checkRuns[$Matches[2]] | Where-Object { $_ })
+    ConvertTo-Json -InputObject @{ total_count = $runs.Count; check_runs = $runs } -Depth 6; exit 0
+}
+if ($path -match '^repos/[^/]+/([^/]+)/actions/runs\?head_sha=([^&]+)') {
+    $runs = @($data.repos[$Matches[1]].workflowRuns[$Matches[2]] | Where-Object { $_ })
+    ConvertTo-Json -InputObject @{ total_count = $runs.Count; workflow_runs = $runs } -Depth 6; exit 0
+}
 if ($path -match '^repos/[^/]+/([^/]+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].info -Depth 5; exit 0 }
 exit 1
 '@
@@ -83,13 +97,44 @@ function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_f
         conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
         rules = @($Types | ForEach-Object { @{ type = $_ } }) }
 }
-function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', [bool]$SwitchFails = $false) {
+function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{}) {
     $full = @{}
     $summaries = @()
     $id = 100
     foreach ($ruleset in $Rulesets) { $id++; $ruleset.id = $id; $full["$id"] = $ruleset; $summaries += @{ id = $id; name = $ruleset.name } }
-    @{ info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork }; rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; switchFails = $SwitchFails }
+    @{ info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork }; rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; switchFails = $SwitchFails
+        pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns }
 }
+function New-Pull([int]$Number, [string]$Sha, [string]$MergedAt) { @{ number = $Number; head = @{ sha = $Sha }; merged_at = if ($MergedAt) { $MergedAt } else { $null } } }
+function New-CheckRun([long]$Id, [string]$Name, [string]$Conclusion = 'success', [long]$Suite = 1, [long]$App = 15368, [string]$Slug = 'github-actions', [string]$Status = 'completed') {
+    @{ id = $Id; name = $Name; status = $Status; conclusion = if ($Status -eq 'completed') { $Conclusion } else { $null }; app = @{ id = $App; slug = $Slug }; check_suite = @{ id = $Suite } }
+}
+# The workflow runs on a pull request's head commit: its CI (suite 1), the review bot's job (suite 2) and CodeQL's
+# default setup (suite 3), as GitHub reports them.
+$prWorkflowRuns = @(
+    @{ check_suite_id = 1; name = 'CI'; event = 'pull_request' },
+    @{ check_suite_id = 2; name = 'Code review'; event = 'pull_request_target' },
+    @{ check_suite_id = 3; name = 'PR #9'; event = 'dynamic' })
+# The latest merged pull request (#9) is neither the first one listed nor the latest one closed (#10, not merged).
+$autoPulls = @((New-Pull 7 'sha7' '2026-10-01T10:00:00Z'), (New-Pull 10 'sha10' ''), (New-Pull 9 'sha9' '2026-10-20T10:00:00Z'))
+$autoRuns = @{
+    sha7 = @((New-CheckRun 70 'old-job'))
+    sha9 = @(
+        (New-CheckRun 1 'build-and-test'),
+        (New-CheckRun 2 'Commit attribution'),
+        (New-CheckRun 3 'lint' 'skipped'),
+        (New-CheckRun 4 'docs' 'neutral'),
+        (New-CheckRun 5 'broken' 'failure'),
+        (New-CheckRun 6 'flaky' 'failure'),
+        (New-CheckRun 16 'flaky'),
+        (New-CheckRun 7 'slow' -Status 'in_progress'),
+        (New-CheckRun 8 'Code review' 'neutral' -Suite 50 -App 5534990 -Slug 'ncode-review'),
+        (New-CheckRun 9 'review' -Suite 2),
+        (New-CheckRun 10 'CodeQL' -Suite 60 -App 57789 -Slug 'github-advanced-security'),
+        (New-CheckRun 11 'Analyze (csharp)' -Suite 3),
+        (New-CheckRun 12 'external' -Suite 70 -App 999 -Slug 'other-ci'))
+}
+$autoWorkflowRuns = @{ sha7 = $prWorkflowRuns; sha9 = $prWorkflowRuns }
 $repos = @{
     fresh = New-Repo
     extendedAlready = New-Repo -Suite 'extended'
@@ -109,6 +154,10 @@ $repos = @{
     noPullRequest = New-Repo -Rulesets @((New-Ruleset 'no force push' @('non_fast_forward')))
     old = New-Repo -Archived $true
     forked = New-Repo -Fork $true
+    autoChecks = New-Repo -Pulls $autoPulls -CheckRuns $autoRuns -WorkflowRuns $autoWorkflowRuns
+    oursAuto = New-Repo -Rulesets @((New-Ruleset 'Protect main')) -Pulls $autoPulls -CheckRuns $autoRuns -WorkflowRuns $autoWorkflowRuns
+    noMergedPull = New-Repo -Pulls @((New-Pull 4 'sha4' ''))
+    nothingPassed = New-Repo -Pulls @((New-Pull 5 'sha5' '2026-10-02T10:00:00Z')) -CheckRuns @{ sha5 = @((New-CheckRun 1 'lint' 'skipped'), (New-CheckRun 2 'Code review' 'neutral' -Suite 50 -App 5534990 -Slug 'ncode-review'), (New-CheckRun 3 'CodeQL' -Suite 60 -App 57789 -Slug 'github-advanced-security')) } -WorkflowRuns @{ sha5 = $prWorkflowRuns }
 }
 Write-Text (Join-Path $bin 'repos.json') (ConvertTo-Json -Depth 12 -InputObject @{
     repos = $repos
@@ -213,6 +262,35 @@ try {
     Check 'update: a 404 from the CodeQL setup doesn''t touch the rule a ruleset has' ((@($r3.Body.rules.type) -contains 'code_scanning') -and $r3.Output -match 'keeps its code-scanning rule') "$(@($r3.Body.rules.type) -join ',') $($r3.Output)"
     Check 'update: a ruleset without a code-scanning rule gets one, with the baseline thresholds' (($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors_and_warnings') -and ($scan[0].security_alerts_threshold -eq 'all')) (@($r.Body.rules.type) -join ',')
 
+    # 6b. -RequireChecks auto requires the checks that passed on the latest merged pull request.
+    $r = Invoke-Baseline @('-Repo', 'autoChecks', '-RequireChecks', 'auto', '-WhatIf')
+    Check 'auto: -WhatIf changes nothing' ($r.Changes.Count -eq 0) ($r.Changes -join '|')
+    Check 'auto: -WhatIf lists the checks that passed on the latest merged pull request, Commit attribution among them' ($r.Output -match [regex]::Escape('autoChecks: pull request #9 passed: build-and-test, Commit attribution, flaky;') -and $r.Output -match [regex]::Escape("would: autoChecks (main): create 'Protect main' with 3 required check(s): build-and-test, Commit attribution, flaky")) $r.Output
+    Check 'auto: -WhatIf prints the command that names them' ($r.Output -match [regex]::Escape("-Repo autoChecks -Owner NCodeGroup -RequireChecks 'build-and-test,Commit attribution,flaky'")) $r.Output
+    foreach ($leftOut in "Code review (the review bot's advice)", 'CodeQL (the code-scanning rule covers it)', 'Analyze (csharp) (ran on dynamic, not pull_request)', 'review (ran on pull_request_target, not pull_request)', 'external (reported by other-ci, not GitHub Actions)', 'lint (skipped)', 'docs (neutral)', 'broken (failure)', 'slow (in_progress)') {
+        Check "auto: leaves out $leftOut" ($r.Output -match ('left out: .*' + [regex]::Escape($leftOut))) $r.Output
+    }
+    Check 'auto: reads the latest merged pull request, not an older one' ($r.Output -notmatch 'old-job') $r.Output
+
+    $r = Invoke-Baseline @('-Repo', 'autoChecks', '-RequireChecks', 'auto')
+    $checks = $r.Body.rules | Where-Object type -eq 'required_status_checks'
+    Check 'auto: requires exactly the checks that passed, reported by GitHub Actions' ((@($checks.parameters.required_status_checks.context) -join ',') -eq 'build-and-test,Commit attribution,flaky' -and (@($checks.parameters.required_status_checks.integration_id | Select-Object -Unique) -join ',') -eq '15368') ($checks | ConvertTo-Json -Depth 6 -Compress)
+    Check 'auto: creates the ruleset and says so' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/autoChecks/rulesets*' -and $r.Output -match 'done: autoChecks') $r.Output
+
+    $r = Invoke-Baseline @('-Repo', 'oursAuto', '-RequireChecks', 'auto')
+    $checks = $r.Body.rules | Where-Object type -eq 'required_status_checks'
+    Check 'auto: updates the ruleset it made, in place' (($r.Changes -join '|') -like '*BODY PUT repos/NCodeGroup/oursAuto/rulesets/101*' -and (@($checks.parameters.required_status_checks.context) -join ',') -eq 'build-and-test,Commit attribution,flaky') "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'noMergedPull', '-RequireChecks', 'auto')
+    Check 'auto: a repository with no merged pull request is skipped, with a clear message' ($r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape('noMergedPull: skipped (-RequireChecks auto found no pull request merged into main to read checks from; name the jobs with -RequireChecks)')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ours', '-RequireChecks', 'auto')
+    Check 'auto: a ruleset it made is left as it was when there is no merged pull request' ($r.Changes.Count -eq 0 -and $r.Output -match 'ours: skipped \(-RequireChecks auto found no pull request') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'nothingPassed', '-RequireChecks', 'auto')
+    Check 'auto: a pull request with no check a ruleset can require is skipped, with a clear message' ($r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape('nothingPassed: skipped (no check that passed on pull request #5 can be required; name the jobs with -RequireChecks)')) "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-All', '-RequireChecks', 'auto', '-WhatIf')
+    Check 'auto: works with -All, reading each repository''s own pull request' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match 'fresh: skipped \(-RequireChecks auto found no pull request' -and $r.Output -match 'owned: left alone') $r.Output
+
     # 7. -All.
     $r = Invoke-Baseline @('-All')
     Check 'all: skips archived repositories and forks' (($r.Output -notmatch 'old') -and ($r.Output -notmatch 'forked') -and ($r.Output -match 'done: fresh') -and ($r.Output -match 'owned: left alone')) $r.Output
@@ -222,6 +300,8 @@ try {
     Check 'params: needs -Repo or -All' ($r.ExitCode -ne 0 -and $r.Output -match 'Pass -Repo <name> or -All') $r.Output
     $r = Invoke-Baseline @('-All', '-RequireChecks', 'test')
     Check 'params: -RequireChecks needs -Repo' ($r.ExitCode -ne 0 -and $r.Changes.Count -eq 0 -and $r.Output -match '-RequireChecks needs -Repo') $r.Output
+    $r = Invoke-Baseline @('-Repo', 'autoChecks', '-RequireChecks', 'auto,test')
+    Check 'params: -RequireChecks auto takes no job names' ($r.ExitCode -ne 0 -and $r.Changes.Count -eq 0 -and $r.Output -match 'pass auto alone') $r.Output
     $r = Invoke-Baseline @('-Repo', 'fresh', '-Owner', 'someone')
     Check 'params: -Owner picks the owner of the repository' (($r.Changes -join '|') -like '*BODY POST repos/someone/fresh/rulesets*') ($r.Changes -join '|')
 }
