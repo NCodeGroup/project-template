@@ -68,6 +68,14 @@ if ($All -and $RequireChecks.Count -and -not $autoChecks) { throw '-RequireCheck
 $rulesetName = 'Protect main'
 # GitHub Actions' app id: required checks are matched to the app that reports them.
 $actionsAppId = 15368
+# -RequireChecks auto never requires these checks, whatever app reported them or event ran them: each name pattern
+# (matched with -like) maps to the reason it lists. CodeQL's Analyze jobs go by name too: a repository's own CodeQL
+# workflow runs them on pull_request.
+$excludedChecks = [ordered]@{
+    'Code review' = "the review bot's advice"
+    'CodeQL' = 'the code-scanning rule covers it'
+    'Analyze (*)' = 'the code-scanning rule covers it'
+}
 
 function Invoke-GhJson([string[]]$GhArgs) {
     $out = & gh @GhArgs
@@ -123,10 +131,8 @@ function Get-PassingChecks([string]$Name, [string]$Branch) {
     foreach ($group in $runs | Group-Object name | Sort-Object Name) {
         $checkName = $group.Name
         $why = $null
-        if ($checkName -eq 'Code review') { $why = "the review bot's advice" }
-        # CodeQL's Analyze jobs go by name too: a repository's own CodeQL workflow runs them on pull_request.
-        elseif ($checkName -eq 'CodeQL' -or $checkName -like 'Analyze (*)') { $why = 'the code-scanning rule covers it' }
-        else {
+        foreach ($pattern in $excludedChecks.Keys) { if ($checkName -like $pattern) { $why = $excludedChecks[$pattern]; break } }
+        if (-not $why) {
             $ours = @($group.Group | Where-Object { $_.app.id -eq $actionsAppId -and $events["$($_.check_suite.id)"] -eq 'pull_request' })
             if (-not $ours.Count) {
                 $other = $group.Group | Sort-Object { [long]$_.id } -Descending | Select-Object -First 1
