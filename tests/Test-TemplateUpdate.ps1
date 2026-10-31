@@ -17,16 +17,18 @@
     Prints PASS or FAIL per check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated. Defaults to project-template-update-notice-test in the temp folder.
+    The scratch folder, deleted and recreated. Defaults to project-template-update-notice-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
 
 .EXAMPLE
     .\tests\Test-TemplateUpdate.ps1
 #>
 [CmdletBinding()]
 param(
-    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-update-notice-test')
+    [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-update-notice-test-$PID")
 )
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -290,6 +292,7 @@ finally {
 }
 
 ''
-if ($failures.Count) { "Template update notice tests: FAILED ($($failures.Count))"; exit 1 }
+if ($failures.Count) { "Kept the work folder: $Work"; "Template update notice tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Template update notice tests: PASSED'
 exit 0
