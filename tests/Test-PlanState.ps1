@@ -137,7 +137,7 @@ Check 'next: finished steps without a review run review-plan-diff' $r.Ok $r.Deta
 
 # 5. Reviewed at the current HEAD, with no AGENTS.md.
 Write-Text $planFile (New-PlanText 'x' (Get-Head $repo))
-$r = Test-State (Get-State $repo) @{ landing = 'integrate=pull-request release=none changelog=CHANGELOG.md draft=no follow-ups=issues follow-up-label=follow-up gate=none protect=none pr-format=none' }
+$r = Test-State (Get-State $repo) @{ landing = 'integrate=pull-request release=none changelog=CHANGELOG.md draft=no follow-ups=issues follow-up-label=follow-up gate=none protect=none pr-format=none review-bots=ncode-review max-review-rounds=3' }
 Check 'local: the default landing policy applies without AGENTS.md' $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ reviewed = 'current'; pr = '-'; merge = '-'; next = 'ship-plan' }
 Check 'next: a reviewed plan is shipped' $r.Ok $r.Detail
@@ -162,6 +162,8 @@ Write-Text (Join-Path $repo 'AGENTS.md') @'
 - gate: `./build/dod.ps1 -Fast -Affected`
 - protect: hook
 - pr-format: `AGENTS.md#Pull requests`
+- review-bots: ncode-review[bot], coderabbitai
+- max-review-rounds: `5`
 '@
 Push-Location $repo
 try { Invoke-Git add AGENTS.md; Invoke-Git commit -q -m 'Add AGENTS.md' }
@@ -170,8 +172,13 @@ Write-Text $planFile (New-PlanText 'x' (Get-Head $repo))
 Push-Location $repo
 try { Invoke-Git commit -q --allow-empty -m 'Re-plan step 2: B' }
 finally { Pop-Location }
-$r = Test-State (Get-State $repo) @{ landing = 'integrate=direct release=tag+release changelog=docs/CHANGES.md draft=yes follow-ups=owner/backlog follow-up-label="tech debt" gate="./build/dod.ps1 -Fast -Affected" protect=hook pr-format="AGENTS.md#Pull requests"' }
+$r = Test-State (Get-State $repo) @{ landing = 'integrate=direct release=tag+release changelog=docs/CHANGES.md draft=yes follow-ups=owner/backlog follow-up-label="tech debt" gate="./build/dod.ps1 -Fast -Affected" protect=hook pr-format="AGENTS.md#Pull requests" review-bots=ncode-review,coderabbitai max-review-rounds=5' }
 Check 'local: reads the Landing section of AGENTS.md' $r.Ok $r.Detail
+$agentsText = [IO.File]::ReadAllText((Join-Path $repo 'AGENTS.md'))
+Write-Text (Join-Path $repo 'AGENTS.md') $agentsText.Replace('- review-bots: ncode-review[bot], coderabbitai', '- review-bots: none').Replace('- max-review-rounds: `5`', '- max-review-rounds: many')
+$r = Test-State (Get-State $repo -NoFetch) @{ landing = 'integrate=direct release=tag+release changelog=docs/CHANGES.md draft=yes follow-ups=owner/backlog follow-up-label="tech debt" gate="./build/dod.ps1 -Fast -Affected" protect=hook pr-format="AGENTS.md#Pull requests" review-bots=none max-review-rounds=3' }
+Check 'local: review-bots none names no bot, and a max-review-rounds that is not a whole number reads as 3' $r.Ok $r.Detail
+Write-Text (Join-Path $repo 'AGENTS.md') $agentsText
 $r = Test-State (Get-State $repo) @{ protected = 'unknown' }
 Check 'protected: protect hook without the hook enabled, on another host, is unknown' $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ reviewed = 'current'; next = 'ship-plan' }

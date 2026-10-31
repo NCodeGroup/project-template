@@ -75,6 +75,8 @@ The four VS Code agent templates are variant-neutral; the installer renders each
 | [_plan-format.md](_plan-format.md) | The PLAN.md handoff contract: writing rules for a weaker executor plus the exact Markdown structure the step runner parses |
 | [_issue-kinds.md](_issue-kinds.md) | The table that maps an issue's labels to a kind of plan, included in `plan-issue` and `triage-issues` |
 | [_changelog.md](_changelog.md) | The changelog rules: the Keep a Changelog format, what a plan's last step writes for each format, and the links; included in the plan format and `ship-plan` |
+| [_review-bot.md](_review-bot.md) | The rules that make a review thread an NCode Review finding (the `ncode-review` bot in both login forms, its hidden `ncode-review:finding` marker, the default branch's `code-review.yml` and the `review-bots` Landing key) and sort it as one to act on, a nit, protected or for you, with at most two `Autopilot:` replies per thread; included in `run-issues`, `run-issues-copilot` and `continue-plan` |
+| [_protected-paths.md](_protected-paths.md) | The paths a bot's finding never changes: `.github/`, `.template/`, `.claude/`, `.githooks/`, `build/`, `*.props`, `*.targets`, `global.json`, dependency manifests and lock files; included in `_review-bot.md` and `address-feedback` |
 | [PLAN.example.md](PLAN.example.md) | A complete three-step plan for the demo project that personal-notes' `New-AgentTestRepo.ps1` creates — the format in practice, and the runner's test fixture |
 | [_claude-worktree-create.md](_claude-worktree-create.md), [_claude-worktree-join.md](_claude-worktree-join.md), [_claude-worktree-finish.md](_claude-worktree-finish.md) | The Claude Code plan-worktree sections ([Claude Code Plan Worktrees](#claude-code-plan-worktrees)) |
 
