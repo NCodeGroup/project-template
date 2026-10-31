@@ -12,7 +12,8 @@
         configured for the repository a code-scanning rule that blocks a pull request whose CodeQL results add an alert
         at warning level or above or a security alert of any severity, and, when -RequireChecks names them, those CI
         jobs as required status checks, which must pass on a branch that is up to date with the default branch;
-      - switches CodeQL's default setup, when it read it as configured, to the extended query suite;
+      - switches CodeQL's default setup, when it read it as configured, to the extended query suite, before it writes the
+        ruleset, so a switch that fails leaves the repository for the next run to retry;
       - turns on "delete branch on merge".
 
     A repository that already has an active ruleset requiring pull requests on its default branch is left alone, because
@@ -170,6 +171,13 @@ function Set-Baseline {
     $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) { Write-Host "would: $summary"; return }
 
+    # The suite switch comes first: once the ruleset has its code-scanning rule, a later run no longer reads the default
+    # setup, so a switch that failed after it could never be retried.
+    if ($suite) {
+        & gh api -X PATCH "repos/$Owner/$Name/code-scanning/default-setup" -f query_suite=extended | Out-Null
+        if ($LASTEXITCODE) { throw "Couldn't switch CodeQL's default setup to the extended query suite for $Name; its ruleset and delete-branch-on-merge were left as they were, so run it again." }
+    }
+
     # gh reads the body from a file: piping JSON into a function loses stdin.
     $file = New-TemporaryFile
     try {
@@ -180,10 +188,6 @@ function Set-Baseline {
     } finally { Remove-Item -LiteralPath $file -Force }
     & gh api -X PATCH "repos/$Owner/$Name" -F delete_branch_on_merge=true | Out-Null
     if ($LASTEXITCODE) { throw "Couldn't turn on delete-branch-on-merge for $Name." }
-    if ($suite) {
-        & gh api -X PATCH "repos/$Owner/$Name/code-scanning/default-setup" -f query_suite=extended | Out-Null
-        if ($LASTEXITCODE) { throw "Couldn't switch CodeQL's default setup to the extended query suite for $Name." }
-    }
     Write-Host "done: $summary"
 }
 

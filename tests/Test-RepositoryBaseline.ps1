@@ -143,7 +143,7 @@ try {
     # 2. A repository with no ruleset.
     $r = Invoke-Baseline @('-Repo', 'fresh')
     $types = @($r.Body.rules.type)
-    Check 'create: posts one ruleset, turns on delete-branch-on-merge and switches CodeQL to the extended suite' (($r.Changes -join '|') -eq 'BODY POST repos/NCodeGroup/fresh/rulesets|api -X PATCH repos/NCodeGroup/fresh -F delete_branch_on_merge=true|api -X PATCH repos/NCodeGroup/fresh/code-scanning/default-setup -f query_suite=extended') ($r.Changes -join '|')
+    Check 'create: switches CodeQL to the extended suite first, then posts one ruleset and turns on delete-branch-on-merge' (($r.Changes -join '|') -eq 'api -X PATCH repos/NCodeGroup/fresh/code-scanning/default-setup -f query_suite=extended|BODY POST repos/NCodeGroup/fresh/rulesets|api -X PATCH repos/NCodeGroup/fresh -F delete_branch_on_merge=true') ($r.Changes -join '|')
     Check 'create: the summary says CodeQL moves to the extended suite' ($r.Output -match 'switch CodeQL from the default query suite to extended') $r.Output
     Check 'create: protects the default branch and cannot be bypassed' (($r.Body.name -eq 'Protect main') -and ($r.Body.target -eq 'branch') -and ($r.Body.enforcement -eq 'active') -and ($r.Body.conditions.ref_name.include -contains '~DEFAULT_BRANCH') -and ($r.Body.bypass_actors.Count -eq 0))
     Check 'create: no deletion, no force push, a pull request, a code-scanning rule, and nothing more' (($types -join ',') -eq 'deletion,non_fast_forward,pull_request,code_scanning') ($types -join ',')
@@ -160,7 +160,8 @@ try {
     Check 'create: a configured setup that names no query suite is switched to extended, and the summary says so' ((($r.Changes -join '|') -match [regex]::Escape('api -X PATCH repos/NCodeGroup/suiteUnreported/code-scanning/default-setup -f query_suite=extended')) -and $r.Output -match 'switch CodeQL from a query suite it did not report to extended') "$($r.Changes -join '|') $($r.Output)"
 
     $r = Invoke-Baseline @('-Repo', 'switchRefused')
-    Check 'create: a refused switch to the extended suite reports the repository as failed' ($r.Output -match [regex]::Escape("switchRefused: FAILED: Couldn't switch CodeQL's default setup to the extended query suite for switchRefused.") -and $r.Output -notmatch 'done: switchRefused') $r.Output
+    Check 'create: a refused switch to the extended suite reports the repository as failed, and says nothing else changed' ($r.Output -match [regex]::Escape("switchRefused: FAILED: Couldn't switch CodeQL's default setup to the extended query suite for switchRefused; its ruleset and delete-branch-on-merge were left as they were, so run it again.") -and $r.Output -notmatch 'done: switchRefused') $r.Output
+    Check 'create: a refused switch writes no ruleset and leaves delete-branch-on-merge alone, so the next run retries it' (($r.Changes -join '|') -eq 'api -X PATCH repos/NCodeGroup/switchRefused/code-scanning/default-setup -f query_suite=extended') ($r.Changes -join '|')
 
     # 3. Required checks, as one comma-separated string, which is how pwsh -File passes a list.
     $r = Invoke-Baseline @('-Repo', 'fresh', '-RequireChecks', 'build-and-test,Commit attribution')
@@ -190,7 +191,7 @@ try {
 
     # 4. A branch other than main.
     $r = Invoke-Baseline @('-Repo', 'legacy')
-    Check 'create: works for a default branch that is not main' (($r.Changes -join '|') -like 'BODY POST repos/NCodeGroup/legacy/rulesets*') ($r.Changes -join '|')
+    Check 'create: works for a default branch that is not main' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/legacy/rulesets*') ($r.Changes -join '|')
 
     # 5. Repositories left alone.
     $r = Invoke-Baseline @('-Repo', 'owned')
@@ -198,13 +199,13 @@ try {
     $r = Invoke-Baseline @('-Repo', 'ours')
     Check 'alone: a repository that already has Protect main' ($r.Changes.Count -eq 0 -and $r.Output -match "ours: left alone \(already has 'Protect main'\)") $r.Output
     $r = Invoke-Baseline @('-Repo', 'tags')
-    Check 'create: a tag ruleset does not count as protecting the default branch' (($r.Changes -join '|') -like 'BODY POST repos/NCodeGroup/tags/rulesets*') ($r.Changes -join '|')
+    Check 'create: a tag ruleset does not count as protecting the default branch' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/tags/rulesets*') ($r.Changes -join '|')
     $r = Invoke-Baseline @('-Repo', 'noPullRequest')
-    Check 'create: a ruleset without a pull request rule does not count' (($r.Changes -join '|') -like 'BODY POST repos/NCodeGroup/noPullRequest/rulesets*') ($r.Changes -join '|')
+    Check 'create: a ruleset without a pull request rule does not count' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/noPullRequest/rulesets*') ($r.Changes -join '|')
 
     # 6. -RequireChecks updates the ruleset the script made.
     $r = Invoke-Baseline @('-Repo', 'ours', '-RequireChecks', 'test')
-    Check 'update: -RequireChecks changes the ruleset it made, in place' (($r.Changes -join '|') -like 'BODY PUT repos/NCodeGroup/ours/rulesets/101*') ($r.Changes -join '|')
+    Check 'update: -RequireChecks changes the ruleset it made, in place' (($r.Changes -join '|') -like '*BODY PUT repos/NCodeGroup/ours/rulesets/101*') ($r.Changes -join '|')
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
     $r2 = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
     Check 'update: a ruleset with a code-scanning rule keeps it, whatever the default setup says (advanced setup runs CodeQL too)' ((@($r2.Body.rules.type) -contains 'code_scanning') -and $r2.Output -match 'keeps its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"
@@ -222,7 +223,7 @@ try {
     $r = Invoke-Baseline @('-All', '-RequireChecks', 'test')
     Check 'params: -RequireChecks needs -Repo' ($r.ExitCode -ne 0 -and $r.Changes.Count -eq 0 -and $r.Output -match '-RequireChecks needs -Repo') $r.Output
     $r = Invoke-Baseline @('-Repo', 'fresh', '-Owner', 'someone')
-    Check 'params: -Owner picks the owner of the repository' (($r.Changes -join '|') -like 'BODY POST repos/someone/fresh/rulesets*') ($r.Changes -join '|')
+    Check 'params: -Owner picks the owner of the repository' (($r.Changes -join '|') -like '*BODY POST repos/someone/fresh/rulesets*') ($r.Changes -join '|')
 }
 finally { $env:PATH = $savedPath }
 
