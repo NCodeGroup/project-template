@@ -5,7 +5,7 @@
 .DESCRIPTION
     Runs each Test-*.ps1 script in the folder, one after another, each in its own PowerShell process, and decides its
     result by its exit code. Prints PASS or FAIL and the time per suite; under a failed suite, prints its FAIL lines
-    and the path of its full log. Each suite's output goes to a log file in the work folder. Ends with
+    and the path of its full log. Then prints the run's wall-clock time as "Time: <m:ss>". Each suite's output goes to a log file in the work folder. Ends with
     "All tests: PASSED" and exit code 0, or "All tests: FAILED (<n>)" and exit code 1. Exits 1 when the folder has no
     Test-*.ps1 script.
 
@@ -35,6 +35,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $ownWork = -not $PSBoundParameters.ContainsKey('Work')
 $pwsh = (Get-Process -Id $PID).Path
+function Format-Elapsed([TimeSpan]$Elapsed) { '{0}:{1:00}' -f [int][Math]::Floor($Elapsed.TotalMinutes), $Elapsed.Seconds }
+$run = [Diagnostics.Stopwatch]::StartNew()
 
 if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 New-Item -ItemType Directory -Force $Work | Out-Null
@@ -64,7 +66,7 @@ foreach ($script in $scripts) {
 
     $log = Join-Path $Work ($script.BaseName + '.log')
     [IO.File]::WriteAllLines($log, $lines.ToArray(), [Text.UTF8Encoding]::new($false))
-    $time = '{0}:{1:00}' -f [int][Math]::Floor($elapsed.TotalMinutes), $elapsed.Seconds
+    $time = Format-Elapsed $elapsed
     if ($exitCode -eq 0) {
         "PASS  $($script.Name)  $time"
     }
@@ -76,6 +78,7 @@ foreach ($script in $scripts) {
     }
 }
 
+"Time: $(Format-Elapsed $run.Elapsed)"
 ''
 if ($failed) { "All tests: FAILED ($failed)"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }

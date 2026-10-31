@@ -80,6 +80,7 @@ Check 'mixed: shows the failed suite''s FAIL line indented' ($r.Lines -contains 
 Check 'mixed: runs only Test-*.ps1 scripts' (-not $r.Text.Contains('Helper.ps1')) $r.Text
 $log = Join-Path $mixed 'logs\Test-Fail.log'
 Check 'mixed: writes the suite output to its log' ((Test-Path -LiteralPath $log) -and ([IO.File]::ReadAllText($log).Contains('Fail tests: FAILED (1)'))) $r.Text
+Check 'mixed: prints the run''s wall-clock time before the summary' ((@($r.Lines -match '^Time: \d+:\d\d$').Count -eq 1) -and ($r.Lines[-3] -match '^Time: \d+:\d\d$')) $r.Text
 
 $r = Invoke-Runner $dotnet @('-SkipDotnetBuild')
 $log = Join-Path $dotnet 'logs\Test-Dotnet.log'
