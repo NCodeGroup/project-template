@@ -15,6 +15,8 @@ Delegate execution to:
 - Copilot CLI: the `plan-executor` custom agent (or the general-purpose subagent, with its model set through `/subagents`).
 - VS Code: the Implementer agent for your setup.
 
+{{PROMPT:_git-hooks}}
+
 For each step whose heading starts with `### [ ]`, in order:
 
 1. Delegate the step with a self-contained task. The subagent does not see this conversation, so include the step number, the full step text copied from `PLAN.md`, the Context for the executor section, and the instruction to escalate with `[?]` instead of improvising.
