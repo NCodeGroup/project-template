@@ -6,7 +6,7 @@
     Builds a fixture repository that runs .githooks/commit-msg as a pre-commit script hook and checks that the hook
     strips the agent attribution from a commit message. Then checks, for the copy of Get-GitHooksSetup in
     .template\Update-Project.ps1 and the one in tools\adopt\Adoption.psm1, whether .githooks is enabled and which note it returns for the script to warn with in
-    a clone with other hooks, with pre-commit's hooks or config, with a hooks path of its own (local or global) or on a .githooks folder, and with none. Then pushes from a fixture clone to a local bare
+    a clone with other hooks, with only .sample hooks, with pre-commit's hooks or config, with a hooks path of its own (local or global) or on a .githooks folder, and with none. Then pushes from a fixture clone to a local bare
     remote and checks that .githooks/pre-push refuses a push to main only while AGENTS.md's Landing section says protect: hook,
     and lets a branch and a tag through, and refuses the push when awk is missing, run directly with a PATH without it. Then runs .githooks/commit-msg directly and checks that it refuses the commit when grep is missing and lets a message without attribution through. Then checks that the wrapper saved as pre-push.legacy in a clone with pre-commit's pre-push hook refuses a push to main after the same commits were pushed as a branch. Then runs workflow\Get-PlanState.ps1 in fixture clones and checks that its protected line is hook only when the Landing section says protect: hook and Git runs .githooks/pre-push. Prints PASS or FAIL per check and exits 1 on any
     failure.
@@ -109,6 +109,7 @@ $cases = [ordered]@{
     'a pre-commit config without hooks installed gets the pre-commit hook to add' = @{ Config = "repos: []`n"; HooksPath = $false; Note = @('pre-commit install --hook-type commit-msg', 'entry: .githooks/commit-msg') }
     'a pre-commit config that runs the hook gets no note'                        = @{ Hook = $preCommitHook; Config = $config; HooksPath = $false; Note = @() }
     'no hooks enables core.hooksPath'                                            = @{ HooksPath = $true; Note = @() }
+    'only .sample hooks in .git/hooks enable core.hooksPath'                     = @{ Sample = "#!/bin/sh`n"; HooksPath = $true; Note = @() }
     'protect: hook with pre-commit gets the pre-push wrapper to add'             = @{ Hook = $preCommitHook; Config = $config; Agents = $protectAgents; HooksPath = $false; Note = @('says protect: hook', '.git/hooks/pre-push and', '#!/usr/bin/env sh', 'exec .githooks/pre-push "$@"') }
     'protect: hook with pre-commit''s pre-push hook gets the legacy wrapper'     = @{ Hook = $preCommitHook; Config = $config; Agents = $protectAgents; PushHook = $preCommitHook; HooksPath = $false; Note = @('.git/hooks/pre-push.legacy', 'exec .githooks/pre-push "$@"') }
     'protect: hook with the wrapper in place gets no note'                       = @{ Hook = $preCommitHook; Config = $config; Agents = $protectAgents; PushHook = $wrapper; HooksPath = $false; Note = @() }
@@ -136,6 +137,7 @@ foreach ($name in $cases.Keys) {
     try {
         Invoke-Git init -q
         if ($case.Hook) { [IO.File]::WriteAllText((Join-Path $folder '.git\hooks\pre-commit'), $case.Hook, [Text.UTF8Encoding]::new($false)) }
+        if ($case.Sample) { [IO.File]::WriteAllText((Join-Path $folder '.git\hooks\commit-msg.sample'), $case.Sample, [Text.UTF8Encoding]::new($false)) }
         if ($case.Config) { [IO.File]::WriteAllText((Join-Path $folder '.pre-commit-config.yaml'), $case.Config, [Text.UTF8Encoding]::new($false)) }
         if ($case.Agents) { [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), $case.Agents, [Text.UTF8Encoding]::new($false)) }
         if ($case.PushHook) { [IO.File]::WriteAllText((Join-Path $folder '.git\hooks\pre-push'), $case.PushHook, [Text.UTF8Encoding]::new($false)) }
