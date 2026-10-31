@@ -1,11 +1,15 @@
 <#
 .SYNOPSIS
-A stand-in for the GitHub CLI that the run-issues end-to-end test puts on PATH.
+A stand-in for the GitHub CLI that the end-to-end tests put on PATH.
 
 .DESCRIPTION
 Run as `gh <args>`. It keeps its state in JSON files in the `host` folder beside it (`issues.json`, `prs.json`,
-`comments.json`, optional `origin.txt`), logs each call to `host/calls.log`, and fails on calls it doesn't support
-or that /run-issues must never make.
+`comments.json`, optional `threads.json` with the pull requests' review threads, `reviews.json` with their review
+summaries, and `origin.txt`), logs each call to `host/calls.log`, and fails on calls it doesn't support (logged as
+UNSUPPORTED) or that the workflow must never make (logged as FORBIDDEN): merging a pull request, marking it ready,
+closing it, and a GraphQL mutation that resolves a thread, dismisses a review, merges, or changes a pull request or
+a branch. An optional `forbidden.txt` names more commands to refuse, one `<command> <subcommand>` per line, such as
+`pr edit`.
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -44,9 +48,15 @@ function Test-Flag([string[]]$Names) {
 function Get-Field([string]$Key) {
     $list = @($script:CallArgs)
     for ($i = 0; $i -lt $list.Count - 1; $i++) {
-        if ("$($list[$i])" -in '-F', '-f', '--field', '--raw-field') {
+        $flag = "$($list[$i])"
+        if ($flag -in '-F', '-f', '--field', '--raw-field') {
             $pair = "$($list[$i + 1])"
-            if ($pair.StartsWith("$Key=")) { return $pair.Substring($Key.Length + 1) }
+            if ($pair.StartsWith("$Key=")) {
+                $value = $pair.Substring($Key.Length + 1)
+                # As gh does, a typed field (-F) whose value starts with @ is read from that file.
+                if ($flag -in '-F', '--field' -and $value.StartsWith('@') -and $value.Length -gt 1) { return [IO.File]::ReadAllText($value.Substring(1)) }
+                return $value
+            }
         }
     }
     return $null
@@ -99,12 +109,23 @@ function Add-Comment([string]$Kind, [int]$Number, [string]$Path) {
     $comments = @(Read-Json 'comments.json' @())
     $id = 1000 + $comments.Count + 1
     $url = "https://github.com/fixture/app/$Path/$Number#issuecomment-$id"
-    $comments += @{ kind = $Kind; number = $Number; body = (Get-Body); url = $url; author = @{ login = 'fixture-owner' } }
+    $comments += @{ kind = $Kind; number = $Number; body = (Get-Body); url = $url; author = @{ login = 'fixture-owner' }; authorAssociation = 'OWNER' }
     Write-Json 'comments.json' $comments
     return $url
 }
+function Get-CommentNode($Comment) {
+    $association = if ($Comment.authorAssociation) { $Comment.authorAssociation } else { 'OWNER' }
+    return @{ author = $Comment.author; authorAssociation = $association; body = $Comment.body; url = $Comment.url }
+}
 
 if ("$($args[0])" -eq '--version') { 'gh version 2.99.0 (stand-in)'; exit 0 }
+
+$forbiddenFile = Join-Path $hostDir 'forbidden.txt'
+if (Test-Path -LiteralPath $forbiddenFile) {
+    foreach ($line in [IO.File]::ReadAllLines($forbiddenFile)) {
+        if ($line.Trim() -and "$($args[0]) $($args[1])" -eq $line.Trim()) { Stop-Call FORBIDDEN "gh stand-in: $($line.Trim()) is not allowed in this test" }
+    }
+}
 
 switch ("$($args[0]) $($args[1])") {
     'auth status' { 'Logged in to github.com account fixture-owner (stand-in)'; exit 0 }
@@ -172,7 +193,7 @@ switch ("$($args[0]) $($args[1])") {
         $originFile = Join-Path $hostDir 'origin.txt'
         if (Test-Path -LiteralPath $originFile) {
             $originPath = ([IO.File]::ReadAllText($originFile)).Trim()
-            $oid = git -C $originPath rev-parse --verify -q "refs/heads/$head"
+            $oid = git --git-dir=$originPath rev-parse --verify -q "refs/heads/$head"
             if ($LASTEXITCODE -ne 0) { Stop-Call UNSUPPORTED "head branch $head is not on origin" }
         }
         $number = Get-NextNumber
@@ -180,7 +201,7 @@ switch ("$($args[0]) $($args[1])") {
         $prs = @(Read-Json 'prs.json' @())
         $prs += @{
             number = $number; title = (Get-Option '--title', '-t'); body = (Get-Body); state = 'OPEN'
-            isDraft = (Test-Flag '--draft', '-d'); headRefName = $head; baseRefName = $base
+            isDraft = (Test-Flag '--draft', '-d'); headRefName = $head; baseRefName = $base; isCrossRepository = $false
             headRefOid = "$oid"; mergeCommit = $null; url = $url
         }
         Write-Json 'prs.json' $prs
@@ -203,7 +224,7 @@ switch ("$($args[0]) $($args[1])") {
         $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $which -or $_.headRefName -eq $which } | Select-Object -First 1
         if (-not $pr) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
         $pr.comments = @(@(Read-Json 'comments.json' @()) | Where-Object { $_.kind -eq 'pr' -and "$($_.number)" -eq "$($pr.number)" } |
-            ForEach-Object { @{ author = $_.author; body = $_.body; url = $_.url } })
+            ForEach-Object { Get-CommentNode $_ })
         $pr.reviews = @()
         $pr.reviewDecision = ''
         Write-Result $pr
@@ -225,24 +246,47 @@ switch ("$($args[0]) $($args[1])") {
         exit 0
     }
     'api graphql' {
-        $query = Get-Field 'query'
-        $number = Get-Field 'number'
-        $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq "$number" } | Select-Object -First 1
-        if ($query -and $query.Contains('addPullRequestReviewThreadReply')) {
-            $prUrl = if ($pr) { $pr.url } else { 'https://github.com/fixture/app/pull/0' }
-            Write-Result @{ data = @{ addPullRequestReviewThreadReply = @{ comment = @{ url = "$prUrl#discussion_r1" } } } }
+        $query = "$(Get-Field 'query')"
+        if ($query -match '^\s*mutation\b') {
+            $refused = 'resolveReviewThread', 'dismissPullRequestReview', 'mergePullRequest', 'markPullRequestReadyForReview',
+                'convertPullRequestToDraft', 'enablePullRequestAutoMerge', 'closePullRequest', 'updatePullRequest',
+                'minimizeComment', 'updateRef', 'deleteRef'
+            foreach ($name in $refused) { if ($query -match "\b$name\b") { Stop-Call FORBIDDEN "gh stand-in: the mutation $name is not allowed" } }
+            if (-not $query.Contains('addPullRequestReviewThreadReply')) { Stop-Call UNSUPPORTED "gh stand-in: unsupported mutation: $query" }
+            $threadId = Get-Field 'threadId'
+            $threads = @(Read-Json 'threads.json' @())
+            $thread = $threads | Where-Object { "$($_.id)" -eq "$threadId" } | Select-Object -First 1
+            if (-not $thread) { Stop-Call UNSUPPORTED "gh stand-in: no review thread $threadId" }
+            $count = 0
+            foreach ($t in $threads) { $count += @($t.comments).Count }
+            $url = "https://github.com/fixture/app/pull/$($thread.number)#discussion_r$(2000 + $count + 1)"
+            $thread.comments = @($thread.comments) + @(@{ author = @{ login = 'fixture-owner' }; authorAssociation = 'OWNER'; body = "$(Get-Field 'body')"; url = $url })
+            Write-Json 'threads.json' $threads
+            Write-Result @{ data = @{ addPullRequestReviewThreadReply = @{ comment = @{ url = $url } } } }
             exit 0
         }
+        $number = Get-Field 'number'
+        $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq "$number" } | Select-Object -First 1
         if (-not $pr) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+        $none = @{ hasNextPage = $false }
         $nodes = @(@(Read-Json 'comments.json' @()) | Where-Object { $_.kind -eq 'pr' -and "$($_.number)" -eq "$($pr.number)" } |
-            ForEach-Object { @{ author = $_.author; body = $_.body; url = $_.url } })
+            ForEach-Object { Get-CommentNode $_ })
+        $reviews = @(@(Read-Json 'reviews.json' @()) | Where-Object { "$($_.number)" -eq "$($pr.number)" } | ForEach-Object { Get-CommentNode $_ })
+        $threads = @(@(Read-Json 'threads.json' @()) | Where-Object { "$($_.number)" -eq "$($pr.number)" } | ForEach-Object {
+            @{
+                id = $_.id; isResolved = [bool]$_.isResolved; isOutdated = [bool]$_.isOutdated; path = $_.path; line = $_.line
+                comments = @{ nodes = @(@($_.comments) | ForEach-Object { Get-CommentNode $_ }) }
+            }
+        })
         Write-Result @{ data = @{ repository = @{ pullRequest = @{
             state = $pr.state; isDraft = $pr.isDraft
-            comments = @{ nodes = $nodes }; reviews = @{ nodes = @() }; reviewThreads = @{ nodes = @() }
+            comments = @{ pageInfo = $none; nodes = $nodes }; reviews = @{ pageInfo = $none; nodes = $reviews }
+            reviewThreads = @{ pageInfo = $none; nodes = $threads }
         } } } }
         exit 0
     }
-    'pr merge' { Stop-Call FORBIDDEN 'pr merge is not allowed in /run-issues' }
-    'pr ready' { Stop-Call FORBIDDEN 'pr ready is not allowed in /run-issues' }
+    'pr merge' { Stop-Call FORBIDDEN 'gh stand-in: pr merge is not allowed' }
+    'pr ready' { Stop-Call FORBIDDEN 'gh stand-in: pr ready is not allowed' }
+    'pr close' { Stop-Call FORBIDDEN 'gh stand-in: pr close is not allowed' }
     default { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
 }
