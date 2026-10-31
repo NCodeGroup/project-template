@@ -130,8 +130,8 @@ foreach ($case in $cases) {
     Check "${name}: the code review caller is there only when asked for" ((Test-Path -LiteralPath $reviewCaller) -eq $wantsReview) "exists=$(Test-Path -LiteralPath $reviewCaller) wanted=$wantsReview"
     if ($wantsReview) {
         $caller = Get-Content -LiteralPath $reviewCaller -Raw
-        $uses = [regex]::Matches($caller, '(?m)^\s+uses: NCodeGroup/code-review@(\S+)\s*$')
-        Check "${name}: the code review caller pins an exact release tag" ($uses.Count -eq 1 -and $uses[0].Groups[1].Value -match '^v\d+\.\d+\.\d+$') ($uses | ForEach-Object Value)
+        $uses = [regex]::Matches($caller, '(?m)^\s+uses: NCodeGroup/code-review@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        Check "${name}: the code review caller pins a release's full commit SHA, with its tag in a comment" ($uses.Count -eq 1 -and $uses[0].Groups[1].Value -match '^[0-9a-f]{40}$' -and $uses[0].Groups[2].Value -match '^# v\d+\.\d+\.\d+$') ($uses | ForEach-Object Value)
         Check "${name}: the code review caller runs from the default branch, in its environment, with no permissions by default" ($caller.Contains('pull_request_target:') -and $caller.Contains('environment: code-review') -and $caller -match '(?m)^permissions: \{\}?$' -and -not $caller.Contains('pull_request:')) $caller
         $checkouts = [regex]::Matches($caller, '(?m)^\s+uses: actions/checkout@').Count
         Check "${name}: the code review caller checks out only the default branch, without persisted credentials, and never the pull request's head" ($checkouts -eq 1 -and [regex]::Matches($caller, '(?m)^\s+persist-credentials: false\r?$').Count -eq 1 -and -not $caller.Contains('refs/pull/') -and -not $caller.Contains('head.sha')) $caller
