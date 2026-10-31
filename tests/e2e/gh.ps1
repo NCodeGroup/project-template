@@ -113,9 +113,9 @@ function Add-Comment([string]$Kind, [int]$Number, [string]$Path) {
     Write-Json 'comments.json' $comments
     return $url
 }
+# A comment without an authorAssociation is served without one, never as the owner's.
 function Get-CommentNode($Comment) {
-    $association = if ($Comment.authorAssociation) { $Comment.authorAssociation } else { 'OWNER' }
-    return @{ author = $Comment.author; authorAssociation = $association; body = $Comment.body; url = $Comment.url }
+    return @{ author = $Comment.author; authorAssociation = $Comment.authorAssociation; body = $Comment.body; url = $Comment.url }
 }
 
 if ("$($args[0])" -eq '--version') { 'gh version 2.99.0 (stand-in)'; exit 0 }

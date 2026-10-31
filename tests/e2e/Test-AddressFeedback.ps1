@@ -213,6 +213,16 @@ exit 0
             -not ($data.comments.pageInfo.hasNextPage -or $data.reviews.pageInfo.hasNextPage -or $data.reviewThreads.pageInfo.hasNextPage)
         Check 'fixture: the command''s query reads two comments and three open threads, one already answered, each with its authorAssociation' ([bool]$ok) "comments=$(@($data.comments.nodes).Count) threads=$(@($data.reviewThreads.nodes).Count) answered=$($answered.Count)"
 
+        # The authorAssociation check above can fail only if the stand-in serves a missing association as missing.
+        $commentsFile = Join-Path $hostDir 'comments.json'
+        $commentsText = [IO.File]::ReadAllText($commentsFile)
+        $stray = @{ kind = 'pr'; number = 1; url = "$prUrl#issuecomment-1999"; author = @{ login = 'no-association' }; body = 'A comment with no authorAssociation.' }
+        Write-Text $commentsFile (ConvertTo-Json -InputObject (@(Read-HostJson $hostDir 'comments.json') + @($stray)) -Depth 10)
+        $strayNodes = @()
+        if ($readQuery) { $strayNodes = @((gh api graphql -F 'owner={owner}' -F 'name={repo}' -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json).data.repository.pullRequest.comments.nodes | Where-Object { $_.url -eq $stray.url }) }
+        Check 'fixture: the stand-in serves a comment with no authorAssociation without one, not as the owner''s' ($strayNodes.Count -eq 1 -and -not $strayNodes[0].authorAssociation) "nodes=$($strayNodes.Count) authorAssociation='$($strayNodes[0].authorAssociation)'"
+        Write-Text $commentsFile $commentsText
+
         if ($replyQuery) {
             $bodyFile = Join-Path $Work 'reply.md'
             Write-Text $bodyFile 'Autopilot: a reply from the setup check.'
