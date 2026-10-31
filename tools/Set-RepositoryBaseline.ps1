@@ -31,7 +31,8 @@
     since a skipped required check counts as passing. The template's "Commit attribution" job is required this way
     wherever it ran on that pull request and passed, so a commit with an AI co-author trailer can't merge. A repository
     with no merged pull request, or none of whose checks qualify, is skipped with the reason and nothing changed. With
-    -WhatIf it lists the checks and prints the command that names them, to edit and run.
+    -WhatIf it lists the checks and prints the command that names them, to edit and run; a job whose name has a comma is
+    listed apart, since -RequireChecks would split it.
 
     GitHub Free doesn't offer organization rulesets, so this applies one to each repository. New-Project.ps1 runs it for a
     repository it creates; Adopt-Project.ps1 prints the command to run.
@@ -72,6 +73,12 @@ function Invoke-GhJson([string[]]$GhArgs) {
     if ($out) { $out | ConvertFrom-Json } else { $null }
 }
 
+# Reads every page of a list the API pages, and returns the items under $Key from all of them: one page holds at most
+# 100, and a list cut short would quietly leave checks out.
+function Get-GhPagedItems([string]$Path, [string]$Key) {
+    @(Invoke-GhJson @('api', '--paginate', '--slurp', $Path) | ForEach-Object { $_.$Key } | Where-Object { $_ })
+}
+
 # Calls the host's API and returns the HTTP status and the body. The status comes from the response's own status line
 # (--include), never from the CLI's wording, and stderr stays out of the body, so a warning can't spoil the JSON. A call
 # that got no response at all (no network, no login) has no status.
@@ -96,15 +103,15 @@ function Get-Targets {
 # its number, the checks a ruleset can require, and the others with the reason each is left out; $null when no pull
 # request was merged into it. A required check is matched to GitHub Actions, so only the Actions jobs a pull_request
 # event ran qualify: pull_request_target (the review bot's job), CodeQL's dynamic Analyze jobs and push-only jobs don't
-# run on every pull request.
+# run on every pull request. It reads every page of the check runs and workflow runs.
 function Get-PassingChecks([string]$Name, [string]$Branch) {
     $pulls = @(Invoke-GhJson @('api', "repos/$Owner/$Name/pulls?state=closed&base=$Branch&sort=updated&direction=desc&per_page=100"))
     $latest = $pulls | Where-Object { $_.merged_at } | Sort-Object { [datetime]$_.merged_at } -Descending | Select-Object -First 1
     if (-not $latest) { return $null }
     $sha = $latest.head.sha
-    $runs = @((Invoke-GhJson @('api', "repos/$Owner/$Name/commits/$sha/check-runs?per_page=100")).check_runs | Where-Object { $_ })
+    $runs = Get-GhPagedItems "repos/$Owner/$Name/commits/$sha/check-runs?per_page=100" 'check_runs'
     $events = @{}
-    foreach ($run in @((Invoke-GhJson @('api', "repos/$Owner/$Name/actions/runs?head_sha=$sha&per_page=100")).workflow_runs | Where-Object { $_ })) {
+    foreach ($run in Get-GhPagedItems "repos/$Owner/$Name/actions/runs?head_sha=$sha&per_page=100" 'workflow_runs') {
         $events["$($run.check_suite_id)"] = "$($run.event)"
     }
     $passed = [Collections.Generic.List[string]]::new()
@@ -113,7 +120,8 @@ function Get-PassingChecks([string]$Name, [string]$Branch) {
         $name = $group.Name
         $why = $null
         if ($name -eq 'Code review') { $why = "the review bot's advice" }
-        elseif ($name -eq 'CodeQL') { $why = 'the code-scanning rule covers it' }
+        # CodeQL's Analyze jobs go by name too: a repository's own CodeQL workflow runs them on pull_request.
+        elseif ($name -eq 'CodeQL' -or $name -like 'Analyze (*)') { $why = 'the code-scanning rule covers it' }
         else {
             $ours = @($group.Group | Where-Object { $_.app.id -eq $actionsAppId -and $events["$($_.check_suite.id)"] -eq 'pull_request' })
             if (-not $ours.Count) {
@@ -233,7 +241,15 @@ function Set-Baseline {
     $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) {
         Write-Host "would: $summary"
-        if ($autoChecks) { Write-Host "  to require them by name: $PSCommandPath -Repo $Name -Owner $Owner -RequireChecks '$(($checks -join ',').Replace("'", "''"))'" }
+        if ($autoChecks) {
+            # Quoted for PowerShell, which ends a single-quoted string at any of its single quotes, not just '. A name
+            # with a comma can't be named: -RequireChecks splits it in two.
+            $quote = { param($text) "'$([Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($text))'" }
+            $named = @($checks | Where-Object { $_ -notlike '*,*' })
+            if ($named.Count) { Write-Host "  to require them by name: & $(& $quote $PSCommandPath) -Repo $(& $quote $Name) -Owner $(& $quote $Owner) -RequireChecks $(& $quote ($named -join ','))" }
+            $unnamed = @($checks | Where-Object { $_ -like '*,*' })
+            if ($unnamed.Count) { Write-Host "  left out of that command, since -RequireChecks splits a name at its comma: $($unnamed -join '; ')" }
+        }
         return
     }
 

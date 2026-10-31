@@ -9,11 +9,12 @@
     no bypass, and delete-branch-on-merge; that -RequireChecks adds required status checks; that a repository whose
     default branch already requires pull requests, or already has this ruleset, is left alone, and that -RequireChecks
     updates the ruleset the script made; that -RequireChecks auto requires the GitHub Actions checks that passed on the
-    latest merged pull request, Commit attribution among them, leaves out the review bot's Code review and its job,
-    CodeQL and its Analyze jobs, other apps' checks and skipped, neutral, failed or unfinished ones, lists them with
-    -WhatIf with the command that names them, and skips a repository with no merged pull request or no check to
-    require; that -All skips archived repositories and forks; and that bad parameters
-    stop it. Prints PASS or FAIL per check and exits 1 on any failure.
+    latest merged pull request, reading every page of its check runs and workflow runs, Commit attribution among them,
+    leaves out the review bot's Code review and its job, CodeQL and its Analyze jobs, push-only jobs, jobs no workflow
+    run accounts for, other apps' checks and skipped, neutral, failed or unfinished ones, lists them with -WhatIf with a
+    command that names them, quoted so it parses, gives each repository its own checks with -All, and skips a repository
+    with no merged pull request or no check to require; that -All skips archived repositories and forks; and that bad
+    parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-baseline-test in the temp folder.
@@ -45,13 +46,21 @@ $data = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'repos.json') | C
 if ($args[0] -eq 'repo' -and $args[1] -eq 'list') { ConvertTo-Json -InputObject @($data.list) -Depth 5; exit 0 }
 if ($args[0] -ne 'api') { exit 1 }
 $method = 'GET'
-$rest = @($args[1..($args.Count - 1)] | Where-Object { $_ -ne '--include' })
+$rest = @($args[1..($args.Count - 1)] | Where-Object { $_ -notin '--include', '--paginate', '--slurp' })
 $include = $args -contains '--include'
+# Lists come in pages of 5 here, so a few check runs already span pages. --paginate --slurp answers every page, as an
+# array; without it only the first page comes back.
+$paginate = $args -contains '--paginate' -and $args -contains '--slurp'
+function Out-Pages([string]$Key, $Items) {
+    $pages = @(for ($i = 0; $i -lt [Math]::Max(1, $Items.Count); $i += 5) { @{ total_count = $Items.Count; $Key = @($Items | Select-Object -Skip $i -First 5) } })
+    if ($paginate) { ConvertTo-Json -InputObject $pages -Depth 8 } else { ConvertTo-Json -InputObject $pages[0] -Depth 8 }
+}
 if ($rest[0] -eq '-X') { $method = $rest[1]; $rest = @($rest[2..($rest.Count - 1)]) }
 $path = $rest[0]
 if ($rest -contains '--input') {
     $file = $rest[[array]::IndexOf($rest, '--input') + 1]
     Copy-Item -LiteralPath $file -Destination (Join-Path $PSScriptRoot 'posted.json') -Force
+    if ($path -match '^repos/[^/]+/([^/]+)/rulesets') { Copy-Item -LiteralPath $file -Destination (Join-Path $PSScriptRoot "posted-$($Matches[1]).json") -Force }
     Add-Content -LiteralPath $log -Value "BODY $method $path"
     '{}'; exit 0
 }
@@ -81,12 +90,10 @@ if ($path -match '^repos/[^/]+/([^/]+)/rulesets$') { ConvertTo-Json -InputObject
 # Pull requests, and the check runs and workflow runs of a commit, for -RequireChecks auto.
 if ($path -match '^repos/[^/]+/([^/]+)/pulls\?') { ConvertTo-Json -InputObject @($data.repos[$Matches[1]].pulls | Where-Object { $_ }) -Depth 5; exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)/commits/([^/]+)/check-runs\?') {
-    $runs = @($data.repos[$Matches[1]].checkRuns[$Matches[2]] | Where-Object { $_ })
-    ConvertTo-Json -InputObject @{ total_count = $runs.Count; check_runs = $runs } -Depth 6; exit 0
+    Out-Pages 'check_runs' @($data.repos[$Matches[1]].checkRuns[$Matches[2]] | Where-Object { $_ }); exit 0
 }
 if ($path -match '^repos/[^/]+/([^/]+)/actions/runs\?head_sha=([^&]+)') {
-    $runs = @($data.repos[$Matches[1]].workflowRuns[$Matches[2]] | Where-Object { $_ })
-    ConvertTo-Json -InputObject @{ total_count = $runs.Count; workflow_runs = $runs } -Depth 6; exit 0
+    Out-Pages 'workflow_runs' @($data.repos[$Matches[1]].workflowRuns[$Matches[2]] | Where-Object { $_ }); exit 0
 }
 if ($path -match '^repos/[^/]+/([^/]+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].info -Depth 5; exit 0 }
 exit 1
@@ -109,12 +116,16 @@ function New-Pull([int]$Number, [string]$Sha, [string]$MergedAt) { @{ number = $
 function New-CheckRun([long]$Id, [string]$Name, [string]$Conclusion = 'success', [long]$Suite = 1, [long]$App = 15368, [string]$Slug = 'github-actions', [string]$Status = 'completed') {
     @{ id = $Id; name = $Name; status = $Status; conclusion = if ($Status -eq 'completed') { $Conclusion } else { $null }; app = @{ id = $App; slug = $Slug }; check_suite = @{ id = $Suite } }
 }
-# The workflow runs on a pull request's head commit: its CI (suite 1), the review bot's job (suite 2) and CodeQL's
-# default setup (suite 3), as GitHub reports them.
+# The workflow runs on a pull request's head commit: its CI (suite 1), the review bot's job (suite 2), CodeQL's default
+# setup (suite 3), a push-only workflow (suite 4) and scheduled runs, as GitHub reports them. CI comes last, on the
+# second page.
 $prWorkflowRuns = @(
-    @{ check_suite_id = 1; name = 'CI'; event = 'pull_request' },
     @{ check_suite_id = 2; name = 'Code review'; event = 'pull_request_target' },
-    @{ check_suite_id = 3; name = 'PR #9'; event = 'dynamic' })
+    @{ check_suite_id = 3; name = 'PR #9'; event = 'dynamic' },
+    @{ check_suite_id = 4; name = 'Deploy'; event = 'push' },
+    @{ check_suite_id = 5; name = 'Nightly'; event = 'schedule' },
+    @{ check_suite_id = 6; name = 'Nightly'; event = 'schedule' },
+    @{ check_suite_id = 1; name = 'CI'; event = 'pull_request' })
 # The latest merged pull request (#9) is neither the first one listed nor the latest one closed (#10, not merged).
 $autoPulls = @((New-Pull 7 'sha7' '2026-10-01T10:00:00Z'), (New-Pull 10 'sha10' ''), (New-Pull 9 'sha9' '2026-10-20T10:00:00Z'))
 $autoRuns = @{
@@ -132,7 +143,10 @@ $autoRuns = @{
         (New-CheckRun 9 'review' -Suite 2),
         (New-CheckRun 10 'CodeQL' -Suite 60 -App 57789 -Slug 'github-advanced-security'),
         (New-CheckRun 11 'Analyze (csharp)' -Suite 3),
-        (New-CheckRun 12 'external' -Suite 70 -App 999 -Slug 'other-ci'))
+        (New-CheckRun 12 'external' -Suite 70 -App 999 -Slug 'other-ci'),
+        (New-CheckRun 13 'Analyze (python)'),
+        (New-CheckRun 14 'deploy' -Suite 4),
+        (New-CheckRun 15 'orphan' -Suite 80))
 }
 $autoWorkflowRuns = @{ sha7 = $prWorkflowRuns; sha9 = $prWorkflowRuns }
 $repos = @{
@@ -158,11 +172,15 @@ $repos = @{
     oursAuto = New-Repo -Rulesets @((New-Ruleset 'Protect main')) -Pulls $autoPulls -CheckRuns $autoRuns -WorkflowRuns $autoWorkflowRuns
     noMergedPull = New-Repo -Pulls @((New-Pull 4 'sha4' ''))
     nothingPassed = New-Repo -Pulls @((New-Pull 5 'sha5' '2026-10-02T10:00:00Z')) -CheckRuns @{ sha5 = @((New-CheckRun 1 'lint' 'skipped'), (New-CheckRun 2 'Code review' 'neutral' -Suite 50 -App 5534990 -Slug 'ncode-review'), (New-CheckRun 3 'CodeQL' -Suite 60 -App 57789 -Slug 'github-advanced-security')) } -WorkflowRuns @{ sha5 = $prWorkflowRuns }
+    # Job names the printed command has to quote, or can't name at all.
+    oddNames = New-Repo -Pulls @((New-Pull 6 'sha6' '2026-10-03T10:00:00Z')) -CheckRuns @{ sha6 = @((New-CheckRun 1 "it's fine"), (New-CheckRun 2 'a, b'), (New-CheckRun 3 'plain')) } -WorkflowRuns @{ sha6 = $prWorkflowRuns }
+    # A second repository with checks of its own, for -All -RequireChecks auto.
+    autoOther = New-Repo -Pulls @((New-Pull 3 'sha3' '2026-10-04T10:00:00Z')) -CheckRuns @{ sha3 = @((New-CheckRun 1 'other-build')) } -WorkflowRuns @{ sha3 = $prWorkflowRuns }
 }
 Write-Text (Join-Path $bin 'repos.json') (ConvertTo-Json -Depth 12 -InputObject @{
     repos = $repos
     list = @(
-        foreach ($name in 'fresh', 'old', 'forked', 'owned') {
+        foreach ($name in 'fresh', 'old', 'forked', 'owned', 'autoChecks', 'autoOther') {
             @{ name = $name; isArchived = $repos[$name].info.archived; isFork = $repos[$name].info.fork }
         })
 })
@@ -171,7 +189,7 @@ $script = Join-Path $repoRoot 'tools/Set-RepositoryBaseline.ps1'
 $calls = Join-Path $bin 'calls.log'
 $posted = Join-Path $bin 'posted.json'
 function Invoke-Baseline([string[]]$Arguments) {
-    foreach ($file in $calls, $posted) { if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force } }
+    foreach ($file in @($calls, $posted) + @(Get-ChildItem -LiteralPath $bin -Filter 'posted-*.json' | ForEach-Object FullName)) { if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force } }
     $output = & pwsh -NoProfile -File $script @Arguments 2>&1 | Out-String
     $log = if (Test-Path -LiteralPath $calls) { Get-Content -LiteralPath $calls } else { @() }
     [pscustomobject]@{
@@ -266,11 +284,24 @@ try {
     $r = Invoke-Baseline @('-Repo', 'autoChecks', '-RequireChecks', 'auto', '-WhatIf')
     Check 'auto: -WhatIf changes nothing' ($r.Changes.Count -eq 0) ($r.Changes -join '|')
     Check 'auto: -WhatIf lists the checks that passed on the latest merged pull request, Commit attribution among them' ($r.Output -match [regex]::Escape('autoChecks: pull request #9 passed: build-and-test, Commit attribution, flaky;') -and $r.Output -match [regex]::Escape("would: autoChecks (main): create 'Protect main' with 3 required check(s): build-and-test, Commit attribution, flaky")) $r.Output
-    Check 'auto: -WhatIf prints the command that names them' ($r.Output -match [regex]::Escape("-Repo autoChecks -Owner NCodeGroup -RequireChecks 'build-and-test,Commit attribution,flaky'")) $r.Output
-    foreach ($leftOut in "Code review (the review bot's advice)", 'CodeQL (the code-scanning rule covers it)', 'Analyze (csharp) (ran on dynamic, not pull_request)', 'review (ran on pull_request_target, not pull_request)', 'external (reported by other-ci, not GitHub Actions)', 'lint (skipped)', 'docs (neutral)', 'broken (failure)', 'slow (in_progress)') {
+    Check 'auto: -WhatIf prints the command that names them' ($r.Output -match [regex]::Escape("-Repo 'autoChecks' -Owner 'NCodeGroup' -RequireChecks 'build-and-test,Commit attribution,flaky'")) $r.Output
+    foreach ($leftOut in "Code review (the review bot's advice)", 'CodeQL (the code-scanning rule covers it)', 'Analyze (csharp) (the code-scanning rule covers it)', 'Analyze (python) (the code-scanning rule covers it)', 'review (ran on pull_request_target, not pull_request)', 'deploy (ran on push, not pull_request)', 'orphan (no workflow run on the commit says what ran it)', 'external (reported by other-ci, not GitHub Actions)', 'lint (skipped)', 'docs (neutral)', 'broken (failure)', 'slow (in_progress)') {
         Check "auto: leaves out $leftOut" ($r.Output -match ('left out: .*' + [regex]::Escape($leftOut))) $r.Output
     }
     Check 'auto: reads the latest merged pull request, not an older one' ($r.Output -notmatch 'old-job') $r.Output
+
+    # The printed command has to run as it is: parse it, and read back the script path and the names it passes.
+    $r = Invoke-Baseline @('-Repo', 'oddNames', '-RequireChecks', 'auto', '-WhatIf')
+    $line = ($r.Output -split "`r?`n" | Where-Object { $_ -like '*to require them by name: *' } | Select-Object -First 1) -replace '^.*to require them by name: ', ''
+    $errors = $null
+    $command = [Management.Automation.Language.Parser]::ParseInput("$line", [ref]$null, [ref]$errors).Find({ param($node) $node -is [Management.Automation.Language.CommandAst] }, $true)
+    $elements = if ($command) { @($command.CommandElements) } else { @() }
+    $at = [array]::FindIndex([object[]]$elements, [Predicate[object]] { param($e) $e -is [Management.Automation.Language.CommandParameterAst] -and $e.ParameterName -eq 'RequireChecks' })
+    $named = if ($at -ge 0 -and $at + 1 -lt $elements.Count) { $elements[$at + 1].SafeGetValue() } else { $null }
+    $path = if ($elements.Count) { $elements[0].SafeGetValue() } else { $null }
+    Check 'auto: the printed command parses, with the script path quoted' (-not $errors.Count -and $command.InvocationOperator -eq 'Ampersand' -and $path -and [IO.Path]::GetFullPath($path) -eq [IO.Path]::GetFullPath($script)) $line
+    Check 'auto: the printed command passes a name with a quote as it is' ($named -eq "it's fine,plain") "$named | $line"
+    Check 'auto: a name with a comma is left out of the command, and listed' ($r.Output -match [regex]::Escape('left out of that command, since -RequireChecks splits a name at its comma: a, b')) $r.Output
 
     $r = Invoke-Baseline @('-Repo', 'autoChecks', '-RequireChecks', 'auto')
     $checks = $r.Body.rules | Where-Object type -eq 'required_status_checks'
@@ -290,6 +321,14 @@ try {
 
     $r = Invoke-Baseline @('-All', '-RequireChecks', 'auto', '-WhatIf')
     Check 'auto: works with -All, reading each repository''s own pull request' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match 'fresh: skipped \(-RequireChecks auto found no pull request' -and $r.Output -match 'owned: left alone') $r.Output
+
+    $r = Invoke-Baseline @('-All', '-RequireChecks', 'auto')
+    $each = foreach ($name in 'autoChecks', 'autoOther') {
+        $file = Join-Path $bin "posted-$name.json"
+        $body = if (Test-Path -LiteralPath $file) { Get-Content -Raw -LiteralPath $file | ConvertFrom-Json } else { $null }
+        "${name}=$(@(($body.rules | Where-Object type -eq 'required_status_checks').parameters.required_status_checks.context) -join ',')"
+    }
+    Check 'auto: -All gives each repository the checks of its own pull request' (($each -join '|') -eq 'autoChecks=build-and-test,Commit attribution,flaky|autoOther=other-build' -and $r.Output -match 'fresh: skipped \(-RequireChecks auto found no pull request') "$($each -join '|') $($r.Output)"
 
     # 7. -All.
     $r = Invoke-Baseline @('-All')
