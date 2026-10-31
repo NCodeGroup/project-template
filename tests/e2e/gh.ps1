@@ -9,7 +9,8 @@ summaries, and `origin.txt`), logs each call to `host/calls.log`, and fails on c
 UNSUPPORTED) or that the workflow must never make (logged as FORBIDDEN): merging a pull request, marking it ready,
 closing it, and a GraphQL mutation that resolves a thread, dismisses a review, merges, or changes a pull request or
 a branch. An optional `forbidden.txt` names more commands to refuse, one `<command> <subcommand>` per line, such as
-`pr edit`.
+`pr edit`. An optional `review-seed.json` holds the review threads, review summaries and top-level comments the first
+pull request gets when it is opened.
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -113,6 +114,36 @@ function Add-Comment([string]$Kind, [int]$Number, [string]$Path) {
     Write-Json 'comments.json' $comments
     return $url
 }
+# Gives the first pull request opened the review in host/review-seed.json, then deletes the seed: threads, with the
+# earlier replies a seed thread lists, go to threads.json, review summaries to reviews.json and top-level comments to comments.json.
+# Each keeps the authorAssociation the seed gives it, and has none when the seed gives none.
+function Add-ReviewSeed([int]$Number, [string]$PrUrl) {
+    $seedFile = Join-Path $hostDir 'review-seed.json'
+    if (-not (Test-Path -LiteralPath $seedFile)) { return }
+    $seed = Read-Json 'review-seed.json' @{}
+    $threads = @(Read-Json 'threads.json' @())
+    foreach ($t in @($seed.threads)) {
+        $id = 2000 + $threads.Count + 1
+        $threadComments = @(@{ author = $t.author; authorAssociation = $t.authorAssociation; body = $t.body; url = "$PrUrl#discussion_r$id" })
+        foreach ($reply in $t.replies) { $threadComments += @{ author = $reply.author; authorAssociation = $reply.authorAssociation; body = $reply.body; url = "$PrUrl#discussion_r$id-$($threadComments.Count)" } }
+        $threads += @{
+            id = "PRRT_$id"; key = $t.key; number = $Number; isResolved = $false; isOutdated = $false; path = $t.path; line = $t.line
+            comments = $threadComments
+        }
+    }
+    Write-Json 'threads.json' $threads
+    $reviews = @(Read-Json 'reviews.json' @())
+    foreach ($r in @($seed.reviews)) {
+        $reviews += @{ number = $Number; author = $r.author; authorAssociation = $r.authorAssociation; body = $r.body; url = "$PrUrl#pullrequestreview-$(3000 + $reviews.Count + 1)" }
+    }
+    Write-Json 'reviews.json' $reviews
+    $comments = @(Read-Json 'comments.json' @())
+    foreach ($c in @($seed.comments)) {
+        $comments += @{ kind = 'pr'; key = $c.key; number = $Number; body = $c.body; url = "$PrUrl#issuecomment-$(1000 + $comments.Count + 1)"; author = $c.author; authorAssociation = $c.authorAssociation }
+    }
+    Write-Json 'comments.json' $comments
+    Remove-Item -LiteralPath $seedFile
+}
 # A comment without an authorAssociation is served without one, never as the owner's.
 function Get-CommentNode($Comment) {
     return @{ author = $Comment.author; authorAssociation = $Comment.authorAssociation; body = $Comment.body; url = $Comment.url }
@@ -205,6 +236,7 @@ switch ("$($args[0]) $($args[1])") {
             headRefOid = "$oid"; mergeCommit = $null; url = $url
         }
         Write-Json 'prs.json' $prs
+        Add-ReviewSeed $number $url
         $url
         exit 0
     }
@@ -260,7 +292,7 @@ switch ("$($args[0]) $($args[1])") {
             $count = 0
             foreach ($t in $threads) { $count += @($t.comments).Count }
             $url = "https://github.com/fixture/app/pull/$($thread.number)#discussion_r$(2000 + $count + 1)"
-            $thread.comments = @($thread.comments) + @(@{ author = @{ login = 'fixture-owner' }; authorAssociation = 'OWNER'; body = "$(Get-Field 'body')"; url = $url })
+            $thread.comments = @($thread.comments) + @(@{ author = @{ __typename = 'User'; login = 'fixture-owner' }; authorAssociation = 'OWNER'; body = "$(Get-Field 'body')"; url = $url })
             Write-Json 'threads.json' $threads
             Write-Result @{ data = @{ addPullRequestReviewThreadReply = @{ comment = @{ url = $url } } } }
             exit 0
