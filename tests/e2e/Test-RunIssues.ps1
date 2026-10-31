@@ -122,7 +122,6 @@ if (-not $CheckOnly) {
 }
 
 Use-FixtureEnvironment $Work $bin {
-
     Invoke-Git -C $app fetch -q origin
     $mainBefore = if (Test-Path -LiteralPath (Join-Path $hostDir 'main.txt')) { ([IO.File]::ReadAllText((Join-Path $hostDir 'main.txt'))).Trim() } else { '' }
     $callsPath = Join-Path $hostDir 'calls.log'

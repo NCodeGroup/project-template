@@ -61,6 +61,7 @@ exit 0
     Invoke-Git -C $App commit -q -m 'Add the greeting function and the fixture landing policy'
 
     # The origin gets main by fetching: the template's pre-push hook refuses a push to main.
+    # The bare origin is always named with --git-dir, never -C, which safe.bareRepository=explicit refuses.
     New-Item -ItemType Directory -Force (Split-Path -Parent $Origin) | Out-Null
     Invoke-Git init -q --bare -b main $Origin
     Invoke-Git --git-dir=$Origin fetch -q $App main:main
