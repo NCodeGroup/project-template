@@ -12,8 +12,8 @@
          a refactor or a redesign the plan didn't make), the step goes to re-planning.
       3. Verify: runs the step's "- Done when: `command`" itself; the model's own claim is not trusted. When the plan's
          Context for the executor has a "- Prelude: `command`" line, that command is dot-sourced first in the same
-         PowerShell, and the runner stops with its error when it fails, or when it isn't one command by the rule
-         Get-PlanState.ps1 checks the Landing section's prelude by.
+         PowerShell, and the runner stops with its error when it fails, when the line doesn't hold one command in
+         backticks, or when its command breaks the rule Get-PlanState.ps1 checks the Landing section's prelude by.
          Pass: marks [x] and commits "Plan step N: Title". Fail: retries with the error (-MaxAttempts),
          then marks [!].
       4. Re-plan: with -Replan claude|copilot|local, the planner model runs the replan-step prompt on the
@@ -71,8 +71,12 @@ function Read-Plan { [IO.File]::ReadAllText($planPath) }
 function Write-Plan([string]$Text) { [IO.File]::WriteAllText($planPath, $Text, $utf8) }
 
 # Test-Prelude, the rule Get-PlanState.ps1 checks the Landing section's prelude by, also checks the plan's copy of it.
-$stateScript = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Get-PlanState.ps1'), [ref]$null, [ref]$null)
-. ([scriptblock]::Create($stateScript.Find({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-Prelude' }, $true).Extent.Text))
+function Get-PreludeRule([string]$StateScript) {
+    $rule = if (Test-Path -LiteralPath $StateScript -PathType Leaf) { [Management.Automation.Language.Parser]::ParseFile($StateScript, [ref]$null, [ref]$null).Find({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-Prelude' }, $true) }
+    if (-not $rule) { throw "$StateScript has no Test-Prelude function; Invoke-PlanSteps.ps1 needs the Get-PlanState.ps1 of the same workflow beside it." }
+    [scriptblock]::Create($rule.Extent.Text)
+}
+. (Get-PreludeRule (Join-Path $PSScriptRoot 'Get-PlanState.ps1'))
 
 function Get-PlanStep([string]$Text) {
     $lines = $Text -split "`r?`n"
@@ -114,7 +118,9 @@ function Add-StepLine([string]$Text, [int]$Number, [string[]]$NewLines) {
 
 function Invoke-DoneWhen([string]$Command) {
     # The plan's prelude, from the "- Prelude: `command`" line of its Context for the executor, sets up the shell first.
-    $prelude = [regex]::Match((Read-Plan), '(?m)^\s*-\s*Prelude:\s*`([^`]+)`')
+    $line = [regex]::Match((Read-Plan), '(?m)^\s*-\s*Prelude:(.*)$')
+    $prelude = [regex]::Match($line.Groups[1].Value, '^\s*`([^`]+)`')
+    if ($line.Success -and -not $prelude.Success) { throw "The plan's line '- Prelude:$($line.Groups[1].Value.TrimEnd())' doesn't hold one command in backticks, so no Done-when command can run; write it as - Prelude: ``<command>``, copied from the Landing section of AGENTS.md, and run again." }
     if ($prelude.Success) {
         if (-not (Test-Prelude $prelude.Groups[1].Value $repo)) { throw "The plan's - Prelude: line, $($prelude.Groups[1].Value), isn't a prelude the workflow can run: one command on one line, and a script in the repository that exists when it names one, so no Done-when command can run; copy the prelude from the Landing section of AGENTS.md and run again." }
         $Command = "`$global:LASTEXITCODE = 0; try { . $($prelude.Groups[1].Value) } catch { `$_; `"prelude failed`"; exit 2 }; if (-not `$? -or `$LASTEXITCODE) { `"prelude failed`"; exit 2 }; $Command"

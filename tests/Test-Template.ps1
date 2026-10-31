@@ -580,6 +580,7 @@ New-Item -ItemType Directory -Force $preludeDir | Out-Null
 Set-Content (Join-Path $preludeDir 'env.ps1') '$env:PRELUDE_TEST = "on"; function Get-PreludeTest { "on" }'
 Set-Content (Join-Path $preludeDir 'throws.ps1') 'throw "the prelude broke"'
 Set-Content (Join-Path $preludeDir 'exits.ps1') 'exit 4'
+Set-Content (Join-Path $preludeDir 'exits-zero.ps1') 'exit 0'
 Set-Content (Join-Path $preludeDir 'gate-fails.ps1') 'exit 2'
 Set-Content (Join-Path $preludeDir 'native-fails.ps1') 'pwsh -NoProfile -NonInteractive -Command ''exit 3'''
 # A case's fourth item runs before the wrapper, in the same PowerShell, as an earlier command in a shell the agent keeps would.
@@ -588,6 +589,7 @@ $gateCases = [ordered]@{
     'a prelude command, not a script, that sets up the shell' = @('Set-Item env:PRELUDE_TEST on', 'if ($env:PRELUDE_TEST -eq "on") { exit 0 } else { exit 3 }', 0)
     'a working prelude after a native command that failed'  = @('./env.ps1', 'exit 0', 0, "pwsh -NoProfile -NonInteractive -Command 'exit 5'; ")
     'a prelude that works, then a failing gate'            = @('./env.ps1', './gate-fails.ps1', 1)
+    'a prelude that exits 0, then a failing gate'          = @('./exits-zero.ps1', './gate-fails.ps1', 1)
     'a prelude that throws'                                = @('./throws.ps1', 'exit 0', 2)
     'a prelude that exits non-zero'                        = @('./exits.ps1', 'exit 0', 2)
     'a prelude whose last native command fails'            = @('./native-fails.ps1', 'exit 0', 2)
@@ -605,15 +607,18 @@ $gateFailures = @(foreach ($name in $gateCases.Keys) {
         elseif ($case[2] -eq 2 -and $out.TrimEnd() -notmatch '(^|\n)prelude failed$') { "${name}: the output doesn't end with 'prelude failed'" }
     })
 Check 'workflow: the prelude sets up the gate''s shell, and its failure exits 2 and says so, apart from the gate''s own failure' (-not $gateFailures) ($gateFailures -join '; ')
-$doneWhen = [Management.Automation.Language.Parser]::ParseFile((Join-Path $workflow 'Invoke-PlanSteps.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-DoneWhen' }, $true) | Select-Object -First 1
-$testPrelude = [Management.Automation.Language.Parser]::ParseFile((Join-Path $workflow 'Get-PlanState.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-Prelude' }, $true) | Select-Object -First 1
+$runnerFunctions = [Management.Automation.Language.Parser]::ParseFile((Join-Path $workflow 'Invoke-PlanSteps.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -in 'Invoke-DoneWhen', 'Get-PreludeRule' }, $true)
 $runnerFailures = @(& {
-        # The dot-sourced Invoke-DoneWhen below reads $repo and the plan through Read-Plan, and checks the prelude with Test-Prelude.
+        # The dot-sourced Invoke-DoneWhen below reads $repo and the plan through Read-Plan, and checks the prelude with Test-Prelude, which the runner's own loader, Get-PreludeRule, takes from Get-PlanState.ps1.
         Set-Variable repo $preludeDir
         $planText = ''
         function Read-Plan { $planText }
-        . ([scriptblock]::Create($testPrelude.Extent.Text))
-        . ([scriptblock]::Create($doneWhen.Extent.Text))
+        foreach ($f in $runnerFunctions) { . ([scriptblock]::Create($f.Extent.Text)) }
+        . (Get-PreludeRule (Join-Path $workflow 'Get-PlanState.ps1'))
+        if (-not (Get-Command Test-Prelude -CommandType Function -ErrorAction SilentlyContinue)) { 'Get-PreludeRule does not load Test-Prelude from Get-PlanState.ps1' }
+        $threw = $false
+        try { Get-PreludeRule (Join-Path $preludeDir 'env.ps1') | Out-Null } catch { $threw = "$_" -match 'has no Test-Prelude function' }
+        if (-not $threw) { 'Get-PreludeRule does not stop when the script has no Test-Prelude' }
         $check = 'if ($env:PRELUDE_TEST -eq "on" -and (Get-PreludeTest) -eq "on") { exit 0 } else { exit 3 }'
         $planText = "## Context for the executor`n- Prelude: ``./env.ps1```n- Build: ``none```n"
         $r = Invoke-DoneWhen $check
@@ -636,6 +641,12 @@ $runnerFailures = @(& {
             $threw = $false
             try { Invoke-DoneWhen 'exit 0' | Out-Null } catch { $threw = "$_" -match "isn't a prelude the workflow can run" }
             if (-not $threw) { "a plan prelude that isn't one command, $invalid, does not stop the runner" }
+        }
+        foreach ($bare in '- Prelude: ./env.ps1', '- Prelude:') {
+            $planText = "## Context for the executor`n$bare`n"
+            $threw = $false
+            try { Invoke-DoneWhen 'exit 0' | Out-Null } catch { $threw = "$_" -match "doesn't hold one command in backticks" }
+            if (-not $threw) { "a plan prelude line without one command in backticks, $bare, does not stop the runner" }
         }
     })
 Check 'workflow: Invoke-PlanSteps runs the plan''s prelude before each Done-when command and stops when it fails' (-not $runnerFailures) ($runnerFailures -join '; ')
