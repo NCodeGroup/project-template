@@ -1,12 +1,15 @@
 # Dependabot, built into GitHub: each week, a pull request for every newer version, which CI tests and you merge.
 # Every update of one kind, major ones included, comes together in a single pull request, so a project gets one for its
-# actions and one for its packages instead of one per package.
+# actions and one for its packages instead of one per package. A new version waits three days (cooldown) before it's
+# offered, so one that is withdrawn or found compromised soon after its release never reaches the project.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     groups:
       github-actions:
         patterns: ["*"]
@@ -15,6 +18,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     groups:
       nuget:
         patterns: ["*"]
@@ -22,11 +27,15 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
 {%- elif stack == 'python' %}
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     groups:
       pip:
         patterns: ["*"]
@@ -36,6 +45,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     groups:
       {{ ecosystem }}:
         patterns: ["*"]
