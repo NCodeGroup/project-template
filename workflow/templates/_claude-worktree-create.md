@@ -6,6 +6,7 @@ Each plan lives in its own git worktree, so several Claude Code sessions can pla
 2. Otherwise, if `git check-ignore -q .claude/worktrees/` exits non-zero, append the line `.claude/worktrees/` to `info/exclude` in the folder that `git rev-parse --path-format=absolute --git-common-dir` prints, so the main checkout doesn't list worktrees as untracked files.
 3. Then name the worktree: two to four lowercase words from the request, joined by hyphens, such as `csv-export`, and not already a folder under `.claude/worktrees/`. Create the worktree and switch into it with the `EnterWorktree` tool and that `name`.
 4. A worktree is a fresh checkout, without ignored files such as installed dependencies. If the build or test command needs a setup step first, such as `npm ci`, run it in the worktree and list it under Context for the executor.
+5. {{PROMPT:_git-hooks}}
 
 From here on, the repository root is the worktree's root: read, write and run commands only there, never in the main checkout.
 

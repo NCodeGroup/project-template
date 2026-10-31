@@ -15,6 +15,10 @@
     nothing is committed. -NoVerify skips that check. If anything else fails after the template is applied, the
     repository is reset to where it was.
 
+    It enables the template's Git hooks (core.hooksPath .githooks), so .githooks/commit-msg strips AI agent
+    attribution from commit messages, unless the repository already has a hooks path, hooks in .git/hooks, or uses
+    pre-commit; then it leaves them as they are and warns, naming the command that runs the template's hooks.
+
 .EXAMPLE
     .\Adopt-Project.ps1 -Path C:\src\buffers
     .\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot' }
@@ -170,9 +174,10 @@ try {
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
         if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
         if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
-        # The template's versioned hooks, unless the repository already runs hooks another way (Get-GitHooksSetup).
+        # The template's versioned hooks, unless the repository already has a hooks path or runs hooks another way
+        # (Get-GitHooksSetup): then a warning, because without them nothing strips AI agent attribution before a push.
         $hooksNote = $null
-        if ((Test-Path -LiteralPath .githooks) -and -not (git config --get core.hooksPath)) {
+        if (Test-Path -LiteralPath .githooks) {
             $hooksSetup = Get-GitHooksSetup
             if ($hooksSetup.HooksPath) { git config core.hooksPath .githooks }
             else { $hooksNote = $hooksSetup.Note }
@@ -189,7 +194,7 @@ try {
     "Adopted project-template $version in ${project}:"
     git status --porcelain | ForEach-Object { "  $_" }
     if ($report.Count) { ''; "Merged with the repository's own files:"; $report }
-    if ($hooksNote) { ''; $hooksNote }
+    if ($hooksNote) { ''; Write-Warning $hooksNote }
 
     # A GitHub repository's default branch should take changes only through pull requests. The baseline script changes the
     # repository's settings on GitHub, which an adoption that only commits locally shouldn't do on its own, so print it.

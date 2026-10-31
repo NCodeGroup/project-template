@@ -48,7 +48,7 @@ A subagent doesn't see this conversation: give it the repository's absolute path
 
 For each entry in the queue, in order:
 
-1. Create its branch: run `git fetch origin`, then `git switch --no-track -c issue-<number> origin/<default>`. `--no-track` leaves the branch without an upstream until `ship-plan` pushes it, so `ship-plan` drops the plan's empty commits.
+1. Create its branch: run `git fetch origin`, then `git switch --no-track -c issue-<number> origin/<default>`. `--no-track` leaves the branch without an upstream until `ship-plan` pushes it, so `ship-plan` drops the plan's empty commits. {{PROMPT:_git-hooks}}
 2. Plan: delegate `plan-issue` to a subagent, as above, with the arguments `<issues>`. When it returns without a `PLAN.md` at the repository root, stop this entry with its reason.
 3. Then run `{{STATE_SCRIPT}}` after every stage, and act on its `next` value:
    - `orchestrate-plan`: follow `orchestrate-plan` yourself, in this session, so the executor it names for this tool executes each step: in Copilot Chat the Copilot Implementer, or the Local Implementer when the repository has only the Hybrid agents; in Copilot CLI the `plan-executor` agent.

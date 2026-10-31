@@ -119,7 +119,7 @@ $claudeRole = @{
 function Get-ClaudeWorktreeSection([string]$Kind) {
     $path = Join-Path $templateDir "_claude-worktree-$Kind.md"
     if (-not (Test-Path -LiteralPath $path)) { throw "Unknown worktree value '$Kind'; use create, join or finish." }
-    (Read-HybridTemplateFile $path).Body.TrimEnd()
+    (Expand-HybridInclude (Read-HybridTemplateFile $path).Body).TrimEnd()
 }
 $vscodeModel = @{ planner = $PlannerModel; analyst = $PlannerModel; orchestrator = $PlannerModel; reviewer = $ReviewerModel }
 $skillInput = 'the request given after the command name'
