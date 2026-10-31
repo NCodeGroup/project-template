@@ -134,7 +134,7 @@ foreach ($case in $cases) {
         Check "${name}: the code review caller pins an exact release tag" ($uses.Count -eq 1 -and $uses[0].Groups[1].Value -match '^v\d+\.\d+\.\d+$') ($uses | ForEach-Object Value)
         Check "${name}: the code review caller runs from the default branch, in its environment, with no permissions by default" ($caller.Contains('pull_request_target:') -and $caller.Contains('environment: code-review') -and $caller -match '(?m)^permissions: \{\}?$' -and -not $caller.Contains('pull_request:')) $caller
         $checkouts = [regex]::Matches($caller, '(?m)^\s+uses: actions/checkout@').Count
-        Check "${name}: the code review caller's checkouts set persist-credentials false" ($checkouts -eq 2 -and [regex]::Matches($caller, '(?m)^\s+persist-credentials: false?$').Count -eq 2) $caller
+        Check "${name}: the code review caller checks out only the default branch, without persisted credentials, and never the pull request's head" ($checkouts -eq 1 -and [regex]::Matches($caller, '(?m)^\s+persist-credentials: false\r?$').Count -eq 1 -and -not $caller.Contains('refs/pull/') -and -not $caller.Contains('head.sha')) $caller
         $answers = Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw
         Check "${name}: the answer is recorded" ($answers -match '(?m)^code_review: true?$') $answers
     }
