@@ -57,6 +57,10 @@ $origin = Join-Path $Work 'github.com/fixture/app.git'
 $bin = Join-Path $Work 'bin'
 $hostDir = Join-Path $bin 'host'
 $head = 'add-farewell'
+# Git allows this branch name, /address-feedback must refuse it, and unquoted in a POSIX shell it would run touch pwned.
+$unsafeHead = 'farewell;touch${IFS}pwned'
+$unsafeUrl = 'https://github.com/fixture/app/pull/2'
+$unsafeCommentUrl = "$unsafeUrl#issuecomment-1003"
 $prUrl = 'https://github.com/fixture/app/pull/1'
 $strangerUrl = "$prUrl#issuecomment-1001"
 $questionUrl = "$prUrl#issuecomment-1002"
@@ -125,12 +129,17 @@ exit 0
     Invoke-Git -C $app branch -q -D $head
     Invoke-Git -C $app fetch -q origin
     $headOid = "$(git --git-dir=$origin rev-parse $head)".Trim()
+    Invoke-Git --git-dir=$origin update-ref "refs/heads/$unsafeHead" $headOid
 
     $prs = @(
         @{
             number = 1; title = 'Add Get-Farewell'; state = 'OPEN'; isDraft = $false; url = $prUrl
             body = "Adds ``Get-Farewell``, which says goodbye by name, and checks it in ``tests/Test-Greeting.ps1``.`n"
             headRefName = $head; baseRefName = 'main'; headRefOid = $headOid; isCrossRepository = $false; mergeCommit = $null
+        },
+        @{
+            number = 2; title = 'Say goodbye by name'; state = 'OPEN'; isDraft = $false; url = $unsafeUrl; body = "Adds ``Get-Farewell``.`n"
+            headRefName = $unsafeHead; baseRefName = 'main'; headRefOid = $headOid; isCrossRepository = $false; mergeCommit = $null
         }
     )
     $comments = @(
@@ -141,6 +150,10 @@ exit 0
         @{
             kind = 'pr'; number = 1; url = $questionUrl; author = @{ login = 'grace-reader' }; authorAssociation = 'CONTRIBUTOR'
             body = 'Question: is `Get-Farewell` called anywhere yet, apart from the test?'
+        },
+        @{
+            kind = 'pr'; number = 2; url = $unsafeCommentUrl; author = @{ login = 'ada-writer' }; authorAssociation = 'COLLABORATOR'
+            body = 'With no name, this says `Goodbye, !`. Please make it say `Goodbye, world!`.'
         }
     )
     $threads = @(
@@ -202,6 +215,11 @@ exit 0
         # The checks on the run's replies match these openings, which the command mandates for a fix, a decline and an ask.
         $missing = @($replyOpenings.Values | Where-Object { -not $commandText.Contains("``$_") })
         Check 'fixture: the installed /address-feedback mandates the reply openings the checks match' ($missing.Count -eq 0) "missing: $($missing -join '; ')"
+        $view2 = gh pr view 2 --json number,headRefName,headRefOid | Out-String | ConvertFrom-Json
+        git check-ref-format --branch $unsafeHead | Out-Null
+        $gitAllows = $LASTEXITCODE -eq 0
+        $branchRule = if ($commandText -match '`<head>` doesn''t match `([^`]+)`') { $Matches[1] } else { '' }
+        Check 'fixture: pull request #2 comes from a branch with shell characters that Git allows and the installed /address-feedback refuses' ($view2.headRefName -eq $unsafeHead -and "$(git --git-dir=$origin rev-parse "refs/heads/$unsafeHead")".Trim() -eq $headOid -and $gitAllows -and $branchRule -and $head -match $branchRule -and $unsafeHead -notmatch $branchRule) "head='$($view2.headRefName)' git allows: $gitAllows rule: '$branchRule'"
 
         $data = $null
         if ($readQuery) { $data = (gh api graphql -F 'owner={owner}' -F 'name={repo}' -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json).data.repository.pullRequest }
