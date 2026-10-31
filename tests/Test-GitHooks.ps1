@@ -6,7 +6,7 @@
     Builds a fixture repository that runs .githooks/commit-msg as a pre-commit script hook and checks that the hook
     strips the agent attribution from a commit message. Then checks, for the copy of Get-GitHooksSetup in
     .template\Update-Project.ps1 and the one in tools\adopt\Adoption.psm1, whether .githooks is enabled and which note is printed in
-    a clone with other hooks, with pre-commit's hooks or config, and with none. Then pushes from a fixture clone to a local bare
+    a clone with other hooks, with pre-commit's hooks or config, with a hooks path of its own or on .githooks, and with none. Then pushes from a fixture clone to a local bare
     remote and checks that .githooks/pre-push refuses a push to main only while AGENTS.md's Landing section says protect: hook,
     and lets a branch and a tag through, and refuses the push when awk is missing, run directly with a PATH without it. Then runs .githooks/commit-msg directly and checks that it refuses the commit when grep is missing and lets a message without attribution through. Then checks that the wrapper saved as pre-push.legacy in a clone with pre-commit's pre-push hook refuses a push to main after the same commits were pushed as a branch. Then runs workflow\Get-PlanState.ps1 in fixture clones and checks that its protected line is hook only when the Landing section says protect: hook and Git runs .githooks/pre-push. Prints PASS or FAIL per check and exits 1 on any
     failure.
@@ -113,6 +113,9 @@ $cases = [ordered]@{
     'other hooks with protect: hook get the pre-push wrapper to add'             = @{ Hook = "#!/bin/sh`n"; Agents = $protectAgents; HooksPath = $false; Note = @('has hooks of its own in .git/hooks (pre-commit)', 'exec .githooks/pre-push "$@"') }
     'an own pre-push hook with protect: hook gets the call to add'               = @{ PushHook = "#!/bin/sh`n"; Agents = $protectAgents; HooksPath = $false; Note = @('Call .githooks/pre-push from .git/hooks/pre-push') }
     'protect: hook with pre-commit and an own pre-push.legacy gets the call to add' = @{ Hook = $preCommitHook; Config = $config; Agents = $protectAgents; PushHook = $preCommitHook; LegacyHook = "#!/bin/sh`n"; HooksPath = $false; Note = @('Call .githooks/pre-push from .git/hooks/pre-push.legacy') }
+    'core.hooksPath on .githooks already gets no note'                           = @{ SetHooksPath = '.githooks'; HooksPath = $false; Note = @() }
+    'another core.hooksPath is kept and gets the command to run'                 = @{ SetHooksPath = '.husky'; HooksPath = $false; Note = @('core.hooksPath is already .husky', 'call .githooks/commit-msg from .husky/commit-msg', 'run: git config core.hooksPath .githooks') }
+    'another core.hooksPath with protect: hook gets the pre-push call too'       = @{ SetHooksPath = '.husky'; Agents = $protectAgents; HooksPath = $false; Note = @('core.hooksPath is already .husky', '.githooks/pre-push from .husky/pre-push', 'run: git config core.hooksPath .githooks') }
 }
 $n = 0
 foreach ($name in $cases.Keys) {
@@ -128,6 +131,7 @@ foreach ($name in $cases.Keys) {
         if ($case.Agents) { [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), $case.Agents, [Text.UTF8Encoding]::new($false)) }
         if ($case.PushHook) { [IO.File]::WriteAllText((Join-Path $folder '.git\hooks\pre-push'), $case.PushHook, [Text.UTF8Encoding]::new($false)) }
         if ($case.LegacyHook) { [IO.File]::WriteAllText((Join-Path $folder '.git\hooks\pre-push.legacy'), $case.LegacyHook, [Text.UTF8Encoding]::new($false)) }
+        if ($case.SetHooksPath) { Invoke-Git config core.hooksPath $case.SetHooksPath }
         foreach ($source in $sources.Keys) {
             $setup = & $sources[$source]
             $note = "$($setup.Note)"
