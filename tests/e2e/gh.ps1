@@ -4,8 +4,9 @@ A stand-in for the GitHub CLI that the run-issues end-to-end test puts on PATH.
 
 .DESCRIPTION
 Run as `gh <args>`. It keeps its state in JSON files in the `host` folder beside it (`issues.json`, `prs.json`,
-`comments.json`, optional `origin.txt`), logs each call to `host/calls.log`, and fails on calls it doesn't support
-or that /run-issues must never make.
+`comments.json`, `threads.json`, `reviews.json`, optional `origin.txt`), logs each call to `host/calls.log`, and fails
+on calls it doesn't support or that /run-issues must never make. An optional `review-seed.json` holds the review
+threads, review summaries and top-level comments the first pull request gets when it is opened.
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -103,6 +104,35 @@ function Add-Comment([string]$Kind, [int]$Number, [string]$Path) {
     Write-Json 'comments.json' $comments
     return $url
 }
+# Gives the first pull request opened the review in host/review-seed.json, then deletes the seed: threads, with the
+# earlier replies a seed thread lists, go to threads.json, review summaries to reviews.json and top-level comments to comments.json.
+function Add-ReviewSeed([int]$Number, [string]$PrUrl) {
+    $seedFile = Join-Path $hostDir 'review-seed.json'
+    if (-not (Test-Path -LiteralPath $seedFile)) { return }
+    $seed = Read-Json 'review-seed.json' @{}
+    $threads = @(Read-Json 'threads.json' @())
+    foreach ($t in @($seed.threads)) {
+        $id = 2000 + $threads.Count + 1
+        $threadComments = @(@{ author = $t.author; body = $t.body; url = "$PrUrl#discussion_r$id" })
+        foreach ($reply in $t.replies) { $threadComments += @{ author = $reply.author; body = $reply.body; url = "$PrUrl#discussion_r$id-$($threadComments.Count)" } }
+        $threads += @{
+            id = "PRRT_$id"; key = $t.key; number = $Number; isResolved = $false; isOutdated = $false; path = $t.path; line = $t.line
+            comments = $threadComments
+        }
+    }
+    Write-Json 'threads.json' $threads
+    $reviews = @(Read-Json 'reviews.json' @())
+    foreach ($r in @($seed.reviews)) {
+        $reviews += @{ number = $Number; author = $r.author; body = $r.body; url = "$PrUrl#pullrequestreview-$(3000 + $reviews.Count + 1)" }
+    }
+    Write-Json 'reviews.json' $reviews
+    $comments = @(Read-Json 'comments.json' @())
+    foreach ($c in @($seed.comments)) {
+        $comments += @{ kind = 'pr'; key = $c.key; number = $Number; body = $c.body; url = "$PrUrl#issuecomment-$(1000 + $comments.Count + 1)"; author = $c.author }
+    }
+    Write-Json 'comments.json' $comments
+    Remove-Item -LiteralPath $seedFile
+}
 
 if ("$($args[0])" -eq '--version') { 'gh version 2.99.0 (stand-in)'; exit 0 }
 
@@ -184,6 +214,7 @@ switch ("$($args[0]) $($args[1])") {
             headRefOid = "$oid"; mergeCommit = $null; url = $url
         }
         Write-Json 'prs.json' $prs
+        Add-ReviewSeed $number $url
         $url
         exit 0
     }
@@ -229,16 +260,29 @@ switch ("$($args[0]) $($args[1])") {
         $number = Get-Field 'number'
         $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq "$number" } | Select-Object -First 1
         if ($query -and $query.Contains('addPullRequestReviewThreadReply')) {
-            $prUrl = if ($pr) { $pr.url } else { 'https://github.com/fixture/app/pull/0' }
-            Write-Result @{ data = @{ addPullRequestReviewThreadReply = @{ comment = @{ url = "$prUrl#discussion_r1" } } } }
+            $threadId = Get-Field 'threadId'
+            $threads = @(Read-Json 'threads.json' @())
+            $thread = $threads | Where-Object { $_.id -eq $threadId } | Select-Object -First 1
+            if (-not $thread) { Stop-Call UNSUPPORTED "gh stand-in: no review thread $threadId" }
+            $body = Get-Field 'body'
+            if ("$body".StartsWith('@')) { $body = [IO.File]::ReadAllText($body.Substring(1)) }
+            $prUrl = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq "$($thread.number)" } | ForEach-Object { $_.url } | Select-Object -First 1
+            $replyUrl = "$prUrl#discussion_r$(4000 + @($threads | ForEach-Object { @($_.comments).Count } | Measure-Object -Sum).Sum)"
+            $thread.comments = @($thread.comments) + @(@{ author = @{ __typename = 'User'; login = 'fixture-owner' }; body = "$body"; url = $replyUrl })
+            Write-Json 'threads.json' $threads
+            Write-Result @{ data = @{ addPullRequestReviewThreadReply = @{ comment = @{ url = $replyUrl } } } }
             exit 0
         }
         if (-not $pr) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
         $nodes = @(@(Read-Json 'comments.json' @()) | Where-Object { $_.kind -eq 'pr' -and "$($_.number)" -eq "$($pr.number)" } |
             ForEach-Object { @{ author = $_.author; body = $_.body; url = $_.url } })
+        $reviewNodes = @(@(Read-Json 'reviews.json' @()) | Where-Object { "$($_.number)" -eq "$($pr.number)" } |
+            ForEach-Object { @{ author = $_.author; body = $_.body; url = $_.url } })
+        $threadNodes = @(@(Read-Json 'threads.json' @()) | Where-Object { "$($_.number)" -eq "$($pr.number)" } |
+            ForEach-Object { @{ id = $_.id; isResolved = $_.isResolved; isOutdated = $_.isOutdated; path = $_.path; line = $_.line; comments = @{ nodes = @($_.comments) } } })
         Write-Result @{ data = @{ repository = @{ pullRequest = @{
             state = $pr.state; isDraft = $pr.isDraft
-            comments = @{ nodes = $nodes }; reviews = @{ nodes = @() }; reviewThreads = @{ nodes = @() }
+            comments = @{ nodes = $nodes }; reviews = @{ nodes = $reviewNodes }; reviewThreads = @{ nodes = $threadNodes }
         } } } }
         exit 0
     }
