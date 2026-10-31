@@ -68,7 +68,7 @@ When a stage leaves `next` as it was, stop: the stage made no progress.
 ## Push
 
 1. When `git rev-list "origin/<head>..HEAD"` prints nothing, there is nothing to push: go on with Reply.
-2. Run `git diff --name-only "origin/<head>" HEAD`. Stop, naming the files, when it lists a protected file, as Plan item 4 defines it, that no `fix` item from an author who may ask for a fix and isn't a bot names: the check before each step relies on the plan, and this one on what the commits changed.
+2. Run `git diff --no-renames --name-only "origin/<head>" HEAD`. Stop, naming the files, when it lists a protected file, as Plan item 4 defines it, that no `fix` item from an author who may ask for a fix and isn't a bot names: the check before each step relies on the plan, and this one on what the commits changed.
 3. When the `landing` line's `gate` isn't `none`, run the gate as `ship-plan` item 6 says, before the push, and stop when it fails or changes a file.
 4. Run `git fetch origin "refs/heads/<head>"`. When `origin/<head>` isn't an ancestor of `HEAD` (`git merge-base --is-ancestor "origin/<head>" HEAD` exits non-zero), someone pushed to the branch since the run began: stop and say so, leaving the commits in the worktree. Never rebase, merge or force.
 5. Run `git push origin "HEAD:refs/heads/<head>"`.
