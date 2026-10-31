@@ -710,6 +710,30 @@ $runnerFailures = @(& {
         }
     })
 Check 'workflow: Invoke-PlanSteps runs the plan''s prelude before each Done-when command and stops when it fails' (-not $runnerFailures) ($runnerFailures -join '; ')
+# The runner's loop re-checks a step the planner marked done, after the plan's prelude: a stand-in copilot escalates step 1 as the executor, then marks it [x] as the planner.
+$loopRepo = Join-Path $Work 'runner-loop'
+$loopBin = Join-Path $Work 'runner-loop-bin'
+New-Item -ItemType Directory -Force $loopRepo, $loopBin | Out-Null
+Invoke-Git -C $loopRepo init -q
+Set-Content (Join-Path $loopRepo 'env.ps1') '$env:PRELUDE_TEST = "on"'
+Set-Content (Join-Path $loopBin 'copilot.ps1') @'
+$plan = Join-Path (Get-Location) 'PLAN.md'
+$text = [IO.File]::ReadAllText($plan)
+if ($text -match '(?m)^### \[\?\] 1\. ') { $text = ($text -replace '(?m)^### \[\?\] 1\. ', '### [x] 1. ') -replace '(?m)^- Escalation:.*\r?\n', '' }
+else { $text = $text -replace '(?m)^### \[ \] 1\. ', '### [?] 1. ' }
+[IO.File]::WriteAllText($plan, $text)
+'@
+if (-not $IsWindows) {
+    Set-Content (Join-Path $loopBin 'copilot') "#!/usr/bin/env sh`nexec pwsh -NoProfile -File `"`$(dirname `"`$0`")/copilot.ps1`" `"`$@`"`n"
+    chmod +x (Join-Path $loopBin 'copilot')
+}
+$loopResults = foreach ($prelude in "- Prelude: ``./env.ps1```n", '') {
+    [IO.File]::WriteAllText((Join-Path $loopRepo 'PLAN.md'), "# Plan: loop`n`n## Context for the executor`n$prelude- Build: ``none```n`n## Steps`n`n### [ ] 1. Change nothing`n- Files: none`n- Done when: ``if (`$env:PRELUDE_TEST -eq 'on') { exit 0 } else { exit 3 }```n")
+    $command = "`$env:PATH = '$loopBin' + [IO.Path]::PathSeparator + `$env:PATH; & '$(Join-Path $workflow 'Invoke-PlanSteps.ps1')' -Plan '$(Join-Path $loopRepo 'PLAN.md')' -Replan copilot -NoCommit -AllowDirty; exit `$LASTEXITCODE"
+    $null = & pwsh -NoProfile -NonInteractive -Command $command 2>&1
+    "$LASTEXITCODE"
+}
+Check 'workflow: Invoke-PlanSteps re-checks a step the planner completed after the plan''s prelude, and fails it without one' (($loopResults -join ',') -eq '0,3') "exit codes with and without the prelude: $($loopResults -join ',')"
 
 if (-not $SkipDotnetBuild) {
     Push-Location (Join-Path $Work 'dotnet')
