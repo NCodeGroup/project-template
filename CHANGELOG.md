@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.43.1] - 2026-10-31
+
+### Changed
+
+- `/replan-step` and `/review-plan-diff` run the plan's `- Prelude:` command in the same wrapper as the executors, and stop when it fails: when the output ends with `prelude failed`, the check never ran, so they show the prelude's error and say to fix the Landing section's `prelude` and the plan's `- Prelude:` line, instead of re-planning the step or adding fix steps for it. `/ship-plan`'s landing summary says the prelude runs in the gate's command ([#155](https://github.com/NCodeGroup/project-template/issues/155)).
+- No change for projects made from the template. `workflow/Invoke-PlanSteps.ps1`'s help says how a failed prelude ends a run: with an error that names it, so PowerShell exits 1. `tests/Test-Template.ps1` runs a prelude command that isn't a script, and a Done-when command that prints `prelude failed` without a prelude, through the runner, and runs the runner's loop with a stand-in `copilot` whose planner completes a step, which the loop re-checks after the plan's prelude ([#155](https://github.com/NCodeGroup/project-template/issues/155)).
+- No change for projects made from the template. `tests/e2e/Test-RunIssues.ps1` checks the merge recommendation: by default the `gh` stand-in gives NCode Review's review of the run's first push, a finding that only asks for another test, and `-Scenario max-rounds` sets `max-review-rounds: 1`; either way the run must recommend the merge once and put the open nits in the plan's `## Follow-ups`. `tests/e2e/Test-AddressFeedback.ps1` also runs `/address-feedback` on a pull request from `farewell;touch${IFS}pwned`, a branch name with shell characters, and checks that it stops before any worktree, push, comment or file ([#159](https://github.com/NCodeGroup/project-template/issues/159)).
+
+### Fixed
+
+- `USAGE.md` no longer says `/ship-plan` runs the prelude before every push: it runs only in the gate's command, so with `gate: none` nothing runs it ([#155](https://github.com/NCodeGroup/project-template/issues/155)).
+
 ## [0.43.0] - 2026-10-31
 
 ### Changed
@@ -610,7 +622,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.43.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.43.1...HEAD
+[0.43.1]: https://github.com/NCodeGroup/project-template/compare/v0.43.0...v0.43.1
 [0.43.0]: https://github.com/NCodeGroup/project-template/compare/v0.42.1...v0.43.0
 [0.42.1]: https://github.com/NCodeGroup/project-template/compare/v0.42.0...v0.42.1
 [0.42.0]: https://github.com/NCodeGroup/project-template/compare/v0.41.1...v0.42.0

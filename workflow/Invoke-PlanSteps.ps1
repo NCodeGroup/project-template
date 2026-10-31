@@ -24,6 +24,8 @@
 
     Exit codes: 0 all done · 1 a step failed ([!]) · 2 a step needs re-planning ([?]) ·
                 3 re-planning limit reached or the planner left the step unresolved.
+                A prelude that fails, or a "- Prelude:" line the runner can't use, stops the run with an error that
+                names it, as other setup errors do, so pwsh exits 1 and the step keeps its marker.
 
 .EXAMPLE
     .\Invoke-PlanSteps.ps1 -Plan C:\src\app\PLAN.md -DryRun
