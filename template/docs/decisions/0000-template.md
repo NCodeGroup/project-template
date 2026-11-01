@@ -4,14 +4,16 @@
 - **Date:** YYYY-MM-DD
 - **Deciders:** _who was involved_
 
-_Status is one of Proposed, Accepted, or Superseded by NNNN. A record that replaces one of the project template's
-decisions adds a line: **Supersedes:** project-template ADR-NNNN._
+_Status is one of Proposed, Accepted, Deprecated, or Superseded by NNNN; an accepted record that a later one changes in
+part is "Accepted (amended by NNNN)". A record that changes part of an earlier one adds a line: **Amends:** NNNN. A
+record that replaces one of the project template's decisions adds a line: **Supersedes:** project-template ADR-NNNN._
 
 ## Context
 
 _What is the problem or the recurring question? What forces (technical, organizational) are at
-play? Keep it factual, neutral, and timeless — present tense, no development-timeline narrative
-(not "we shipped X then reversed it"); describe what **is** and why._
+play? Keep it factual, neutral, and timeless — present tense in every section, no development-timeline
+narrative (not "we shipped X then reversed it", "now", "previously"); describe what **is** and why. Give a
+volatile fact (a price, a limit, a supported version) its source and the date it was read._
 
 ## Decision
 

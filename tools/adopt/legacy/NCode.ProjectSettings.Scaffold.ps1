@@ -28,7 +28,7 @@ $files = @(Get-MSBuildFile $Path | Where-Object { (Get-Content -LiteralPath $_.F
 switch ($Phase) {
     'Detect' { [bool]($files.Count -gt 0) }
     'Answers' {
-        $answers = @{ nuget_package = $true; package_license = 'Apache-2.0'; author_name = 'NCode Group' }
+        $answers = @{ nuget_package = $true; license = 'Apache-2.0'; package_license = 'Apache-2.0'; author_name = 'NCode Group' }
         if (Test-Path -LiteralPath (Join-Path $Path 'NCodeGroup.png')) { $answers.package_icon = 'NCodeGroup.png' }
         $answers
     }

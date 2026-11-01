@@ -50,8 +50,11 @@ application measures only what the platform does not.
    not retry a missing endpoint. A view drops unbounded attributes from built-in instruments when the application calls
    arbitrary hosts (`server.address` on outbound calls).
 6. Tested and catalogued. Each instrument has a unit test that reads it through `MetricCollector<T>` and asserts its
-   name, unit, and attributes. A catalog in the repository (`docs/metrics.md`) lists every meter, instrument, unit,
-   and attribute with its allowed values, so dashboards and alerts are built against a reviewed contract.
+   name, unit, and attributes. The catalog `docs/metrics.md`, which the project owns and the template starts empty,
+   lists every meter, instrument, unit, and attribute with its allowed values, and every activity source and span
+   ([ADR-0114](0114-one-activity-source-named-like-its-meter.md)), so dashboards and alerts are built against a
+   reviewed contract. A change that adds or renames an instrument, an attribute or a span updates the catalog in the
+   same pull request.
 
 ## Options considered
 

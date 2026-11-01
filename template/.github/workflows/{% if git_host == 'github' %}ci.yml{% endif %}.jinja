@@ -12,9 +12,17 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request or a topic branch cancels the run it supersedes. A run for a default-branch commit or a
+# merge queue entry is never cancelled: its group holds its commit SHA, because cancel-in-progress: false alone still
+# lets a newer run in the same group cancel a pending one, which would leave that commit without a verdict.
+concurrency:
+{% raw %}  group: ci-${{ github.ref }}-${{ (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.event_name == 'merge_group') && github.sha || 'latest' }}
+  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name != 'merge_group' }}{% endraw %}
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         shell: pwsh
@@ -26,6 +34,13 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
+      # No lock file is committed, so setup-dotnet's own cache has no key: this one keys on the restore's inputs.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+{% raw %}          key: ${{ runner.os }}-nuget-${{ hashFiles('Directory.Packages.props', 'global.json', '.config/dotnet-tools.json', '**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-{% endraw %}
 {%- elif stack == 'python' %}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -33,6 +48,8 @@ jobs:
       - name: Install dependencies
         if: hashFiles('**/*.py') != ''
         run: |
+          # A failed install fails the step: GitHub's pwsh checks only the last command's exit code.
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install --upgrade pip pytest
           if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
           if (Test-Path pyproject.toml) { python -m pip install -e . }
@@ -84,6 +101,27 @@ jobs:
       - name: Definition of Done
         if: {{ has_code }}
         run: ./build/dod.ps1
+      # A TRX file per test project, kept after a failure too, to see which test failed.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results
+          path: artifacts/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+{%- if nuget_package %}
+      # The packages a release would publish, to inspect without any publishing permission.
+      - name: Upload packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          retention-days: 14
+          if-no-files-found: ignore
+{%- endif %}
 {%- else %}
 {%- if build_command %}
       - name: Build

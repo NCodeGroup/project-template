@@ -25,7 +25,7 @@ platform's, carry unbounded or sensitive values, and use a vocabulary different 
 3. A span mirrors a histogram. Each span measures what one of the project's duration histograms measures, is named
    after it without the `.duration` suffix (`contoso.ordering.checkout`), and carries the same bounded attributes. A
    failure sets the span status to `Error` and `error.type`, as the histogram does. One vocabulary describes both
-   signals, and the metrics catalog lists both.
+   signals, and the metrics catalog, `docs/metrics.md`, lists both.
 4. A span carries no secret and no personal data: no token, key, cookie, session handle, password, user or customer
    identifier, or request path. Traces could carry higher-cardinality values than metrics, but correlation with the
    request comes from the parent span, whose own attributes the platform sets.

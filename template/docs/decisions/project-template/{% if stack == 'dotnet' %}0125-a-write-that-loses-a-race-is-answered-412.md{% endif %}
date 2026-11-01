@@ -29,6 +29,10 @@ One endpoint filter, installed once on the API's root route group, answers a los
 - Endpoints whose contract defines another answer for a lost race (a single-use operation answered as a second
   attempt, [ADR-0109](0109-a-lost-concurrency-race-is-a-store-neutral-exception.md)) handle it where the operation
   runs, before the filter sees it.
+- An `ETag` versions exactly one stored entity: it is derived from that entity's concurrency token, and an `If-Match`
+  against it is checked under the same token. A view built from several entities (an effective configuration merged
+  from a parent and a child, a summary across records) carries no `ETag` and does not honor conditional headers,
+  because no single token changes when each of its parts does.
 
 ## Options considered
 
@@ -38,6 +42,8 @@ One endpoint filter, installed once on the API's root route group, answers a los
 - A retry in the server. Rejected for writes computed from the caller's view: the caller decides whether its change
   still applies. Writes that must win a race retry inside the operation
   ([ADR-0110](0110-shared-state-is-changed-by-read-modify-write.md)).
+- An `ETag` on a view composed from several entities. Rejected: no one entity's version covers the view, so a
+  conditional read would get a stale `304` after a change to another of them.
 
 ## Consequences
 

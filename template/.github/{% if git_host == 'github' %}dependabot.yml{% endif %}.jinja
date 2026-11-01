@@ -1,7 +1,10 @@
 # Dependabot, built into GitHub: each week, a pull request for every newer version, which CI tests and you merge.
 # Every update of one kind, major ones included, comes together in a single pull request, so a project gets one for its
 # actions and one for its packages instead of one per package. A new version waits three days (cooldown) before it's
-# offered, so one that is withdrawn or found compromised soon after its release never reaches the project.
+# offered, so one that is withdrawn or found compromised soon after its release never reaches the project. Security
+# updates, which come whenever an advisory affects a dependency, have a group of their own in each ecosystem, so one
+# advisory run is one pull request. A new .NET SDK major isn't offered: moving to a new .NET major is a planned migration
+# (/plan-migration). A docker entry a project adds ignores major updates of its base images the same way.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -13,6 +16,9 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+      github-actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
 {%- if stack == 'dotnet' %}
   - package-ecosystem: nuget
     directory: /
@@ -23,12 +29,18 @@ updates:
     groups:
       nuget:
         patterns: ["*"]
+      nuget-security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: dotnet-sdk
     directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 {%- elif stack == 'python' %}
   - package-ecosystem: pip
     directory: /
@@ -38,6 +50,9 @@ updates:
       default-days: 3
     groups:
       pip:
+        patterns: ["*"]
+      pip-security:
+        applies-to: security-updates
         patterns: ["*"]
 {%- elif stack == 'node' %}
 {%- set ecosystem = 'bun' if package_manager == 'bun' else 'npm' %}
@@ -49,5 +64,8 @@ updates:
       default-days: 3
     groups:
       {{ ecosystem }}:
+        patterns: ["*"]
+      {{ ecosystem }}-security:
+        applies-to: security-updates
         patterns: ["*"]
 {%- endif %}

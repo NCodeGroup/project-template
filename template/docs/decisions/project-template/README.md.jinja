@@ -20,6 +20,7 @@ supersedes the template's by number (for example, "Supersedes: project-template 
 | [0008](0008-external-inputs-are-pinned-and-kept-current.md) | Packages, actions, SDKs, images and the template version are pinned exactly and moved by reviewed updates |
 | [0009](0009-new-dependency-versions-wait-a-cooldown.md) | A new dependency version is adopted only once it is at least three days old |
 | [0010](0010-a-change-consumers-can-observe-is-decided-before-it-is-built.md) | A change consumers can observe starts as an issue, and its decision is recorded before or with the pull request |
+| [0011](0011-agents-treat-existing-code-as-evidence-and-report-done-only-when-done.md) | Existing code is evidence, not a constraint; pins come from upstream; done means done in every tracker |
 {%- if stack == 'dotnet' %}
 
 ## .NET
@@ -29,7 +30,7 @@ supersedes the template's by number (for example, "Supersedes: project-template 
 | [0100](0100-warnings-are-errors-in-every-project.md) | Every project, tests included, builds with zero warnings |
 | [0101](0101-central-package-management.md) | Package versions live in `Directory.Packages.props` through Central Package Management |
 | [0102](0102-disallowed-apis-are-banned-at-build-time.md) | Sync-over-async, `JsonDocument` parsing and Newtonsoft.Json are banned at build time |
-| [0103](0103-behavior-is-a-service-a-strategy-collection-or-a-mediator.md) | Behavior is a service by default, a strategy collection when open, a mediator only at a pipeline seam |
+| [0103](0103-behavior-is-a-service-a-strategy-collection-or-a-mediator.md) | Behavior is a service by default, a strategy collection when open, a mediator only at a pipeline seam; observers are fault-isolated |
 | [0104](0104-no-cross-assembly-internalsvisibleto.md) | Production assemblies collaborate through public contracts; `InternalsVisibleTo` is for tests only |
 | [0105](0105-the-canonical-implementation-is-named-defaultfoo.md) | The one canonical implementation of `IFoo` is the internal `DefaultFoo` |
 | [0106](0106-configuration-binds-strictly-and-is-validated-at-startup.md) | An unknown configuration key or an invalid value stops the host at startup |
@@ -45,6 +46,14 @@ supersedes the template's by number (for example, "Supersedes: project-template 
 | [0116](0116-visibility-starts-at-the-narrowest-that-works.md) | Every type and member starts at the narrowest visibility that works; `public` needs a reason |
 | [0117](0117-one-definition-of-done-gates-every-change.md) | `build/dod.ps1` is the one Definition of Done that people, agents and CI run |
 | [0118](0118-the-null-forgiving-operator-is-banned-outside-tests.md) | The null-forgiving operator `!` fails the build outside test projects |
+| [0119](0119-production-refuses-development-only-settings.md) | Development conveniences are inert unless configured, and Production refuses them, listing every finding at once |
+| [0140](0140-replicas-converge-through-reconciliation.md) | Caches expire absolutely, change notices are hints, and derived state is reconciled under a lease |
+| [0141](0141-side-effects-after-a-commit-go-through-an-outbox.md) | An effect that must follow a commit is written to an outbox with it and delivered at least once |
+| [0142](0142-data-that-grows-with-use-is-pruned-in-bounded-batches.md) | Data that grows with use has a retention period and is pruned in bounded batches |
+| [0143](0143-migrations-run-before-the-rollout-and-only-expand.md) | Migrations run in a step before the rollout, never at startup, and only expand until a later release contracts |
+| [0144](0144-correctness-guards-fail-closed-capacity-guards-fail-open.md) | A correctness guard fails closed with `503`; a capacity guard fails open behind a timeout and a breaker |
+| [0145](0145-outbound-calls-are-bounded-and-caller-supplied-urls-are-guarded.md) | Outbound calls are bounded; caller-supplied URLs go through a client that refuses private addresses |
+| [0146](0146-secrets-are-never-logged-compared-in-constant-time-and-shown-once.md) | Secrets never reach diagnostics, are compared in constant time, and are shown once and stored hashed |
 
 ## ASP.NET Core
 
@@ -56,6 +65,10 @@ supersedes the template's by number (for example, "Supersedes: project-template 
 | [0123](0123-resource-ids-are-server-generated-and-opaque.md) | Resource identifiers are minted by the server and opaque |
 | [0124](0124-collection-endpoints-use-keyset-pagination.md) | Collection endpoints page by keyset cursor, with no query protocol |
 | [0125](0125-a-write-that-loses-a-race-is-answered-412.md) | An API write that loses a concurrency race is answered `412 Precondition Failed` |
+| [0126](0126-published-urls-come-from-a-configured-origin.md) | Published URLs come from a configured origin, never the request's `Host` header |
+| [0127](0127-the-data-protection-key-ring-is-shared-and-encrypted-at-rest.md) | The Data Protection key ring is shared, encrypted at rest, and checked when the host starts |
+| [0128](0128-liveness-never-checks-dependencies-readiness-does.md) | Liveness never checks dependencies; readiness does, and neither shows details publicly |
+| [0129](0129-browser-facing-requests-are-safe-by-construction.md) | Local return URLs, no state change on `GET`, antiforgery, `__Host-` cookies, no overposting, `404` for the unseen |
 {%- endif %}
 {%- if stack == 'dotnet' and nuget_package %}
 

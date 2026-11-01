@@ -1,0 +1,57 @@
+{%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
+{%- set pr = 'merge request' if git_host == 'gitlab' else 'pull request' -%}
+# Security Policy
+
+## Report a Vulnerability
+
+Report a vulnerability in {{ project_name }} privately. Never put it in a public issue, {{ pr }} or discussion: that tells attackers about it before a fix exists.
+{%- if git_host == 'gitlab' %}
+
+Open a new issue and select **This issue is confidential** before you create it. Only the project's members can see a confidential issue, and the fix is discussed there until it is released.
+{%- else %}
+
+On the repository's **Security** tab, choose **Report a vulnerability**. The report reaches the maintainers only, and the fix is discussed in a private security advisory until it is released. If the tab has no such button, open an issue that asks for a private contact, and leave out every detail of the vulnerability.
+
+[//]: # "Maintainers: the button appears once private vulnerability reporting is turned on in the repository's security settings."
+{%- endif %}
+
+Include:
+
+- what is affected: the {% if library %}package and its version{% else %}version or commit{% endif %}, and the file, endpoint or feature;
+- how to reproduce it, as steps or a proof of concept;
+- what it lets an attacker do;
+- any fix or mitigation you know of, and how you'd like to be credited.
+
+## What to Expect
+
+- An acknowledgement of the report, then whether it is confirmed.
+- A fix developed in private and released as soon as it is ready, with an entry under `### Security` in the changelog.
+- Disclosure coordinated with you: the {% if git_host == 'gitlab' %}confidential issue is made public{% else %}security advisory is published{% endif %} once the fix is released. Keep the details private until then.
+- Credit for the report{% if git_host != 'gitlab' %} in the advisory{% endif %}, unless you'd rather not be named.
+
+## Supported Versions
+{% if library %}
+Fixes ship as a patch of the latest minor version of the current major version. Before 1.0.0, only the latest release gets fixes.
+
+| Version | Fixes |
+| --- | --- |
+| The latest minor of the current major, such as 2.3.x while 2.3 is the newest minor | Yes |
+| Every older version | No |
+
+## Verify a Package
+
+The packages are built in CI from a tagged commit of this repository, deterministically and with Source Link.
+{%- if git_host == 'github' %} They reach nuget.org only through `.github/workflows/publish.yml`, which publishes them from a published GitHub release through nuget.org trusted publishing: no long-lived API key exists, and each package's version is its release's tag.
+{%- endif %}
+
+- Each package's PDB maps every source file to its commit in this repository, and its symbol package (`.snupkg`) is on the nuget.org symbol server. With Source Link and the nuget.org symbol server turned on in your debugger, you step into the exact source a package was built from. NuGet Package Explorer shows whether a package's Source Link and deterministic build are valid.
+- nuget.org signs every package it accepts: `dotnet nuget verify --all <package>.nupkg` checks that signature.
+{%- else %}
+Fixes go into the default branch and the next release. Only the latest release is supported: update to it to get a fix.
+{%- endif %}
+
+## Scope
+
+In scope: the code, build and CI configuration in this repository{% if library %} and the packages built from it{% endif %}, including a vulnerability that comes from how {{ project_name }} uses a dependency.
+
+Out of scope: a vulnerability in a dependency itself. Report it to that project. Once it publishes a fix, an issue or {{ pr }} here that moves to the fixed version is welcome{% if git_host == 'github' %}, though Dependabot usually proposes it first{% endif %}.

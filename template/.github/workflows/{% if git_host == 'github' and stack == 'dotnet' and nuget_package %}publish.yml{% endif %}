@@ -2,7 +2,8 @@
 # and pushes the packages, with their symbol packages, to nuget.org. docs/decisions/project-template/ says why.
 #
 # Two jobs, so the job that builds the code never holds a publishing credential:
-#   - pack checks the tag is a version (v1.2.3 or v1.2.3-rc.1), tests and packs in Release, and uploads the packages;
+#   - pack checks the tag is a version (v1.2.3 or v1.2.3-rc.1) and names a commit the default branch holds, so a tag on
+#     an unreviewed commit publishes nothing; then it tests and packs in Release, and uploads the packages;
 #   - publish runs in the protected `nuget` environment, exchanges the job's OIDC token for a short-lived nuget.org API
 #     key through nuget.org trusted publishing, and pushes them. A rerun skips the packages already pushed.
 #
@@ -43,7 +44,18 @@ jobs:
           "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Every branch's history, for the check below.
+          fetch-depth: 0
           persist-credentials: false
+      # Only reviewed code publishes: the tag must name a commit the default branch already holds.
+      - name: Check the tagged commit is on the default branch
+        shell: pwsh
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git merge-base --is-ancestor HEAD "origin/$env:DEFAULT_BRANCH"
+          if ($LASTEXITCODE -eq 1) { throw "The release tag names a commit that isn't on $env:DEFAULT_BRANCH: tag a commit that is." }
+          if ($LASTEXITCODE) { throw "git merge-base failed with exit code $LASTEXITCODE." }
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json

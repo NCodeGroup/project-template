@@ -37,6 +37,16 @@ checked before the host accepts traffic.
    subsection, only the selected strategy's subsection is validated. Configuration layers cannot delete a key from a
    lower layer, so rejecting an unselected strategy's subsection would stop an environment overlay from switching
    strategies.
+5. A failed reload keeps the previous values. When configuration reloads while the host runs (a changed file, a
+   refreshed secret store), the new values are validated as a whole before any is applied. A reload that fails
+   validation is logged at Error with every failure and its key, and the values loaded before stay in force: a running
+   host cannot refuse to start, and applying part of a reload is worse than applying none of it. Code that reacts to
+   changes reads a validated snapshot (`IOptionsMonitor<T>` over validated options), never the raw sections.
+6. One rule set for every entry point. A rule about what the application can honor is written once and applied
+   wherever the value enters: startup configuration, an API write, a seeder, an import. An API write that breaks it is
+   answered `400` with a validation problem keyed by field, before any check against stored state; invalid seed data
+   stops the host with an error that names the entry. Stored data that no longer passes the rules fails closed when it
+   is read, rather than being loaded without the part that broke.
 
 ## Options considered
 
@@ -44,6 +54,9 @@ checked before the host accepts traffic.
 - Strict binding that fails on first use. Rejected: the instance passes readiness checks and fails on live traffic,
   the worst moment to learn of a configuration error.
 - Rejecting the options of unselected strategies. Rejected for the layering reason above.
+- Applying the valid part of a reload. Rejected: settings that only make sense together would be half changed.
+- Separate validation for configuration and for API writes. Rejected: the two copies drift, and a value refused at one
+  entry point is stored through another.
 
 ## Consequences
 
@@ -52,6 +65,9 @@ checked before the host accepts traffic.
   are removed rather than tolerated.
 - Configuration consumed directly through `IConfiguration["..."]` bypasses all of this; it is reserved for host
   bootstrap code that runs before options exist.
+- A bad edit to a reloadable source leaves the host running on its previous configuration, with an error in the log
+  that an operator alerts on.
+- A value that one entry point accepts is accepted by all of them, and one that one refuses is refused by all.
 
 ## References
 

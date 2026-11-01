@@ -39,12 +39,16 @@ csharp_wrap_before_first_type_parameter_constraint = true
 csharp_wrap_multiple_type_parameter_constraints_style = chop_always
 
 # The header each new C# file starts with; Visual Studio and Rider add it, and IDE0073 offers the fix. A suggestion, so files without it still build.
-{%- if nuget_package and package_license == 'Apache-2.0' %}
+{%- if repository_license == 'Apache-2.0' %}
 file_header_template = Copyright © {{ author_name }}\n\n   Licensed under the Apache License, Version 2.0 (the "License");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an "AS IS" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.
-{%- elif nuget_package %}
-file_header_template = Copyright © {{ author_name }}\nSPDX-License-Identifier: {{ package_license }}
+{%- elif repository_license %}
+file_header_template = Copyright © {{ author_name }}\nSPDX-License-Identifier: {{ repository_license }}
 {%- else %}
 file_header_template = Copyright © {{ author_name }}
 {%- endif %}
 dotnet_diagnostic.IDE0073.severity = suggestion
+
+# EF Core migrations are scaffolded by dotnet ef, not written by hand: the analyzers treat them as generated code.
+[**/Migrations/**.cs]
+generated_code = true
 {%- endif %}

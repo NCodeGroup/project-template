@@ -28,15 +28,15 @@ Every external input is pinned exactly, and on GitHub Dependabot moves the pins 
 4. A container base image, when the project adds a Dockerfile, names its tag and the digest of its multi-architecture
    index (`image:tag@sha256:...`). No `ARG` builds a `FROM` line, because Dependabot cannot update one, and the tag
    beside a digest must be the digest's own, since the digest wins. The project adds a `docker` entry for the
-   Dockerfile's folder to `.github/dependabot.yml`.
+   Dockerfile's folder to `.github/dependabot.yml`, ignoring major updates as the .NET SDK entry does (item 7).
 5. The template version is pinned in `.copier-answers.yml` and `.template-version`, and moves through
    `.template/Update-Project.ps1`; on GitHub the weekly `template-update` workflow opens an issue when a newer version
    exists.
 6. Dependabot runs weekly for every ecosystem the project uses, groups each ecosystem's updates into one pull request,
-   and waits out a three-day cooldown ([ADR-0009](0009-new-dependency-versions-wait-a-cooldown.md)). CI tests the pull
+   gives its security updates a pull request of their own (groups otherwise apply only to version updates), and waits out a three-day cooldown ([ADR-0009](0009-new-dependency-versions-wait-a-cooldown.md)). CI tests the pull
    request and a person merges it ([ADR-0006](0006-a-person-merges-every-pull-request.md)).
 7. A major-version move of a runtime or target framework is a planned migration (`/plan-migration`), not a Dependabot
-   bump.
+   bump: the .NET SDK's Dependabot entry ignores major updates.
 
 ## Options considered
 

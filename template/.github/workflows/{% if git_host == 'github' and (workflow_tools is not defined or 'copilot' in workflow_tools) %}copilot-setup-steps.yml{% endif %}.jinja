@@ -1,0 +1,100 @@
+# The Copilot cloud agent's environment, prepared before each session: GitHub runs this workflow's one job on the
+# session's fresh runner, so the agent starts with the project's toolchain and packages instead of installing them
+# itself. GitHub reads the job only from the default branch and only under the name copilot-setup-steps, and takes only
+# its steps, permissions, runs-on, services, snapshot and timeout-minutes, so each step names its own shell. When a step
+# fails, the rest are skipped and the session starts anyway. The push and pull_request triggers run it when this file
+# changes, to show it still works.
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/copilot-setup-steps.yml]
+  pull_request:
+    paths: [.github/workflows/copilot-setup-steps.yml]
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    # The session's limit too, counted from this job's start: 59 is the most Copilot allows.
+    timeout-minutes: 59
+    permissions:
+      contents: read
+    steps:
+      # The agent gets a token of its own, so the checkout keeps none.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+{%- if stack == 'dotnet' %}
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      # The same key as CI's, so a session reuses the packages CI restored.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+{% raw %}          key: ${{ runner.os }}-nuget-${{ hashFiles('Directory.Packages.props', 'global.json', '.config/dotnet-tools.json', '**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-{% endraw %}
+      - name: Restore tools
+        if: hashFiles('.config/dotnet-tools.json') != ''
+        shell: pwsh
+        run: dotnet tool restore
+      - name: Restore packages
+        if: hashFiles('*.sln', '*.slnx') != ''
+        shell: pwsh
+        run: dotnet restore
+{%- elif stack == 'python' %}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.x"
+      - name: Install dependencies
+        if: hashFiles('**/*.py') != ''
+        shell: pwsh
+        run: |
+          # A failed install fails the step: GitHub's pwsh checks only the last command's exit code.
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install --upgrade pip pytest
+          if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
+          if (Test-Path pyproject.toml) { python -m pip install -e . }
+{%- elif stack == 'node' %}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+{%- if package_manager in ['pnpm', 'yarn'] %}
+      # Corepack runs the version package.json's packageManager field names; Node.js 25 and later don't bundle it.
+      - name: Enable {{ package_manager }}
+        shell: pwsh
+        run: |
+          npm install --global corepack@latest
+          corepack enable {{ package_manager }}
+{%- elif package_manager == 'bun' %}
+      # Installs the version package.json's packageManager field names, else the latest.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+{%- endif %}
+      - name: Install dependencies
+{%- if package_manager == 'pnpm' %}
+        if: hashFiles('pnpm-lock.yaml') != ''
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+{%- elif package_manager == 'yarn' %}
+        if: hashFiles('yarn.lock') != ''
+        shell: pwsh
+        # Yarn 2 and later install with --immutable on CI.
+        run: yarn install
+{%- elif package_manager == 'bun' %}
+        if: hashFiles('bun.lock', 'bun.lockb') != ''
+        shell: pwsh
+        run: bun install --frozen-lockfile
+{%- else %}
+        if: hashFiles('package-lock.json') != ''
+        shell: pwsh
+        run: npm ci
+{%- endif %}
+{%- elif stack == 'powershell' %}
+      - name: Install modules
+        if: hashFiles('**/*.ps1', '**/*.psm1') != ''
+        shell: pwsh
+        run: Install-Module Pester, PSScriptAnalyzer -Force -Scope CurrentUser
+{%- endif %}

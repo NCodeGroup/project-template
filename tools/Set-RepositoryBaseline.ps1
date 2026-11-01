@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Gives an NCodeGroup repository the baseline branch protection, so nothing reaches the default branch except through a
-    pull request.
+    Gives an NCodeGroup repository the baseline protection: nothing reaches the default branch except through a pull
+    request, no release tag is moved or deleted, and the security settings a public project should have are on.
 
 .DESCRIPTION
     For each repository it:
@@ -14,11 +14,29 @@
         jobs as required status checks, which must pass on a branch that is up to date with the default branch;
       - switches CodeQL's default setup, when it read it as configured, to the extended query suite, before it writes the
         ruleset, so a switch that fails leaves the repository for the next run to retry;
-      - turns on "delete branch on merge".
+      - turns on "delete branch on merge";
+      - adds a "Protect release tags" ruleset on the tags matching v* (refs/tags/v*): no deletion and no update, so a
+        tag is never moved, with no bypass. A release tag names one published package set, so it never changes;
+      - turns on the security settings a public project should have, each where it is off: the workflow token
+        (GITHUB_TOKEN) read-only by default, with GitHub Actions not allowed to approve pull requests; secret scanning
+        and its push protection; Dependabot alerts and Dependabot security updates, which need the alerts; and private
+        vulnerability reporting.
 
-    A repository that already has an active ruleset requiring pull requests on its default branch is left alone, because
-    its owner shaped that ruleset. An archived repository and a fork are skipped. A ruleset it made earlier is left
-    alone too; pass -RequireChecks to update that one's required checks in place.
+    A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
+    owner shaped that ruleset. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's required
+    checks in place. Either way the repository still gets the tag ruleset and the security settings, so a second run
+    brings a repository protected by an older version of this script up to date. A ruleset named "Protect release tags",
+    whatever its state, is left alone, and so is an active tag ruleset on v* tags that already refuses both deletion and
+    update. An archived repository and a fork are skipped, and so is a repository whose default branch it skips with a
+    reason (CodeQL's default setup can't be read, or -RequireChecks auto finds nothing to require): it changes nothing
+    there.
+
+    Each security setting is read first and printed as set, already set, would set (-WhatIf) or not available, with the
+    reason, and none costs money. Secret scanning and its push protection are left out of a repository that isn't public,
+    where they need the paid GitHub Secret Protection. A setting the API won't read or refuses to change, such as private
+    vulnerability reporting on a private repository or a token setting the organization decides, is reported, and the
+    run goes on with the next one. Requiring actions pinned to a full-length commit SHA is left out: it fails every
+    workflow that names an action by tag, and an adopted repository's workflows may.
 
     Name only jobs that run on pull requests. A job that runs on a release or a schedule never reports on a pull
     request, so requiring it would block every merge.
@@ -36,11 +54,11 @@
     paths or branches filters reports nothing on a pull request the filters skip, and that pull request can't merge, so
     run -WhatIf first and leave such jobs out.
 
-    GitHub Free doesn't offer organization rulesets, so this applies one to each repository. New-Project.ps1 runs it for a
-    repository it creates; Adopt-Project.ps1 prints the command to run.
+    GitHub Free doesn't offer organization rulesets, so this applies them to each repository. New-Project.ps1 runs it
+    for a repository it creates; Adopt-Project.ps1 prints the command to run.
 
 .EXAMPLE
-    .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -WhatIf     # shows what it would do
+    .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -WhatIf     # shows what it would do, and each setting's state
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks 'build-and-test,Commit attribution'
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks auto -WhatIf   # lists the checks it would require
     .\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup
@@ -66,6 +84,7 @@ if ($autoChecks -and $RequireChecks.Count -gt 1) { throw "-RequireChecks auto re
 if ($All -and $RequireChecks.Count -and -not $autoChecks) { throw '-RequireChecks needs -Repo: each repository names its own jobs (or pass -RequireChecks auto).' }
 
 $rulesetName = 'Protect main'
+$tagRulesetName = 'Protect release tags'
 # GitHub Actions' app id: required checks are matched to the app that reports them.
 $actionsAppId = 15368
 # -RequireChecks auto never requires these checks, whatever app reported them or event ran them: each name pattern
@@ -102,6 +121,45 @@ function Invoke-HostApi([string]$Cli, [string]$Path) {
     for ($i = 0; $i -lt $lines.Count; $i++) { if (-not $lines[$i].Trim()) { $blank = $i; break } }
     $body = if ($blank -ge 0 -and $blank -lt $lines.Count - 1) { $lines[($blank + 1)..($lines.Count - 1)] -join "`n" } else { '' }
     [pscustomobject]@{ Status = $status; Body = $body }
+}
+
+# Changes something through gh's API and returns the HTTP status and the body, read as Invoke-HostApi reads them, so a
+# refusal says why. $Body, when there is one, goes in as JSON from a file: piping JSON into a function loses stdin.
+function Invoke-HostWrite([string]$Method, [string]$Path, [hashtable]$Body) {
+    $file = $null
+    $inputArgs = @()
+    if ($Body) {
+        $file = New-TemporaryFile
+        Set-Content -LiteralPath $file -Value ($Body | ConvertTo-Json -Depth 10) -Encoding utf8
+        $inputArgs = @('--input', $file.FullName)
+    }
+    try { $lines = @(& gh api -X $Method --include $Path @inputArgs 2>$null) }
+    finally { if ($file) { Remove-Item -LiteralPath $file -Force } }
+    $status = $null
+    if ($lines.Count -and $lines[0] -match '^HTTP/\S+\s+(\d{3})\b') { $status = [int]$Matches[1] }
+    $blank = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if (-not $lines[$i].Trim()) { $blank = $i; break } }
+    $text = if ($blank -ge 0 -and $blank -lt $lines.Count - 1) { $lines[($blank + 1)..($lines.Count - 1)] -join "`n" } else { '' }
+    [pscustomobject]@{ Status = $status; Body = $text }
+}
+
+# Why a call failed, for the line that reports it: the status and, when the answer has one, the API's message.
+function Get-FailureReason($Response) {
+    if ($null -eq $Response.Status) { return 'no response' }
+    $message = try { "$(($Response.Body | ConvertFrom-Json -ErrorAction Stop).message)" } catch { '' }
+    "HTTP $($Response.Status)$(if ($message) { ": $message" })"
+}
+
+# What a read of a security setting says: $true when it is on, $false when it is off, or, as a string, why it can't be
+# told. $IsOn reads a 200 answer; $On and $Off list the other statuses that answer, such as Dependabot's 204 and 404.
+function Get-SettingState($Response, [scriptblock]$IsOn, [int[]]$On = @(), [int[]]$Off = @()) {
+    if ($null -ne $Response.Status -and $Response.Status -in $On) { return $true }
+    if ($null -ne $Response.Status -and $Response.Status -in $Off) { return $false }
+    if ($Response.Status -eq 200) {
+        try { return [bool](& $IsOn ($Response.Body | ConvertFrom-Json -ErrorAction Stop)) }
+        catch { return "couldn't read it: an answer that is not JSON" }
+    }
+    "couldn't read it: $(Get-FailureReason $Response)"
 }
 
 function Get-Targets {
@@ -151,32 +209,40 @@ function Get-PassingChecks([string]$Name, [string]$Branch) {
     [pscustomobject]@{ Number = $latest.number; Checks = @($passed); LeftOut = @($leftOut) }
 }
 
-function Set-Baseline {
-    [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Name)
+function Set-Baseline([string]$Name) {
     $info = Invoke-GhJson @('api', "repos/$Owner/$Name")
     if ($info.archived -or $info.fork) { Write-Host "${Name}: skipped (archived or fork)"; return }
-    $branch = $info.default_branch
+    $rulesets = @(foreach ($summary in @(Invoke-GhJson @('api', "repos/$Owner/$Name/rulesets"))) {
+        Invoke-GhJson @('api', "repos/$Owner/$Name/rulesets/$($summary.id)")
+    })
+    # A repository skipped for its default branch gets nothing else either: the reason printed says what to fix first.
+    if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets)) { return }
+    Set-TagRuleset $Name $rulesets
+    Set-SecuritySettings $Name $info
+}
 
-    $rulesets = @(Invoke-GhJson @('api', "repos/$Owner/$Name/rulesets"))
+# The default branch's ruleset, the suite switch and delete-branch-on-merge. Returns $false when it skips the
+# repository, which then changes nothing, and $true otherwise: done, shown by -WhatIf, or left alone.
+function Set-BranchRuleset {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$Name, [string]$Branch, [object[]]$Rulesets)
     $own = $null
-    foreach ($summary in $rulesets) {
-        $full = Invoke-GhJson @('api', "repos/$Owner/$Name/rulesets/$($summary.id)")
+    foreach ($full in $Rulesets) {
         if ($full.target -ne 'branch' -or $full.enforcement -ne 'active') { continue }
-        $onDefault = $full.conditions.ref_name.include -contains '~DEFAULT_BRANCH' -or $full.conditions.ref_name.include -contains "refs/heads/$branch"
+        $onDefault = $full.conditions.ref_name.include -contains '~DEFAULT_BRANCH' -or $full.conditions.ref_name.include -contains "refs/heads/$Branch"
         if (-not $onDefault) { continue }
         if ($full.name -eq $rulesetName) { $own = $full; continue }
-        if ($full.rules.type -contains 'pull_request') { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; return }
+        if ($full.rules.type -contains 'pull_request') { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; return $true }
     }
 
     # A ruleset of this name that exists already is changed only when -RequireChecks asks for new checks.
-    if ($own -and -not $RequireChecks.Count) { Write-Host "${Name}: left alone (already has '$rulesetName')"; return }
+    if ($own -and -not $RequireChecks.Count) { Write-Host "${Name}: left alone (already has '$rulesetName')"; return $true }
     $checks = @($RequireChecks)
     if ($autoChecks) {
-        $found = Get-PassingChecks $Name $branch
-        if (-not $found) { Write-Host "${Name}: skipped (-RequireChecks auto found no pull request merged into $branch to read checks from; name the jobs with -RequireChecks)"; return }
+        $found = Get-PassingChecks $Name $Branch
+        if (-not $found) { Write-Host "${Name}: skipped (-RequireChecks auto found no pull request merged into $Branch to read checks from; name the jobs with -RequireChecks)"; return $false }
         Write-Host "${Name}: pull request #$($found.Number) passed: $(if ($found.Checks.Count) { $found.Checks -join ', ' } else { 'nothing a ruleset can require' }); left out: $(if ($found.LeftOut.Count) { $found.LeftOut -join ', ' } else { 'nothing' })"
-        if (-not $found.Checks.Count) { Write-Host "${Name}: skipped (no check that passed on pull request #$($found.Number) can be required; name the jobs with -RequireChecks)"; return }
+        if (-not $found.Checks.Count) { Write-Host "${Name}: skipped (no check that passed on pull request #$($found.Number) can be required; name the jobs with -RequireChecks)"; return $false }
         Write-Host "${Name}: these checks come from one pull request. A job whose workflow has paths or branches filters reports nothing on a pull request the filters skip, which then can't merge; leave such a job out by naming the rest with -RequireChecks"
         $checks = @($found.Checks)
     }
@@ -208,7 +274,7 @@ function Set-Baseline {
         if ($null -eq $codeql) {
             $why = if ($null -eq $setup.Status) { 'no response' } elseif ($setup.Status -eq 200) { 'an answer that is not JSON' } else { "HTTP $($setup.Status)" }
             Write-Host "${Name}: skipped (couldn't read CodeQL's default setup: $why)"
-            return
+            return $false
         }
     }
 
@@ -249,7 +315,7 @@ function Set-Baseline {
     } | ConvertTo-Json -Depth 10
 
     $verb = if ($own) { 'update' } else { 'create' }
-    $summary = "$Name ($branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
+    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) {
         Write-Host "would: $summary"
         if ($autoChecks) {
@@ -261,7 +327,7 @@ function Set-Baseline {
             $unnamed = @($checks | Where-Object { $_ -like '*,*' })
             if ($unnamed.Count) { Write-Host "  left out of that command, since -RequireChecks splits a name at its comma: $($unnamed -join '; ')" }
         }
-        return
+        return $true
     }
 
     # The suite switch comes first: once the ruleset has its code-scanning rule, a later run no longer reads the default
@@ -282,6 +348,79 @@ function Set-Baseline {
     & gh api -X PATCH "repos/$Owner/$Name" -F delete_branch_on_merge=true | Out-Null
     if ($LASTEXITCODE) { throw "Couldn't turn on delete-branch-on-merge for $Name." }
     Write-Host "done: $summary"
+    $true
+}
+
+# The release tags' ruleset: no v* tag is deleted or updated (moved), by anyone, since a release tag names one published
+# package set. Creating a tag stays open, so a release can still be tagged. A ruleset of this name is left alone whatever
+# its state, since its owner may have shaped or turned it off, and so is an active tag ruleset on v* tags (or on every
+# tag) that refuses both already.
+function Set-TagRuleset {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$Name, [object[]]$Rulesets)
+    foreach ($full in $Rulesets) {
+        if ($full.name -eq $tagRulesetName) { Write-Host "${Name}: left alone (already has '$tagRulesetName')"; return }
+    }
+    foreach ($full in $Rulesets) {
+        if ($full.target -ne 'tag' -or $full.enforcement -ne 'active') { continue }
+        $include = @($full.conditions.ref_name.include)
+        if ($include -notcontains 'refs/tags/v*' -and $include -notcontains '~ALL') { continue }
+        $types = @($full.rules.type)
+        if ($types -contains 'deletion' -and $types -contains 'update') { Write-Host "${Name}: left alone ('$($full.name)' already refuses deleting and moving v* tags)"; return }
+    }
+
+    $body = @{
+        name = $tagRulesetName
+        target = 'tag'
+        enforcement = 'active'
+        conditions = @{ ref_name = @{ include = @('refs/tags/v*'); exclude = @() } }
+        bypass_actors = @()
+        rules = @(@{ type = 'deletion' }, @{ type = 'update' })
+    }
+    $summary = "${Name}: create '$tagRulesetName' on v* tags: no deletion, no update (a tag is never moved), no bypass"
+    if (-not $PSCmdlet.ShouldProcess($Name, "create ruleset '$tagRulesetName'")) { Write-Host "would: $summary"; return }
+    $result = Invoke-HostWrite POST "repos/$Owner/$Name/rulesets" $body
+    if ($result.Status -lt 200 -or $result.Status -ge 300) { throw "Couldn't create the '$tagRulesetName' ruleset on ${Name}: $(Get-FailureReason $result)." }
+    Write-Host "done: $summary"
+}
+
+# Sets one security setting where Get-SettingState read it as off, and prints the outcome on one line. A refusal is
+# reported, not thrown: each setting stands on its own, so the next one is still tried.
+function Set-SecuritySetting {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$Name, [string]$Label, $State, [string]$Method, [string]$Path, [hashtable]$Body)
+    if ($State -is [string]) { Write-Host "${Name}: ${Label}: not available ($State)"; return }
+    if ($State) { Write-Host "${Name}: ${Label}: already set"; return }
+    if (-not $PSCmdlet.ShouldProcess($Name, "turn on $Label")) { Write-Host "${Name}: ${Label}: would set"; return }
+    $result = Invoke-HostWrite $Method $Path $Body
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Name}: ${Label}: set" }
+    else { Write-Host "${Name}: ${Label}: not available ($(Get-FailureReason $result))" }
+}
+
+# The security settings a public project should have, in an order where each one's prerequisite comes first: Dependabot
+# security updates need Dependabot alerts. None costs money. Secret scanning and its push protection are free on a
+# public repository only, so one that isn't public is left out with the reason, rather than spending a GitHub Secret
+# Protection seat. The rest the API decides: a setting it won't read, or refuses to change, is reported as not
+# available with its answer, such as private vulnerability reporting on a private repository, or a token setting its
+# organization fixes (HTTP 409).
+function Set-SecuritySettings([string]$Name, $Info) {
+    $base = "repos/$Owner/$Name"
+    $state = Get-SettingState (Invoke-HostApi gh "$base/actions/permissions/workflow") { param($answer) $answer.default_workflow_permissions -eq 'read' -and -not $answer.can_approve_pull_request_reviews }
+    Set-SecuritySetting $Name 'read-only workflow token, and Actions not approving pull requests' $state PUT "$base/actions/permissions/workflow" @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false }
+
+    $features = [ordered]@{ secret_scanning = 'secret scanning'; secret_scanning_push_protection = 'secret scanning push protection' }
+    foreach ($feature in $features.Keys) {
+        $state = if ($Info.private) { "the repository isn't public, and one that isn't needs the paid GitHub Secret Protection for it" }
+        else { "$($Info.security_and_analysis.$feature.status)" -eq 'enabled' }
+        Set-SecuritySetting $Name $features[$feature] $state PATCH $base @{ security_and_analysis = @{ $feature = @{ status = 'enabled' } } }
+    }
+
+    $state = Get-SettingState (Invoke-HostApi gh "$base/vulnerability-alerts") { $true } -On 204 -Off 404
+    Set-SecuritySetting $Name 'Dependabot alerts' $state PUT "$base/vulnerability-alerts"
+    $state = Get-SettingState (Invoke-HostApi gh "$base/automated-security-fixes") { param($answer) $answer.enabled } -Off 404
+    Set-SecuritySetting $Name 'Dependabot security updates' $state PUT "$base/automated-security-fixes"
+    $state = Get-SettingState (Invoke-HostApi gh "$base/private-vulnerability-reporting") { param($answer) $answer.enabled }
+    Set-SecuritySetting $Name 'private vulnerability reporting' $state PUT "$base/private-vulnerability-reporting"
 }
 
 foreach ($name in Get-Targets) {

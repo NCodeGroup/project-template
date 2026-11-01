@@ -47,7 +47,7 @@ $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
-    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md'
+    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
     claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
@@ -57,7 +57,7 @@ $toolFiles = @{
     local = '.github\agents\local-implementer.agent.md', '.github\agents\hybrid-planner.agent.md',
         '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-local.prompt.md'
 }
-$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config',
+$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
     '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
@@ -82,6 +82,8 @@ $cases = @(
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'MIT'; package_icon = 'icon.png' } }
     @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'Apache-2.0' } }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
+    @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT' } }
+    @{ Name = 'python-claude'; Stack = 'python'; Host = 'github'; Tools = @('claude') }
 )
 if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
 $yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
@@ -130,6 +132,14 @@ foreach ($case in $cases) {
         $ciFile = if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' }
         $ciText = Get-Content -LiteralPath (Join-Path $dest $ciFile) -Raw
         Check "${name}: CI runs the Definition of Done for the default commands" ($ciText.Contains('build/dod.ps1') -and -not ($ciText -match '(?m)^\s+(- )?dotnet (build|test)\s*$')) $ciText
+        if ($case.Host -eq 'github') {
+            Check "${name}: CI caches NuGet packages, keyed on the restore's inputs" ($ciText.Contains('uses: actions/cache@') -and $ciText.Contains('path: ~/.nuget/packages') -and $ciText.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $ciText.Contains('${{ runner.os }}-nuget-' + "`n")) $ciText
+            Check "${name}: CI keeps the test results, after a failure too, and for a library the packages, as artifacts" ($ciText -match '(?m)^      - name: Upload test results\r?\n        if: always\(\)\r?\n        uses: actions/upload-artifact@[0-9a-f]{40} # v\d+\.\d+\.\d+\r?\n        with:\r?\n          name: test-results\r?\n          path: artifacts/test-results/\r?$' -and $ciText.Contains('if-no-files-found: ignore') -and $ciText.Contains('retention-days: 14') -and ($ciText.Contains('- name: Upload packages') -eq $library) -and -not $ciText.Contains('codecov')) $ciText
+        }
+        else {
+            Check "${name}: CI caches NuGet packages in the project folder, keyed on the package versions and the SDK" ($ciText.Contains('NUGET_PACKAGES: $CI_PROJECT_DIR/.nuget/packages') -and $ciText.Contains('files: [Directory.Packages.props, global.json]') -and $ciText.Contains('paths: [.nuget/packages/]')) $ciText
+            Check "${name}: CI keeps the test results and packages, after a failure too" ($ciText -match '(?m)^  artifacts:\r?\n    when: always\r?\n    paths: \[artifacts/test-results/, artifacts/packages/\]\r?\n    expire_in: 14 days\r?$') $ciText
+        }
         $libraryWrong = @($libraryOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -ErrorAction SilentlyContinue) -ne $library })
         Check "${name}: library decisions only for a library" (-not $libraryWrong) ($libraryWrong -join ', ')
         $license = Join-Path $dest 'LICENSE.txt'
@@ -153,6 +163,7 @@ foreach ($case in $cases) {
             $uses = [regex]::Matches($workflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
             Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 5 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
             Check "${name}: the publish workflow runs on a published release, holds no permission by default, and pushes through trusted publishing in the nuget environment" ($workflow.Contains('types: [published]') -and $workflow -match '(?m)^permissions: \{\}\r?$' -and $workflow.Contains('environment: nuget') -and $workflow.Contains('id-token: write') -and $workflow.Contains('uses: NuGet/login@') -and $workflow.Contains('persist-credentials: false') -and -not $workflow.Contains('secrets.')) $workflow
+            Check "${name}: the publish workflow packs only a tag whose commit the default branch holds" ($workflow.Contains('fetch-depth: 0') -and $workflow.Contains('DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}') -and $workflow.Contains('git merge-base --is-ancestor HEAD "origin/$env:DEFAULT_BRANCH"') -and $workflow.IndexOf('merge-base --is-ancestor') -lt $workflow.IndexOf('dotnet pack')) $workflow
         }
     }
     $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
@@ -160,6 +171,33 @@ foreach ($case in $cases) {
     Check "${name}: $($case.Host) files only" (-not $wrong) ($wrong -join ', ')
     $ciForIndex = Get-Content -LiteralPath (Join-Path $dest $(if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' })) -Raw
     Check "${name}: CI checks the decision index" ($ciForIndex.Contains('.template/Test-AdrIndex.ps1')) $ciForIndex
+    # The repository's license: the license answer, or a library's package license from before that answer existed.
+    $licenseAnswer = if ($case.Data.license) { $case.Data.license } elseif ($case.Data.nuget_package) { $case.Data.package_license } else { '' }
+    $licensePath = Join-Path $dest 'LICENSE.txt'
+    $licenseText = if (Test-Path -LiteralPath $licensePath) { Get-Content -LiteralPath $licensePath -Raw } else { '' }
+    $licenseRight = switch ($licenseAnswer) { 'MIT' { $licenseText.StartsWith("MIT License`n`nCopyright (c) NCode Group`n") } 'Apache-2.0' { $licenseText.Contains('Apache License') } default { -not $licenseText } }
+    Check "${name}: LICENSE.txt for an MIT or Apache-2.0 license, on any stack" $licenseRight $licenseText
+    # The Copilot cloud agent's environment: only for a GitHub project that uses Copilot.
+    $copilotSetup = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
+    $wantsSetup = $case.Host -eq 'github' -and 'copilot' -in $tools
+    Check "${name}: the Copilot setup workflow only for a GitHub project that uses Copilot" ((Test-Path -LiteralPath $copilotSetup) -eq $wantsSetup) "exists=$(Test-Path -LiteralPath $copilotSetup) wanted=$wantsSetup"
+    if ($wantsSetup) {
+        $setup = Get-Content -LiteralPath $copilotSetup -Raw
+        $setupUses = [regex]::Matches($setup, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        $setupCheckouts = [regex]::Matches($setup, '(?m)^\s+- uses: actions/checkout@').Count
+        Check "${name}: the Copilot setup workflow has the one job Copilot runs, runs by hand and when it changes, reads only contents and stops at 59 minutes" ($setup -match '(?m)^jobs:\r?\n  copilot-setup-steps:\r?$' -and [regex]::Matches($setup, '(?m)^    runs-on: ').Count -eq 1 -and $setup.Contains('workflow_dispatch:') -and [regex]::Matches($setup, '(?m)^    paths: \[\.github/workflows/copilot-setup-steps\.yml\]\r?$').Count -eq 2 -and $setup -match '(?m)^    timeout-minutes: 59\r?$' -and $setup -match '(?m)^    permissions:\r?\n      contents: read\r?$' -and -not $setup.Contains(': write')) $setup
+        Check "${name}: the Copilot setup workflow pins each action to a full commit SHA, with its tag in a comment, and persists no credentials" ($setupUses.Count -gt 0 -and $setupCheckouts -eq 1 -and -not ($setupUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($setup, '(?m)^\s+persist-credentials: false\r?$').Count -eq $setupCheckouts) $setup
+        # Copilot ignores a job's defaults, so every run step names its shell.
+        Check "${name}: every step of the Copilot setup workflow that runs a command names its shell" ([regex]::Matches($setup, '(?m)^\s+run: ').Count -eq [regex]::Matches($setup, '(?m)^\s+shell: pwsh\r?$').Count -and -not $setup.Contains('defaults:')) $setup
+        $setupOk = switch ($case.Stack) {
+            'dotnet' { $setup.Contains('global-json-file: global.json') -and $setup.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $setup.Contains('run: dotnet tool restore') -and $setup.Contains("if: hashFiles('*.sln', '*.slnx') != ''") -and $setup.Contains('run: dotnet restore') }
+            'python' { $setup.Contains('uses: actions/setup-python@') -and $setup.Contains('$PSNativeCommandUseErrorActionPreference = $true') -and $setup.Contains('python -m pip install -r requirements.txt') }
+            'node' { $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }; $setup.Contains('uses: actions/setup-node@') -and $setup.Contains(@{ npm = 'run: npm ci'; pnpm = 'run: pnpm install --frozen-lockfile'; yarn = 'run: yarn install'; bun = 'run: bun install --frozen-lockfile' }[$pm]) }
+            'powershell' { $setup.Contains('Install-Module Pester, PSScriptAnalyzer') }
+            default { $setupUses.Count -eq 1 }
+        }
+        Check "${name}: the Copilot setup workflow installs what CI installs for the stack" $setupOk $setup
+    }
     # The code review caller: only for a GitHub project that asked for it, and never a GitLab one, which isn't asked.
     $reviewCaller = Join-Path $dest '.github\workflows\code-review.yml'
     $wantsReview = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
@@ -168,24 +206,37 @@ foreach ($case in $cases) {
         $caller = Get-Content -LiteralPath $reviewCaller -Raw
         $uses = [regex]::Matches($caller, '(?m)^\s+uses: NCodeGroup/code-review@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the code review caller pins a release's full commit SHA, with its tag in a comment" ($uses.Count -eq 1 -and $uses[0].Groups[1].Value -match '^[0-9a-f]{40}$' -and $uses[0].Groups[2].Value -match '^# v\d+\.\d+\.\d+$') ($uses | ForEach-Object Value)
-        Check "${name}: the code review caller runs from the default branch, in its environment, with no permissions by default" ($caller.Contains('pull_request_target:') -and $caller.Contains('environment: code-review') -and $caller -match '(?m)^permissions: \{\}?$' -and -not $caller.Contains('pull_request:')) $caller
+        Check "${name}: the code review caller runs from the default branch, in its environment, with no permissions by default" ($caller.Contains('pull_request_target:') -and $caller.Contains('environment: code-review') -and $caller -match '(?m)^permissions: \{\}?$' -and -not $caller.Contains('pull_request:')) $caller
         Check "${name}: the code review caller records outcomes when a pull request closes, without cancelling a review" ($caller -match '(?m)^\s+types: \[[^\]\r\n]*\bclosed\b[^\]\r\n]*\]\r?$' -and $caller.Contains("cancel-in-progress: `${{ github.event.action != 'closed' }}") -and $caller.Contains('issues: read')) $caller
         $checkouts = [regex]::Matches($caller, '(?m)^\s+uses: actions/checkout@').Count
         Check "${name}: the code review caller checks out only the default branch, without persisted credentials, and never the pull request's head" ($checkouts -eq 1 -and [regex]::Matches($caller, '(?m)^\s+persist-credentials: false\r?$').Count -eq 1 -and -not $caller.Contains('refs/pull/') -and -not $caller.Contains('head.sha')) $caller
         $answers = Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw
-        Check "${name}: the answer is recorded" ($answers -match '(?m)^code_review: true?$') $answers
+        Check "${name}: the answer is recorded" ($answers -match '(?m)^code_review: true?$') $answers
     }
     if ($case.Host -eq 'github') {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD') -and $ci.Contains('merge_group:') -and $ci.Contains('${{ github.event.pull_request.base.sha'))
         $checkouts = [regex]::Matches($ci, '(?m)^\s+- uses: actions/checkout@').Count
         Check "${name}: CI checkouts set persist-credentials false" ($checkouts -gt 0 -and [regex]::Matches($ci, '(?m)^\s+persist-credentials: false\r?$').Count -eq $checkouts) $ci
-        # One pull request per ecosystem: a filter on the update type would give each major update a pull request of its own.
         $dependabot = Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw
-        Check "${name}: Dependabot groups every update of an ecosystem, major ones included" (-not $dependabot.Contains('update-types') -and $dependabot.Contains('patterns: ["*"]')) $dependabot
+        # One pull request per ecosystem: a filter on the update type would give each major update a pull request of its own. The one
+        # update-types line is the .NET SDK's major ignore: a new .NET major is a planned migration.
+        $majorIgnores = [regex]::Matches($dependabot, '(?m)^    ignore:\r?\n      - dependency-name: "\*"\r?\n        update-types: \["version-update:semver-major"\]\r?$').Count
+        Check "${name}: Dependabot groups every update of an ecosystem, major ones included, and ignores only the .NET SDK's majors" ([regex]::Matches($dependabot, 'update-types').Count -eq $majorIgnores -and $majorIgnores -eq [int]($case.Stack -eq 'dotnet') -and $dependabot.Contains('patterns: ["*"]')) $dependabot
         # A version published minutes ago waits out the cooldown before it reaches the project.
         $ecosystems = [regex]::Matches($dependabot, '(?m)^  - package-ecosystem: ').Count
         Check "${name}: every Dependabot entry has a cooldown" ($ecosystems -gt 0 -and [regex]::Matches($dependabot, '(?m)^    cooldown:\r?\n      default-days: 3\r?$').Count -eq $ecosystems) $dependabot
+        Check "${name}: CI cancels a superseded run, but never a default-branch commit's or a merge queue entry's, whose group holds the commit SHA" ($ci.Contains('  group: ci-${{ github.ref }}-${{ (github.ref == format(''refs/heads/{0}'', github.event.repository.default_branch) || github.event_name == ''merge_group'') && github.sha || ''latest'' }}') -and $ci.Contains('  cancel-in-progress: ${{ github.ref != format(''refs/heads/{0}'', github.event.repository.default_branch) && github.event_name != ''merge_group'' }}')) $ci
+        Check "${name}: every CI job has a timeout, 30 minutes for the build" ([regex]::Matches($ci, '(?m)^    runs-on: ').Count -eq [regex]::Matches($ci, '(?m)^    timeout-minutes: \d+\r?$').Count -and $ci -match '(?m)^  build-and-test:\r?\n    runs-on: ubuntu-latest\r?\n    timeout-minutes: 30\r?$') $ci
+        $ciUses = [regex]::Matches($ci, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        Check "${name}: CI pins each action to a full commit SHA, with its tag in a comment" ($ciUses.Count -gt 0 -and -not ($ciUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $ci
+        # Security updates arrive as one pull request per ecosystem too.
+        $grouped = [regex]::Matches($dependabot, '(?m)^    groups:\r?$').Count
+        $securityGroups = [regex]::Matches($dependabot, '(?m)^      [\w-]+-security:\r?\n        applies-to: security-updates\r?\n        patterns: \["\*"\]\r?$').Count
+        Check "${name}: Dependabot gives security updates a group of their own in every grouped ecosystem" ($grouped -gt 0 -and $securityGroups -eq $grouped) $dependabot
+        if ($case.Stack -eq 'python') {
+            Check "${name}: a failed pip install fails the CI step" ($ci.Contains('$PSNativeCommandUseErrorActionPreference = $true') -and $ci.IndexOf('$PSNativeCommandUseErrorActionPreference') -lt $ci.IndexOf('python -m pip install')) $ci
+        }
         $notice = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\template-update.yml') -Raw
         $uses = [regex]::Matches($notice, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the template update workflow runs weekly and by hand, with only contents: read and issues: write, and runs .template/Get-TemplateUpdate.ps1" ($notice.Contains("- cron: '0 7 * * 1'") -and $notice.Contains('workflow_dispatch:') -and $notice -match '(?m)^permissions:\r?\n  contents: read\r?\n  issues: write\r?\n\r?\n' -and $notice.Contains('GH_TOKEN: ${{ github.token }}') -and $notice.Contains('run: ./.template/Get-TemplateUpdate.ps1')) $notice

@@ -6,7 +6,9 @@
     From the project template; template updates replace this file. A decision record is a file named NNNN-<title>.md
     directly in docs/decisions/, other than 0000-template.md; the template's own records in docs/decisions/project-template/
     have an index of their own, which template updates keep. Fails, naming each one, on a record the README's index
-    doesn't link and on a link in it to a record that doesn't exist. Passes when the repository has no docs/decisions/.
+    doesn't link, on a link in it to a record that doesn't exist, on two records that share a number (as when two
+    branches each took the next free one), and on an index row whose link text shows another number than its record's.
+    Passes when the repository has no docs/decisions/.
 
 .PARAMETER Path
     The repository root. Defaults to the folder above this script's.
@@ -26,9 +28,16 @@ $records = @(Get-ChildItem -LiteralPath $folder -File -Filter '*.md' | Where-Obj
 $linked = @([regex]::Matches($index, '\]\((?:\./)?(\d{4}-[^)/#]+\.md)(?:#[^)]*)?\)') | ForEach-Object { $_.Groups[1].Value } | Where-Object { $_ -ne '0000-template.md' } | Sort-Object -Unique)
 $missing = @($records | Where-Object { $_ -notin $linked })
 $dangling = @($linked | Where-Object { $_ -notin $records })
+# Two branches or worktrees can each take the next free number; both records then pass every other check.
+$duplicates = @($records | Group-Object { $_.Substring(0, 4) } | Where-Object Count -GT 1 | ForEach-Object { "$($_.Name): $($_.Group -join ', ')" })
+# An index row shows a number as its link text; it must be its record's.
+$mismatched = @([regex]::Matches($index, '\[(?:ADR-)?(\d{4})\]\((?:\./)?(\d{4})-[^)/#]+\.md') | Where-Object { $_.Groups[1].Value -ne $_.Groups[2].Value } | ForEach-Object { $_.Value })
 
 foreach ($name in $missing) { "Not in docs/decisions/README.md's index: $name" }
 foreach ($name in $dangling) { "docs/decisions/README.md links a record that doesn't exist: $name" }
-if ($missing -or $dangling) { "Decision index: FAILED ($($missing.Count + $dangling.Count))"; exit 1 }
+foreach ($entry in $duplicates) { "Two records share the number $entry; renumber the later one" }
+foreach ($link in $mismatched) { "docs/decisions/README.md shows another number than its record's: $link" }
+$problems = $missing.Count + $dangling.Count + $duplicates.Count + $mismatched.Count
+if ($problems) { "Decision index: FAILED ($problems)"; exit 1 }
 "Decision index: $($records.Count) records, all indexed."
 exit 0

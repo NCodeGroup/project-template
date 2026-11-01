@@ -8,6 +8,15 @@ build-and-test:
   image: mcr.microsoft.com/dotnet/sdk:10.0
   rules:
     - exists: ["**/*.csproj", "**/*.sln", "**/*.slnx"]
+  # GitLab caches only paths inside the project folder, so NuGet keeps its packages there. The key changes with the
+  # package versions and the SDK; the cache is saved again after each job, so new packages join it in between.
+  variables:
+    NUGET_PACKAGES: $CI_PROJECT_DIR/.nuget/packages
+  cache:
+    key:
+      prefix: nuget
+      files: [Directory.Packages.props, global.json]
+    paths: [.nuget/packages/]
 {%- elif stack == 'python' %}
   image: python:3
   rules:
@@ -49,6 +58,11 @@ build-and-test:
 {%- if stack == 'dotnet' and build_command == 'dotnet build' and test_command == 'dotnet test' %}
     # The Definition of Done builds, tests and, for a library, packs, as build/dod.ps1 says.
     - pwsh -NoProfile -File build/dod.ps1
+  # A TRX file per test project, kept after a failure too, and for a library the packages a release would publish.
+  artifacts:
+    when: always
+    paths: [artifacts/test-results/, artifacts/packages/]
+    expire_in: 14 days
 {%- else %}
 {%- if not build_command and not test_command %}
     - echo "No build or test command configured"
