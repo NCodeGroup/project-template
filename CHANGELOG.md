@@ -14,6 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `tools/Set-RepositoryBaseline.ps1` also allows auto-merge where it is off, which the code review auto-merge workflow needs, read first and reported as set, already set, would set or not available like the security settings, on a repository whose branch ruleset it leaves alone too. Run it again, such as `.\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup`, to allow it in the repositories it protected before ([NCodeGroup/code-review#33](https://github.com/NCodeGroup/code-review/issues/33)).
 
+## [0.48.4] - 2026-11-01
+
+### Fixed
+
+- No change for projects made from the template. `tests/Test-GitHooks.ps1` runs pre-commit at the version `tests/requirements.txt` pins, `pre-commit==4.7.0`, through `uvx --from`, instead of the pre-commit on `PATH` or the newest release `uvx` resolved on every run, CI included, so Dependabot's `pip` entry for `/tests` moves it in a pull request CI has tested. A new check fails when the version it runs isn't the pin, and the suite stops with an error when the pin is missing or `uvx` isn't installed ([#192](https://github.com/NCodeGroup/project-template/issues/192)).
+
 ## [0.48.3] - 2026-11-01
 
 ### Fixed
@@ -746,7 +752,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.48.3...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.48.4...HEAD
+[0.48.4]: https://github.com/NCodeGroup/project-template/compare/v0.48.3...v0.48.4
 [0.48.3]: https://github.com/NCodeGroup/project-template/compare/v0.48.2...v0.48.3
 [0.48.2]: https://github.com/NCodeGroup/project-template/compare/v0.48.1...v0.48.2
 [0.48.1]: https://github.com/NCodeGroup/project-template/compare/v0.48.0...v0.48.1
