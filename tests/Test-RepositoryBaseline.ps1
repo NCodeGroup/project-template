@@ -8,7 +8,10 @@
     branch, with no deletion, no force push, a pull request with no approvals, merge-commit and rebase merges only and
     no bypass, and delete-branch-on-merge; that -RequireChecks adds required status checks; that a repository whose
     default branch already requires pull requests, or already has this ruleset, is left alone, and that -RequireChecks
-    updates the ruleset the script made; that -RequireChecks auto requires the GitHub Actions checks that passed on the
+    updates the ruleset the script made; that a ruleset that already has a code-scanning rule keeps it and its
+    thresholds, its repository's suite is never switched, and a notice, with -WhatIf too, says when the default setup
+    runs a suite other than extended and how to switch it by hand, while a setup it can't read is reported without
+    failing the run; that -RequireChecks auto requires the GitHub Actions checks that passed on the
     latest merged pull request, found on any page of closed pull requests, reading every page of its check runs and
     workflow runs, Commit attribution among them, leaves out the review bot's Code review and its job, CodeQL and its
     Analyze jobs, push-only jobs, jobs no workflow run accounts for, other apps' checks and skipped, neutral, failed or
@@ -214,6 +217,9 @@ $autoRuns = @{
         (New-CheckRun 15 'orphan' -Suite 80))
 }
 $autoWorkflowRuns = @{ sha7 = $prWorkflowRuns; sha9 = $prWorkflowRuns }
+$scanTypes = @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')
+$looseRuleset = New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request')
+$looseRuleset.rules += @{ type = 'code_scanning'; parameters = @{ code_scanning_tools = @(@{ tool = 'CodeQL'; alerts_threshold = 'errors'; security_alerts_threshold = 'high_or_higher' }) } }
 $repos = @{
     fresh = New-Repo
     extendedAlready = New-Repo -Suite 'extended'
@@ -226,6 +232,13 @@ $repos = @{
     setupUnreadable = New-Repo -CodeQL 'raw:<html>Bad Gateway</html>'
     oursCodeQL404 = New-Repo -CodeQL '404' -Rulesets @((New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')))
     oursWithoutCodeQL = New-Repo -CodeQL 'not-configured' -Rulesets @((New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')))
+    oursScanDefault = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
+    oursScanExtended = New-Repo -Suite 'extended' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
+    oursScanUnreported = New-Repo -Suite '' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
+    oursScanUnreadable = New-Repo -CodeQL 'fail:403' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
+    oursScanNoResponse = New-Repo -CodeQL 'fail:none' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
+    oursScanNotJson = New-Repo -CodeQL 'raw:<html>Bad Gateway</html>' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
+    oursScanLoose = New-Repo -Rulesets @($looseRuleset)
     legacy = New-Repo -Branch master
     owned = New-Repo -Rulesets @((New-Ruleset 'main'))
     ours = New-Repo -Rulesets @((New-Ruleset 'Protect main'))
@@ -393,6 +406,30 @@ try {
     $r3 = Invoke-Baseline @('-Repo', 'oursCodeQL404', '-RequireChecks', 'test')
     Check 'update: a 404 from the CodeQL setup doesn''t touch the rule a ruleset has' ((@($r3.Body.rules.type) -contains 'code_scanning') -and $r3.Output -match 'keeps its code-scanning rule') "$(@($r3.Body.rules.type) -join ',') $($r3.Output)"
     Check 'update: a ruleset without a code-scanning rule gets one, with the baseline thresholds' (($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors_and_warnings') -and ($scan[0].security_alerts_threshold -eq 'all')) (@($r.Body.rules.type) -join ',')
+
+    # 6a. A ruleset that already has a code-scanning rule: its repository's suite is reported, never switched.
+    $r = Invoke-Baseline @('-Repo', 'oursScanDefault')
+    Check 'suite: a Protect main with a code-scanning rule is left alone, and its suite is not switched' ($r.Output -match "oursScanDefault: left alone \(already has 'Protect main'\)" -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/101') "$($r.Changes -join '|') $($r.Output)"
+    Check 'suite: the notice says which suite the setup runs and how to switch it by hand' ($r.Output.Contains("oursScanDefault: notice: CodeQL's default setup runs the default query suite, not the extended one") -and $r.Output.Contains('gh api -X PATCH repos/NCodeGroup/oursScanDefault/code-scanning/default-setup -f query_suite=extended') -and $r.Output.Contains('may then block merges on them')) $r.Output
+    Check 'suite: the notice doesn''t stop the release tags ruleset or the security settings' ($r.TagBody -and $r.Output -match 'oursScanDefault: secret scanning: set') $r.Output
+    $r = Invoke-Baseline @('-Repo', 'oursScanDefault', '-WhatIf')
+    Check 'suite: -WhatIf prints the notice too, and changes nothing' ($r.Changes.Count -eq 0 -and $r.Output.Contains('oursScanDefault: notice:')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursScanExtended')
+    Check 'suite: no notice when the setup already runs the extended suite' ($r.Output -notmatch 'notice:' -and ($r.Changes -join '|') -notmatch 'default-setup') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursScanUnreported')
+    Check 'suite: a setup that names no suite gets the notice' ($r.Output.Contains('oursScanUnreported: notice: CodeQL''s default setup runs a query suite it did not report') -and ($r.Changes -join '|') -notmatch 'default-setup') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursScanUnreadable')
+    Check 'suite: a setup it can''t read is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("oursScanUnreadable: couldn't read CodeQL's default setup to check its query suite (HTTP 403)") -and $r.Output -notmatch 'FAILED' -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    foreach ($case in @(@('oursScanNoResponse', 'no response'), @('oursScanNotJson', 'an answer that is not JSON'))) {
+        $r = Invoke-Baseline @('-Repo', $case[0])
+        Check "suite: a setup read that gets $($case[1]) is reported with that reason, and the run goes on" ($r.ExitCode -eq 0 -and $r.Output.Contains("$($case[0]): couldn't read CodeQL's default setup to check its query suite ($($case[1]))") -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/101' -and $r.TagBody) "$($r.ExitCode) $($r.Changes -join '|') $($r.Output)"
+    }
+    $r = Invoke-Baseline @('-Repo', 'oursScanLoose', '-RequireChecks', 'test')
+    $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
+    Check 'suite: -RequireChecks keeps the ruleset''s own code-scanning thresholds and doesn''t switch the suite' ((($r.Changes -join '|') -like '*BODY PUT repos/NCodeGroup/oursScanLoose/rulesets/101*') -and ($r.Changes -join '|') -notmatch 'default-setup' -and ($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors') -and ($scan[0].security_alerts_threshold -eq 'high_or_higher') -and $r.Output.Contains('oursScanLoose: notice:')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
+    $r2 = Invoke-Baseline @('-Repo', 'oursCodeQL404', '-RequireChecks', 'test')
+    Check 'suite: no notice where the default setup is not configured or not found' ($r.Output -notmatch "notice:|couldn't read CodeQL" -and $r2.Output -notmatch "notice:|couldn't read CodeQL") "$($r.Output) $($r2.Output)"
 
     # 6b. -RequireChecks auto requires the checks that passed on the latest merged pull request.
     $r = Invoke-Baseline @('-Repo', 'autoChecks', '-RequireChecks', 'auto', '-WhatIf')

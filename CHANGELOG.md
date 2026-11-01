@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-11-01
+
+### Added
+
+- `tools/Set-RepositoryBaseline.ps1` prints a notice for a repository whose "Protect main" ruleset already has a code-scanning rule, such as one an older version of the script made, when its CodeQL default setup runs a query suite other than `extended`, also with `-WhatIf`: it says so and gives the command that switches it by hand, `gh api -X PATCH repos/<owner>/<repo>/code-scanning/default-setup -f query_suite=extended`, which can start blocking merges on the new alerts the extended suite raises. It never switches such a repository's suite or raises its rule's alert thresholds itself, and a setup it can't read is reported while the run goes on ([#167](https://github.com/NCodeGroup/project-template/issues/167)).
+
+### Changed
+
+- The protected paths that `/run-issues` and `/address-feedback` never let a bot's finding change say that a `scripts` folder is deliberately not one: it usually holds ordinary code a fix may need, the CI files that run its scripts are protected already, and the pull request, its review loop and the person who merges it remain the gate ([#156](https://github.com/NCodeGroup/project-template/issues/156)).
+- `/ship-plan`'s `draft` Landing setting keeps defaulting to `no`, so no template update changes how an existing project lands. `/ship-plan`, the Landing section of a new project's `AGENTS.md` and USAGE.md now say so, and that a project opts in to draft pull requests with `- draft: yes`; `/run-issues` opens its pull requests as drafts either way ([#157](https://github.com/NCodeGroup/project-template/issues/157)).
+
 ## [0.49.0] - 2026-11-01
 
 ### Added
@@ -755,7 +766,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.49.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.50.0...HEAD
+[0.50.0]: https://github.com/NCodeGroup/project-template/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/NCodeGroup/project-template/compare/v0.48.4...v0.49.0
 [0.48.4]: https://github.com/NCodeGroup/project-template/compare/v0.48.3...v0.48.4
 [0.48.3]: https://github.com/NCodeGroup/project-template/compare/v0.48.2...v0.48.3
