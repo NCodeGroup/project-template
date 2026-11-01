@@ -17,7 +17,8 @@
 
     On failure each finding is written as "<short sha> <subject>: <finding>", followed by the remedy: re-author the
     commits with git rebase <base> --exec "git commit --amend --no-edit --reset-author", then git push
-    --force-with-lease. When GITHUB_ACTIONS is true each finding is also written as a workflow error annotation.
+    --force-with-lease. When GITHUB_ACTIONS is true each finding is also written as a workflow error annotation, with
+    %, CR and LF escaped.
 
     When PullRequestTitle or PullRequestBody is given, the pull request's title and description (on GitLab, when
     GITLAB_CI is true, the merge request's) are checked line by line for the same attribution lines, because a squash
@@ -75,8 +76,9 @@ $attributionLines = @(
     '^\s*claude-session:',
     '^\W*generated with \[?claude code'
 )
-$requestName = if ($env:GITLAB_CI -eq 'true') { 'merge request' } else { 'pull request' }
-$requestLabel = if ($env:GITLAB_CI -eq 'true') { 'Merge request' } else { 'Pull request' }
+$isGitLab = $env:GITLAB_CI -eq 'true'
+$requestName = if ($isGitLab) { 'merge request' } else { 'pull request' }
+$requestLabel = if ($isGitLab) { 'Merge request' } else { 'Pull request' }
 $checkRequest = -not ([string]::IsNullOrWhiteSpace($PullRequestTitle) -and [string]::IsNullOrWhiteSpace($PullRequestBody))
 
 function Test-AgentAccount([string]$Name, [string]$Email) {
@@ -177,12 +179,13 @@ try {
         Write-Output "Re-author these commits before merging: git rebase $remedyBase --exec ""git commit --amend --no-edit --reset-author"", then git push --force-with-lease."
     }
     if ($requestFindings.Count) {
-        $requestRemedy = if ($env:GITLAB_CI -eq 'true') { "Then run the merge request's pipeline again." } else { 'Editing the pull request runs this check again.' }
+        $requestRemedy = if ($isGitLab) { "Then run the merge request's pipeline again." } else { 'Editing the pull request runs this check again.' }
         Write-Output "Edit the $requestName's title and description to remove these lines: a rebase doesn't change them, and a squash merge would copy them into the commit on the default branch. $requestRemedy"
     }
     if ($env:GITHUB_ACTIONS -eq 'true') {
         foreach ($finding in @($findings) + @($requestFindings)) {
-            Write-Output "::error title=Commit attribution::$finding"
+            $message = $finding.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Commit attribution::$message"
         }
     }
     exit 1
