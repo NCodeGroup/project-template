@@ -6,6 +6,11 @@ folder, so never edit a file in it. A project that decides otherwise writes its 
 supersedes the template's by number (for example, "Supersedes: project-template ADR-0102"), and lists the override in
 `AGENTS.md`, so every agent follows the project's decision instead of the template's.
 
+Their numbers are below 1000: 0001–0099 for every project and 0100–0999 for the records of a stack or an option. A
+project numbers its own records from 1000, so an ADR number names one record across both folders, and a template update
+never brings a number the project already uses
+([ADR-0012](0012-the-templates-records-are-numbered-below-1000-a-projects-from-1000.md)).
+
 ## Every Project
 
 | ADR | Decision |
@@ -21,6 +26,7 @@ supersedes the template's by number (for example, "Supersedes: project-template 
 | [0009](0009-new-dependency-versions-wait-a-cooldown.md) | A new dependency version is adopted only once it is at least three days old |
 | [0010](0010-a-change-consumers-can-observe-is-decided-before-it-is-built.md) | A change consumers can observe starts as an issue, and its decision is recorded before or with the pull request |
 | [0011](0011-agents-treat-existing-code-as-evidence-and-report-done-only-when-done.md) | Existing code is evidence, not a constraint; pins come from upstream; done means done in every tracker |
+| [0012](0012-the-templates-records-are-numbered-below-1000-a-projects-from-1000.md) | The template's records are numbered below 1000 and a project's from 1000, so an ADR number names one record |
 {%- if stack == 'dotnet' %}
 
 ## .NET
