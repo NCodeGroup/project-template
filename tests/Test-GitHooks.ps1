@@ -33,6 +33,8 @@ $ownWork = -not $PSBoundParameters.ContainsKey('Work')
 trap { "Kept the work folder: $Work"; break }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
+# pre-commit runs at the exact version tests/requirements.txt pins, which Dependabot's pip entry for /tests moves, not the newest release.
+$preCommitPin = @([IO.File]::ReadAllLines((Join-Path $repoRoot 'tests\requirements.txt')) -match '^pre-commit==\d+(\.\d+)+$')[0]
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
@@ -99,6 +101,8 @@ finally {
 }
 
 Check 'pre-commit: runs .githooks/commit-msg as a script hook and strips the attribution' (($exitCode -eq 0) -and -not ([IO.File]::ReadAllText((Join-Path $repo 'msg.txt'))).Contains('anthropic.com')) "exit $exitCode; $output"
+$preCommitVersion = (Invoke-PreCommit --version 2>&1 | Out-String).Trim()
+Check 'pre-commit: runs at the version tests/requirements.txt pins' ($preCommitPin -and $preCommitVersion -eq "pre-commit $(($preCommitPin -split '==')[1])") "pin: $preCommitPin; ran: $preCommitVersion"
 
 $updateFunction = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-GitHooksSetup' }, $true) | Select-Object -First 1
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
