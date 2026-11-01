@@ -6,7 +6,7 @@
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML with
     PyYAML through uv, at the version tests/requirements.txt pins. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1 and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, that the generated workflow files under template/ and at the repository root
-    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. It runs the code review auto-merge workflow's diff check, as rendered, against a stand-in for gh with fixture pages of changed files. Prints PASS or FAIL
+    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. It runs the code review auto-merge workflow's diff check, as rendered, against a stand-in for gh with fixture pages of changed files. It runs its merge-method choice the same way, against a stand-in that answers with fixture repository settings and branch rules. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
 .EXAMPLE
@@ -72,6 +72,22 @@ function Invoke-AutoMergeDiffCheck([string]$Script, [object[]]$Pages, [string]$F
     finally { foreach ($key in $saved.Keys) { [Environment]::SetEnvironmentVariable($key, $saved[$key]) } }
     $written = if (Test-Path -LiteralPath $output) { (Get-Content -LiteralPath $output -Raw).Trim() } else { '' }
     [pscustomobject]@{ Output = $written; Printed = $printed; Calls = @($calls); Error = $failed }
+}
+# Runs the code review auto-merge workflow's merge step as the runner does, with gh as a stand-in that answers the
+# settings of o/r with $Settings and the rules of its main branch with $Pages. Returns what it printed, the gh calls it
+# made and the error it stopped with, if any.
+function Invoke-AutoMergeMethod([string]$Script, [hashtable]$Settings, [object[]]$Pages) {
+    $calls = [Collections.Generic.List[string]]::new()
+    $settingsJson = ConvertTo-Json -Compress -InputObject $Settings
+    $rulesJson = '[' + ($(for ($i = 0; $i -lt $Pages.Count; $i++) { ConvertTo-Json -Compress -Depth 6 -InputObject @($Pages[$i]) }) -join ',') + ']'
+    function gh { $call = $args -join ' '; $calls.Add($call); if ($call -eq 'repo view o/r --json mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed') { $settingsJson } elseif ($call -eq 'api --paginate --slurp repos/o/r/rules/branches/main') { $rulesJson } elseif ($call -notlike 'pr merge *') { throw "unexpected gh $call" } }
+    $saved = @{ GH_REPO = $env:GH_REPO; BASE_REF = $env:BASE_REF; HEAD_SHA = $env:HEAD_SHA; PR_URL = $env:PR_URL }
+    $env:GH_REPO = 'o/r'; $env:BASE_REF = 'main'; $env:HEAD_SHA = '0123456789abcdef0123456789abcdef01234567'; $env:PR_URL = 'https://github.com/o/r/pull/7'
+    $printed = ''; $failed = ''
+    try { $printed = (& ([scriptblock]::Create("`$ErrorActionPreference = 'Stop'`n$Script")) 2>&1 | Out-String).Trim() }
+    catch { $failed = "$_" }
+    finally { foreach ($key in $saved.Keys) { [Environment]::SetEnvironmentVariable($key, $saved[$key]) } }
+    [pscustomobject]@{ Printed = $printed; Calls = @($calls); Error = $failed }
 }
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
@@ -305,7 +321,7 @@ foreach ($case in $cases) {
         $uses = [regex]::Matches($autoMerge, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the code review auto-merge workflow runs from the default branch, only on Dependabot's pull requests from the repository itself, with no permissions but its job's contents: write and pull-requests: write" ($autoMerge -match '(?m)^  pull_request_target:\r?\n    types: \[opened, synchronize, reopened\]\r?$' -and -not $autoMerge.Contains('pull_request:') -and $autoMerge -match '(?m)^permissions: \{\}\r?$' -and $autoMerge.Contains("if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository") -and $autoMerge -match '(?m)^    permissions:\r?\n      contents: write\r?\n      pull-requests: write\r?\n    steps:\r?$' -and [regex]::Matches($autoMerge, ': write').Count -eq 2 -and $autoMerge -match '(?m)^    timeout-minutes: \d+\r?$') $autoMerge
         Check "${name}: the code review auto-merge workflow checks out nothing and pins its one action, fetch-metadata, to a full commit SHA, with its tag in a comment" ($uses.Count -eq 1 -and $uses[0].Groups[1].Value -eq 'dependabot/fetch-metadata' -and $uses[0].Groups[2].Value -match '^[0-9a-f]{40}$' -and $uses[0].Groups[3].Value -match '^# v\d+\.\d+\.\d+$' -and -not $autoMerge.Contains('actions/checkout')) $autoMerge
-        Check "${name}: the code review auto-merge workflow merges, with a merge commit, only a minor or patch bump of NCode Review alone whose every changed line is its pin" ($autoMerge.Contains("steps.metadata.outputs.dependency-names == 'NCodeGroup/code-review'") -and $autoMerge.Contains("steps.metadata.outputs.update-type == 'version-update:semver-minor'") -and $autoMerge.Contains("steps.metadata.outputs.update-type == 'version-update:semver-patch'") -and -not $autoMerge.Contains('semver-major') -and $autoMerge.Contains('uses: NCodeGroup/code-review@[0-9a-f]{40} # v\d+\.\d+\.\d+') -and $autoMerge.Contains('pulls/$env:PR_NUMBER/files') -and $autoMerge.Contains("if: steps.diff.outputs.only-pin == 'true'") -and $autoMerge.Contains('run: gh pr merge --auto --merge --match-head-commit "$env:HEAD_SHA" "$env:PR_URL"') -and $autoMerge -notmatch '--squash|--rebase') $autoMerge
+        Check "${name}: the code review auto-merge workflow turns on auto-merge, by a method the repository allows, only for a minor or patch bump of NCode Review alone whose every changed line is its pin" ($autoMerge.Contains("steps.metadata.outputs.dependency-names == 'NCodeGroup/code-review'") -and $autoMerge.Contains("steps.metadata.outputs.update-type == 'version-update:semver-minor'") -and $autoMerge.Contains("steps.metadata.outputs.update-type == 'version-update:semver-patch'") -and -not $autoMerge.Contains('semver-major') -and $autoMerge.Contains('uses: NCodeGroup/code-review@[0-9a-f]{40} # v\d+\.\d+\.\d+') -and $autoMerge.Contains('pulls/$env:PR_NUMBER/files') -and $autoMerge.Contains("if: steps.diff.outputs.only-pin == 'true'") -and $autoMerge.Contains('gh pr merge --auto "--$method" --match-head-commit "$env:HEAD_SHA" "$env:PR_URL"') -and $autoMerge -notmatch 'gh pr merge[^\r\n]*--(merge|rebase|squash)\b') $autoMerge
         # The event's values reach the shell through env only: no expression in a run line or a run block.
         $inRun = $false; $runIndent = 0; $runExpressions = 0
         foreach ($line in $autoMerge -split '\r?\n') {
@@ -355,6 +371,28 @@ foreach ($case in $cases) {
                 $r = Invoke-AutoMergeDiffCheck $diffCheck $refuses[$case] $diffFolder
                 Check "${name}: the auto-merge diff check refuses $case" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=false' -and $r.Printed -like 'Left for a person to merge: *') "output=$($r.Output) printed=$($r.Printed) error=$($r.Error)"
             }
+            # The merge step that picks the merge method, against fixture repository settings and branch rules.
+            $mergeScript = Get-StepScript $autoMerge 'merge'
+            $all = @{ mergeCommitAllowed = $true; rebaseMergeAllowed = $true; squashMergeAllowed = $true }
+            $noMerge = @{ mergeCommitAllowed = $false; rebaseMergeAllowed = $true; squashMergeAllowed = $true }
+            $squashOnly = @{ mergeCommitAllowed = $false; rebaseMergeAllowed = $false; squashMergeAllowed = $true }
+            $picks = [ordered]@{
+                'a repository that allows every method, with no rule' = @($all, @(, @()), 'merge')
+                'a repository without merge commits' = @($noMerge, @(, @()), 'rebase')
+                'a squash-only repository' = @($squashOnly, @(, @()), 'squash')
+                'a ruleset that allows only squash' = @($all, @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('squash') } })), 'squash')
+                'a ruleset that requires linear history' = @($all, @(, @(@{ type = 'required_linear_history' })), 'rebase')
+                'a ruleset that allows merge and rebase, in a repository without merge commits' = @($noMerge, @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('merge', 'rebase') } })), 'rebase')
+                'a pull request rule that lists no merge methods' = @($all, @(, @(@{ type = 'pull_request'; parameters = @{ required_approving_review_count = 0 } })), 'merge')
+                'a squash-only repository whose rules, on two pages, require linear history and allow only squash' = @($squashOnly, @(@(@{ type = 'required_linear_history' }), @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('squash') } })), 'squash')
+            }
+            foreach ($case in $picks.Keys) {
+                $method = $picks[$case][2]
+                $r = Invoke-AutoMergeMethod $mergeScript $picks[$case][0] $picks[$case][1]
+                Check "${name}: the auto-merge method check picks $method for $case" ($mergeScript -and -not $r.Error -and ($r.Calls -join '|') -eq "repo view o/r --json mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed|api --paginate --slurp repos/o/r/rules/branches/main|pr merge --auto --$method --match-head-commit 0123456789abcdef0123456789abcdef01234567 https://github.com/o/r/pull/7") "calls=$($r.Calls -join '|') error=$($r.Error)"
+            }
+            $r = Invoke-AutoMergeMethod $mergeScript $squashOnly @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('merge') } }))
+            Check "${name}: the auto-merge method check turns on nothing for a squash-only repository whose ruleset allows only merge commits" ($mergeScript -and $r.Error -like 'No merge method is allowed by both*' -and -not ($r.Calls -like 'pr merge*')) "calls=$($r.Calls -join '|') error=$($r.Error)"
         }
     }
     else {
