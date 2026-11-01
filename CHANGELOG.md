@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.48.2] - 2026-11-01
+
+### Added
+
+- No change for projects made from the template. `tests/Test-PlanStateConcurrency.ps1` also checks that `workflow/Get-PlanState.ps1`, when a step fails after its network calls have started, fails at once with that error and leaves no runspace running a call it never received, through a stand-in for `gh` that fails the branch protection check while its other calls wait ([#186](https://github.com/NCodeGroup/project-template/issues/186)).
+
+### Fixed
+
+- `Get-PlanState.ps1` closes the runspace of each network call it starts. Since v0.48.0 it left one open per call, which built up in a PowerShell session that runs the script many times, such as a test suite. Projects get it with `.\.template\Update-Project.ps1` ([#186](https://github.com/NCodeGroup/project-template/issues/186)).
+
 ## [0.48.0] - 2026-10-31
 
 ### Added
@@ -711,7 +721,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.48.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.48.2...HEAD
+[0.48.2]: https://github.com/NCodeGroup/project-template/compare/v0.48.1...v0.48.2
 [0.48.0]: https://github.com/NCodeGroup/project-template/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/NCodeGroup/project-template/compare/v0.46.2...v0.47.0
 [0.46.2]: https://github.com/NCodeGroup/project-template/compare/v0.46.1...v0.46.2
