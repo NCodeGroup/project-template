@@ -101,7 +101,7 @@ finally {
 }
 
 Check 'pre-commit: runs .githooks/commit-msg as a script hook and strips the attribution' (($exitCode -eq 0) -and -not ([IO.File]::ReadAllText((Join-Path $repo 'msg.txt'))).Contains('anthropic.com')) "exit $exitCode; $output"
-$preCommitVersion = (Invoke-PreCommit --version 2>&1 | Out-String).Trim()
+$preCommitVersion = (Invoke-PreCommit --version 2>$null | Out-String).Trim()
 Check 'pre-commit: runs at the version tests/requirements.txt pins' ($preCommitPin -and $preCommitVersion -eq "pre-commit $(($preCommitPin -split '==')[1])") "pin: $preCommitPin; ran: $preCommitVersion"
 
 $updateFunction = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-GitHooksSetup' }, $true) | Select-Object -First 1
