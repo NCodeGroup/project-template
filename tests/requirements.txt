@@ -1,6 +1,8 @@
 # The exact versions of the Python packages this repository's tests use. Dependabot's pip entry in .github/dependabot.yml
 # moves them in a reviewed pull request. .github/workflows/test-template.yml installs Copier with them as constraints,
-# and tests/Test-Template.ps1 runs its YAML and _exclude checks with PyYAML and Jinja2 through uv.
+# tests/Test-Template.ps1 runs its YAML and _exclude checks with PyYAML and Jinja2 through uv, and
+# tests/Test-GitHooks.ps1 runs pre-commit through uvx.
 copier==9.19.1
 jinja2==3.1.6
+pre-commit==4.7.0
 pyyaml==6.0.3
