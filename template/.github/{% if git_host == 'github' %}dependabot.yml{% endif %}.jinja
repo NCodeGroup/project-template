@@ -4,7 +4,8 @@
 # offered, so one that is withdrawn or found compromised soon after its release never reaches the project. Security
 # updates, which come whenever an advisory affects a dependency, have a group of their own in each ecosystem, so one
 # advisory run is one pull request. A new .NET SDK major isn't offered: moving to a new .NET major is a planned migration
-# (/plan-migration). A docker entry a project adds ignores major updates of its base images the same way.
+# (/plan-migration). A docker entry a project adds ignores major updates of its base images the same way. One update
+# comes apart: a new release of the NCode Review action (NCodeGroup/code-review) has a pull request of its own.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -14,6 +15,10 @@ updates:
     cooldown:
       default-days: 3
     groups:
+      # Dependabot puts an update in the first group that matches it, so this one comes before the catch-all group:
+      # .github/workflows/code-review-auto-merge.yml merges only a pull request whose one change is the NCode Review pin.
+      ncode-review:
+        patterns: ["NCodeGroup/code-review"]
       github-actions:
         patterns: ["*"]
       github-actions-security:
