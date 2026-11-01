@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
-    uncommitted template changes are tested too. Renders every stack for GitHub and GitLab and checks YAML with
+    uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML with
     PyYAML through uv. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1, that the generated workflow files under template/ and at the repository root
     match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
     per check and exits 1 on any failure.
@@ -34,12 +34,6 @@ $failures = [Collections.Generic.List[string]]::new()
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
-}
-function Invoke-Copier {
-    if (Get-Command copier -ErrorAction SilentlyContinue) { & copier @args }
-    elseif (Get-Command uvx -ErrorAction SilentlyContinue) { & uvx --from copier copier @args }
-    else { throw 'Copier not found. Install it with: uv tool install copier' }
-    if ($LASTEXITCODE) { throw "copier $($args[0]) exited with code $LASTEXITCODE." }
 }
 function Edit-File([string]$Path, [string]$Old, [string]$New) {
     $full = (Resolve-Path -LiteralPath $Path).Path
@@ -103,13 +97,25 @@ $cases = @(
 )
 if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
 $yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
+$copierCommand = @(if (Get-Command copier -ErrorAction SilentlyContinue) { 'copier' } elseif (Get-Command uvx -ErrorAction SilentlyContinue) { 'uvx', '--from', 'copier', 'copier' } else { throw 'Copier not found. Install it with: uv tool install copier' })
+# Render every case at once, then check each: the renders don't depend on each other, and each takes seconds.
+$renders = @($cases | ForEach-Object -ThrottleLimit ([Environment]::ProcessorCount) -Parallel {
+    $case = $_
+    $command = @($using:copierCommand)
+    $exe = $command[0]
+    $prefix = @($command | Select-Object -Skip 1)
+    $tools = if ($case.Tools) { @($case.Tools) } else { $using:allTools }
+    $extraData = foreach ($k in $case.Data.Keys) { '--data'; "$k=$($case.Data[$k])" }
+    $output = & $exe @prefix copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $($case.Name)" --data "stack=$($case.Stack)" --data "git_host=$($case.Host)" --data "workflow_tools=[$($tools -join ', ')]" @extraData $using:tplUrl (Join-Path $using:Work $case.Name) 2>&1 | Out-String
+    [pscustomobject]@{ Name = $case.Name; ExitCode = $LASTEXITCODE; Output = $output.Trim() }
+})
+$failedRenders = @($renders | Where-Object ExitCode -NE 0)
+if ($failedRenders) { throw (($failedRenders | ForEach-Object { "copier copy for $($_.Name) exited with code $($_.ExitCode): $($_.Output)" }) -join "`n") }
 
 foreach ($case in $cases) {
     $name = $case.Name
     $dest = Join-Path $Work $name
     $tools = if ($case.Tools) { @($case.Tools) } else { $allTools }
-    $extraData = foreach ($k in $case.Data.Keys) { '--data'; "$k=$($case.Data[$k])" }
-    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $name" --data "stack=$($case.Stack)" --data "git_host=$($case.Host)" --data "workflow_tools=[$($tools -join ', ')]" @extraData $tplUrl $dest
 
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
