@@ -293,7 +293,6 @@ try {
     }
     else {
         $hostName = if ($originUrl -match 'gitlab') { 'gitlab' } elseif ($originUrl -match 'github\.com') { 'github' } else { 'other' }
-        if (-not $NoFetch) { & git fetch origin --prune --tags --quiet 2>$null | Out-Null }
     }
 
     if ($hostName -eq 'none') { $default = '-' }
@@ -364,7 +363,14 @@ try {
     if ($policy['max-review-rounds'] -notmatch '^[1-9]\d{0,2}\z') { $policy['max-review-rounds'] = '3' }
     $integrate = $policy['integrate']; $releasePolicy = $policy['release']
     $landing = @(foreach ($key in $policy.Keys) { if ($policy[$key] -match '\s') { "$key=`"$($policy[$key])`"" } else { "$key=$($policy[$key])" } }) -join ' '
-    $protected = Get-Protected $hostName $default $policy['protect']
+
+    # Start the calls that wait on the network at the same time; each part below receives its own.
+    $fetchCall = $null; $tagsCall = $null
+    if ($hostName -ne 'none' -and -not $NoFetch) { $fetchCall = Start-Concurrent $folder 'git' @('fetch', 'origin', '--prune', '--tags', '--quiet') }
+    if ($hostName -ne 'none' -and $release -ne '-') { $tagsCall = Start-Concurrent $folder 'Get-OriginTags' -Functions 'Get-OriginTags' }
+    $protectedCall = Start-Concurrent $folder 'Get-Protected' @($hostName, $default, $policy['protect']) -Functions 'Get-Protected', 'Invoke-HostApi'
+    if ($fetchCall) { $null = Receive-Concurrent $fetchCall }
+    $protected = (Receive-Concurrent $protectedCall).Value
 
     # Position against the default branch
     $ahead = '-'; $behind = '-'; $landed = '-'
@@ -379,7 +385,7 @@ try {
 
     $tag = '-'
     $originTags = $null
-    if ($hostName -ne 'none' -and $release -ne '-') { $originTags = Get-OriginTags }
+    if ($tagsCall) { $originTags = (Receive-Concurrent $tagsCall).Value }
     if ($release -ne '-') {
         & git rev-parse -q --verify "refs/tags/$release" 2>$null | Out-Null
         $localTag = ($LASTEXITCODE -eq 0)
