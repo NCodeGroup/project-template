@@ -93,6 +93,15 @@ Release: v0.2.0
 $bin = Join-Path $Work 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 Write-Text (Join-Path $bin 'gh.ps1') @'
+# With a throw file next to it, the stand-in marks each call but the protection check as started, and fails that check
+# once another call has started, so Get-PlanState.ps1 meets the error while calls it never received are still running.
+$throw = Test-Path -LiteralPath (Join-Path $PSScriptRoot 'throw')
+if ($throw -and $args[0] -eq 'api') {
+    $wait = [Diagnostics.Stopwatch]::StartNew()
+    while (-not (Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'started-*') -and $wait.ElapsedMilliseconds -lt 30000) { Start-Sleep -Milliseconds 100 }
+    throw 'stand-in gh: the protection check failed'
+}
+if ($throw) { [IO.File]::WriteAllText((Join-Path $PSScriptRoot "started-$([guid]::NewGuid().ToString('N'))"), "$args") }
 $delay = Join-Path $PSScriptRoot 'delay'
 if (Test-Path -LiteralPath $delay) { Start-Sleep -Milliseconds ([int][IO.File]::ReadAllText($delay)) }
 if ($args[0] -eq 'pr' -and $args[1] -eq 'list') { '[]'; exit 0 }
@@ -100,6 +109,22 @@ if ($args[0] -eq 'issue' -and $args[1] -eq 'view') { if ($args[2] -eq '7') { 'OP
 if ($args[0] -eq 'api') { 'HTTP/2.0 200 OK'; 'Content-Type: application/json'; ''; '[{"type":"pull_request"}]'; exit 0 }
 if ($args[0] -eq 'release' -and $args[1] -eq 'view') { '{"tagName":"v0.2.0"}'; exit 0 }
 exit 1
+'@
+
+# Runs Get-PlanState.ps1 in this pwsh, catches its error, and prints the error, the time the script took and the number
+# of runspaces besides its own that are still busy.
+$probe = Join-Path $Work 'probe.ps1'
+Write-Text $probe @'
+param([string]$Script, [string]$Path)
+$watch = [Diagnostics.Stopwatch]::StartNew()
+$caught = '-'
+try { $null = & $Script -Path $Path } catch { $caught = "$_" }
+$watch.Stop()
+$own = [runspace]::DefaultRunspace.InstanceId
+"error: $caught"
+"milliseconds: $($watch.ElapsedMilliseconds)"
+"busy: $(@(Get-Runspace | Where-Object { $_.InstanceId -ne $own -and $_.RunspaceAvailability -eq 'Busy' }).Count)"
+"opened: $(@(Get-Runspace | Where-Object { $_.InstanceId -ne $own -and $_.RunspaceStateInfo.State -eq 'Opened' }).Count)"
 '@
 
 $savedPath = $env:PATH
