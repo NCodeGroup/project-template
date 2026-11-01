@@ -41,7 +41,7 @@ function Invoke-PlanState([string]$Path, [switch]$NoFetch) {
         if ($NoFetch) { $null = $ps.AddParameter('NoFetch') }
         @($ps.Invoke() | ForEach-Object { "$_" })
     }
-    catch { @() }
+    catch { Write-Host "runspace error: $_"; @() }
     finally { $ps.Dispose() }
 }
 function Get-State([string]$Path, [switch]$NoFetch) {
