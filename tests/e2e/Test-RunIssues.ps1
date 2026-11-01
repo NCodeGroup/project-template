@@ -6,8 +6,10 @@
     Makes a fixture project from the template, gives it a local origin under a github.com folder and a stand-in for gh,
     runs /run-issues #1 wait:0 in headless Claude Code, and checks what the loop left behind: a plan snapshot comment,
     a draft pull request that closes the issue, the step commits on origin, a reviewed plan, and working code. The
-    fixture runs NCode Review, and the stand-in gives the pull request a seeded review: a blocker finding that the run
-    fixes and answers with "Autopilot: fixed in", a nit and a finding on .github/workflows/ci.yml that it only lists, a
+    fixture runs NCode Review, and the stand-in gives the pull request a seeded review: a review thread of the owner's
+    asking for pipeline input, which the run fixes and answers naming its commit, a blocker finding on behavior main
+    already had that the issue doesn't name, which it answers with "Autopilot: left as a follow-up" and puts in the
+    plan's Follow-ups, a nit and a finding on .github/workflows/ci.yml that it only lists, a
     should-fix finding that already has two "Autopilot:" replies, which it never answers a third time, another bot's thread without the finding marker that it treats as data, and a /review comment it doesn't answer.
     It also checks that the run recommends the merge once, in an Autopilot: comment, with the open nits in the plan's
     Follow-ups, in the scenario -Scenario names.
@@ -92,14 +94,16 @@ if (-not $CheckOnly) {
     Write-Text (Join-Path $hostDir 'issues.json') (ConvertTo-Json -InputObject $issues -Depth 10)
     Write-Text (Join-Path $hostDir 'prs.json') '[]'
     Write-Text (Join-Path $hostDir 'comments.json') '[]'
-    # The review a pull request gets when it opens: NCode Review's blocker (acted on), its nit (listed only), its
-    # finding on a protected path (listed, never acted on), its should-fix finding with two earlier Autopilot: replies
-    # (listed for the owner, never a third reply), another bot's thread without the marker (data), a bot
-    # review summary (data) and a /review comment of the owner's that is only a slash command (no answer).
+    # The review a pull request gets when it opens: the owner's request (a fix step, so the run pushes a round),
+    # NCode Review's blocker on behavior main already had that the issue doesn't name (a follow-up), its nit (listed
+    # only), its finding on a protected path (listed, never acted on), its should-fix finding with two earlier
+    # Autopilot: replies (listed for the owner, never a third reply), another bot's thread without the marker (data), a
+    # bot review summary (data) and a /review comment of the owner's that is only a slash command (no answer).
     $ncode = @{ __typename = 'Bot'; login = 'ncode-review' }
     $owner = @{ __typename = 'User'; login = 'fixture-owner' }
     $seed = @{
         threads  = @(
+            @{ key = 'owner'; path = 'src/Greeting.ps1'; line = 1; author = $owner; authorAssociation = 'OWNER'; body = 'Let `Get-Greeting` take the name from the pipeline too: `''Ada'' | Get-Greeting` should return `Hello, Ada!`. Test it in `tests/Test-Greeting.ps1`.' }
             @{ key = 'blocker'; path = 'src/Greeting.ps1'; line = 3; author = $ncode; authorAssociation = 'NONE'; body = "<!-- ncode-review:finding id=F1 fp=3f1c9a7e severity=blocker -->`n**Blocker:** ``Get-Greeting`` keeps the spaces around a name: ``Get-Greeting -Name ' Ada '`` returns ``Hello,  Ada !``. Trim the name before greeting it, and test ``Get-Greeting -Name ' Ada '``." }
             @{ key = 'nit'; path = 'src/Greeting.ps1'; line = 1; author = $ncode; authorAssociation = 'NONE'; body = "<!-- ncode-review:finding id=F2 fp=8b2d40c1 severity=nit -->`n**Nit:** give ``Get-Greeting`` a comment-based help block." }
             @{ key = 'protected'; path = '.github/workflows/ci.yml'; line = 1; author = $ncode; authorAssociation = 'NONE'; body = "<!-- ncode-review:finding id=F3 fp=c07e5d22 severity=blocker -->`n**Blocker:** CI never runs ``tests/Test-Greeting.ps1``. Add a step to ``.github/workflows/ci.yml`` that runs it." }
@@ -163,7 +167,7 @@ if (-not $CheckOnly) {
     $read = pwsh -NoProfile -File $probeGh api graphql -F owner=fixture -F name=app -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json
     $pull = $read.data.repository.pullRequest
     $blocker = @($pull.reviewThreads.nodes | Where-Object { $_.path -eq 'src/Greeting.ps1' -and "$($_.comments.nodes[0].body)" -match 'severity=blocker' }) | Select-Object -First 1
-    $seedOk = $prUrl -eq 'https://github.com/fixture/app/pull/1' -and @($pull.reviewThreads.nodes).Count -eq 5 -and @(@($pull.reviewThreads.nodes | Where-Object { $_.line -eq 2 }).comments.nodes).Count -eq 5 -and $blocker -and $blocker.comments.nodes[0].author.__typename -eq 'Bot' -and $blocker.comments.nodes[0].author.login -eq 'ncode-review' -and $blocker.comments.nodes[0].authorAssociation -eq 'NONE' -and @($pull.comments.nodes | Where-Object { $_.body -eq '/review' }).Count -eq 1 -and @($pull.reviews.nodes).Count -eq 1
+    $seedOk = $prUrl -eq 'https://github.com/fixture/app/pull/1' -and @($pull.reviewThreads.nodes).Count -eq 6 -and @(@($pull.reviewThreads.nodes | Where-Object { $_.line -eq 2 }).comments.nodes).Count -eq 5 -and $blocker -and $blocker.comments.nodes[0].author.__typename -eq 'Bot' -and $blocker.comments.nodes[0].author.login -eq 'ncode-review' -and $blocker.comments.nodes[0].authorAssociation -eq 'NONE' -and @($pull.comments.nodes | Where-Object { $_.body -eq '/review' }).Count -eq 1 -and @($pull.reviews.nodes).Count -eq 1
     Check 'fixture: the stand-in gives the new pull request the seeded review threads, review summary and /review comment' ([bool]$seedOk) "url='$prUrl' threads=$(@($pull.reviewThreads.nodes).Count)"
     $replyFile = Join-Path $probe 'reply.md'
     Write-Text $replyFile 'Autopilot: fixed in abc1234'
@@ -178,7 +182,7 @@ if (-not $CheckOnly) {
         $pushed = pwsh -NoProfile -File $probeGh api graphql -F owner=fixture -F name=app -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json
         $nodes = @($pushed.data.repository.pullRequest.reviewThreads.nodes)
         $minor = @($nodes | Where-Object { $_.path -eq 'tests/Test-Greeting.ps1' -and "$($_.comments.nodes[0].body)" -match 'severity=should-fix' })
-        Check 'fixture: the stand-in gives NCode Review''s review of a push on the first read after it, and not before' (@($again.data.repository.pullRequest.reviewThreads.nodes).Count -eq 5 -and $nodes.Count -eq 7 -and $minor.Count -eq 1 -and $minor[0].comments.nodes[0].author.login -eq 'ncode-review' -and -not (Test-Path -LiteralPath (Join-Path $probe 'host/review-seed-push.json'))) "threads after the push: $($nodes.Count)"
+        Check 'fixture: the stand-in gives NCode Review''s review of a push on the first read after it, and not before' (@($again.data.repository.pullRequest.reviewThreads.nodes).Count -eq 6 -and $nodes.Count -eq 8 -and $minor.Count -eq 1 -and $minor[0].comments.nodes[0].author.login -eq 'ncode-review' -and -not (Test-Path -LiteralPath (Join-Path $probe 'host/review-seed-push.json'))) "threads after the push: $($nodes.Count)"
     }
     Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
     Remove-Item -LiteralPath $probe -Recurse -Force
@@ -272,16 +276,23 @@ Use-FixtureEnvironment $Work $bin {
         if (-not $thread) { return $null }
         , @(@($thread.comments) | Select-Object -Skip 1 | Where-Object { "$($_.body)" -match '^Autopilot:' })
     }
-    $blockerReplies = Get-ThreadReply 'blocker'
+    $planPath = Join-Path $worktree 'PLAN.md'
+    $planText = if (Test-Path -LiteralPath $planPath) { [IO.File]::ReadAllText($planPath) } else { '' }
+    $followUps = if ($planText -match '(?s)(?:^|\n)## Follow-ups[ \t]*\r?\n(.*?)(?=\n## |\z)') { $Matches[1] } else { '' }
+    function Get-ThreadUrl([string]$Key) { "$(@(($threads | Where-Object { $_.key -eq $Key } | Select-Object -First 1).comments)[0].url)" }
+    $ownerReplies = Get-ThreadReply 'owner'
     $branchGreeting = @(git --git-dir=$origin show worktree-issue-1:src/Greeting.ps1 2>$null)
-    $trimmed = $false
+    $piped = $false
     if ($branchGreeting.Count) {
         $greetingFile = Join-Path $Work 'branch-greeting.ps1'
         Write-Text $greetingFile ($branchGreeting -join "`n")
-        $out = "$(pwsh -NoProfile -Command ". '$greetingFile'; (Get-Greeting -Name ' Ada ') -eq 'Hello, Ada!'")".Trim()
-        $trimmed = $out -eq 'True'
+        $out = "$(pwsh -NoProfile -Command ". '$greetingFile'; ('Ada' | Get-Greeting) -eq 'Hello, Ada!' -and (Get-Greeting) -eq 'Hello, world!'")".Trim()
+        $piped = $out -eq 'True'
     }
-    Check 'NCode Review''s blocker got one "Autopilot: fixed in" reply, and the branch trims the name' ($null -ne $blockerReplies -and $blockerReplies.Count -eq 1 -and "$($blockerReplies[0].body)" -match '^Autopilot: fixed in ' -and $trimmed) "replies: $(if ($null -ne $blockerReplies) { ($blockerReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); trims: $trimmed"
+    Check 'the owner''s request got one Autopilot: reply naming its commit, and the branch takes the name from the pipeline' ($null -ne $ownerReplies -and $ownerReplies.Count -eq 1 -and "$($ownerReplies[0].body)" -match '\b[0-9a-f]{7,40}\b' -and $piped) "replies: $(if ($null -ne $ownerReplies) { ($ownerReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); pipeline: $piped"
+    $blockerReplies = Get-ThreadReply 'blocker'
+    $blockerUrl = Get-ThreadUrl 'blocker'
+    Check 'NCode Review''s blocker on behavior main already had got one "Autopilot: left as a follow-up" reply, and the plan''s Follow-ups name it' ($null -ne $blockerReplies -and $blockerReplies.Count -eq 1 -and "$($blockerReplies[0].body)" -match '^Autopilot: left as a follow-up' -and $blockerUrl -and $followUps.Contains($blockerUrl)) "replies: $(if ($null -ne $blockerReplies) { ($blockerReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); in Follow-ups: $($blockerUrl -and $followUps.Contains($blockerUrl))"
     $nitReplies = Get-ThreadReply 'nit'
     Check 'NCode Review''s nit got no reply' ($null -ne $nitReplies -and $nitReplies.Count -eq 0) "replies: $(if ($null -ne $nitReplies) { $nitReplies.Count } else { 'no thread' })"
     $protectedReplies = Get-ThreadReply 'protected'
@@ -296,10 +307,6 @@ Use-FixtureEnvironment $Work $bin {
     $slash = $comments | Where-Object { $_ -and $_.key -eq 'slash' } | Select-Object -First 1
     $slashAnswers = @(if ($slash) { @(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and "$($_.body)" -match '^Autopilot:' -and "$($_.body)".Contains($slash.url) } })
     Check 'the /review comment got no answer' ($slash -and $slashAnswers.Count -eq 0) "$(if ($slash) { "answers: $($slashAnswers.Count)" } else { 'no /review comment' })"
-    $planPath = Join-Path $worktree 'PLAN.md'
-    $planText = if (Test-Path -LiteralPath $planPath) { [IO.File]::ReadAllText($planPath) } else { '' }
-    $followUps = if ($planText -match '(?s)(?:^|\n)## Follow-ups[ \t]*\r?\n(.*?)(?=\n## |\z)') { $Matches[1] } else { '' }
-    function Get-ThreadUrl([string]$Key) { "$(@(($threads | Where-Object { $_.key -eq $Key } | Select-Object -First 1).comments)[0].url)" }
     $recommendations = @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)" -match '(?i)\bmerg' })
     Check 'the run recommended the merge once, in a top-level Autopilot: comment' ($recommendations.Count -eq 1) "recommendations: $($recommendations.Count)"
     $nitUrl = Get-ThreadUrl 'nit'

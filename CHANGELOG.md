@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-11-01
+
+### Changed
+
+- `/run-issues` gives an NCode Review finding that holds but asks for behavior the issue doesn't ask for, because the default branch already behaves that way and the issue doesn't name it or because the plan's `## Out of scope` excludes it, no fix step: it replies `Autopilot: left as a follow-up` and adds the finding to the plan's `## Follow-ups`, which `/ship-plan` files once the pull request has merged. It used to reply `Autopilot: not changed` to such a finding, which says a claim doesn't hold, and file nothing, or fix it in some runs and not others. A round whose findings are only such changes, test gaps, style and repeats leads to the merge recommendation ([#159](https://github.com/NCodeGroup/project-template/issues/159)).
+- No change for projects made from the template. Both end-to-end tests have now run against a real model. The `gh` stand-in fails `gh pr view <branch>` for a branch without a pull request as `gh` does, because Claude Code itself looks up the current branch's pull request that way. `tests/e2e/Test-RunIssues.ps1` seeds a review thread of the owner's, which drives the run's fix round in both scenarios, and checks that NCode Review's blocker on behavior `main` already had becomes a follow-up ([#159](https://github.com/NCodeGroup/project-template/issues/159)).
+
 ## [0.53.0] - 2026-11-01
 
 ### Added
