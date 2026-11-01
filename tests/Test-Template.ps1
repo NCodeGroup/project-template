@@ -398,6 +398,12 @@ $copierPin = if (Test-Path -LiteralPath $copierPinPath) { [IO.File]::ReadAllText
 $ciWorkflow = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\workflows\test-template.yml'))
 $ownDependabot = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\dependabot.yml'))
 Check 'repository: CI installs the Copier version tests/requirements.txt pins, and Dependabot keeps the pin current' ($copierPin -match '(?m)^copier==\d+\.\d+\.\d+\r?$' -and $ciWorkflow -match '(?m)^ +uv tool install --constraints tests/requirements\.txt copier\r?$' -and $ownDependabot -match '(?m)^  - package-ecosystem: pip\r?\n    directory: /tests\r?$') "pin: $($copierPin.Trim()) | install: $(@($ciWorkflow -split '\r?\n' -match 'uv tool install') -join ' / ')"
+# This repository's own Dependabot entries wait out the three-day cooldown and give security updates a group of their own, as every project's do.
+$ownEcosystems = [regex]::Matches($ownDependabot, '(?m)^  - package-ecosystem: ').Count
+$ownCooldowns = [regex]::Matches($ownDependabot, '(?m)^    cooldown:\r?\n      default-days: 3\r?$').Count
+$ownGrouped = [regex]::Matches($ownDependabot, '(?m)^    groups:\r?$').Count
+$ownSecurity = [regex]::Matches($ownDependabot, '(?m)^      [\w-]+-security:\r?\n        applies-to: security-updates\r?\n        patterns: \["\*"\]\r?$').Count
+Check 'repository: every entry in .github/dependabot.yml waits a three-day cooldown and gives security updates a group of its own' ($ownEcosystems -gt 0 -and $ownCooldowns -eq $ownEcosystems -and $ownGrouped -eq $ownEcosystems -and $ownSecurity -eq $ownEcosystems) $ownDependabot
 $excludeCheck = 'import sys, yaml, jinja2; c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); e = jinja2.Environment(); bad = [p for p in c["_exclude"] if e.from_string(p).render().strip()]; print("; ".join(bad)); sys.exit(1 if bad else 0)'
 $excludeOutput = uv run --quiet --no-project --with $pyyamlPin --with $jinja2Pin python -c $excludeCheck (Join-Path $repoRoot 'copier.yml') 2>&1 | Out-String
 Check 'copier.yml: _exclude patterns exclude nothing when workflow_tools is missing' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()
