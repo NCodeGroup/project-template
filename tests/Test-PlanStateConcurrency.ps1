@@ -38,6 +38,7 @@ function Write-Text([string]$Path, [string]$Text) {
 
 $script = Join-Path $repoRoot 'workflow/Get-PlanState.ps1'
 $delayMs = 2000
+$stopDelayMs = 60000
 
 # Runs Get-PlanState.ps1 in a pwsh of its own and times it, so the time covers everything the script does.
 function Measure-PlanState([string]$Path) {
@@ -138,6 +139,11 @@ try {
     try { Invoke-Git tag -d v0.2.0 | Out-Null }
     finally { Pop-Location }
     $fetched = Measure-PlanState $repo
+    Write-Text (Join-Path $bin 'delay') "$stopDelayMs"
+    Write-Text (Join-Path $bin 'throw') ''
+    $stopped = ConvertTo-State @(& pwsh -NoProfile -File $probe -Script $script -Path $repo 2>$null | ForEach-Object { "$_" })
+    Remove-Item -LiteralPath (Join-Path $bin 'delay'), (Join-Path $bin 'throw') -Force
+    $started = @(Get-ChildItem -LiteralPath $bin -Filter 'started-*').Count
 }
 finally { $env:PATH = $savedPath }
 
@@ -158,6 +164,11 @@ Check "concurrency: five gh calls of $delayMs ms each take less than $limit ms, 
 
 $fetchedState = ConvertTo-State $fetched.Lines
 Check 'release: a release tag only the fetch brings in is still read as published' (($fetchedState['tag'] -eq 'present') -and ($fetchedState['published'] -eq 'yes')) "tag='$($fetchedState['tag'])' published='$($fetchedState['published'])'"
+
+Check 'stop: an error after the calls start ends Get-PlanState.ps1 with that error' ("$($stopped['error'])" -match 'stand-in gh: the protection check failed') "error='$($stopped['error'])'"
+Check 'stop: calls Get-PlanState.ps1 never received were running when the error came' ($started -gt 0) "the stand-in for gh started $started calls"
+Check "stop: Get-PlanState.ps1 ends in less than $stopDelayMs ms, without waiting for those calls" (("$($stopped['milliseconds'])" -match '^\d+$') -and ([int64]$stopped['milliseconds'] -lt $stopDelayMs)) "milliseconds='$($stopped['milliseconds'])'"
+Check 'stop: no runspace is left running a call Get-PlanState.ps1 never received' ("$($stopped['busy'])" -eq '0') "busy='$($stopped['busy'])'"
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Plan state concurrency tests: FAILED ($($failures.Count))"; exit 1 }
