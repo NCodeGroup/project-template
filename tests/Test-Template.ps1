@@ -43,18 +43,7 @@ function Invoke-Git {
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 $tpl = Join-Path $Work 'template-repo'
-New-Item -ItemType Directory -Force $tpl | Out-Null
-Get-ChildItem -LiteralPath $repoRoot -Force | Where-Object Name -NotIn '.git', '.claude' | Copy-Item -Destination $tpl -Recurse -Force
-# Claude Code's plan worktrees are other checkouts, not part of the snapshot.
-$claudeCopy = New-Item -ItemType Directory -Force (Join-Path $tpl '.claude')
-Get-ChildItem -LiteralPath (Join-Path $repoRoot '.claude') -Force | Where-Object Name -NE 'worktrees' | Copy-Item -Destination $claudeCopy.FullName -Recurse -Force
-Push-Location $tpl
-try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
-finally { Pop-Location }
-# Serve the snapshot as a host does: over a URL with partial clones allowed, so a --filter=blob:none clone really is blob-filtered; Git ignores the filter for a plain path.
-Invoke-Git -C $tpl config uploadpack.allowFilter true
-Invoke-Git -C $tpl config uploadpack.allowAnySHA1InWant true
-$tplUrl = 'file:///' + ($tpl -replace '\\', '/') + '/.git'
+$tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.vscode\settings.json', '.vscode\extensions.json'
