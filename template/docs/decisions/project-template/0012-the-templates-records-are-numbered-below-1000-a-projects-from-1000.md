@@ -25,8 +25,9 @@ The template and a project number their decision records from separate ranges.
 3. A project whose records started below 1000 keeps their numbers, because links, issues and commits cite them, and
    numbers its next records from 1000. Where such a project cites one of the template's records, it writes
    "project-template ADR-NNNN".
-4. `.template/Test-AdrIndex.ps1` checks the project's index and accepts any four-digit number, so a project's records
-   below 1000 still pass.
+4. `.template/Test-AdrIndex.ps1` checks the project's index and fails a new project record numbered below 1000: one
+   whose number no record had at the merge base with the default branch. Records a project already had below 1000
+   still pass, and without a merge base, as in a shallow clone, it skips that check and says so.
 
 ## Options considered
 
@@ -45,8 +46,8 @@ The template and a project number their decision records from separate ranges.
 - `/analyze-decision` gives a project's next record a number from 1000, and a new project's `docs/decisions/README.md`
   says so. That README is the project's own, so a project made from an earlier template version changes its "starting
   from `0001`" line by hand.
-- Smell: a project record numbered below 1000 written after the project took this rule, or a template record numbered
-  1000 or more.
+- A branch that adds a project record numbered below 1000 fails `.template/Test-AdrIndex.ps1`. Smell: a template record
+  numbered 1000 or more.
 
 ## References
 
