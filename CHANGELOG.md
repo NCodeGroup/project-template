@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-10-31
+
+### Changed
+
+- No change for projects made from the template. The six adoption fixtures after `plain` and `scaffold` — a rollback, a repository's own CI and hooks path, catch-all attributes and a partial SDK version, Copilot-only agents, a failing build, and Node.js without build or test scripts — move from `tests/Test-Adoption.ps1` into a new suite, `tests/Test-AdoptEdgeCases.ps1`, which CI runs as a job of its own, so the longest suite of a parallel `tests/Invoke-AllTests.ps1` run is shorter and the run ends sooner ([#171](https://github.com/NCodeGroup/project-template/issues/171)).
+
 ## [0.44.0] - 2026-10-31
 
 ### Changed
@@ -628,7 +634,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.44.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.45.0...HEAD
+[0.45.0]: https://github.com/NCodeGroup/project-template/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/NCodeGroup/project-template/compare/v0.43.1...v0.44.0
 [0.43.1]: https://github.com/NCodeGroup/project-template/compare/v0.43.0...v0.43.1
 [0.43.0]: https://github.com/NCodeGroup/project-template/compare/v0.42.1...v0.43.0
