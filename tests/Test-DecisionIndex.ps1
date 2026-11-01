@@ -230,6 +230,17 @@ $result = Invoke-AdrIndex $root
 $ok = ($result.Exit -eq 0) -and $result.Output.Contains($skipped) -and $result.Output.Contains('Decision index: 3 records, all indexed.')
 Check 'new record: without a merge base the check is skipped, saying so' $ok "exit $($result.Exit); output: $($result.Output)"
 
+$unrelated = New-GitFixture 'git-unrelated-origin' $newRecords
+Push-Location -LiteralPath $unrelated
+try {
+    $orphan = git commit-tree 'HEAD^{tree}' -m Unrelated
+    Invoke-Git update-ref refs/remotes/origin/main $orphan
+}
+finally { Pop-Location }
+$result = Invoke-AdrIndex $unrelated
+$ok = ($result.Exit -eq 0) -and $result.Output.Contains($skipped) -and $result.Output.Contains('has no merge base') -and $result.Output.Contains('Decision index: 3 records, all indexed.')
+Check 'new record: a default branch with no shared history skips the check, saying so' $ok "exit $($result.Exit); output: $($result.Output)"
+
 $result = Invoke-AdrIndex $root 'main'
 $ok = ($result.Exit -eq 1) -and $result.Output.Contains('range: 0002-b.md')
 Check 'new record: -Base names the commit to compare with' $ok "exit $($result.Exit); output: $($result.Output)"
