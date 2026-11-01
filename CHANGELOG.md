@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-11-01
+
+### Changed
+
+- `/ship-plan` and `/run-issues` read the title and description they write for a pull request and delete each line of agent attribution, a `Co-authored-by:` line naming an AI agent, a `Claude-Session:` line or a "Generated with" line, before `gh pr create`, `gh pr edit`, `glab mr create` or `glab mr update` sends them, so the `Commit attribution` check no longer fails a pull request on text an agent wrote itself. The sentence lives in one shared fragment, `workflow/templates/_pr-attribution.md` ([#209](https://github.com/NCodeGroup/project-template/issues/209)).
+- No change for projects made from the template. This repository's own `Commit attribution` job passes a pull request's title and description to `template/.template/Test-CommitAttribution.ps1` through the environment and runs again when the pull request is edited, as every project's GitHub CI has since v0.51.1, and `tests/Test-Template.ps1` fails when it doesn't ([#208](https://github.com/NCodeGroup/project-template/issues/208)).
+
 ## [0.51.1] - 2026-11-01
 
 ### Fixed
@@ -803,7 +810,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.51.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.52.0...HEAD
+[0.52.0]: https://github.com/NCodeGroup/project-template/compare/v0.51.1...v0.52.0
 [0.51.1]: https://github.com/NCodeGroup/project-template/compare/v0.51.0...v0.51.1
 [0.51.0]: https://github.com/NCodeGroup/project-template/compare/v0.50.2...v0.51.0
 [0.50.2]: https://github.com/NCodeGroup/project-template/compare/v0.50.1...v0.50.2
