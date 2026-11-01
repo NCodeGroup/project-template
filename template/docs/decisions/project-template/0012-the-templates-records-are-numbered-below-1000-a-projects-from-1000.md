@@ -17,8 +17,8 @@ an agent can tell from a bare number which record is meant, and the template's o
 The template and a project number their decision records from separate ranges.
 
 1. The template's records in `docs/decisions/project-template/` take numbers below 1000: 0001–0099 for every project,
-   and 0100–0999 for the records of a stack or an option, such as .NET's from 0100. `0000-template.md`, the file a
-   project copies for a new record, is 0000.
+   and 0100–0999 for the records of a stack or an option, such as .NET's from 0100. Outside that folder,
+   `docs/decisions/0000-template.md`, the file a project copies for a new record, is the one file numbered 0000.
 2. A project's records in `docs/decisions/` take numbers from 1000: the first is 1000, and each next one is the next
    number above the highest record numbered 1000 or more on the default branch or on any open branch, pull request or
    worktree.
