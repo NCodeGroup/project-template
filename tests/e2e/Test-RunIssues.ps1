@@ -9,6 +9,8 @@
     fixture runs NCode Review, and the stand-in gives the pull request a seeded review: a blocker finding that the run
     fixes and answers with "Autopilot: fixed in", a nit and a finding on .github/workflows/ci.yml that it only lists, a
     should-fix finding that already has two "Autopilot:" replies, which it never answers a third time, another bot's thread without the finding marker that it treats as data, and a /review comment it doesn't answer.
+    It also checks that the run recommends the merge once, in an Autopilot: comment, with the open nits in the plan's
+    Follow-ups, in the scenario -Scenario names.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
@@ -22,6 +24,12 @@
 .PARAMETER CheckOnly
     Check the fixture of an earlier run again, without building it or calling a model.
 
+.PARAMETER Scenario
+    minor-round, the default: NCode Review reviews the run's first push with a should-fix finding that asks only for
+    another test of what tests/Test-Greeting.ps1 tests, and a nit; the run must leave both without a step and recommend
+    the merge. max-rounds: max-review-rounds is 1 and there is no second review; the run must recommend the merge after
+    its first round. Run both.
+
 .PARAMETER Claude
     The Claude Code CLI. Defaults to claude.
 
@@ -32,6 +40,9 @@
     .\tests\e2e\Test-RunIssues.ps1
 
 .EXAMPLE
+    .\tests\e2e\Test-RunIssues.ps1 -Scenario max-rounds
+
+.EXAMPLE
     .\tests\e2e\Test-RunIssues.ps1 -SetupOnly
 #>
 [CmdletBinding()]
@@ -39,6 +50,7 @@ param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-run-issues-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
+    [ValidateSet('minor-round', 'max-rounds')][string]$Scenario = 'minor-round',
     [string]$Claude = 'claude',
     [double]$MaxBudgetUsd = 30
 )
@@ -55,7 +67,7 @@ $hostDir = Join-Path $bin 'host'
 $worktree = Join-Path $app '.claude/worktrees/issue-1'
 
 if (-not $CheckOnly) {
-    New-FixtureProject -RepoRoot $repoRoot -Work $Work -App $app -Origin $origin -Bin $bin -Data @{ code_review = $true }
+    New-FixtureProject -RepoRoot $repoRoot -Work $Work -App $app -Origin $origin -Bin $bin -Data @{ code_review = $true } -Landing $(if ($Scenario -eq 'max-rounds') { @{ 'max-review-rounds' = '1' } } else { @{} })
     $issueBody = @'
 ## What
 `Get-Greeting` in `src/Greeting.ps1` returns `Hello, !` when `-Name` is empty or missing. It should return `Hello, world!`.
@@ -104,6 +116,18 @@ if (-not $CheckOnly) {
         comments = @(@{ key = 'slash'; author = $owner; authorAssociation = 'OWNER'; body = '/review' })
     }
     Write-Text (Join-Path $hostDir 'review-seed.json') (ConvertTo-Json -InputObject $seed -Depth 10)
+    if ($Scenario -eq 'minor-round') {
+        # NCode Review's review of the run's first push: a should-fix finding that asks only for another test of what tests/Test-Greeting.ps1 tests, and a nit.
+        $pushSeed = @{
+            threads  = @(
+                @{ key = 'minor'; path = 'tests/Test-Greeting.ps1'; line = 2; author = $ncode; authorAssociation = 'NONE'; body = "<!-- ncode-review:finding id=F5 fp=9d41e6b2 severity=should-fix -->`n**Should fix:** add another test that ``Get-Greeting -Name Ada`` returns ``Hello, Ada!``." }
+                @{ key = 'later-nit'; path = 'src/Greeting.ps1'; line = 2; author = $ncode; authorAssociation = 'NONE'; body = "<!-- ncode-review:finding id=F6 fp=1e7c08a4 severity=nit -->`n**Nit:** say in a comment that ``-Name`` may be empty." }
+            )
+            reviews  = @(@{ author = $ncode; authorAssociation = 'NONE'; body = 'NCode Review: 2 findings (1 should-fix, 1 nit).' })
+            comments = @()
+        }
+        Write-Text (Join-Path $hostDir 'review-seed-push.json') (ConvertTo-Json -InputObject $pushSeed -Depth 10)
+    }
 }
 
 if (-not $CheckOnly) {
@@ -117,6 +141,8 @@ if (-not $CheckOnly) {
         Check 'fixture: the fixture test passes' ($LASTEXITCODE -eq 0) "exit code $LASTEXITCODE"
         $missing = @(foreach ($f in '.github/workflows/code-review.yml', '.github/workflows/ci.yml') { git --git-dir=$origin cat-file -e "main:$f" 2>$null; if ($LASTEXITCODE) { $f } })
         Check 'fixture: origin main runs NCode Review and has the CI workflow its protected finding names' ($missing.Count -eq 0 -and $st['landing'] -like '*review-bots=ncode-review*') "missing: $($missing -join ', '); landing='$($st['landing'])'"
+        $rounds = if ($Scenario -eq 'max-rounds') { '1' } else { '3' }
+        Check "fixture: the Landing section's max-review-rounds is $rounds, and only minor-round has a review of the first push" ("$($st['landing'])" -match "(^| )max-review-rounds=$rounds( |$)" -and (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json')) -eq ($Scenario -eq 'minor-round')) "landing='$($st['landing'])'"
     }
 
     # The stand-in, in a folder of its own, gives a new pull request the seeded review and records thread replies.
@@ -127,6 +153,10 @@ if (-not $CheckOnly) {
     Write-Text (Join-Path $probe 'host/prs.json') '[]'
     Write-Text (Join-Path $probe 'host/comments.json') '[]'
     Copy-Item -LiteralPath (Join-Path $hostDir 'review-seed.json') -Destination (Join-Path $probe 'host/review-seed.json')
+    $pushSeedFile = Join-Path $hostDir 'review-seed-push.json'
+    if (Test-Path -LiteralPath $pushSeedFile) { Copy-Item -LiteralPath $pushSeedFile -Destination (Join-Path $probe 'host/review-seed-push.json') }
+    [IO.File]::WriteAllText((Join-Path $probe 'host/origin.txt'), $origin)
+    Invoke-Git --git-dir=$origin branch probe main
     $probeGh = Join-Path $probe 'gh.ps1'
     $readQuery = 'query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state reviewThreads(first: 100) { nodes { id isResolved path line comments(first: 50) { nodes { author { __typename login } authorAssociation body url } } } } } } }'
     $prUrl = "$(pwsh -NoProfile -File $probeGh pr create --draft --base main --head probe --title Probe --body Probe)".Trim()
@@ -142,6 +172,15 @@ if (-not $CheckOnly) {
     $replied = @($again.data.repository.pullRequest.reviewThreads.nodes | Where-Object { $_.id -eq $blocker.id }) | Select-Object -First 1
     $last = if ($replied) { @($replied.comments.nodes)[-1] } else { $null }
     Check 'fixture: the stand-in records a reply on a review thread' ($last -and $last.body -eq 'Autopilot: fixed in abc1234' -and $last.author.login -eq 'fixture-owner' -and $last.authorAssociation -eq 'OWNER') "comments: $(if ($replied) { @($replied.comments.nodes).Count })"
+    if ($Scenario -eq 'minor-round') {
+        $moved = "$(Invoke-Git --git-dir=$origin commit-tree 'main^{tree}' -p main -m 'Probe push')".Trim()
+        Invoke-Git --git-dir=$origin update-ref refs/heads/probe $moved
+        $pushed = pwsh -NoProfile -File $probeGh api graphql -F owner=fixture -F name=app -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json
+        $nodes = @($pushed.data.repository.pullRequest.reviewThreads.nodes)
+        $minor = @($nodes | Where-Object { $_.path -eq 'tests/Test-Greeting.ps1' -and "$($_.comments.nodes[0].body)" -match 'severity=should-fix' })
+        Check 'fixture: the stand-in gives NCode Review''s review of a push on the first read after it, and not before' (@($again.data.repository.pullRequest.reviewThreads.nodes).Count -eq 5 -and $nodes.Count -eq 7 -and $minor.Count -eq 1 -and $minor[0].comments.nodes[0].author.login -eq 'ncode-review' -and -not (Test-Path -LiteralPath (Join-Path $probe 'host/review-seed-push.json'))) "threads after the push: $($nodes.Count)"
+    }
+    Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
     Remove-Item -LiteralPath $probe -Recurse -Force
 }
 
@@ -257,6 +296,22 @@ Use-FixtureEnvironment $Work $bin {
     $slash = $comments | Where-Object { $_ -and $_.key -eq 'slash' } | Select-Object -First 1
     $slashAnswers = @(if ($slash) { @(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and "$($_.body)" -match '^Autopilot:' -and "$($_.body)".Contains($slash.url) } })
     Check 'the /review comment got no answer' ($slash -and $slashAnswers.Count -eq 0) "$(if ($slash) { "answers: $($slashAnswers.Count)" } else { 'no /review comment' })"
+    $planPath = Join-Path $worktree 'PLAN.md'
+    $planText = if (Test-Path -LiteralPath $planPath) { [IO.File]::ReadAllText($planPath) } else { '' }
+    $followUps = if ($planText -match '(?s)(?:^|\n)## Follow-ups[ \t]*\r?\n(.*?)(?=\n## |\z)') { $Matches[1] } else { '' }
+    function Get-ThreadUrl([string]$Key) { "$(@(($threads | Where-Object { $_.key -eq $Key } | Select-Object -First 1).comments)[0].url)" }
+    $recommendations = @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)" -match '(?i)\bmerg' })
+    Check 'the run recommended the merge once, in a top-level Autopilot: comment' ($recommendations.Count -eq 1) "recommendations: $($recommendations.Count)"
+    $nitUrl = Get-ThreadUrl 'nit'
+    Check 'the plan''s Follow-ups name NCode Review''s open nit, as the merge recommendation leaves it' ($nitUrl -and $followUps.Contains($nitUrl)) "nit: '$nitUrl'; Follow-ups: $(if ($followUps) { 'present' } else { 'missing' })"
+    if ($Scenario -eq 'minor-round') {
+        Check 'NCode Review''s review of the run''s push arrived' (-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) 'review-seed-push.json is still in the host folder'
+        $minorReplies = Get-ThreadReply 'minor'
+        $minorBody = if ($minorReplies) { "$($minorReplies[0].body)" } else { '' }
+        Check 'NCode Review''s minor finding after the push got one reply, a follow-up named in Follow-ups or a decline, and no step' ($null -ne $minorReplies -and $minorReplies.Count -eq 1 -and $minorBody -match '^Autopilot: (left as a follow-up|not changed)' -and ($minorBody -notmatch '^Autopilot: left as a follow-up' -or $followUps.Contains((Get-ThreadUrl 'minor')))) "reply: '$minorBody'"
+        $laterNitReplies = Get-ThreadReply 'later-nit'
+        Check 'NCode Review''s nit after the push got no reply' ($null -ne $laterNitReplies -and $laterNitReplies.Count -eq 0) "replies: $(if ($null -ne $laterNitReplies) { $laterNitReplies.Count } else { 'no thread' })"
+    }
 }
 
 ''

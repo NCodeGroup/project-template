@@ -9,6 +9,7 @@
     working tree, with a greeting function and its test, the landing policy `protect: hook`, a bare origin in a
     github.com folder that has its main branch, and the gh stand-in (gh.ps1) in a bin folder with an empty host folder.
     Its -Data adds or overrides template answers, such as code_review for a fixture that runs NCode Review.
+    Its -Landing sets keys of the Landing section in AGENTS.md, such as max-review-rounds.
     Each test then writes its own host state for the stand-in.
 #>
 
@@ -23,7 +24,7 @@ function Write-Text([string]$Path, [string]$Text) {
     [IO.File]::WriteAllText($Path, $Text.Replace("`r`n", "`n"))
 }
 
-function New-FixtureProject([string]$RepoRoot, [string]$Work, [string]$App, [string]$Origin, [string]$Bin, [hashtable]$Data = @{}) {
+function New-FixtureProject([string]$RepoRoot, [string]$Work, [string]$App, [string]$Origin, [string]$Bin, [hashtable]$Data = @{}, [hashtable]$Landing = @{}) {
     if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
     $tpl = Join-Path $Work 'template-repo'
     New-Item -ItemType Directory -Force $tpl | Out-Null
@@ -55,7 +56,13 @@ exit 0
     $agents = Join-Path $App 'AGENTS.md'
     $agentsText = [IO.File]::ReadAllText($agents)
     if (-not $agentsText.Contains('- protect: none')) { throw 'AGENTS.md has no "- protect: none" line.' }
-    [IO.File]::WriteAllText($agents, $agentsText.Replace('- protect: none', '- protect: hook'))
+    $agentsText = $agentsText.Replace('- protect: none', '- protect: hook')
+    foreach ($key in $Landing.Keys) {
+        $pattern = "(?m)^- $([regex]::Escape($key)): .*$"
+        if ($agentsText -notmatch $pattern) { throw "AGENTS.md has no ""- ${key}:"" line." }
+        $agentsText = $agentsText -replace $pattern, "- ${key}: $($Landing[$key])"
+    }
+    [IO.File]::WriteAllText($agents, $agentsText)
     $settingsPath = Join-Path $App '.claude/settings.json'
     $s = Get-Content -Raw -LiteralPath $settingsPath | ConvertFrom-Json
     $s.permissions.PSObject.Properties.Remove('ask')

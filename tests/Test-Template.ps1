@@ -29,6 +29,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $ownWork = -not $PSBoundParameters.ContainsKey('Work')
+trap { "Kept the work folder: $Work"; break }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -622,8 +623,9 @@ $m = @(Get-MissingText $shipFilesAll ('`prelude` is `none`, `invalid`, or the Po
 Check 'workflow: ship-plan runs the prelude before the gate in the same PowerShell, and stops when it is invalid or fails' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $doneWhenExecutors ('has a `- Prelude:` line', "$preludeRun<the Done-when command>", 'its output prints `prelude failed` on the line before `exit=2`'))
 $m += @(Get-MissingText ('template\.claude\commands\orchestrate-plan.md', 'template\.github\skills\orchestrate-plan\SKILL.md', 'template\.github\agents\copilot-orchestrator.agent.md', 'template\.github\agents\hybrid-orchestrator.agent.md') ("$preludeRun<the Done-when command>", 'When it exits 2 and the output''s last line, apart from any exit code your shell adds, is `prelude failed`, the check never ran: stop, show me the prelude''s error'))
-$m += @(Get-MissingText ('template\.claude\commands\replan-step.md', 'template\.github\skills\replan-step\SKILL.md') 'has a `- Prelude:` line, run its command first in the same PowerShell')
-$m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\skills\review-plan-diff\SKILL.md') 'after its `- Prelude:` command')
+$preludeStop = 'When it exits 2 and the output''s last line, apart from any exit code your shell adds, is `prelude failed`, the '
+$m += @(Get-MissingText ('template\.claude\commands\replan-step.md', 'template\.github\prompts\replan-step.prompt.md', 'template\.github\skills\replan-step\SKILL.md') ('has a `- Prelude:` line, run its command first in the same PowerShell', "$preludeRun<the Done-when command>", "${preludeStop}check never ran, and the step isn't what failed: stop, show me the prelude's error"))
+$m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('after its `- Prelude:` command', "$preludeRun<the command>", "${preludeStop}command never ran: stop the review without adding steps or a ``Reviewed:`` line, show me the prelude's error"))
 Check 'workflow: executors and coordinators run the plan''s prelude before each Done-when command and stop when it fails' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\handoff-plan.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-bugfix\SKILL.md', 'template\.github\agents\copilot-planner.agent.md') ('sets `prelude` to a command, not `none`, put that command in Context for the executor as its `- Prelude:` line', 'never copy a `PATH` or tool-setup guard into a Done-when command', '- Prelude: `<the Landing section''s prelude command; only when it isn''t none>`'))
 $m += @(Get-MissingText 'template\AGENTS.md.jinja' ('`prelude`: `none`; one PowerShell command', '- prelude: none'))
@@ -684,6 +686,14 @@ $runnerFailures = @(& {
         $planText = "## Context for the executor`n- Build: ``none```n"
         $r = Invoke-DoneWhen $check
         if ($r.ExitCode -ne 3) { "without a prelude: exit $($r.ExitCode), expected 3" }
+        $envCheck = 'if ($env:PRELUDE_TEST -eq "on") { exit 0 } else { exit 3 }'
+        $r = Invoke-DoneWhen $envCheck
+        if ($r.ExitCode -ne 3) { "without a prelude, the shell isn't set up: exit $($r.ExitCode), expected 3" }
+        try { $r = Invoke-DoneWhen '"prelude failed"; exit 2'; if ($r.ExitCode -ne 2) { "without a prelude, a Done-when command that prints prelude failed and exits 2: exit $($r.ExitCode), expected 2" } }
+        catch { "without a prelude, a Done-when command that prints prelude failed and exits 2 stops the runner as if a prelude failed: $_" }
+        $planText = "## Context for the executor`n- Prelude: ``Set-Item env:PRELUDE_TEST on```n"
+        $r = Invoke-DoneWhen $envCheck
+        if ($r.ExitCode -ne 0) { "with a prelude command, not a script, that sets up the shell: exit $($r.ExitCode), expected 0" }
         foreach ($failing in './throws.ps1', './exits.ps1', './native-fails.ps1') {
             $planText = "## Context for the executor`n- Prelude: ``$failing```n"
             $threw = $false
@@ -704,6 +714,30 @@ $runnerFailures = @(& {
         }
     })
 Check 'workflow: Invoke-PlanSteps runs the plan''s prelude before each Done-when command and stops when it fails' (-not $runnerFailures) ($runnerFailures -join '; ')
+# The runner's loop re-checks a step the planner marked done, after the plan's prelude: a stand-in copilot escalates step 1 as the executor, then marks it [x] as the planner.
+$loopRepo = Join-Path $Work 'runner-loop'
+$loopBin = Join-Path $Work 'runner-loop-bin'
+New-Item -ItemType Directory -Force $loopRepo, $loopBin | Out-Null
+Invoke-Git -C $loopRepo init -q
+Set-Content (Join-Path $loopRepo 'env.ps1') '$env:PRELUDE_TEST = "on"'
+Set-Content (Join-Path $loopBin 'copilot.ps1') @'
+$plan = Join-Path (Get-Location) 'PLAN.md'
+$text = [IO.File]::ReadAllText($plan)
+if ($text -match '(?m)^### \[\?\] 1\. ') { $text = ($text -replace '(?m)^### \[\?\] 1\. ', '### [x] 1. ') -replace '(?m)^- Escalation:.*\r?\n', '' }
+else { $text = $text -replace '(?m)^### \[ \] 1\. ', '### [?] 1. ' }
+[IO.File]::WriteAllText($plan, $text)
+'@
+if (-not $IsWindows) {
+    Set-Content (Join-Path $loopBin 'copilot') "#!/usr/bin/env sh`nexec pwsh -NoProfile -File `"`$(dirname `"`$0`")/copilot.ps1`" `"`$@`"`n"
+    chmod +x (Join-Path $loopBin 'copilot')
+}
+$loopResults = foreach ($prelude in "- Prelude: ``./env.ps1```n", '') {
+    [IO.File]::WriteAllText((Join-Path $loopRepo 'PLAN.md'), "# Plan: loop`n`n## Context for the executor`n$prelude- Build: ``none```n`n## Steps`n`n### [ ] 1. Change nothing`n- Files: none`n- Done when: ``if (`$env:PRELUDE_TEST -eq 'on') { exit 0 } else { exit 3 }```n")
+    $command = "`$env:PATH = '$loopBin' + [IO.Path]::PathSeparator + `$env:PATH; & '$(Join-Path $workflow 'Invoke-PlanSteps.ps1')' -Plan '$(Join-Path $loopRepo 'PLAN.md')' -Replan copilot -NoCommit -AllowDirty; exit `$LASTEXITCODE"
+    $null = & pwsh -NoProfile -NonInteractive -Command $command 2>&1
+    "$LASTEXITCODE"
+}
+Check 'workflow: Invoke-PlanSteps re-checks a step the planner completed after the plan''s prelude, and fails it without one' (($loopResults -join ',') -eq '0,3') "exit codes with and without the prelude: $($loopResults -join ',')"
 
 if (-not $SkipDotnetBuild) {
     Push-Location (Join-Path $Work 'dotnet')

@@ -12,8 +12,9 @@
     is current, and ignores tags that aren't versions. Then checks the version from _commit, an existing label, the
     oldest of several open notices, the old address and Copier's shorthands (rewritten to the fixture with Git's
     insteadOf, so nothing reaches the network), a changelog too long for one issue, one with no section for the new
-    version, a tag without CHANGELOG.md, and the runs that fail: an unreadable template (with Git's message), no
-    _src_path, no version tags, and an unreadable or empty project version.
+    version, a tag without CHANGELOG.md, a section that brings the body to exactly the 60,000-character limit and one a
+    character longer, a project ahead of the newest tag, and the runs that fail: an unreadable template (with Git's
+    message), no _src_path, no version tags, an unreadable or empty project version, and a failing gh call.
     Prints PASS or FAIL per check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
@@ -29,6 +30,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $ownWork = -not $PSBoundParameters.ContainsKey('Work')
+trap { "Kept the work folder: $Work"; break }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -57,6 +59,8 @@ $stateFile = Join-Path $PSScriptRoot 'state.json'
 $state = Get-Content -Raw -LiteralPath $stateFile | ConvertFrom-Json -AsHashtable
 function Save { Set-Content -LiteralPath $stateFile -Value (ConvertTo-Json -InputObject $state -Depth 5) }
 $command = "$($args[0]) $($args[1])"
+# A "fail" key names a command that fails, as gh does when GitHub refuses it.
+if ($state.ContainsKey('fail') -and $state.fail -eq $command) { exit 1 }
 $i = [array]::IndexOf($args, '--label')
 $labelOption = if ($i -ge 0) { $args[$i + 1] }
 $i = [array]::IndexOf($args, '--title')
@@ -94,25 +98,29 @@ exit 1
 Write-Text (Join-Path $bin 'state.json') '{ "issues": [], "labels": ["bug"] }'
 
 # The fixture template: each version's tag carries a changelog with every section up to it, under an Unreleased section.
-# -Filler adds that many lines to each section, for a changelog too long for one issue.
-function Get-FixtureChangelog([string[]]$Versions, [int]$Filler = 0) {
+# -Filler adds that many lines to each section, for a changelog too long for one issue. -Pad adds that many x characters
+# to the end of the newest section's first change line.
+function Get-FixtureChangelog([string[]]$Versions, [int]$Filler = 0, [int]$Pad = 0) {
     $text = "# Changelog`n`nWhat each template version changes.`n`n## [Unreleased]`n`n### Added`n`n- Unreleased work.`n`n"
     foreach ($v in $Versions) {
-        $text += "## [$v] - 2026-10-0$($v.Split('.')[1])`n`n### Changed`n`n- Change in $v, with an em dash — and a link ([#$($v.Split('.')[1])](https://example.invalid/$v)).`n"
+        $padding = if ($v -eq $Versions[0]) { 'x' * $Pad } else { '' }
+        $text += "## [$v] - 2026-10-0$($v.Split('.')[1])`n`n### Changed`n`n- Change in $v, with an em dash — and a link ([#$($v.Split('.')[1])](https://example.invalid/$v)).$padding`n"
         $text += "- Another change in $v, one of many.`n" * $Filler
         $text += "`n"
     }
     $text += ($Versions | ForEach-Object { "[$_]: https://example.invalid/compare/$_" }) -join "`n"
     $text + "`n"
 }
-function Add-TemplateVersion([string]$Version, [string[]]$Versions, [int]$Filler = 0, [switch]$Annotated, [switch]$NoChangelog) {
+function Add-TemplateVersion([string]$Version, [string[]]$Versions, [int]$Filler = 0, [int]$Pad = 0, [switch]$Annotated, [switch]$NoChangelog, [switch]$Retag) {
     if ($NoChangelog) { Invoke-Git -C $template rm -q CHANGELOG.md }
     else {
-        Write-Text (Join-Path $template 'CHANGELOG.md') (Get-FixtureChangelog $Versions $Filler)
+        Write-Text (Join-Path $template 'CHANGELOG.md') (Get-FixtureChangelog $Versions $Filler $Pad)
         Invoke-Git -C $template add CHANGELOG.md
     }
     Invoke-Git -C $template commit -q -m "Release $Version"
-    if ($Annotated) { Invoke-Git -C $template tag -a "v$Version" -m "v$Version" } else { Invoke-Git -C $template tag "v$Version" }
+    # -Retag moves an existing tag to the new commit.
+    $force = @(if ($Retag) { '-f' })
+    if ($Annotated) { Invoke-Git -C $template tag @force -a "v$Version" -m "v$Version" } else { Invoke-Git -C $template tag @force "v$Version" }
 }
 Invoke-Git -C $template init -q -b main
 Add-TemplateVersion '0.1.0' @('0.1.0')
@@ -271,12 +279,55 @@ try {
     $body = "$((@($r.Issues) | Select-Object -First 1).body)"
     Check 'one long section: the body fits and links to CHANGELOG.md at the tag without calling it older' ($r.ExitCode -eq 0 -and $body.Length -lt 60500 -and -not $body.Contains('## [0.8.0]') -and -not $body.Contains('older') -and $body.TrimEnd().EndsWith("The release notes for these versions don't fit in an issue; read them in [CHANGELOG.md](https://github.com/NCodeGroup/project-template/blob/v0.8.0/CHANGELOG.md).")) "$($r.Output) length $($body.Length): $($body.Substring([Math]::Max(0, $body.Length - 300)))"
 
-    # 14. Copier's GitLab shorthand: the error names the address it expands to.
+    # 14. A section that, with its two line breaks, brings the body to exactly the 60,000-character limit is kept; one
+    # character more leaves it out. A first run measures the body's head and the section, so the next runs can pad the
+    # section to the limit.
+    Add-TemplateVersion '0.9.0' @('0.9.0')
+    Set-ProjectVersion 'v0.8.0'
+    Set-GhState '{ "issues": [], "labels": ["bug"] }'
+    $r = Invoke-Notice
+    $body = "$((@($r.Issues) | Select-Object -First 1).body)"
+    $head = $body.IndexOf('## [0.9.0]')
+    $section = $body.Length - $head - 1
+    Check 'limit: the first run lists the section' ($r.ExitCode -eq 0 -and $head -gt 0) "$($r.Output) length $($body.Length)"
+    # The script keeps a section while the body so far, the section and its two line breaks come to at most 60,000.
+    $pad = 60000 - $head - $section - 2
+    Add-TemplateVersion '0.9.0' @('0.9.0') -Pad $pad -Retag
+    Set-GhState '{ "issues": [], "labels": ["bug"] }'
+    $r = Invoke-Notice
+    $body = "$((@($r.Issues) | Select-Object -First 1).body)"
+    # The script then trims the second line break, so the issue's body is one character under the limit.
+    Check 'limit: a section that brings the body to exactly 60,000 characters with its two line breaks is kept' ($r.ExitCode -eq 0 -and $body.Contains('## [0.9.0]') -and -not $body.Contains("don't fit") -and $body.Length + 1 -eq 60000) "$($r.Output) length $($body.Length)"
+    Add-TemplateVersion '0.9.0' @('0.9.0') -Pad ($pad + 1) -Retag
+    Set-GhState '{ "issues": [], "labels": ["bug"] }'
+    $r = Invoke-Notice
+    $body = "$((@($r.Issues) | Select-Object -First 1).body)"
+    Check 'limit: one character over leaves the section out and links to CHANGELOG.md' ($r.ExitCode -eq 0 -and -not $body.Contains('## [0.9.0]') -and $body.TrimEnd().EndsWith("The release notes for these versions don't fit in an issue; read them in [CHANGELOG.md](https://github.com/NCodeGroup/project-template/blob/v0.9.0/CHANGELOG.md).")) "$($r.Output) length $($body.Length)"
+
+    # 15. A project ahead of the newest tag, as after a tag is removed, counts as current: the open notice is closed.
+    Set-ProjectVersion 'v1.0.0'
+    Set-GhState (ConvertTo-Json -Depth 5 -InputObject @{ labels = @('bug', 'template-update'); issues = @((New-Issue 1 'Update to project-template v0.9.0' @('template-update'))) })
+    $r = Invoke-Notice
+    $issue = $r.Issues | Select-Object -First 1
+    Check 'ahead: a project ahead of the newest tag closes the open notice' ($r.ExitCode -eq 0 -and $issue.state -eq 'closed' -and "$(@($issue.comments)[0])".Contains('on project-template v1.0.0') -and $r.Output -match 'Closed #1') "$($r.Output) $($r.Calls -join ' | ')"
+
+    # 16. A gh call that fails fails the run, and nothing is reported as done.
+    Set-ProjectVersion 'v0.8.0'
+    Set-GhState (ConvertTo-Json -Depth 5 -InputObject @{ fail = 'issue edit'; labels = @('bug', 'template-update'); issues = @((New-Issue 1 'Update to project-template v0.8.0' @('template-update'))) })
+    $r = Invoke-Notice
+    $issue = $r.Issues | Select-Object -First 1
+    Check 'gh fails: a failed issue edit fails the run and isn''t reported as done' ($r.ExitCode -ne 0 -and $r.Flat.Contains('gh issue edit exited with code 1') -and $r.Output -notmatch 'Updated #' -and $issue.title -eq 'Update to project-template v0.8.0') "$($r.Output) $($r.Calls -join ' | ')"
+    Set-GhState (ConvertTo-Json -Depth 5 -InputObject @{ fail = 'issue list'; labels = @('bug', 'template-update'); issues = @((New-Issue 1 'Update to project-template v0.8.0' @('template-update'))) })
+    $r = Invoke-Notice
+    Check 'gh fails: a failed issue list fails the run before any change' ($r.ExitCode -ne 0 -and $r.Flat.Contains('gh issue list exited with code 1') -and (Get-Change $r).Count -eq 0) "$($r.Output) $($r.Calls -join ' | ')"
+    Set-GhState '{ "issues": [], "labels": ["bug"] }'
+
+    # 17. Copier's GitLab shorthand: the error names the address it expands to.
     Set-Answer "_commit: v0.1.0`n_src_path: gl:owner/repo"
     $r = Invoke-Notice
     Check 'GitLab shorthand: reads https://gitlab.com/owner/repo' ($r.ExitCode -ne 0 -and $r.Flat.Contains("Can't read the project template's tags at https://gitlab.com/owner/repo.")) $r.Output
 
-    # 15. No _src_path, a version it can't read, and a template with no version tags each fail the run, saying why.
+    # 18. No _src_path, a version it can't read, and a template with no version tags each fail the run, saying why.
     Set-Answer '_commit: v0.1.0'
     $r = Invoke-Notice
     Check 'no _src_path: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Flat.Contains('.copier-answers.yml has no _src_path')) $r.Output

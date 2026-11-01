@@ -296,6 +296,9 @@ function Get-BuildFileList([string]$Path) {
 # A hooks path the clone already has, from any Git config, is never changed: one that names a .githooks folder runs the
 # template's hooks, and any other, such as husky's or a global hooks folder, gets a note naming the command to run.
 # With "- protect: hook" in AGENTS.md's Landing section, it also says how to run .githooks/pre-push until something does.
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both
+# together, or Update and Adopt can decide differently for the same clone; tests/Test-GitHooks.ps1 runs both copies
+# through the same cases.
 function Get-GitHooksSetup {
     $config = '.pre-commit-config.yaml'
     $hooksDir = git rev-parse --path-format=absolute --git-path hooks
