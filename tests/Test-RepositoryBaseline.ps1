@@ -20,9 +20,10 @@
     with Actions not approving pull requests, secret scanning, its push protection, Dependabot alerts, Dependabot
     security updates and private vulnerability reporting, each with the call and body the API takes, and only where it
     is off, reports each as set, already set, would set or not available, leaves secret scanning out of a repository
-    that isn't public, and reports a setting the API won't read or refuses without failing the run; that -All skips
-    archived repositories and forks; and that bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any
-    failure.
+    that isn't public, and reports a setting the API won't read or refuses without failing the run; that it allows
+    auto-merge, with a PATCH that changes nothing else, where it is off, on a repository whose default branch it leaves
+    alone too, and reports an answer without it or a refusal; that -All skips archived repositories and forks; and that
+    bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-baseline-test-<process ID> in the
@@ -84,8 +85,8 @@ if ($rest[0] -eq '-X') { $method = $rest[1]; $rest = @($rest[2..($rest.Count - 1
 $path = $rest[0]
 if ($method -ne 'GET') {
     # A change. A body sent with --input is logged as BODY <method> <path> and kept in bodies.log, one JSON line each.
-    # writeFails (what is changed -> status) refuses it: the key is the path after the repository's, or for a
-    # security_and_analysis change the feature's name.
+    # writeFails (what is changed -> status) refuses it: the key is the path after the repository's, for a
+    # security_and_analysis change the feature's name, or allow_auto_merge.
     $repo = $null; $key = ''
     if ($path -match '^repos/[^/]+/([^/]+)/?(.*)$') { $repo = $data.repos[$Matches[1]]; $key = $Matches[2] }
     if ($rest -contains '--input') {
@@ -94,6 +95,7 @@ if ($method -ne 'GET') {
         Add-Content -LiteralPath (Join-Path $PSScriptRoot 'bodies.log') -Value (ConvertTo-Json -Compress -Depth 20 -InputObject @{ method = $method; path = $path; body = $sent })
         Add-Content -LiteralPath $log -Value "BODY $method $path"
         if ($sent.security_and_analysis) { $key = @($sent.security_and_analysis.Keys)[0] }
+        elseif ($sent.ContainsKey('allow_auto_merge')) { $key = 'allow_auto_merge' }
     }
     if ($key -eq 'code-scanning/default-setup' -and $repo.switchFails) { exit 1 }
     $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] }
@@ -157,9 +159,10 @@ function New-TagRuleset([string]$Name, [string[]]$Types = @('deletion', 'update'
 }
 # $Security sets the state the stand-in reads for a setting, by its path after the repository's (on, off, readApproves
 # or fail:<code>): every one is off unless it says otherwise. $WriteFails refuses a change with a status (see the
-# stand-in). Secret scanning and its push protection are read from the repository itself, as GitHub reports them.
+# stand-in). Secret scanning and its push protection are read from the repository itself, as GitHub reports them, and
+# so is auto-merge: $AutoMerge $null leaves it out of the answer, as GitHub does for someone who can't change it.
 function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
-    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}) {
+    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false) {
     $full = @{}
     $summaries = @()
     $id = 100
@@ -167,7 +170,9 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
     $settings = @{ 'actions/permissions/workflow' = 'off'; 'vulnerability-alerts' = 'off'; 'automated-security-fixes' = 'off'; 'private-vulnerability-reporting' = 'off' }
     foreach ($key in $Security.Keys) { $settings[$key] = $Security[$key] }
     $analysis = @{ secret_scanning = @{ status = $SecretScanning }; secret_scanning_push_protection = @{ status = $PushProtection } }
-    @{ info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork; private = $Visibility -ne 'public'; visibility = $Visibility; security_and_analysis = $analysis }
+    $info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork; private = $Visibility -ne 'public'; visibility = $Visibility; security_and_analysis = $analysis }
+    if ($null -ne $AutoMerge) { $info.allow_auto_merge = $AutoMerge }
+    @{ info = $info
         rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; switchFails = $SwitchFails
         pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails }
 }
@@ -248,11 +253,13 @@ $repos = @{
     tagsInactive = New-Repo -Rulesets @((New-TagRuleset 'release-tags' -Enforcement 'evaluate'))
     # Security settings: every one on already; a private repository, where private vulnerability reporting can't be
     # read; settings the API refuses to change; a workflow token setting it won't read; and some on, some off.
-    complete = New-Repo -Rulesets @((New-Ruleset 'Protect main'), (New-TagRuleset 'Protect release tags')) -SecretScanning 'enabled' -PushProtection 'enabled' -Security $allSecurityOn
+    complete = New-Repo -Rulesets @((New-Ruleset 'Protect main'), (New-TagRuleset 'Protect release tags')) -SecretScanning 'enabled' -PushProtection 'enabled' -Security $allSecurityOn -AutoMerge $true
     private = New-Repo -Visibility 'private' -Security @{ 'private-vulnerability-reporting' = 'fail:422' }
-    refused = New-Repo -WriteFails @{ 'actions/permissions/workflow' = 409; 'secret_scanning_push_protection' = 422; 'automated-security-fixes' = 422 }
+    refused = New-Repo -WriteFails @{ 'actions/permissions/workflow' = 409; 'secret_scanning_push_protection' = 422; 'automated-security-fixes' = 422; 'allow_auto_merge' = 403 }
     workflowUnreadable = New-Repo -Security @{ 'actions/permissions/workflow' = 'fail:403' }
-    partial = New-Repo -SecretScanning 'enabled' -Security @{ 'actions/permissions/workflow' = 'readApproves'; 'vulnerability-alerts' = 'on'; 'private-vulnerability-reporting' = 'on' }
+    partial = New-Repo -SecretScanning 'enabled' -Security @{ 'actions/permissions/workflow' = 'readApproves'; 'vulnerability-alerts' = 'on'; 'private-vulnerability-reporting' = 'on' } -AutoMerge $true
+    # Auto-merge: an answer that leaves allow_auto_merge out, as GitHub's does for someone who can't change it.
+    autoMergeUnread = New-Repo -AutoMerge $null
     autoPaged = New-Repo -Pulls @((New-Pull 21 'sha21' '2026-10-01T10:00:00Z'), (New-Pull 22 'sha22' '2026-10-02T10:00:00Z'), (New-Pull 23 'sha23' ''), (New-Pull 24 'sha24' '2026-10-03T10:00:00Z'), (New-Pull 25 'sha25' '2026-10-04T10:00:00Z'), (New-Pull 26 'sha26' ''), (New-Pull 30 'sha30' '2026-10-25T10:00:00Z')) -CheckRuns @{ sha25 = @((New-CheckRun 1 'first-page-job')); sha30 = @((New-CheckRun 1 'paged-build')) } -WorkflowRuns @{ sha25 = $prWorkflowRuns; sha30 = $prWorkflowRuns }
 }
 Write-Text (Join-Path $bin 'repos.json') (ConvertTo-Json -Depth 12 -InputObject @{
@@ -306,12 +313,13 @@ try {
     foreach ($label in 'read-only workflow token, and Actions not approving pull requests', 'secret scanning', 'secret scanning push protection', 'Dependabot alerts', 'Dependabot security updates', 'private vulnerability reporting') {
         Check "whatif: shows the security setting it would turn on ($label)" ($r.Output -match [regex]::Escape("fresh: ${label}: would set")) $r.Output
     }
+    Check 'whatif: shows that it would allow auto-merge' ($r.Output -match [regex]::Escape('fresh: allow auto-merge: would set')) $r.Output
 
     # 2. A repository with no ruleset.
     $r = Invoke-Baseline @('-Repo', 'fresh')
     $types = @($r.Body.rules.type)
     Check 'create: switches CodeQL to the extended suite first, then posts one ruleset and turns on delete-branch-on-merge' (($r.Changes[0..2] -join '|') -eq 'api -X PATCH repos/NCodeGroup/fresh/code-scanning/default-setup -f query_suite=extended|BODY POST repos/NCodeGroup/fresh/rulesets|api -X PATCH repos/NCodeGroup/fresh -F delete_branch_on_merge=true' -and $r.Bodies[0].body.name -eq 'Protect main') ($r.Changes -join '|')
-    Check 'create: then the release tags ruleset, then each security setting, Dependabot alerts before its security updates' (($r.Changes[3..($r.Changes.Count - 1)] -join '|') -eq 'BODY POST repos/NCodeGroup/fresh/rulesets|BODY PUT repos/NCodeGroup/fresh/actions/permissions/workflow|BODY PATCH repos/NCodeGroup/fresh|BODY PATCH repos/NCodeGroup/fresh|api -X PUT repos/NCodeGroup/fresh/vulnerability-alerts|api -X PUT repos/NCodeGroup/fresh/automated-security-fixes|api -X PUT repos/NCodeGroup/fresh/private-vulnerability-reporting') ($r.Changes -join '|')
+    Check 'create: then the release tags ruleset, then each security setting, Dependabot alerts before its security updates, then auto-merge' (($r.Changes[3..($r.Changes.Count - 1)] -join '|') -eq 'BODY POST repos/NCodeGroup/fresh/rulesets|BODY PUT repos/NCodeGroup/fresh/actions/permissions/workflow|BODY PATCH repos/NCodeGroup/fresh|BODY PATCH repos/NCodeGroup/fresh|api -X PUT repos/NCodeGroup/fresh/vulnerability-alerts|api -X PUT repos/NCodeGroup/fresh/automated-security-fixes|api -X PUT repos/NCodeGroup/fresh/private-vulnerability-reporting|BODY PATCH repos/NCodeGroup/fresh') ($r.Changes -join '|')
     Check 'create: the summary says CodeQL moves to the extended suite' ($r.Output -match 'switch CodeQL from the default query suite to extended') $r.Output
     Check 'create: protects the default branch and cannot be bypassed' (($r.Body.name -eq 'Protect main') -and ($r.Body.target -eq 'branch') -and ($r.Body.enforcement -eq 'active') -and ($r.Body.conditions.ref_name.include -contains '~DEFAULT_BRANCH') -and ($r.Body.bypass_actors.Count -eq 0))
     Check 'create: no deletion, no force push, a pull request, a code-scanning rule, and nothing more' (($types -join ',') -eq 'deletion,non_fast_forward,pull_request,code_scanning') ($types -join ',')
@@ -476,7 +484,7 @@ try {
     $settings = @($r.Bodies | Where-Object { $_.path -ne 'repos/NCodeGroup/fresh/rulesets' })
     $workflow = $settings | Where-Object { $_.path -eq 'repos/NCodeGroup/fresh/actions/permissions/workflow' }
     Check 'security: the workflow token is read-only by default and Actions may not approve pull requests' ($workflow.method -eq 'PUT' -and $workflow.body.default_workflow_permissions -eq 'read' -and $workflow.body.can_approve_pull_request_reviews -eq $false -and @($workflow.body.PSObject.Properties).Count -eq 2) ($workflow | ConvertTo-Json -Depth 6 -Compress)
-    $analysis = @($settings | Where-Object { $_.path -eq 'repos/NCodeGroup/fresh' -and $_.method -eq 'PATCH' } | ForEach-Object { $_.body.security_and_analysis | ConvertTo-Json -Depth 6 -Compress })
+    $analysis = @($settings | Where-Object { $_.path -eq 'repos/NCodeGroup/fresh' -and $_.method -eq 'PATCH' -and $_.body.security_and_analysis } | ForEach-Object { $_.body.security_and_analysis | ConvertTo-Json -Depth 6 -Compress })
     Check 'security: secret scanning, then its push protection, each turned on in its own PATCH of the repository' (($analysis -join '|') -eq '{"secret_scanning":{"status":"enabled"}}|{"secret_scanning_push_protection":{"status":"enabled"}}') ($analysis -join '|')
     Check 'security: Dependabot alerts, Dependabot security updates and private vulnerability reporting are turned on with a PUT and no body' (@($settings | Where-Object { $_.path -match 'vulnerability-alerts|automated-security-fixes|private-vulnerability-reporting' }).Count -eq 0 -and (@($r.Changes | Where-Object { $_ -like 'api -X PUT *' }) -join '|') -eq 'api -X PUT repos/NCodeGroup/fresh/vulnerability-alerts|api -X PUT repos/NCodeGroup/fresh/automated-security-fixes|api -X PUT repos/NCodeGroup/fresh/private-vulnerability-reporting') ($r.Changes -join '|')
     foreach ($label in 'read-only workflow token, and Actions not approving pull requests', 'secret scanning', 'secret scanning push protection', 'Dependabot alerts', 'Dependabot security updates', 'private vulnerability reporting') {
@@ -514,7 +522,20 @@ try {
     $r = Invoke-Baseline @('-Repo', 'private', '-WhatIf')
     Check 'security: -WhatIf reads the settings, reports them, and writes nothing' ($r.Changes.Count -eq 0 -and $r.Output -match 'private: Dependabot alerts: would set' -and $r.Output -match [regex]::Escape("private: secret scanning: not available (the repository isn't public")) $r.Output
     $r = Invoke-Baseline @('-Repo', 'setupFailed')
-    Check 'security: a repository skipped for its default branch gets no tag ruleset and no setting' ($r.Changes.Count -eq 0 -and $r.Output -notmatch 'Protect release tags|secret scanning') $r.Output
+    Check 'security: a repository skipped for its default branch gets no tag ruleset and no setting' ($r.Changes.Count -eq 0 -and $r.Output -notmatch 'Protect release tags|secret scanning|auto-merge') $r.Output
+
+    # 7d. Auto-merge, which the template's code-review-auto-merge.yml needs.
+    $r = Invoke-Baseline @('-Repo', 'fresh')
+    $autoMerge = @($r.Bodies | Where-Object { $_.path -eq 'repos/NCodeGroup/fresh' -and $null -ne $_.body.allow_auto_merge })
+    Check 'auto-merge: allowed with a PATCH of the repository that changes nothing else, and the run says so' ($autoMerge.Count -eq 1 -and $autoMerge[0].method -eq 'PATCH' -and $autoMerge[0].body.allow_auto_merge -eq $true -and @($autoMerge[0].body.PSObject.Properties).Count -eq 1 -and $r.Output -match [regex]::Escape('fresh: allow auto-merge: set')) "$($autoMerge | ConvertTo-Json -Depth 6 -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'complete')
+    Check 'auto-merge: a repository that allows it already is reported and not written' ($r.Output -match [regex]::Escape('complete: allow auto-merge: already set') -and -not @($r.Bodies | Where-Object { $null -ne $_.body.allow_auto_merge }).Count) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'owned')
+    Check 'auto-merge: a repository whose default branch is left alone still gets it' ($r.Output -match "owned: left alone \('main' already requires pull requests\)" -and $r.Output -match [regex]::Escape('owned: allow auto-merge: set')) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'autoMergeUnread')
+    Check 'auto-merge: an answer that leaves it out is reported and not written' ($r.Output -match [regex]::Escape("autoMergeUnread: allow auto-merge: not available (couldn't read it: the repository's answer doesn't include it)") -and -not @($r.Bodies | Where-Object { $null -ne $_.body.allow_auto_merge }).Count) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'refused')
+    Check 'auto-merge: a change the API refuses is reported as not available, with its answer, and does not fail the run' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match [regex]::Escape('refused: allow auto-merge: not available (HTTP 403: Stand-in refused allow_auto_merge)')) $r.Output
 
     # 8. Bad parameters.
     $r = Invoke-Baseline @()

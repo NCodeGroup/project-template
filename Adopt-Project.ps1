@@ -153,8 +153,8 @@ try {
         if (Test-Path -LiteralPath .github/copilot-instructions.md) { $followUps.Add('fold .github/copilot-instructions.md into AGENTS.md or a file it lists') }
         # A ci.yml the repository already had was kept, so its other workflows are not in conflict with the template's.
         if ((Test-Path -LiteralPath .github/workflows/ci.yml) -and -not $originals.ContainsKey('.github/workflows/ci.yml')) {
-            # code-review.yml and publish.yml are the template's own workflows for the review bot and for publishing packages, separate from CI by design: nothing to reconcile.
-            foreach ($f in Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Extension -in '.yml', '.yaml' -and $_.Name -notin 'ci.yml', 'code-review.yml', 'publish.yml' } | Sort-Object Name) {
+            # code-review.yml, code-review-auto-merge.yml and publish.yml are the template's own workflows for the review bot, for merging its Dependabot bumps and for publishing packages, separate from CI by design: nothing to reconcile.
+            foreach ($f in Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Extension -in '.yml', '.yaml' -and $_.Name -notin 'ci.yml', 'code-review.yml', 'code-review-auto-merge.yml', 'publish.yml' } | Sort-Object Name) {
                 $followUps.Add("reconcile .github/workflows/$($f.Name) with ci.yml")
             }
         }
