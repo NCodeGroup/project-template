@@ -90,6 +90,7 @@ try {
     $r = Invoke-Update $null
     $detail = "exit $($r.ExitCode)`n$($r.Output.Trim())"
     Check 'conflict: the update stops on the conflict in scripts/check.ps1' (($r.ExitCode -eq 1) -and ($r.Output -match '(?m)^  conflict  scripts/check\.ps1\r?$')) $detail
+    Check 'conflict: the rewritten merged file conflicts too, so the note has a merged file to leave out' ($r.Output -match '(?m)^  conflict  \.vscode/extensions\.json\r?$') $detail
     Check 'conflict: a note names the template-owned file and not the merged one' ($r.Output -match '(?m)^These files are template-owned in v0\.2\.0, and this project has its own version of each, so they conflict:\r?\n  scripts/check\.ps1\r?\nTo keep ') $detail
     Check 'conflict: one -Data names the rewritten merged file and the conflicting file' (([regex]::Matches($r.Output, [regex]::Escape($command)).Count -eq 1) -and $r.Output.Contains(', with the merged files above,') -and -not $r.Output.Contains('To make them project-owned')) $detail
 
