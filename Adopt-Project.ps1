@@ -7,7 +7,7 @@
     Works out the template's answers from what the repository already has (stack, project name, git host, workflow tools, authors,
     build and test commands), applies -Data over them, and runs `copier copy --overwrite --defaults` into the
     repository (Copier from PATH, or through uvx). The answers are recorded in .copier-answers.yml, so the project
-    can update itself with .\.template\Update-Project.ps1 afterwards. A merged file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging them.
+    can update itself with .\.template\Update-Project.ps1 afterwards. A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
 
     The repository must be the root of a Git repository with no uncommitted changes and no .copier-answers.yml.
     The result is one commit, "Adopt project-template <version>"; -NoCommit stages it instead. Before committing, the

@@ -22,9 +22,11 @@
       Project-owned   Written once, never touched again (copier.yml's _skip_if_exists). When the template changed
                       one since the project's version, the script shows the template's change, rendered with
                       the project's answers, leaving out what the project's file already has.
-                      A merged file that the project's project_owned_files answer names
+                      A merged or template-owned file that the project's project_owned_files answer names
                       is project-owned too; a project that replaced one sets it with -Data @{ project_owned_files
-                      = '.github/workflows/ci.yml' }, and only merged files can be named.
+                      = '.github/workflows/ci.yml', 'build/dod.ps1' }. The answer can name any file the version
+                      the update moves to renders, except .copier-answers.yml, .template-version and the files in
+                      .template/; any other name stops the update before it changes anything.
                       When the template changed a merged file that shares less than half its lines with the
                       template's version, the script suggests that answer, with the -Data to run;
                       it doesn't stop the update. When Copier can't render the project's version, it warns
