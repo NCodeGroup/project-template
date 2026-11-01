@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Render the template for every stack and check the result: expected files, LF line endings, valid JSON and no leftover Jinja. tests\Test-TemplateDotnet.ps1 builds the .NET layer. tests\Test-ProjectUpdate.ps1 and tests\Test-ProjectUpdateHooks.ps1 test a rendered project's update.
+    Render the template for every stack and check the result: expected files, LF line endings, valid JSON, no leftover Jinja and no Markdown line that joins two list items. tests\Test-TemplateDotnet.ps1 builds the .NET layer. tests\Test-ProjectUpdate.ps1 and tests\Test-ProjectUpdateHooks.ps1 test a rendered project's update.
 
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
@@ -387,6 +387,9 @@ foreach ($case in $cases) {
     Check "${name}: every text file ends with exactly one newline" (-not $badEnd) ($badEnd -join ', ')
     $jinja = $files | Where-Object { Select-String -LiteralPath $_.FullName -Pattern '(?<!\$)\{\{|\{%' -Quiet } | ForEach-Object Name
     Check "${name}: no leftover Jinja" (-not $jinja) ($jinja -join ', ')
+    # A list item joined to the end of the one before it, such as "remains.- Secrets", renders as part of that item.
+    $joined = $files | Where-Object Extension -EQ '.md' | Where-Object { Select-String -LiteralPath $_.FullName -Pattern '\S\.- [A-Z"`*\[]' -CaseSensitive -Quiet } | ForEach-Object { $_.FullName.Substring($dest.Length).TrimStart('\', '/') }
+    Check "${name}: no Markdown line joins two list items" (-not $joined) ($joined -join ', ')
     $badJson = $files | Where-Object Extension -EQ '.json' | Where-Object {
         try { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json | Out-Null; $false } catch { $true }
     } | ForEach-Object Name
