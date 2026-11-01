@@ -1,16 +1,23 @@
-# Keeps this repository's own CI inputs current: the actions in its workflow, and the Copier version its tests install
-# (tests/requirements.txt). The pins inside template/ are in merged files, which each project's own Dependabot keeps
-# current.
+# Keeps this repository's own CI inputs current: the actions in its workflow, and the Python packages its tests use,
+# pinned in tests/requirements.txt. The pins inside template/ are in merged files, which each project's own Dependabot
+# keeps current.
+# Like every project's, each entry waits three days before it offers a new version (cooldown)
+# and gives security updates a group of their own.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     groups:
       github-actions:
         patterns: ["*"]
         update-types: [minor, patch]
+      github-actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: pip
     directory: /tests
     schedule:
