@@ -8,7 +8,10 @@
     .vscode/extensions.json.jinja to .vscode/extensions.json, all with project_owned_files naming CLAUDE.md and
     scripts/check.ps1. The update must leave both owned files as the project has them, not reset them as local edits, show
     the template's change to each, and name .vscode/extensions.json, a file whose template source was renamed, only once in
-    its rewritten-file note and in the -Data it suggests. Prints PASS or FAIL per check and exits 1 on any failure.
+    its rewritten-file note and in the -Data it suggests. It then resets the project and updates again with all three files
+    named: the update must commit and leave all three as the project has them with a clean working tree, show
+    .vscode/extensions.json's template change once, and record the three files in .copier-answers.yml. Prints PASS or FAIL
+    per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-owned-template-test-<process ID> in the
@@ -99,6 +102,14 @@ try {
     Check "owned: an owned template-owned file isn't reset as a local edit" (-not $r.Output.Contains('Local edits discarded')) $detail
     Check "owned: shows the template's change to each owned file" (($r.Output -match '(?m)^  CLAUDE\.md:\r?$') -and ($r.Output -match '(?m)^  scripts/check\.ps1:\r?$') -and $r.Output.Contains('+Owned-test line from the template.') -and $r.Output.Contains("+Write-Output 'template check'")) $detail
     Check 'renamed: the rewritten-file note and its -Data name a merged file with a renamed source once' (([regex]::Matches($r.Output, '(?m)^  \.vscode/extensions\.json\r?$').Count -eq 1) -and $r.Output.Contains("-Data @{ project_owned_files = 'CLAUDE.md', 'scripts/check.ps1', '.vscode/extensions.json' }")) $detail
+
+    Invoke-Git reset -q --hard $head; Invoke-Git clean -fdq
+    $r = Invoke-Update @{ project_owned_files = 'CLAUDE.md', 'scripts/check.ps1', '.vscode/extensions.json' }
+    $status = git status --porcelain
+    $detail = "exit $($r.ExitCode)`n$($r.Output.Trim())"
+    Check 'owned: the update commits and leaves all three files as the project has them' (($r.ExitCode -eq 0) -and $r.Output.Contains('Committed "Update from project-template v0.2.0"') -and -not $status -and ([IO.File]::ReadAllText((Join-Path $path 'CLAUDE.md')) -eq $ownClaude) -and ([IO.File]::ReadAllText((Join-Path $path 'scripts/check.ps1')) -eq $ownCheck) -and ([IO.File]::ReadAllText((Join-Path $path '.vscode/extensions.json')) -eq $ownExtensions)) $detail
+    Check 'renamed: shows an owned file whose template source was renamed once' ([regex]::Matches($r.Output, '(?m)^  \.vscode/extensions\.json:\r?$').Count -eq 1) $detail
+    Check 'owned: .copier-answers.yml records the three files' ([IO.File]::ReadAllText((Join-Path $path '.copier-answers.yml')) -match '(?m)^project_owned_files:\r?\n- CLAUDE\.md\r?\n- scripts/check\.ps1\r?\n- \.vscode/extensions\.json\r?$') $detail
 }
 finally { Pop-Location }
 ''
