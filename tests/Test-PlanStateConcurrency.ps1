@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Test that workflow\Get-PlanState.ps1 starts its network calls together instead of one after another.
+    Test that workflow\Get-PlanState.ps1 starts its network calls together instead of one after another, and stops the ones it never received when it fails.
 
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, with a plan that names two issues and a release tag, and puts a
@@ -8,6 +8,10 @@
     that waits before each of its five answers, then checks that it prints the same lines both times and that the delayed
     run takes less than the run without the delay plus three and a half delays: run one after another, the five calls add five
     delays. Then removes the release tag from the clone and checks that a tag only origin has is still read as published.
+    Last, has the stand-in fail the protection check once another call has started, with each other call waiting a
+    minute, runs Get-PlanState.ps1 in a pwsh of its own that catches its error, and checks that it fails with that error
+    in less than the minute and leaves no runspace busy: its finally stops the calls it never received. It also checks
+    that neither that run nor a passing one leaves a runspace open.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -38,6 +42,7 @@ function Write-Text([string]$Path, [string]$Text) {
 
 $script = Join-Path $repoRoot 'workflow/Get-PlanState.ps1'
 $delayMs = 2000
+$stopDelayMs = 60000
 
 # Runs Get-PlanState.ps1 in a pwsh of its own and times it, so the time covers everything the script does.
 function Measure-PlanState([string]$Path) {
@@ -93,6 +98,15 @@ Release: v0.2.0
 $bin = Join-Path $Work 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 Write-Text (Join-Path $bin 'gh.ps1') @'
+# With a throw file next to it, the stand-in marks each call but the protection check as started, and fails that check
+# once another call has started, so Get-PlanState.ps1 meets the error while calls it never received are still running.
+$throw = Test-Path -LiteralPath (Join-Path $PSScriptRoot 'throw')
+if ($throw -and $args[0] -eq 'api') {
+    $wait = [Diagnostics.Stopwatch]::StartNew()
+    while (-not (Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'started-*') -and $wait.ElapsedMilliseconds -lt 30000) { Start-Sleep -Milliseconds 100 }
+    throw 'stand-in gh: the protection check failed'
+}
+if ($throw) { [IO.File]::WriteAllText((Join-Path $PSScriptRoot "started-$([guid]::NewGuid().ToString('N'))"), "$args") }
 $delay = Join-Path $PSScriptRoot 'delay'
 if (Test-Path -LiteralPath $delay) { Start-Sleep -Milliseconds ([int][IO.File]::ReadAllText($delay)) }
 if ($args[0] -eq 'pr' -and $args[1] -eq 'list') { '[]'; exit 0 }
@@ -100,6 +114,22 @@ if ($args[0] -eq 'issue' -and $args[1] -eq 'view') { if ($args[2] -eq '7') { 'OP
 if ($args[0] -eq 'api') { 'HTTP/2.0 200 OK'; 'Content-Type: application/json'; ''; '[{"type":"pull_request"}]'; exit 0 }
 if ($args[0] -eq 'release' -and $args[1] -eq 'view') { '{"tagName":"v0.2.0"}'; exit 0 }
 exit 1
+'@
+
+# Runs Get-PlanState.ps1 in this pwsh, catches its error, and prints the error, the time the script took and the number
+# of runspaces besides its own that are still busy.
+$probe = Join-Path $Work 'probe.ps1'
+Write-Text $probe @'
+param([string]$Script, [string]$Path)
+$watch = [Diagnostics.Stopwatch]::StartNew()
+$caught = '-'
+try { $null = & $Script -Path $Path } catch { $caught = "$_" }
+$watch.Stop()
+$own = [runspace]::DefaultRunspace.InstanceId
+"error: $caught"
+"milliseconds: $($watch.ElapsedMilliseconds)"
+"busy: $(@(Get-Runspace | Where-Object { $_.InstanceId -ne $own -and $_.RunspaceAvailability -eq 'Busy' }).Count)"
+"opened: $(@(Get-Runspace | Where-Object { $_.InstanceId -ne $own -and $_.RunspaceStateInfo.State -eq 'Opened' }).Count)"
 '@
 
 $savedPath = $env:PATH
@@ -113,6 +143,12 @@ try {
     try { Invoke-Git tag -d v0.2.0 | Out-Null }
     finally { Pop-Location }
     $fetched = Measure-PlanState $repo
+    Write-Text (Join-Path $bin 'delay') "$stopDelayMs"
+    Write-Text (Join-Path $bin 'throw') ''
+    $stopped = ConvertTo-State @(& pwsh -NoProfile -File $probe -Script $script -Path $repo 2>$null | ForEach-Object { "$_" })
+    Remove-Item -LiteralPath (Join-Path $bin 'delay'), (Join-Path $bin 'throw') -Force
+    $started = @(Get-ChildItem -LiteralPath $bin -Filter 'started-*').Count
+    $closed = ConvertTo-State @(& pwsh -NoProfile -File $probe -Script $script -Path $repo 2>$null | ForEach-Object { "$_" })
 }
 finally { $env:PATH = $savedPath }
 
@@ -133,6 +169,13 @@ Check "concurrency: five gh calls of $delayMs ms each take less than $limit ms, 
 
 $fetchedState = ConvertTo-State $fetched.Lines
 Check 'release: a release tag only the fetch brings in is still read as published' (($fetchedState['tag'] -eq 'present') -and ($fetchedState['published'] -eq 'yes')) "tag='$($fetchedState['tag'])' published='$($fetchedState['published'])'"
+
+Check 'stop: an error after the calls start ends Get-PlanState.ps1 with that error' ("$($stopped['error'])" -match 'stand-in gh: the protection check failed') "error='$($stopped['error'])'"
+Check 'stop: calls Get-PlanState.ps1 never received were running when the error came' ($started -gt 0) "the stand-in for gh started $started calls"
+Check "stop: Get-PlanState.ps1 ends in less than $stopDelayMs ms, without waiting for those calls" (("$($stopped['milliseconds'])" -match '^\d+$') -and ([int64]$stopped['milliseconds'] -lt $stopDelayMs)) "milliseconds='$($stopped['milliseconds'])'"
+Check 'stop: no runspace is left running a call Get-PlanState.ps1 never received' ("$($stopped['busy'])" -eq '0') "busy='$($stopped['busy'])'"
+Check 'stop: Get-PlanState.ps1 leaves no runspace open when it fails' ("$($stopped['opened'])" -eq '0') "opened='$($stopped['opened'])'"
+Check 'close: Get-PlanState.ps1 closes the runspace of each call it received' ("$($closed['error'])" -eq '-' -and "$($closed['opened'])" -eq '0') "error='$($closed['error'])', opened='$($closed['opened'])'"
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Plan state concurrency tests: FAILED ($($failures.Count))"; exit 1 }

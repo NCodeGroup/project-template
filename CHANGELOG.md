@@ -15,6 +15,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The `code-review.yml` a project gets pins `NCodeGroup/code-review` to the full commit SHA of v1.0.0, with the tag in a comment (it pinned v0.4.0), and splits in two jobs, as v1.0.0 asks of its callers: the `review` job no longer runs when a pull request closes, nor for a plain `/review` comment on a closed pull request (`/review explain` and `/review teach` still answer there), so it can't cancel or displace the outcomes run in their shared concurrency group, and it cancels a superseded review; a new `outcomes` job records each posted finding's outcome when a pull request closes, merged or not, whoever closed it. The `outcomes` job makes no model call and needs no environment, since the app's key is an organization secret and the `code-review` environment holds none, only letting Anthropic's federation rule trust the review job. So it runs outside it, with no `id-token: write`, checkout or Bedrock key, only the app's private key and `contents: read` and `pull-requests: read`, in the review's concurrency group without cancelling a review in progress. Its setup note now says `tools/Enable-CodeReview.ps1` gives the repository, not the environment, access to the organization's two secrets. This repository's own `code-review.yml` gets the same change. The file is project-owned, so a project that already has it keeps its own and `Update-Project.ps1` only shows this change: make it by hand, moving to the v1.0.0 pin and the two jobs together. Dependabot's bump to v1.0.0 changes only the pin, so `code-review-auto-merge.yml` leaves it to a person, as it does every major release: apply the whole change on that pull request, or close it and make the change in one of your own ([NCodeGroup/code-review#97](https://github.com/NCodeGroup/code-review/issues/97)).
 - `tools/Set-RepositoryBaseline.ps1` also allows auto-merge where it is off, which the code review auto-merge workflow needs, read first and reported as set, already set, would set or not available like the security settings, on a repository whose branch ruleset it leaves alone too. Run it again, such as `.\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup`, to allow it in the repositories it protected before ([NCodeGroup/code-review#33](https://github.com/NCodeGroup/code-review/issues/33)).
 
+## [0.48.3] - 2026-11-01
+
+### Fixed
+
+- No change for projects made from the template. `tests/Test-Template.ps1` runs its YAML and `_exclude` checks with the PyYAML and Jinja2 versions `tests/requirements.txt` pins, `pyyaml==6.0.3` and `jinja2==3.1.6`, instead of resolving the newest releases through uv on every run, so Dependabot's `pip` entry for `/tests` moves them in a pull request CI has tested, and CI's Copier install runs on the same versions. The suite stops with an error when either pin is missing ([#187](https://github.com/NCodeGroup/project-template/issues/187)).
+- No change for projects made from the template. This repository's Dependabot `github-actions` entry waits three days before it offers a new action version and gives security updates a pull request of their own, as its `pip` entry and every project's entries do, so a just-released action no longer reaches CI the day it is published. `tests/Test-Template.ps1` fails when an entry in `.github/dependabot.yml` lacks the cooldown or the security group ([#188](https://github.com/NCodeGroup/project-template/issues/188)).
+
+## [0.48.2] - 2026-11-01
+
+### Added
+
+- No change for projects made from the template. `tests/Test-PlanStateConcurrency.ps1` also checks that `workflow/Get-PlanState.ps1`, when a step fails after its network calls have started, fails at once with that error and leaves no runspace running a call it never received, through a stand-in for `gh` that fails the branch protection check while its other calls wait ([#186](https://github.com/NCodeGroup/project-template/issues/186)).
+
+### Fixed
+
+- `Get-PlanState.ps1` closes the runspace of each network call it starts. Since v0.48.0 it left one open per call, which built up in a PowerShell session that runs the script many times, such as a test suite. Projects get it with `.\.template\Update-Project.ps1` ([#186](https://github.com/NCodeGroup/project-template/issues/186)).
+
 ## [0.48.1] - 2026-11-01
 
 ### Changed
@@ -730,7 +747,9 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.48.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.48.3...HEAD
+[0.48.3]: https://github.com/NCodeGroup/project-template/compare/v0.48.2...v0.48.3
+[0.48.2]: https://github.com/NCodeGroup/project-template/compare/v0.48.1...v0.48.2
 [0.48.1]: https://github.com/NCodeGroup/project-template/compare/v0.48.0...v0.48.1
 [0.48.0]: https://github.com/NCodeGroup/project-template/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/NCodeGroup/project-template/compare/v0.46.2...v0.47.0
