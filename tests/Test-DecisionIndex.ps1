@@ -8,8 +8,8 @@
     linked from the template's index. Prints PASS or FAIL per check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
-    The scratch folder, deleted and recreated, and deleted again at the end. Defaults to
-    project-template-decision-index-test-<process ID> in the temp folder.
+    The scratch folder, deleted and recreated. Defaults to project-template-decision-index-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
 
 .EXAMPLE
     .\tests\Test-DecisionIndex.ps1
@@ -19,6 +19,8 @@ param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-decision-index-test-$PID")
 )
 $ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
+trap { "Kept the work folder: $Work"; break }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -138,34 +140,27 @@ $cases = @(
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 New-Item -ItemType Directory -Force $Work | Out-Null
-try {
-    $caseNumber = 0
-    foreach ($case in $cases) {
-        $caseNumber++
-        $root = New-Fixture "case-$caseNumber" $case.Files
-        $result = Invoke-AdrIndex $root
-        $ok = ($result.Exit -eq $case.Exit) -and $result.Output.Contains($case.Text)
-        Check "index: $($case.Name)" $ok "exit $($result.Exit), expected $($case.Exit); expected output to contain: $($case.Text); output: $($result.Output)"
-    }
-
-    # The template's own records, in the folder every template update replaces.
-    $templateFolder = Join-Path $repoRoot 'template\docs\decisions\project-template'
-    # Most names start with Jinja, such as {% if stack == 'dotnet' %}0100-a.md{% endif %}, so the pattern is not anchored.
-    $templateRecords = @(Get-ChildItem -LiteralPath $templateFolder -File | ForEach-Object { if ($_.Name -match '(\d{4})-[a-z0-9-]+\.md') { [pscustomobject]@{ Number = [int]$Matches[1]; Record = $Matches[0] } } })
-    $outside = @($templateRecords | Where-Object { $_.Number -lt 1 -or $_.Number -gt 999 } | ForEach-Object Record)
-    Check 'repository: every template decision record is numbered 0001-0999' (($templateRecords.Count -gt 0) -and -not $outside) "records: $($templateRecords.Count); outside 0001-0999: $($outside -join ', ')"
-
-    $templateIndex = [IO.File]::ReadAllText((Join-Path $templateFolder 'README.md.jinja'))
-    $unlinked = @($templateRecords | Where-Object { -not $templateIndex.Contains("($($_.Record))") } | ForEach-Object Record)
-    Check "repository: the template's decision index links every template record" (($templateRecords.Count -gt 0) -and -not $unlinked) "records: $($templateRecords.Count); not linked: $($unlinked -join ', ')"
-}
-finally {
-    if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
+$caseNumber = 0
+foreach ($case in $cases) {
+    $caseNumber++
+    $root = New-Fixture "case-$caseNumber" $case.Files
+    $result = Invoke-AdrIndex $root
+    $ok = ($result.Exit -eq $case.Exit) -and $result.Output.Contains($case.Text)
+    Check "index: $($case.Name)" $ok "exit $($result.Exit), expected $($case.Exit); expected output to contain: $($case.Text); output: $($result.Output)"
 }
 
-if ($failures.Count) {
-    "Decision index tests: FAILED ($($failures.Count))"
-    exit 1
-}
+# The template's own records, in the folder every template update replaces.
+$templateFolder = Join-Path $repoRoot 'template\docs\decisions\project-template'
+# Most names start with Jinja, such as {% if stack == 'dotnet' %}0100-a.md{% endif %}, so the pattern is not anchored.
+$templateRecords = @(Get-ChildItem -LiteralPath $templateFolder -File | ForEach-Object { if ($_.Name -match '(\d{4})-[a-z0-9-]+\.md') { [pscustomobject]@{ Number = [int]$Matches[1]; Record = $Matches[0] } } })
+$outside = @($templateRecords | Where-Object { $_.Number -lt 1 -or $_.Number -gt 999 } | ForEach-Object Record)
+Check 'repository: every template decision record is numbered 0001-0999' (($templateRecords.Count -gt 0) -and -not $outside) "records: $($templateRecords.Count); outside 0001-0999: $($outside -join ', ')"
+
+$templateIndex = [IO.File]::ReadAllText((Join-Path $templateFolder 'README.md.jinja'))
+$unlinked = @($templateRecords | Where-Object { -not $templateIndex.Contains("($($_.Record))") } | ForEach-Object Record)
+Check "repository: the template's decision index links every template record" (($templateRecords.Count -gt 0) -and -not $unlinked) "records: $($templateRecords.Count); not linked: $($unlinked -join ', ')"
+
+if ($failures.Count) { "Kept the work folder: $Work"; "Decision index tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Decision index tests: PASSED'
 exit 0
