@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.46.1] - 2026-10-31
+
+### Changed
+
+- No change for projects made from the template. `tests/Test-Adoption.ps1` and `tests/Test-AdoptOwnedFiles.ps1` build the snapshot of the working tree they adopt from with `tests/New-TemplateSnapshot.ps1`, as `tests/Test-AdoptEdgeCases.ps1` does, instead of copying, committing and tagging it themselves, so what the snapshot leaves out is set in one place ([#174](https://github.com/NCodeGroup/project-template/issues/174)).
+
 ## [0.46.0] - 2026-10-31
 
 ### Changed
@@ -675,7 +681,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.46.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.46.1...HEAD
+[0.46.1]: https://github.com/NCodeGroup/project-template/compare/v0.46.0...v0.46.1
 [0.46.0]: https://github.com/NCodeGroup/project-template/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/NCodeGroup/project-template/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/NCodeGroup/project-template/compare/v0.43.1...v0.44.0
