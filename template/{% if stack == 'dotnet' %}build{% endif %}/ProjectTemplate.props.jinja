@@ -29,6 +29,11 @@
     <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)ProjectTemplate.globalconfig" />
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" />
   </ItemGroup>
+
+  <!-- The null-forgiving operator (!) fails the build outside test projects (Nullable.Extended.Analyzer, NX0001-NX0004). Restructure instead; its '// !' justification comment is not an escape here. Item conditions see the project's final properties. -->
+  <ItemGroup Condition="!$(MSBuildProjectName.EndsWith('.Tests'))">
+    <PackageReference Include="Nullable.Extended.Analyzer" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
 {%- if nuget_package %}
 
   <!-- NuGet packages: license expression, README and icon in each package, Source Link (built into the .NET SDK) with untracked sources, symbol packages and XML documentation. A project's own README.md is its package's readme; without one, the repository's is. -->
@@ -51,12 +56,27 @@
     <None Include="$(MSBuildThisFileDirectory)../{{ package_icon }}" Pack="true" PackagePath="/" Visible="false" />
 {%- endif %}
   </ItemGroup>
+
+  <!-- Each packable project's public API is the one its PublicAPI.Shipped.txt and PublicAPI.Unshipped.txt declare: a public change not recorded there fails the build (RS0016, RS0017). build/Update-PublicApi.ps1 creates and fills the files; set IsPackable to false on a project that isn't published. -->
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <!-- Semantic versioning for the assemblies: AssemblyVersion moves only with the major version, so a minor or patch upgrade is a drop-in replacement and two majors load side by side; FileVersion and InformationalVersion keep the exact version. A target, so it reads the final Version, from the project file or the command line. -->
+  <Target Name="ProjectTemplatePinAssemblyVersion" BeforeTargets="GetAssemblyVersion" Condition="'$(AssemblyVersion)' == ''">
+    <PropertyGroup>
+      <FileVersion Condition="'$(FileVersion)' == ''">$(Version.Split('-')[0].Split('+')[0])</FileVersion>
+      <AssemblyVersion>$([System.Version]::Parse($(Version.Split('-')[0].Split('+')[0])).Major).0.0.0</AssemblyVersion>
+    </PropertyGroup>
+  </Target>
 {%- endif %}
 
-  <!-- Test projects, named <Name>.Tests by the C# conventions. IsTestProject isn't set yet when this file is read. They keep XML documentation on, which IDE0005 needs, without requiring comments (CS1591). Their method names use underscores (CA1707), and the other rules are noise in tests; .github/instructions/csharp-tests.instructions.md says why. -->
+  <!-- Test projects, named <Name>.Tests by the C# conventions. IsTestProject isn't set yet when this file is read. They keep XML documentation on, which IDE0005 needs, and take the severities in ProjectTemplate.Tests.globalconfig, which .editorconfig overrides. -->
   <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
     <IsPackable>false</IsPackable>
-    <NoWarn>$(NoWarn);CS1591;CA1707;CA1816;CA1859;CA1861;CA1869</NoWarn>
   </PropertyGroup>
+  <ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
+    <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)ProjectTemplate.Tests.globalconfig" />
+  </ItemGroup>
 
 </Project>

@@ -27,7 +27,7 @@ the caller's function to the value as stored, and reads again when its write los
    no longer modifiable. Otherwise it calls `update` with the stored value. When `update` returns `null`, nothing is
    written and the call returns `false`. When it returns a value, the call saves it under the concurrency token of that
    read and returns `true`.
-2. Retry on a lost race. A `ConcurrencyConflictException`
+2. Retry on a lost race. A `StoreConcurrencyException`
    ([ADR-0109](0109-a-lost-concurrency-race-is-a-store-neutral-exception.md)) opens a new unit of work, reads again,
    and calls `update` again, up to a small fixed number of attempts (three). After the last lost attempt the exception
    propagates.

@@ -31,6 +31,9 @@ project, test projects included:
   (`IDE0005`) as a warning. Roslyn reports `IDE0005` in a build only when it generates XML documentation, so the
   template generates it for every project, tests included, and suppresses the missing-comment warning `CS1591` in
   test projects and unless the project publishes packages.
+- Analyzers turn two more mistakes into warnings, and so into errors: the null-forgiving operator `!` outside test
+  projects ([ADR-0118](0118-the-null-forgiving-operator-is-banned-outside-tests.md)), and, in a project that publishes
+  packages, a public API change its `PublicAPI.*.txt` files do not record (ADR-0131).
 - NuGet advisories are errors when `CI` is `true`. A local build reports them as warnings, so an advisory published
   overnight does not stop a person or an agent from building unchanged code, while CI refuses to merge it.
 
@@ -44,10 +47,11 @@ When a warning appears, the remedies are, in order:
    should stay live everywhere else.
 
 A project-wide `NoWarn` or `WarningsNotAsErrors` is not a pressure valve. A rule turned off for the whole project needs
-a stated reason in `Directory.Build.props`, after the import of the template's settings. The template's own list for
-`*.Tests` projects (`CA1707`, `CA1816`, `CA1859`, `CA1861`, `CA1869`) is such a list: test method names use
-underscores, and the others guard production performance or disposal patterns that do not apply to tests;
-`.github/instructions/csharp-tests.instructions.md` gives each reason.
+a stated reason, as a severity in `.editorconfig` or, failing that, in `Directory.Build.props` after the import of the
+template's settings. The template's own list for `*.Tests` projects is such a list, in
+`build/ProjectTemplate.Tests.globalconfig` with a reason per rule: `CS1591`, since tests document behavior through their
+names, `CA1707`, since test method names use underscores, and `CA1816`, `CA1859`, `CA1861` and `CA1869`, which guard
+production performance or disposal patterns that do not apply to tests. `.editorconfig` can turn any of them back on.
 
 ## Options considered
 
@@ -75,3 +79,5 @@ underscores, and the others guard production performance or disposal patterns th
 - [Code analysis in .NET](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/overview)
 - [NuGet audit](https://learn.microsoft.com/nuget/concepts/auditing-packages)
 - [ADR-0102](0102-disallowed-apis-are-banned-at-build-time.md): disallowed APIs are banned at build time.
+- [ADR-0118](0118-the-null-forgiving-operator-is-banned-outside-tests.md): the null-forgiving operator is banned outside
+  tests.

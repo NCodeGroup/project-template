@@ -64,8 +64,11 @@ The maintainer sets up once:
 - No secret holds a nuget.org key, and nothing needs rotating; a leaked short-lived key expires within the hour.
 - Each publication waits for an approval in the `nuget` environment.
 - A tag that is not a version fails the `pack` job, and nothing is published.
-- A run that failed part way is run again: `--skip-duplicate` skips the packages already pushed. A published version
-  cannot be replaced; a bad release is fixed by the next version.
+- `pack` fails when a package doesn't carry the tag's version, as when a project sets its own `Version`, and `publish`
+  fails when every package is already on nuget.org at that version, so a release that would publish nothing never looks
+  like a success. A run that failed part way is run again: `--skip-duplicate` skips the packages already pushed, and
+  the job summary says how many it pushed. A published version cannot be replaced; a bad release is fixed by the next
+  version.
 - `publish.yml` is project-owned: template updates never change it, and Dependabot moves its action pins. A project
   that publishes from a workflow of its own deletes it and records that in its own decision record.
 - On GitLab the template generates no publishing pipeline; a project there publishes from a pipeline of its own and

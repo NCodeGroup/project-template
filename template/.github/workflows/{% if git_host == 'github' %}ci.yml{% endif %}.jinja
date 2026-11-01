@@ -77,6 +77,14 @@ jobs:
 {%- elif stack == 'powershell' -%}hashFiles('**/*.ps1', '**/*.psm1') != ''
 {%- endif -%}
 {%- endset %}
+      - name: Check the decision index
+        run: ./.template/Test-AdrIndex.ps1
+{%- if stack == 'dotnet' and build_command == 'dotnet build' and test_command == 'dotnet test' %}
+      # The Definition of Done builds, tests and, for a library, packs, as build/dod.ps1 says.
+      - name: Definition of Done
+        if: {{ has_code }}
+        run: ./build/dod.ps1
+{%- else %}
 {%- if build_command %}
       - name: Build
 {%- if has_code %}
@@ -92,6 +100,7 @@ jobs:
 {%- endif %}
         run: |
           {{ test_command }}
+{%- endif %}
 {%- endif %}
 
   commit-attribution:

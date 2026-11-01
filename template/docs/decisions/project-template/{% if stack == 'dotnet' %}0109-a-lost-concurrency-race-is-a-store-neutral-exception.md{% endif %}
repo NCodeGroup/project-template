@@ -22,16 +22,16 @@ Two problems follow when nothing translates that exception:
 
 ## Decision
 
-1. A lost race is a `ConcurrencyConflictException`, defined in the store abstraction (a public exception with the
+1. A lost race is a `StoreConcurrencyException`, defined in the store abstraction (a public exception with the
    standard constructors). It is thrown when a unit of work writes an entity that another unit of work changed after
    it was read, as the concurrency token shows. The caller lost the race and must not blindly retry the same write,
    because it was computed from a stale read.
 2. The unit of work translates a failed save. The store's save method catches `DbUpdateConcurrencyException` and throws
-   `ConcurrencyConflictException` with it as the inner exception. Any other failure propagates unchanged.
+   `StoreConcurrencyException` with it as the inner exception. Any other failure propagates unchanged.
 3. A store that compares a caller-presented token with the stored one (an `If-Match` value passed down) throws the same
    exception when they differ.
 4. Single-use operations answer the loser as a second attempt. An operation that consumes something once catches
-   `ConcurrencyConflictException` around its update and save and returns the same result as for an item that is
+   `StoreConcurrencyException` around its update and save and returns the same result as for an item that is
    unknown, expired, or already consumed, so callers see one answer whether the second attempt was concurrent or
    sequential.
 

@@ -22,6 +22,9 @@ Run from the repository root in PowerShell 7.
 
 - Build: {% if build_command %}`{{ build_command }}`{% else %}none{% endif %}
 - Test: {% if test_command %}`{{ test_command }}`{% else %}none yet — add one before the first plan{% endif %}
+{%- if stack == 'dotnet' %}
+- Definition of Done: `./build/dod.ps1` (the full gate CI runs) or `./build/dod.ps1 -Fast` (Debug, no pack); it ends with `Definition of Done: PASSED`{% if nuget_package %}. Record a public API change with `./build/Update-PublicApi.ps1`{% endif %}
+{%- endif %}
 
 ## Landing
 
@@ -33,7 +36,7 @@ How `/ship-plan` lands a reviewed plan. `integrate`: `pull-request` pushes the p
 - draft: no
 - follow-ups: issues
 - follow-up-label: follow-up
-- gate: none
+- gate: {% if stack == 'dotnet' %}./build/dod.ps1 -Fast{% else %}none{% endif %}
 - protect: none
 - pr-format: none
 - review-bots: ncode-review

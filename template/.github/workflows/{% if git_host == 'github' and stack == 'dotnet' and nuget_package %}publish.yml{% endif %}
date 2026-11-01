@@ -53,6 +53,16 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: dotnet pack --configuration Release --output artifacts/packages "-p:Version=$VERSION"
+      # A project that sets its own Version would pack a version the tag doesn't name.
+      - name: Check every package has the tag's version
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $packages = @(Get-ChildItem artifacts/packages -Filter '*.nupkg')
+          if (-not $packages) { throw 'dotnet pack produced no package: set IsPackable to false only on the projects that are not published.' }
+          $wrong = @($packages | Where-Object { -not $_.Name.EndsWith(".$env:VERSION.nupkg", [StringComparison]::OrdinalIgnoreCase) })
+          if ($wrong) { throw "These packages don't have version $env:VERSION, the tag's: $($wrong.Name -join ', ')" }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: packages
@@ -75,6 +85,24 @@ jobs:
         with:
           name: packages
           path: packages
+      # A version already on nuget.org can't be replaced: when every package has it, this release publishes nothing.
+      # When only some do, a run that failed part way is being run again, and the push below completes it.
+      - name: Check the version is new
+        id: new
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.pack.outputs.version }}
+        run: |
+          $packages = @(Get-ChildItem packages -Filter '*.nupkg')
+          $published = 0
+          foreach ($package in $packages) {
+            $id = $package.Name.Substring(0, $package.Name.Length - ".$env:VERSION.nupkg".Length).ToLowerInvariant()
+            try { $versions = (Invoke-RestMethod -Uri "https://api.nuget.org/v3-flatcontainer/$id/index.json").versions } catch { $versions = @() }
+            if ($versions -contains $env:VERSION.ToLowerInvariant()) { $published++ }
+          }
+          if ($published -eq $packages.Count) { throw "Every package is already on nuget.org at $env:VERSION; publish a new version." }
+          "pushed=$($packages.Count - $published)" >> $env:GITHUB_OUTPUT
+          "total=$($packages.Count)" >> $env:GITHUB_OUTPUT
       - name: Log in to nuget.org
         id: login
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
@@ -85,6 +113,8 @@ jobs:
         env:
           NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
           VERSION: ${{ needs.pack.outputs.version }}
+          PUSHED: ${{ steps.new.outputs.pushed }}
+          TOTAL: ${{ steps.new.outputs.total }}
         run: |
           dotnet nuget push 'packages/*.nupkg' --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
-          echo "Published **$VERSION** to nuget.org." >> "$GITHUB_STEP_SUMMARY"
+          echo "Published $PUSHED of $TOTAL packages at **$VERSION** to nuget.org; the others were already there." >> "$GITHUB_STEP_SUMMARY"

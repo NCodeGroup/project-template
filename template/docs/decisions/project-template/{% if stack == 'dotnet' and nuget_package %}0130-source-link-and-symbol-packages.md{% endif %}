@@ -32,7 +32,7 @@ embeds only the source files that have no URL on the host. The template's build 
 - XML documentation, with the missing-comment warning `CS1591` left on, so every public member is documented and
   IntelliSense shows it.
 
-Projects whose names end in `.Tests` are not packable and generate no documentation file.
+Projects whose names end in `.Tests` are not packable and need no XML comments (`CS1591` is off there), but they still generate the documentation file, so `IDE0005` reports unused usings in their build too.
 
 ## Options considered
 

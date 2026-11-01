@@ -17,7 +17,7 @@ endpoint repeats the same code, and the one that forgets answers `500`.
 
 One endpoint filter, installed once on the API's root route group, answers a lost race with `412 Precondition Failed`.
 
-- The filter catches `ConcurrencyConflictException` and returns a problem details response: "The resource was changed
+- The filter catches `StoreConcurrencyException` and returns a problem details response: "The resource was changed
   by another request after this request read it. Read it again and retry." It logs the event at Debug, because it is a
   normal outcome.
 - It is installed on the root `RouteGroupBuilder` of the API (`app.MapGroup("/api").AddEndpointFilter<...>()`), so

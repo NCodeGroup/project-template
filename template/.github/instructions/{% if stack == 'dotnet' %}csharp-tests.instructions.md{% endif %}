@@ -69,10 +69,10 @@ public void MyMethod_WhenCondition_ExpectedBehavior()
 ## Warnings and Analyzers
 
 - Warnings are errors in test projects too. An analyzer warning in a test, especially from `xunit.analyzers`, usually reports a defect in the test itself.
-- `build/ProjectTemplate.props` turns off five rules that are noise in tests, for every `*.Tests` project: CA1707 (the underscores in `Method_State_Expected`), CA1816 (`GC.SuppressFinalize` in a test class without a finalizer), CA1859 (tests hold collaborators by their interface), CA1861 (inline array literals passed to assertions) and CA1869 (each test builds its own `JsonSerializerOptions`). CA2012 stays on: return completed values with `.ReturnsAsync`. CA2215 stays on: an override of `Dispose(bool)` that skips the base would skip mock verification.
+- `build/ProjectTemplate.Tests.globalconfig` turns off six rules that are noise in tests, for every `*.Tests` project: CS1591 (tests need no XML comments, though the documentation file is still generated for IDE0005), CA1707 (the underscores in `Method_State_Expected`), CA1816 (`GC.SuppressFinalize` in a test class without a finalizer), CA1859 (tests hold collaborators by their interface), CA1861 (inline array literals passed to assertions) and CA1869 (each test builds its own `JsonSerializerOptions`). CA2012 stays on: return completed values with `.ReturnsAsync`. CA2215 stays on: an override of `Dispose(bool)` that skips the base would skip mock verification.
 - To silence another rule across all tests, set its severity in `.editorconfig` for the test projects' files, with a one-line reason. For one site, wrap it in `#pragma warning disable` and `#pragma warning restore` with a reason.
 - Never set `TreatWarningsAsErrors` to `false` in a test project.
-- Fix nullable warnings rather than suppress them. Narrow a maybe-null result with `Assert.NotNull(x)` before you use it, and give a `[MaybeNullWhen(false)]` `out` argument a nullable local. Use `null!` only to pass a deliberate null, such as in an argument-validation test.
+- Fix nullable warnings rather than suppress them. Narrow a maybe-null result with `Assert.NotNull(x)` before you use it, and give a `[MaybeNullWhen(false)]` `out` argument a nullable local. `null!` is the one exception to the production rule against the null-forgiving operator: use it only to pass a deliberate null to the code under test, such as in an argument-validation test, never to silence a warning.
 
 ## What a Test Proves
 

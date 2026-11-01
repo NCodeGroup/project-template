@@ -179,6 +179,8 @@ try {
                 $buildLists = @(Get-BuildFileList $project)
                 if ($buildLists.Count) { $followUps.Add("re-admit Directory.Build.props and build/ProjectTemplate.props, which it imports, in each list of the build's files: $($buildLists -join ', ')") }
             }
+            # A library's build fails on a public symbol its PublicAPI.*.txt files don't list; the verification below records the API as it is.
+            if ($NoVerify -and (Test-Path -LiteralPath build/Update-PublicApi.ps1)) { $followUps.Add('record each packable project''s public API with ./build/Update-PublicApi.ps1, which the build now checks') }
         }
 
         git add -A
@@ -229,6 +231,18 @@ try {
 
     ''
     if (-not $NoVerify) {
+        # A library's build fails on a public symbol its PublicAPI.*.txt files don't list: record the API as it is now, the baseline the next changes are reviewed against.
+        if (Test-Path -LiteralPath build/Update-PublicApi.ps1) {
+            'Running ./build/Update-PublicApi.ps1'
+            $apiOutput = pwsh -NoProfile -File build/Update-PublicApi.ps1 2>&1 | Out-String
+            if ($LASTEXITCODE) {
+                $apiOutput.TrimEnd()
+                'Recording the public API failed after adopting. The adoption is staged, not committed: fix it and commit, or abandon it with: git reset --hard; git clean -fd'
+                exit 1
+            }
+            @($apiOutput -split '\r?\n' | Where-Object { $_ -ne '' }) | ForEach-Object { "  $_" }
+            git add -A
+        }
         foreach ($key in 'build_command', 'test_command') {
             $command = Get-Answer $key
             if ($null -eq $command -or $command -in '', "''", '""', 'null') { continue }
