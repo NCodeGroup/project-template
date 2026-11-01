@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.48.1] - 2026-11-01
+
+### Changed
+
+- No change for projects made from the template. This repository's CI installs Copier at the exact version `tests/requirements.txt` pins, `copier==9.19.1`, instead of the newest release, and a Dependabot `pip` entry for `/tests` moves the pin in a pull request three days after a release, so a new Copier version, such as the 9.19 that failed a `main` run, reaches the tests only through a pull request CI has tested. `tests/Test-Template.ps1` fails when the pin, the install from it or the Dependabot entry is missing ([#180](https://github.com/NCodeGroup/project-template/issues/180)).
+
+### Fixed
+
+- No change for projects made from the template. Every suite that builds a template snapshot, and the end-to-end fixture, keeps Copier's mirrors in a `copier-cache` folder in its work folder when it runs on its own, as `tests/Test-TemplateDotnet.ps1` does, instead of the user's Copier cache: `tests/Test-ProjectUpdate.ps1` and `tests/Test-ProjectUpdateHooks.ps1` left a new mirror there on every run, and `tests/Test-UpdateExitCode.ps1` refreshed the user's mirror of the template's GitHub address with the snapshot. `tests/Test-InvokeAllTests.ps1` fails a snapshot suite that doesn't ([#182](https://github.com/NCodeGroup/project-template/issues/182)).
+
 ## [0.48.0] - 2026-10-31
 
 ### Added
@@ -711,7 +721,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.48.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.48.1...HEAD
+[0.48.1]: https://github.com/NCodeGroup/project-template/compare/v0.48.0...v0.48.1
 [0.48.0]: https://github.com/NCodeGroup/project-template/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/NCodeGroup/project-template/compare/v0.46.2...v0.47.0
 [0.46.2]: https://github.com/NCodeGroup/project-template/compare/v0.46.1...v0.46.2

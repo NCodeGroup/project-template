@@ -1,0 +1,3 @@
+# The Copier version .github/workflows/test-template.yml installs for the tests, pinned exactly. Dependabot's pip entry
+# in .github/dependabot.yml moves the pin in a reviewed pull request.
+copier==9.19.1

@@ -9,7 +9,7 @@
     -ThrottleLimit 1 run one at a time, and that two runs at once without -Work log to folders of their own, deleted
     when the run passes. Also checks that tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that
     every suite with -Work defaults to a folder of its own, kept on a failure and deleted through it on a pass, and,
-    through a trap line, kept with its path printed when the suite stops with an error. Also checks that
+    through a trap line, kept with its path printed when the suite stops with an error, and that every such suite that builds a template snapshot keeps Copier's mirrors in its work folder, not the user's cache. Also checks that
     tests/Measure-Suites.ps1 times a suite, prints the median of -Repeat runs, and fails the run for a suite that
     fails, is missing or is slower than -MaxSeconds, and passes -SkipDotnetBuild to a suite that takes it. Prints PASS or FAIL per check
     and exits 1 on any failure.
@@ -247,6 +247,18 @@ foreach ($suite in $suites) {
         if (-not $suite.Text.Contains($trapLine)) { 'trap' }
     )
     Check "suites: $($suite.Name) keeps its own folder on a failure or an error and deletes it on a pass" ($missing.Count -eq 0) "missing: $($missing -join ', ')"
+}
+# Every suite that builds a template snapshot keeps Copier's mirrors out of the user's cache when it runs on its own:
+# Copier keeps a mirror of each template URL that isn't a local path, and a snapshot's URL is new on every run.
+# Test-Template.ps1 sets the cache on each render's process instead.
+$snapshotCall = "Join-Path `$PSScriptRoot 'New-TemplateSnapshot.ps1'"
+$cacheSet = "if (-not `$copierCache) { `$env:COPIER_CACHE_DIR = Join-Path `$Work 'copier-cache' }"
+$cacheRestore = "`$env:COPIER_CACHE_DIR = `$copierCache"
+$renderCache = "`$start.Environment['COPIER_CACHE_DIR']"
+$snapshotSuites = @($suites | Where-Object { $_.Text.Contains($snapshotCall) })
+Check 'suites: finds the suites that build a template snapshot' ($snapshotSuites.Name -contains 'Test-ProjectUpdate.ps1') ($snapshotSuites.Name -join ', ')
+foreach ($suite in $snapshotSuites) {
+    Check "suites: $($suite.Name) keeps Copier's mirrors in its work folder, not the user's cache" (($suite.Text.Contains($cacheSet) -and $suite.Text.Contains($cacheRestore)) -or $suite.Text.Contains($renderCache))
 }
 $attribution = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-CommitAttribution.ps1'), [ref]$null, [ref]$null)
 $default = "$(($attribution.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Work' }).DefaultValue)"
