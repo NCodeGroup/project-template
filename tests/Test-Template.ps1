@@ -399,6 +399,7 @@ foreach ($case in $cases) {
     else {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('commit-attribution:') -and $ci.Contains('mcr.microsoft.com/dotnet/sdk:10.0') -and $ci.Contains('GIT_DEPTH: "0"') -and $ci.Contains('.template/Test-CommitAttribution.ps1 -Base'))
+        Check "${name}: CI checks the merge request's title and description" ($ci.Contains('BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" pwsh -NoProfile -Command') -and $ci.Contains('-PullRequestTitle $env:CI_MERGE_REQUEST_TITLE -PullRequestBody $env:CI_MERGE_REQUEST_DESCRIPTION; exit $LASTEXITCODE')) $ci
     }
     if ($case.Stack -eq 'node') {
         $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }
