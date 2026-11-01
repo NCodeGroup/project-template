@@ -144,6 +144,7 @@ try {
     $stopped = ConvertTo-State @(& pwsh -NoProfile -File $probe -Script $script -Path $repo 2>$null | ForEach-Object { "$_" })
     Remove-Item -LiteralPath (Join-Path $bin 'delay'), (Join-Path $bin 'throw') -Force
     $started = @(Get-ChildItem -LiteralPath $bin -Filter 'started-*').Count
+    $closed = ConvertTo-State @(& pwsh -NoProfile -File $probe -Script $script -Path $repo 2>$null | ForEach-Object { "$_" })
 }
 finally { $env:PATH = $savedPath }
 
@@ -169,6 +170,8 @@ Check 'stop: an error after the calls start ends Get-PlanState.ps1 with that err
 Check 'stop: calls Get-PlanState.ps1 never received were running when the error came' ($started -gt 0) "the stand-in for gh started $started calls"
 Check "stop: Get-PlanState.ps1 ends in less than $stopDelayMs ms, without waiting for those calls" (("$($stopped['milliseconds'])" -match '^\d+$') -and ([int64]$stopped['milliseconds'] -lt $stopDelayMs)) "milliseconds='$($stopped['milliseconds'])'"
 Check 'stop: no runspace is left running a call Get-PlanState.ps1 never received' ("$($stopped['busy'])" -eq '0') "busy='$($stopped['busy'])'"
+Check 'stop: Get-PlanState.ps1 leaves no runspace open when it fails' ("$($stopped['opened'])" -eq '0') "opened='$($stopped['opened'])'"
+Check 'close: Get-PlanState.ps1 closes the runspace of each call it received' ("$($closed['error'])" -eq '-' -and "$($closed['opened'])" -eq '0') "error='$($closed['error'])', opened='$($closed['opened'])'"
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Plan state concurrency tests: FAILED ($($failures.Count))"; exit 1 }

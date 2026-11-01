@@ -269,11 +269,12 @@ function Start-Concurrent([string]$Folder, [string]$Command, [object[]]$Argument
     $call
 }
 
-# Waits for a call Start-Concurrent started and returns what Command returned, as Value, and its exit code, as ExitCode.
+# Waits for a call Start-Concurrent started, returns what Command returned, as Value, and its exit code, as ExitCode, and
+# closes the call's runspace, which disposing of the call alone leaves open.
 function Receive-Concurrent([object]$Call) {
     $Call.Done = $true
     try { @($Call.Shell.EndInvoke($Call.Handle))[0] }
-    finally { $Call.Shell.Dispose() }
+    finally { $runspace = $Call.Shell.Runspace; $Call.Shell.Dispose(); $runspace.Dispose() }
 }
 
 Push-Location -LiteralPath $Path
@@ -620,7 +621,8 @@ finally {
         if ($call.Done) { continue }
         $call.Done = $true
         try { $call.Shell.Stop() } catch { $null = $_ }
-        $call.Shell.Dispose()
+        $runspace = $call.Shell.Runspace; $call.Shell.Dispose()
+        $runspace.Dispose()
     }
     Pop-Location
 }
