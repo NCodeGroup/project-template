@@ -63,6 +63,16 @@ $dropped = Get-OwnedFile @('build/dod.ps1', '', $null, 'build/dod.ps1') $ownable
 $none = Get-OwnedFile @() $ownable
 $ownedMsg = try { Get-OwnedFile @('.template/Update-Project.ps1', '.copier-answers.yml', '.template-version', 'no-such-file.txt') $ownable | Out-Null } catch { $_.Exception.Message }
 Check 'unit: Get-OwnedFile makes a list of files the template renders and rejects the update''s own files' (($one -is [array]) -and $one.Count -eq 1 -and $one[0] -eq '.github/workflows/ci.yml' -and $dropped.Count -eq 1 -and $dropped[0] -eq 'build/dod.ps1' -and $none.Count -eq 0 -and 'CLAUDE.md' -in $ownable -and '.github/workflows/copilot-setup-steps.yml' -in $ownable -and '.template-version' -notin $ownable -and "$ownedMsg".Contains('project_owned_files names .template/Update-Project.ps1, .copier-answers.yml, .template-version, no-such-file.txt, which the template doesn''t render or the update itself needs')) "$($one -join ',') | $($dropped -join ',') | $($none.Count) | $ownedMsg"
+# Update-Project.ps1 ships alone and can't import Adoption.psm1, so the two copies of the ownable rule must agree: apply the update's own functions to the files Git tracks in template/.
+$updateAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+foreach ($fnName in 'ConvertTo-ProjectName', 'Test-OwnableName') {
+    $fn = $updateAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+    if ($fn) { . ([scriptblock]::Create($fn.Extent.Text)) }
+}
+$updateOwnable = @(git -C $repoRoot ls-files -- template/ | ForEach-Object { ConvertTo-ProjectName $_ } | Where-Object { Test-OwnableName $_ } | Sort-Object -Unique)
+$adoptOwnable = @(Get-OwnableFile (Join-Path $repoRoot 'template') | Sort-Object -Unique)
+$onlyOne = @(Compare-Object $updateOwnable $adoptOwnable | ForEach-Object { "$($_.InputObject) $($_.SideIndicator)" })
+Check 'unit: Get-OwnableFile and Update-Project.ps1 agree on which files a project can own' ($updateOwnable.Count -gt 50 -and -not $onlyOne.Count) "update=$($updateOwnable.Count) adopt=$($adoptOwnable.Count) $($onlyOne -join '; ')"
 
 $demo = New-TestFolder 'demo' @{
     'src/NCode.Demo.slnx'   = '<Solution />'
