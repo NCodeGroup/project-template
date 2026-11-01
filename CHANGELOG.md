@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-11-01
+
+### Changed
+
+- The `project_owned_files` answer can name any file the template renders, not only merged files: a template-owned one too, such as a `build/dod.ps1` the project had before the template added its own. An update leaves each file the answer names out of its reset of the template-owned files, so it never overwrites the project's copy, and shows the template's changes to it instead, as it does for an owned merged file. A project keeps its own Definition of Done with `.\.template\Update-Project.ps1 -Data @{ project_owned_files = 'build/dod.ps1' }`, naming the files the answer already lists too, and `Adopt-Project.ps1` takes the same answer. Only the update's own files, `.copier-answers.yml`, `.template-version` and those in `.template/`, can't be named, and a name that the version the update moves to doesn't render stops the update before it changes anything ([#198](https://github.com/NCodeGroup/project-template/issues/198)).
+
+### Fixed
+
+- `Update-Project.ps1` checks the `project_owned_files` answer against the version it updates to, not the version the project is on, so a project can own a file from the same update that first adds or merges it, such as `.github/workflows/copilot-setup-steps.yml`. The update hands over to the new version's script before it checks, so this applies from the update to this version on. It also names a merged file once when the template renamed its source, such as `Directory.Packages.props` when it became a rendered file, both in the note about files the project seems to have replaced and in the `-Data` it suggests, and shows the template's change to a project-owned file once ([#199](https://github.com/NCodeGroup/project-template/issues/199)).
+
 ## [0.50.0] - 2026-11-01
 
 ### Added
@@ -766,7 +776,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.50.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.51.0...HEAD
+[0.51.0]: https://github.com/NCodeGroup/project-template/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/NCodeGroup/project-template/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/NCodeGroup/project-template/compare/v0.48.4...v0.49.0
 [0.48.4]: https://github.com/NCodeGroup/project-template/compare/v0.48.3...v0.48.4
