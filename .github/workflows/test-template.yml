@@ -66,6 +66,8 @@ jobs:
             run: ./tests/Test-UpdateOwnedFiles.ps1
           - name: Test updating a project that owns a template-owned file
             run: ./tests/Test-UpdateOwnedTemplateFiles.ps1
+          - name: Test updating a project whose own copy of a template-owned file conflicts
+            run: ./tests/Test-UpdateTemplateOwnedConflicts.ps1
           - name: Test adopting repositories with edge cases
             run: ./tests/Test-AdoptEdgeCases.ps1
           - name: Set up the run-issues end-to-end fixture for max-review-rounds
