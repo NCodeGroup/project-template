@@ -8,7 +8,7 @@ Run as `gh <args>`. It keeps its state in JSON files in the `host` folder beside
 summaries, and `origin.txt`), logs each call to `host/calls.log`, and fails on calls it doesn't support (logged as
 UNSUPPORTED) or that the workflow must never make (logged as FORBIDDEN): merging a pull request, marking it ready,
 closing it, and a GraphQL mutation that resolves a thread, dismisses a review, merges, or changes a pull request or
-a branch. An optional `forbidden.txt` names more commands to refuse, one `<command> <subcommand>` per line, such as
+a branch. `pr view` of a branch with no pull request fails as gh does (logged as NOTFOUND). An optional `forbidden.txt` names more commands to refuse, one `<command> <subcommand>` per line, such as
 `pr edit`. An optional `review-seed.json` holds the review threads, review summaries and top-level comments the first
 pull request gets when it is opened. An optional `review-seed-push.json` holds the review a pull request gets on the first
 GraphQL read after its branch on origin has moved past the head it was opened at, as a review bot's review of a push.
@@ -264,6 +264,9 @@ switch ("$($args[0]) $($args[1])") {
         $which = "$($args[2])".TrimStart('#')
         if (-not $which -or $which.StartsWith('-')) { $which = (git branch --show-current) }
         $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $which -or $_.headRefName -eq $which } | Select-Object -First 1
+        # A branch without a pull request fails as gh fails it. Claude Code itself looks up the current branch's pull
+        # request this way, so it is not the workflow's call to refuse.
+        if (-not $pr -and $which -notmatch '^\d+$') { Stop-Call NOTFOUND "no pull requests found for branch ""$which""" }
         if (-not $pr) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
         $pr.comments = @(@(Read-Json 'comments.json' @()) | Where-Object { $_.kind -eq 'pr' -and "$($_.number)" -eq "$($pr.number)" } |
             ForEach-Object { Get-CommentNode $_ })

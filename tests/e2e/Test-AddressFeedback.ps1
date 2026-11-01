@@ -275,6 +275,15 @@ exit 0
             $logged = @(Get-Content -LiteralPath $callsLog | Select-Object -Skip $before | Where-Object { $_ -like "FORBIDDEN $($call[0]) $($call[1])*" }).Count
             Check "fixture: the stand-in refuses $label" ($code -ne 0 -and $logged -eq 1) "exit code $code, new FORBIDDEN lines $logged"
         }
+
+        # Claude Code looks up the current branch's pull request with gh pr view <branch>; the stand-in fails it as gh does, not as unsupported.
+        $before = @(Get-Content -LiteralPath $callsLog).Count
+        $null = pwsh -NoProfile -File $standIn pr view no-such-branch --json url 2>$null
+        $code = $LASTEXITCODE
+        $logged = @(Get-Content -LiteralPath $callsLog | Select-Object -Skip $before | Where-Object { $_ -match '^(NOTFOUND|UNSUPPORTED) ' })
+        Check 'fixture: the stand-in fails pr view of a branch with no pull request as gh does, not as an unsupported call' ($code -ne 0 -and $logged.Count -eq 1 -and $logged[0] -like 'NOTFOUND *') "exit code $code, logged: $($logged -join '; ')"
+        $prByBranch = "$(pwsh -NoProfile -File $standIn pr view $head --json url --jq .url)".Trim()
+        Check 'fixture: the stand-in finds pull request #1 by its branch' ($prByBranch -eq $prUrl) "url: '$prByBranch'"
     }
     Remove-Item -LiteralPath $hostDir -Recurse -Force
     New-Item -ItemType Directory -Force $hostDir | Out-Null
