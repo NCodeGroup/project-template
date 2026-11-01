@@ -818,6 +818,21 @@ $gitHooksFiles = @($worktreeKinds.create + 'orchestrate-plan', 'run-issues', 'ad
     '.github\prompts\run-issues.prompt.md', '.github\skills\orchestrate-plan\SKILL.md', '.github\skills\run-issues\SKILL.md'
 $gitHooksMissing = @($gitHooksFiles | Where-Object { -not [IO.File]::ReadAllText((Join-Path $repoRoot "template\$_")).Contains($gitHooksText) })
 Check 'workflow: the commands that create or join a plan''s branch check that Git runs .githooks' (-not $gitHooksMissing) ($gitHooksMissing -join ', ')
+# The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
+$prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
+$prAttributionFiles = [ordered]@{
+    '.claude\commands\ship-plan.md' = '`gh pr create'; '.github\prompts\ship-plan.prompt.md' = '`gh pr create'; '.github\skills\ship-plan\SKILL.md' = '`gh pr create'
+    '.claude\commands\run-issues.md' = '`gh pr edit'; '.github\prompts\run-issues.prompt.md' = '`gh pr edit'; '.github\skills\run-issues\SKILL.md' = '`gh pr edit'
+}
+$prAttributionMissing = @(
+    foreach ($f in $prAttributionFiles.Keys) {
+        $text = [IO.File]::ReadAllText((Join-Path $repoRoot "template\$f"))
+        $at = $text.IndexOf($prAttributionText)
+        if ($at -lt 0 -or $at -gt $text.IndexOf($prAttributionFiles[$f])) { $f }
+    }
+    if (-not ($prAttributionText.Contains('`Co-authored-by:`') -and $prAttributionText.Contains('`Claude-Session:`') -and $prAttributionText.Contains('"Generated with"'))) { 'workflow\templates\_pr-attribution.md' }
+)
+Check 'workflow: ship-plan and run-issues delete agent attribution lines from a pull request''s title and description before they send them' (-not $prAttributionMissing) ($prAttributionMissing -join ', ')
 $includeLeft = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.claude'), (Join-Path $repoRoot 'template\.github') -Recurse -File |
     Where-Object { [IO.File]::ReadAllText($_.FullName) -match '\{\{(PROMPT|BODY):' } | ForEach-Object Name)
 Check 'workflow: no generated file keeps an unexpanded {{PROMPT:...}} or {{BODY:...}} include' (-not $includeLeft) ($includeLeft -join ', ')
