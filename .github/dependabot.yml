@@ -1,5 +1,6 @@
-# Keeps the actions in this repository's own workflow current. The pins inside template/ are in merged files,
-# which each project's own Dependabot keeps current.
+# Keeps this repository's own CI inputs current: the actions in its workflow, and the Copier version its tests install
+# (tests/requirements.txt). The pins inside template/ are in merged files, which each project's own Dependabot keeps
+# current.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -10,3 +11,15 @@ updates:
       github-actions:
         patterns: ["*"]
         update-types: [minor, patch]
+  - package-ecosystem: pip
+    directory: /tests
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      pip:
+        patterns: ["*"]
+      pip-security:
+        applies-to: security-updates
+        patterns: ["*"]
