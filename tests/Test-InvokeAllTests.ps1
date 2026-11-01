@@ -9,7 +9,9 @@
     -ThrottleLimit 1 run one at a time, and that two runs at once without -Work log to folders of their own, deleted
     when the run passes. Also checks that tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that
     every suite with -Work defaults to a folder of its own, kept on a failure and deleted through it on a pass, and,
-    through a trap line, kept with its path printed when the suite stops with an error. Prints PASS or FAIL per check
+    through a trap line, kept with its path printed when the suite stops with an error. Also checks that
+    tests/Measure-Suites.ps1 times a suite, prints the median of -Repeat runs, and fails the run for a suite that
+    fails, is missing or is slower than -MaxSeconds, and passes -SkipDotnetBuild to a suite that takes it. Prints PASS or FAIL per check
     and exits 1 on any failure.
 
 .PARAMETER Work
@@ -40,6 +42,11 @@ function Invoke-Runner([string]$Folder, [string[]]$RunnerArgs = @(), [switch]$De
     $lines = [Collections.Generic.List[string]]::new()
     $workArgs = if ($DefaultWork) { @() } else { @('-Work', (Join-Path $Folder 'logs')) }
     & $pwsh -NoProfile -NonInteractive -File $runner -Path $Folder @workArgs @RunnerArgs 2>&1 | ForEach-Object { $lines.Add("$_") }
+    [pscustomobject]@{ Lines = $lines.ToArray(); ExitCode = $LASTEXITCODE; Text = ($lines -join "`n") }
+}
+function Invoke-Measure([string[]]$MeasureArgs) {
+    $lines = [Collections.Generic.List[string]]::new()
+    & $pwsh -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Measure-Suites.ps1') -Path $measure @MeasureArgs 2>&1 | ForEach-Object { $lines.Add("$_") }
     [pscustomobject]@{ Lines = $lines.ToArray(); ExitCode = $LASTEXITCODE; Text = ($lines -join "`n") }
 }
 
@@ -74,6 +81,14 @@ $both = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'ready-*.txt').Count 
 exit 0
 '@
 }
+$measure = Join-Path $Work 'measure'
+New-Fixture $measure @{
+    'Test-Quick.ps1'  = "exit 0`n"
+    'Test-Broken.ps1' = "exit 1`n"
+    'Test-Dotnet.ps1' = "param([switch]`$SkipDotnetBuild) if (`$SkipDotnetBuild) { exit 0 } else { exit 1 }`n"
+}
+$copierFixture = Join-Path $Work 'copier'
+New-Fixture $copierFixture @{ 'Test-Cache.ps1' = "`"cache: `$env:COPIER_CACHE_DIR`"; exit 0`n" }
 # Two copies of one suite record when they ran: each marks itself ready and waits up to 5 s for the other's mark, so they
 # overlap when run at once. Test-A then waits 500 ms more, so it finishes last. Run one at a time, the wait times out.
 $pair = Join-Path $Work 'pair'
@@ -191,6 +206,20 @@ else {
     finally { if ($handle) { $handle.Dispose() } else { chmod 755 $heldDir } }
     Check 'cleanup: a folder it can''t delete prints its path and doesn''t fail the run' ((-not $threw) -and ($out -contains "Couldn't delete the work folder: $held") -and (Test-Path -LiteralPath $held)) "$threw$($out -join "`n")"
 }
+
+$r = Invoke-Runner $copierFixture
+$cacheLine = [IO.File]::ReadAllText((Join-Path $copierFixture 'logs/Test-Cache.log')).Trim()
+Check 'copier: suites see COPIER_CACHE_DIR in the run''s own folder' (($r.ExitCode -eq 0) -and ($cacheLine -eq "cache: $(Join-Path (Join-Path $copierFixture 'logs') 'copier-cache')")) "$cacheLine | $($r.Text)"
+$r = Invoke-Measure @('-Name', 'Test-Quick.ps1', '-Repeat', '3')
+Check 'measure: times a passing suite, prints the median of -Repeat runs and passes' (($r.ExitCode -eq 0) -and (@($r.Lines -match '^PASS  Test-Quick\.ps1  \d+\.\ds  runs: \d+\.\d \d+\.\d \d+\.\d$').Count -eq 1) -and ($r.Lines[-1] -eq 'Measure: PASSED')) $r.Text
+$r = Invoke-Measure @('-Name', 'Test-Quick.ps1', '-MaxSeconds', '0.001')
+Check 'measure: a suite slower than -MaxSeconds is SLOW and fails the run' (($r.ExitCode -eq 1) -and (@($r.Lines -match '^SLOW  Test-Quick\.ps1  ').Count -eq 1) -and ($r.Lines[-1] -eq 'Measure: FAILED (1)')) $r.Text
+$r = Invoke-Measure @('-Name', 'Test-Broken.ps1')
+Check 'measure: a failing suite fails the run with its exit code' (($r.ExitCode -eq 1) -and (@($r.Lines -match '^FAIL  Test-Broken\.ps1  \d+\.\ds  exit 1$').Count -eq 1)) $r.Text
+$r = Invoke-Measure @('-Name', 'Test-Missing.ps1')
+Check 'measure: a suite that is not there fails the run' (($r.ExitCode -eq 1) -and (@($r.Lines -match '^FAIL  Test-Missing\.ps1  not found in ').Count -eq 1)) $r.Text
+$r = Invoke-Measure @('-Name', 'Test-Dotnet.ps1', '-SkipDotnetBuild')
+Check 'measure: -SkipDotnetBuild reaches a suite that takes it' ($r.ExitCode -eq 0) $r.Text
 
 # A suite that stops with an error keeps its folder and says where, through the trap line every suite has.
 $crash = Join-Path $Work 'crash'

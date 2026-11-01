@@ -6,7 +6,8 @@
     Runs each Test-*.ps1 script in the folder in its own PowerShell process, up to -ThrottleLimit at once, and decides
     its result by its exit code. Once every suite has finished, prints PASS or FAIL and the time per suite in name
     order; under a failed suite, prints its FAIL lines and the path of its full log. Then prints the run's wall-clock
-    time as "Time: <m:ss>". Each suite's output goes to a log file in the work folder. Ends with
+    time as "Time: <m:ss>". Each suite's output goes to a log file in the work folder. While the suites run,
+    COPIER_CACHE_DIR points at the copier-cache folder in the work folder. Ends with
     "All tests: PASSED" and exit code 0, or "All tests: FAILED (<n>)" and exit code 1. Exits 1 when the folder has no
     Test-*.ps1 script.
 
@@ -64,6 +65,9 @@ $failed = 0
 # Run the suites up to the limit at once, then print their results in name order.
 $limit = if ($Serial) { 1 } else { $ThrottleLimit }
 $encoding = [Console]::OutputEncoding
+# The suites' Copier mirrors go in this run's folder, deleted with it, not in the user's cache: each suite's snapshot has a URL of its own, so each run would leave a mirror there.
+$copierCache = $env:COPIER_CACHE_DIR
+$env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache'
 try {
     $results = @($scripts | ForEach-Object -ThrottleLimit $limit -Parallel {
             $script = $_
@@ -74,7 +78,7 @@ try {
             [pscustomobject]@{ Script = $script; Lines = $lines; ExitCode = $LASTEXITCODE; Elapsed = $stopwatch.Elapsed }
         })
 }
-finally { [Console]::OutputEncoding = $encoding }
+finally { [Console]::OutputEncoding = $encoding; $env:COPIER_CACHE_DIR = $copierCache }
 
 foreach ($result in @($results | Sort-Object { $_.Script.Name })) {
     $script = $result.Script

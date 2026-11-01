@@ -14,6 +14,7 @@
 
     Before it analyzes the repository, it runs itself on a folder holding one file with a known warning, and fails unless
     that run reports the warning and exits 1: a pass then shows the whole gate works, the settings and the exit code too.
+    The control fixture also has a file with the same warning under .claude/worktrees, which must not be reported.
 
 .PARAMETER Path
     The folder to analyze, the repository by default. The control run uses it for its fixture folder.
@@ -45,22 +46,28 @@ if (-not $NoControl) {
     $fixture = Join-Path ([IO.Path]::GetTempPath()) "script-analyzer-control-$PID"
     New-Item -ItemType Directory -Force $fixture | Out-Null
     try {
-        [IO.File]::WriteAllText((Join-Path $fixture 'Control.ps1'), "function Get-Control {`n    `$unused = 1`n}`n")
+        $controlText = "function Get-Control {`n    `$unused = 1`n}`n"
+        [IO.File]::WriteAllText((Join-Path $fixture 'Control.ps1'), $controlText)
+        # The same warning under .claude/worktrees must not be reported.
+        $other = Join-Path $fixture '.claude/worktrees/other'
+        New-Item -ItemType Directory -Force $other | Out-Null
+        [IO.File]::WriteAllText((Join-Path $other 'Other.ps1'), $controlText)
         $controlOutput = & pwsh -NoProfile -File $PSCommandPath -Path $fixture -NoControl 2>&1 | Out-String
         $controlExit = $LASTEXITCODE
     }
     finally { Remove-Item -LiteralPath $fixture -Recurse -Force }
-    if ($controlExit -ne 1 -or $controlOutput -notmatch 'FAIL  Control\.ps1:2 PSUseDeclaredVarsMoreThanAssignments') {
-        Write-Host "FAIL  run on a file with a known warning, the gate printed no FAIL line for it or didn't exit 1 (exit $controlExit)"
+    if ($controlExit -ne 1 -or $controlOutput -notmatch 'FAIL  Control\.ps1:2 PSUseDeclaredVarsMoreThanAssignments' -or $controlOutput -match 'Other\.ps1') {
+        Write-Host "FAIL  run on a file with a known warning, the gate printed no FAIL line for it, didn't exit 1, or reported a file under .claude/worktrees (exit $controlExit)"
         Write-Host $controlOutput
         Write-Host "`nScript analyzer: FAILED"
         exit 1
     }
-    Write-Host 'PASS  the gate reports a known warning in a control file and exits 1'
+    Write-Host 'PASS  the gate reports a known warning in a control file and exits 1, and skips .claude/worktrees'
 }
 
+# Claude Code's plan worktrees under .claude/worktrees are other checkouts, not this one's scripts; the path is tested relative to -Path, since this checkout can be a worktree itself.
 $files = @(Get-ChildItem -LiteralPath $Path -Recurse -File -Include *.ps1, *.psm1, *.psd1 |
-    Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' })
+    Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' -and [IO.Path]::GetRelativePath($Path, $_.FullName) -notmatch '^\.claude[\\/]worktrees[\\/]' })
 if (-not $files.Count) {
     Write-Host "FAIL  no PowerShell files under $Path"
     Write-Host "`nScript analyzer: FAILED"

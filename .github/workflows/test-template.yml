@@ -12,6 +12,12 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request cancels its older run. Every other event's group includes its commit, so a push to
+# main, a merge queue entry and a manual run never cancel or replace another run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   suite:
     name: ${{ matrix.name }}
@@ -20,53 +26,56 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Longest first, by CI's median suite time, so the longest jobs start before the concurrent-job limit makes the last ones wait.
         include:
           - name: Test the template
             run: ./tests/Test-Template.ps1
-          - name: Test updating a rendered project
-            run: ./tests/Test-ProjectUpdate.ps1
-          - name: Test the update's hooks path and the root wrapper
-            run: ./tests/Test-ProjectUpdateHooks.ps1
-          - name: Test adopting existing repositories
-            run: ./tests/Test-Adoption.ps1
-          - name: Test adopting repositories with edge cases
-            run: ./tests/Test-AdoptEdgeCases.ps1
-          - name: Test adopting a repository that owns a merged file
-            run: ./tests/Test-AdoptOwnedFiles.ps1
-          - name: Test updating a project that ignores a large folder
-            run: ./tests/Test-UpdateIgnoredFiles.ps1
-          - name: Test the update's exit code
-            run: ./tests/Test-UpdateExitCode.ps1
-          - name: Test updating an adopted project's kept lines
-            run: ./tests/Test-UpdateKeptLines.ps1
-          - name: Test updating a project that owns a merged file
-            run: ./tests/Test-UpdateOwnedFiles.ps1
-          - name: Test the suggestion for a rewritten merged file
-            run: ./tests/Test-UpdateRewrittenFiles.ps1
+          - name: Test the template's .NET build
+            run: ./tests/Test-TemplateDotnet.ps1
           - name: Test the plan state script
             run: ./tests/Test-PlanState.ps1
-          - name: Test the changelog backfill check
-            run: ./tests/Test-ChangelogBackfill.ps1
-          - name: Check the changelog for duplicate headings
-            run: ./tests/Test-ChangelogHeadings.ps1
-          - name: Test the commit attribution check
-            run: ./tests/Test-CommitAttribution.ps1
-          - name: Test the template update notice
-            run: ./tests/Test-TemplateUpdate.ps1
-          - name: Test the Git hooks
-            run: ./tests/Test-GitHooks.ps1
+          - name: Test adopting existing repositories
+            run: ./tests/Test-Adoption.ps1
           - name: Test the repository baseline script
             run: ./tests/Test-RepositoryBaseline.ps1
           - name: Test the test runner
             run: ./tests/Test-InvokeAllTests.ps1
+          - name: Test the suggestion for a rewritten merged file
+            run: ./tests/Test-UpdateRewrittenFiles.ps1
+          - name: Test the template update notice
+            run: ./tests/Test-TemplateUpdate.ps1
           - name: Analyze the PowerShell scripts
             run: ./tests/Test-ScriptAnalyzer.ps1
-          - name: Set up the run-issues end-to-end fixture
-            run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly
-          - name: Set up the run-issues end-to-end fixture for max-review-rounds
-            run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario max-rounds
+          - name: Test updating a rendered project
+            run: ./tests/Test-ProjectUpdate.ps1
+          - name: Test the update's hooks path and the root wrapper
+            run: ./tests/Test-ProjectUpdateHooks.ps1
+          - name: Test updating an adopted project's kept lines
+            run: ./tests/Test-UpdateKeptLines.ps1
+          - name: Test the update's exit code
+            run: ./tests/Test-UpdateExitCode.ps1
           - name: Set up the address-feedback end-to-end fixture
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly
+          - name: Test the Git hooks
+            run: ./tests/Test-GitHooks.ps1
+          - name: Test the commit attribution check
+            run: ./tests/Test-CommitAttribution.ps1
+          - name: Test updating a project that ignores a large folder
+            run: ./tests/Test-UpdateIgnoredFiles.ps1
+          - name: Test updating a project that owns a merged file
+            run: ./tests/Test-UpdateOwnedFiles.ps1
+          - name: Test adopting repositories with edge cases
+            run: ./tests/Test-AdoptEdgeCases.ps1
+          - name: Set up the run-issues end-to-end fixture for max-review-rounds
+            run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario max-rounds
+          - name: Set up the run-issues end-to-end fixture
+            run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly
+          - name: Test adopting a repository that owns a merged file
+            run: ./tests/Test-AdoptOwnedFiles.ps1
+          - name: Test the changelog backfill check
+            run: ./tests/Test-ChangelogBackfill.ps1
+          - name: Check the changelog for duplicate headings
+            run: ./tests/Test-ChangelogHeadings.ps1
     defaults:
       run:
         shell: pwsh
