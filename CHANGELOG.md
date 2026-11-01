@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.48.3] - 2026-11-01
+
+### Fixed
+
+- No change for projects made from the template. `tests/Test-Template.ps1` runs its YAML and `_exclude` checks with the PyYAML and Jinja2 versions `tests/requirements.txt` pins, `pyyaml==6.0.3` and `jinja2==3.1.6`, instead of resolving the newest releases through uv on every run, so Dependabot's `pip` entry for `/tests` moves them in a pull request CI has tested, and CI's Copier install runs on the same versions. The suite stops with an error when either pin is missing ([#187](https://github.com/NCodeGroup/project-template/issues/187)).
+- No change for projects made from the template. This repository's Dependabot `github-actions` entry waits three days before it offers a new action version and gives security updates a pull request of their own, as its `pip` entry and every project's entries do, so a just-released action no longer reaches CI the day it is published. `tests/Test-Template.ps1` fails when an entry in `.github/dependabot.yml` lacks the cooldown or the security group ([#188](https://github.com/NCodeGroup/project-template/issues/188)).
+
 ## [0.48.1] - 2026-11-01
 
 ### Changed
@@ -721,7 +728,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.48.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.48.3...HEAD
+[0.48.3]: https://github.com/NCodeGroup/project-template/compare/v0.48.1...v0.48.3
 [0.48.1]: https://github.com/NCodeGroup/project-template/compare/v0.48.0...v0.48.1
 [0.48.0]: https://github.com/NCodeGroup/project-template/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/NCodeGroup/project-template/compare/v0.46.2...v0.47.0
