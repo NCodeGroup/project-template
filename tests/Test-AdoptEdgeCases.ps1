@@ -79,7 +79,7 @@ Check 'gaps: a catch-all text rule of the repository does not override the templ
 Check 'gaps: the repository''s other attribute lines are kept, and the report says what was left out' ($gapsAttributes.Contains('*.cs text diff=csharp') -and $gapsOut.Contains('left out its catch-all text rule')) $gapsOut
 $gapsGlobal = Get-Content -Raw -LiteralPath (Join-Path $gaps 'global.json')
 Check 'gaps: a partial SDK version in global.json is replaced by the template''s, which setup-dotnet accepts' ($gapsGlobal -match '"version":\s*"\d+\.\d+\.\d{3}"' -and -not $gapsGlobal.Contains('"10.0.0"') -and $gapsOut.Contains('isn''t a full version')) "$gapsGlobal | $gapsOut"
-Check 'gaps: the code review workflow is not asked to be reconciled with ci.yml, but the repository''s own workflow is' ($gapsOut.Contains('reconcile .github/workflows/main.yml with ci.yml') -and -not $gapsOut.Contains('code-review.yml with ci.yml')) $gapsOut
+Check 'gaps: the code review workflows are not asked to be reconciled with ci.yml, but the repository''s own workflow is' ($gapsOut.Contains('reconcile .github/workflows/main.yml with ci.yml') -and -not $gapsOut.Contains('code-review.yml with ci.yml') -and -not $gapsOut.Contains('code-review-auto-merge.yml with ci.yml')) $gapsOut
 
 # Copilot agents and no Hybrid ones, like a public repository: the adoption leaves out the local model's files.
 $copilotOnly = New-Fixture 'copilot-only' @{
