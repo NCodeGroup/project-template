@@ -1,7 +1,17 @@
+{#- The repository's license, as copier.yml computes repository_license; the fallback serves a render before it exists. -#}
+{%- set spdx = repository_license | default(license | default('') or (package_license | default('') if nuget_package | default(false) else '')) or '' -%}
 # {{ project_name }}
 {% if project_description %}
 {{ project_description }}
 {% endif %}
+{%- if git_host == 'gitlab' %}
+[//]: # "Badges: to show the pipeline status, add this line below, with the project's path and default branch:"
+[//]: # "[![pipeline](https://gitlab.com/GROUP/PROJECT/badges/main/pipeline.svg)](https://gitlab.com/GROUP/PROJECT/-/pipelines)"
+{%- else %}
+[//]: # "Badges: to show the CI status, add this line below, with the repository's owner and name:"
+[//]: # "[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)"
+{%- endif %}
+
 ## Development
 
 Run from the repository root in PowerShell 7:
@@ -39,3 +49,19 @@ In Claude Code, plan in Accept edits mode and execute in Auto. Each plan gets it
 {%- endif %}
 
 The workflow files come from a Copier template, which owns them: never edit `.template/`, `.template-version`, `.githooks/commit-msg`, `.github/instructions/project-template.instructions.md`, `.copier-answers.yml`{% if 'claude' in workflow_tools %}, `CLAUDE.md`{% endif %} or the commands, agents and skills the template generates. To change how agents work here, edit `AGENTS.md` or a file it lists. To pull in template improvements, run `.\.template\Update-Project.ps1`: it updates itself, replaces the template's files, merges template changes into the shared settings files, and never touches `AGENTS.md` or this README. To plan the update first, with a trial run, the project files that need changing and the checks, run `/plan-template-update`.{% if git_host == 'github' %} The weekly `template-update` workflow opens an issue, labeled `template-update`, when a newer template version is out, and closes it once the project has updated; `/plan-issue` plans it.{% endif %}
+
+## Project
+
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to set up, build, test and propose a change.
+- [SECURITY.md](SECURITY.md): how to report a vulnerability privately.
+- [docs/decisions/](docs/decisions/README.md): the decisions behind the design, the project's and the template's.
+- `CHANGELOG.md`: what changed in each release, in the Keep a Changelog format. The first plan creates it.
+{%- if spdx in ['Apache-2.0', 'MIT'] %}
+- [LICENSE.txt](LICENSE.txt): the license.
+{%- endif %}
+{%- if spdx %}
+
+## License
+
+{{ project_name }} is licensed under {% if spdx in ['Apache-2.0', 'MIT'] %}the [{{ 'Apache License 2.0' if spdx == 'Apache-2.0' else 'MIT License' }}](LICENSE.txt){% else %}`{{ spdx }}`, an SPDX license expression{% endif %}.
+{%- endif %}

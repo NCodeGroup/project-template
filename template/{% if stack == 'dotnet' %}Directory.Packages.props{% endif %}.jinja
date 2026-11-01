@@ -1,0 +1,25 @@
+<Project>
+
+  <!-- Central package management: versions live here, PackageReference items carry no Version. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!-- Analyzers every project references: the banned APIs in build/BannedSymbols.txt. -->
+  <ItemGroup>
+    <GlobalPackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
+  </ItemGroup>
+
+  <!-- Analyzers build/ProjectTemplate.props references for some projects: the null-forgiving operator banned outside test
+       projects{% if nuget_package %}, and each packable project's public API tracked in its PublicAPI.Shipped.txt and PublicAPI.Unshipped.txt{% endif %}. -->
+  <ItemGroup>
+    <PackageVersion Include="Nullable.Extended.Analyzer" Version="1.17.0" />
+{%- if nuget_package %}
+    <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" />
+{%- endif %}
+  </ItemGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+
+</Project>

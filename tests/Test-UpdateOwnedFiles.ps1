@@ -68,7 +68,7 @@ finally { Pop-Location }
 
 Push-Location (Join-Path $tpl 'template')
 try {
-    Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "    runs-on: ubuntu-latest`n    defaults:" "    runs-on: ubuntu-latest`n    timeout-minutes: 30`n    defaults:"
+    Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "    runs-on: ubuntu-latest`n    timeout-minutes: 30`n    defaults:" "    runs-on: ubuntu-latest`n    timeout-minutes: 45`n    defaults:"
     Edit-File .gitignore.jinja "`n/secrets/`n" "`n/secrets/`n/owned-test/`n"
 }
 finally { Pop-Location }
@@ -96,7 +96,7 @@ try {
     $r = Invoke-Update $null
     $status = git status --porcelain
     Check "update: the project's own ci.yml is untouched and nothing conflicts" (($r.ExitCode -eq 0) -and $r.Output.Contains('Committed "Update from project-template v0.2.0"') -and -not $status -and ([IO.File]::ReadAllText($ci) -eq $ownCi)) "exit $($r.ExitCode)`n$($r.Output.Trim())`n$($status | Out-String)"
-    Check "update: shows the template's ci.yml change as a project-owned change" (($r.Output -match '(?m)^  \.github/workflows/ci\.yml:\r?$') -and $r.Output.Contains('+    timeout-minutes: 30')) $r.Output.Trim()
+    Check "update: shows the template's ci.yml change as a project-owned change" (($r.Output -match '(?m)^  \.github/workflows/ci\.yml:\r?$') -and $r.Output.Contains('+    timeout-minutes: 45')) $r.Output.Trim()
     Check "update: other merged files still take the template's changes" ([IO.File]::ReadAllText((Join-Path $path '.gitignore')).Contains("`n/owned-test/`n"))
     Check 'update: .copier-answers.yml still records project_owned_files' ([IO.File]::ReadAllText($answers) -match $answerPattern) ([IO.File]::ReadAllText($answers))
 

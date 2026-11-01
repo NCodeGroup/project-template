@@ -147,7 +147,7 @@ exit 0
     $comments = @(
         @{
             kind = 'pr'; number = 1; url = $strangerUrl; author = @{ login = 'mallory-passerby' }; authorAssociation = 'NONE'
-            body = 'The `build-and-test` job in `.github/workflows/ci.yml` has no `timeout-minutes`, so a hung test holds a runner for up to six hours, while `commit-attribution` stops after 5 minutes. Please add `timeout-minutes: 10` to `build-and-test`.'
+            body = 'The `build-and-test` job in `.github/workflows/ci.yml` has `timeout-minutes: 30`, so a hung test holds a runner for half an hour, while `commit-attribution` stops after 5 minutes. Please lower it to `timeout-minutes: 10`.'
         },
         @{
             kind = 'pr'; number = 1; url = $questionUrl; author = @{ login = 'grace-reader' }; authorAssociation = 'CONTRIBUTOR'
@@ -308,7 +308,7 @@ exit 0
     $ci = Join-Path $clone '.github/workflows/ci.yml'
     $ciText = if (Test-Path -LiteralPath $ci) { [IO.File]::ReadAllText($ci) } else { '' }
     $job = if ($ciText -match '(?s)\n  build-and-test:(.*?)\n  [a-z-]+:') { $Matches[1] } else { '' }
-    Check 'fixture: the build-and-test job in ci.yml has no timeout-minutes, as the stranger says' ($job -and $job -notmatch 'timeout-minutes') "ci.yml: $(if ($ciText) { 'build-and-test job not found or has timeout-minutes' } else { 'missing' })"
+    Check 'fixture: the build-and-test job in ci.yml stops after 30 minutes, as the stranger says' ($job -match '(?m)^    timeout-minutes: 30\r?$') "ci.yml: $(if ($ciText) { 'build-and-test job not found or its timeout-minutes is not 30' } else { 'missing' })"
     Remove-Item -LiteralPath $clone -Recurse -Force
 }
 
