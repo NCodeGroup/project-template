@@ -29,6 +29,8 @@ jobs:
             run: ./tests/Test-ProjectUpdateHooks.ps1
           - name: Test adopting existing repositories
             run: ./tests/Test-Adoption.ps1
+          - name: Test adopting repositories with edge cases
+            run: ./tests/Test-AdoptEdgeCases.ps1
           - name: Test adopting a repository that owns a merged file
             run: ./tests/Test-AdoptOwnedFiles.ps1
           - name: Test updating a project that ignores a large folder
