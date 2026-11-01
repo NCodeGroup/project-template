@@ -90,12 +90,23 @@ $copierCommand = @(if (Get-Command copier -ErrorAction SilentlyContinue) { 'copi
 $renders = @($cases | ForEach-Object -ThrottleLimit ([Environment]::ProcessorCount) -Parallel {
     $case = $_
     $command = @($using:copierCommand)
-    $exe = $command[0]
+    $exe = (Get-Command $command[0] -CommandType Application | Select-Object -First 1).Source
     $prefix = @($command | Select-Object -Skip 1)
     $tools = if ($case.Tools) { @($case.Tools) } else { $using:allTools }
-    $extraData = foreach ($k in $case.Data.Keys) { '--data'; "$k=$($case.Data[$k])" }
-    $output = & $exe @prefix copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $($case.Name)" --data "stack=$($case.Stack)" --data "git_host=$($case.Host)" --data "workflow_tools=[$($tools -join ', ')]" @extraData $using:tplUrl (Join-Path $using:Work $case.Name) 2>&1 | Out-String
-    [pscustomobject]@{ Name = $case.Name; ExitCode = $LASTEXITCODE; Output = $output.Trim() }
+    $copierArgs = [Collections.Generic.List[string]]::new()
+    foreach ($a in @($prefix) + @('copy', '--defaults', '--quiet', '--vcs-ref', 'v0.1.0', '--data', "project_name=Test $($case.Name)", '--data', "stack=$($case.Stack)", '--data', "git_host=$($case.Host)", '--data', "workflow_tools=[$($tools -join ', ')]")) { $copierArgs.Add($a) }
+    foreach ($k in $case.Data.Keys) { $copierArgs.Add('--data'); $copierArgs.Add("$k=$($case.Data[$k])") }
+    $copierArgs.Add($using:tplUrl); $copierArgs.Add((Join-Path $using:Work $case.Name))
+    # Each render gets a Copier cache of its own: Copier refreshes one shared mirror per template URL without a lock, so parallel copies race on it, and the runspaces share one environment, so the variable is set on Copier's process only.
+    $start = [Diagnostics.ProcessStartInfo]::new($exe)
+    foreach ($a in $copierArgs) { $start.ArgumentList.Add($a) }
+    $start.Environment['COPIER_CACHE_DIR'] = Join-Path $using:Work "copier-cache/$($case.Name)"
+    $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+    $process = [Diagnostics.Process]::Start($start)
+    $stdout = $process.StandardOutput.ReadToEndAsync()
+    $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+    [pscustomobject]@{ Name = $case.Name; ExitCode = $process.ExitCode; Output = ($stdout.Result + $stderr).Trim() }
 })
 $failedRenders = @($renders | Where-Object ExitCode -NE 0)
 if ($failedRenders) { throw (($failedRenders | ForEach-Object { "copier copy for $($_.Name) exited with code $($_.ExitCode): $($_.Output)" }) -join "`n") }
