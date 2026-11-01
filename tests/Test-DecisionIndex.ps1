@@ -140,6 +140,24 @@ $cases = @(
         Exit  = 1
         Text  = "shows another number than its record's"
     }
+    @{
+        Name  = 'a row with the ADR- prefix passes'
+        Files = @{
+            'docs/decisions/1000-a.md' = $record
+            'docs/decisions/README.md' = Get-Readme @('| [ADR-1000](1000-a.md) | A | Accepted |')
+        }
+        Exit  = 0
+        Text  = 'Decision index: 1 records, all indexed.'
+    }
+    @{
+        Name  = 'a row with the ADR- prefix showing another number fails'
+        Files = @{
+            'docs/decisions/1000-a.md' = $record
+            'docs/decisions/README.md' = Get-Readme @('| [ADR-1001](1000-a.md) | A | Accepted |')
+        }
+        Exit  = 1
+        Text  = "shows another number than its record's"
+    }
 )
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
