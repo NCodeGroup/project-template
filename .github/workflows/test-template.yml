@@ -23,6 +23,8 @@ jobs:
         include:
           - name: Test the template
             run: ./tests/Test-Template.ps1
+          - name: Test the template's .NET build
+            run: ./tests/Test-TemplateDotnet.ps1
           - name: Test updating a rendered project
             run: ./tests/Test-ProjectUpdate.ps1
           - name: Test the update's hooks path and the root wrapper
