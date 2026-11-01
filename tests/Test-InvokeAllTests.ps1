@@ -87,6 +87,8 @@ New-Fixture $measure @{
     'Test-Broken.ps1' = "exit 1`n"
     'Test-Dotnet.ps1' = "param([switch]`$SkipDotnetBuild) if (`$SkipDotnetBuild) { exit 0 } else { exit 1 }`n"
 }
+$copierFixture = Join-Path $Work 'copier'
+New-Fixture $copierFixture @{ 'Test-Cache.ps1' = "`"cache: `$env:COPIER_CACHE_DIR`"; exit 0`n" }
 # Two copies of one suite record when they ran: each marks itself ready and waits up to 5 s for the other's mark, so they
 # overlap when run at once. Test-A then waits 500 ms more, so it finishes last. Run one at a time, the wait times out.
 $pair = Join-Path $Work 'pair'
@@ -205,6 +207,9 @@ else {
     Check 'cleanup: a folder it can''t delete prints its path and doesn''t fail the run' ((-not $threw) -and ($out -contains "Couldn't delete the work folder: $held") -and (Test-Path -LiteralPath $held)) "$threw$($out -join "`n")"
 }
 
+$r = Invoke-Runner $copierFixture
+$cacheLine = [IO.File]::ReadAllText((Join-Path $copierFixture 'logs/Test-Cache.log')).Trim()
+Check 'copier: suites see COPIER_CACHE_DIR in the run''s own folder' (($r.ExitCode -eq 0) -and ($cacheLine -eq "cache: $(Join-Path (Join-Path $copierFixture 'logs') 'copier-cache')")) "$cacheLine | $($r.Text)"
 $r = Invoke-Measure @('-Name', 'Test-Quick.ps1', '-Repeat', '3')
 Check 'measure: times a passing suite, prints the median of -Repeat runs and passes' (($r.ExitCode -eq 0) -and (@($r.Lines -match '^PASS  Test-Quick\.ps1  \d+\.\ds  runs: \d+\.\d \d+\.\d \d+\.\d$').Count -eq 1) -and ($r.Lines[-1] -eq 'Measure: PASSED')) $r.Text
 $r = Invoke-Measure @('-Name', 'Test-Quick.ps1', '-MaxSeconds', '0.001')
