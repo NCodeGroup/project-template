@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Builds a fixture repository that runs .githooks/commit-msg as a pre-commit script hook and checks that the hook
-    strips the agent attribution from a commit message. Then checks, for the copy of Get-GitHooksSetup in
+    strips the agent attribution from a commit message, running pre-commit through uvx at the version tests/requirements.txt pins. Then checks, for the copy of Get-GitHooksSetup in
     .template\Update-Project.ps1 and the one in tools\adopt\Adoption.psm1, whether .githooks is enabled and which note
     it returns for the script to warn with in a clone with other hooks, with only .sample hooks, with pre-commit's hooks
     or config, with a hooks path of its own (local or global) or on a .githooks folder, and with none. Then pushes from
@@ -33,6 +33,9 @@ $ownWork = -not $PSBoundParameters.ContainsKey('Work')
 trap { "Kept the work folder: $Work"; break }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
+# pre-commit runs at the exact version tests/requirements.txt pins, which Dependabot's pip entry for /tests moves, not the newest release.
+$preCommitPin = @([IO.File]::ReadAllLines((Join-Path $repoRoot 'tests\requirements.txt')) -match '^pre-commit==\d+(\.\d+)+$')[0]
+if (-not $preCommitPin) { throw 'tests/requirements.txt must pin pre-commit exactly, such as pre-commit==4.7.0.' }
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
@@ -44,9 +47,8 @@ function Invoke-Git {
 # A failing hook is the result under test, so this doesn't check the exit code; the caller reads $LASTEXITCODE.
 function Invoke-PreCommit {
     $ErrorActionPreference = 'Continue'
-    if (Get-Command pre-commit -ErrorAction SilentlyContinue) { & pre-commit @args }
-    elseif (Get-Command uvx -ErrorAction SilentlyContinue) { & uvx pre-commit @args }
-    else { throw 'pre-commit not found. Install it with: uv tool install pre-commit' }
+    if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'uvx not found. Install uv: https://docs.astral.sh/uv/getting-started/installation/' }
+    & uvx --from $preCommitPin pre-commit @args
 }
 # A refused push is the result under test, so this doesn't check the exit code; the caller reads $LASTEXITCODE.
 function Invoke-Push {
@@ -99,6 +101,8 @@ finally {
 }
 
 Check 'pre-commit: runs .githooks/commit-msg as a script hook and strips the attribution' (($exitCode -eq 0) -and -not ([IO.File]::ReadAllText((Join-Path $repo 'msg.txt'))).Contains('anthropic.com')) "exit $exitCode; $output"
+$preCommitVersion = (Invoke-PreCommit --version 2>$null | Out-String).Trim()
+Check 'pre-commit: runs at the version tests/requirements.txt pins' ($preCommitPin -and $preCommitVersion -eq "pre-commit $(($preCommitPin -split '==')[1])") "pin: $preCommitPin; ran: $preCommitVersion"
 
 $updateFunction = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-GitHooksSetup' }, $true) | Select-Object -First 1
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
