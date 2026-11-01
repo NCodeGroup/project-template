@@ -36,12 +36,6 @@ $failures = [Collections.Generic.List[string]]::new()
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
-function Edit-File([string]$Path, [string]$Old, [string]$New) {
-    $full = (Resolve-Path -LiteralPath $Path).Path
-    $text = [IO.File]::ReadAllText($full)
-    if (-not $text.Contains($Old)) { throw "'$Old' not found in $full." }
-    [IO.File]::WriteAllText($full, $text.Replace($Old, $New))
-}
 function Invoke-Git {
     git -c user.name=template-test -c user.email=template-test@example.invalid @args
     if ($LASTEXITCODE) { throw "git $($args -join ' ') failed." }
