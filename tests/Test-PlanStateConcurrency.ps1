@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Test that workflow\Get-PlanState.ps1 starts its network calls together instead of one after another.
+    Test that workflow\Get-PlanState.ps1 starts its network calls together instead of one after another, and stops the ones it never received when it fails.
 
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, with a plan that names two issues and a release tag, and puts a
@@ -8,6 +8,10 @@
     that waits before each of its five answers, then checks that it prints the same lines both times and that the delayed
     run takes less than the run without the delay plus three and a half delays: run one after another, the five calls add five
     delays. Then removes the release tag from the clone and checks that a tag only origin has is still read as published.
+    Last, has the stand-in fail the protection check once another call has started, with each other call waiting a
+    minute, runs Get-PlanState.ps1 in a pwsh of its own that catches its error, and checks that it fails with that error
+    in less than the minute and leaves no runspace busy: its finally stops the calls it never received. It also checks
+    that neither that run nor a passing one leaves a runspace open.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
