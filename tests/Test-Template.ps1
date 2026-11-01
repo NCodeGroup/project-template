@@ -5,7 +5,7 @@
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML with
-    PyYAML through uv. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1 and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, that the generated workflow files under template/ and at the repository root
+    PyYAML through uv, at the version tests/requirements.txt pins. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1 and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, that the generated workflow files under template/ and at the repository root
     match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -86,6 +86,11 @@ $cases = @(
 )
 if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
 $yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
+# The YAML and _exclude checks run PyYAML and Jinja2 at the exact versions tests/requirements.txt pins, which Dependabot's pip entry for /tests moves, not the newest release.
+$pythonPins = [IO.File]::ReadAllLines((Join-Path $repoRoot 'tests\requirements.txt'))
+$pyyamlPin = @($pythonPins -match '^pyyaml==\d+(\.\d+)+$')[0]
+$jinja2Pin = @($pythonPins -match '^jinja2==\d+(\.\d+)+$')[0]
+if (-not $pyyamlPin -or -not $jinja2Pin) { throw 'tests/requirements.txt must pin pyyaml and jinja2 exactly, such as pyyaml==6.0.3 and jinja2==3.1.6.' }
 $copierCommand = @(if (Get-Command copier -ErrorAction SilentlyContinue) { 'copier' } elseif (Get-Command uvx -ErrorAction SilentlyContinue) { 'uvx', '--from', 'copier', 'copier' } else { throw 'Copier not found. Install it with: uv tool install copier' })
 # Render every case at once, then check each: the renders don't depend on each other, and each takes seconds.
 $renders = @($cases | ForEach-Object -ThrottleLimit ([Environment]::ProcessorCount) -Parallel {
@@ -287,7 +292,7 @@ foreach ($case in $cases) {
     } | ForEach-Object Name
     Check "${name}: valid JSON" (-not $badJson) ($badJson -join ', ')
     $yamlFiles = @($files | Where-Object Extension -In '.yml', '.yaml' | ForEach-Object FullName)
-    $yamlOutput = uv run --quiet --no-project --with pyyaml python -c $yamlCheck @yamlFiles 2>&1 | Out-String
+    $yamlOutput = uv run --quiet --no-project --with $pyyamlPin python -c $yamlCheck @yamlFiles 2>&1 | Out-String
     Check "${name}: valid YAML ($($yamlFiles.Count) files)" ($LASTEXITCODE -eq 0) $yamlOutput.Trim()
     $extensions = Get-Content -LiteralPath (Join-Path $dest '.vscode/extensions.json') -Raw
     $settings = Get-Content -LiteralPath (Join-Path $dest '.vscode/settings.json') -Raw
@@ -394,7 +399,7 @@ $ciWorkflow = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\workflows\tes
 $ownDependabot = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\dependabot.yml'))
 Check 'repository: CI installs the Copier version tests/requirements.txt pins, and Dependabot keeps the pin current' ($copierPin -match '(?m)^copier==\d+\.\d+\.\d+\r?$' -and $ciWorkflow -match '(?m)^ +uv tool install --constraints tests/requirements\.txt copier\r?$' -and $ownDependabot -match '(?m)^  - package-ecosystem: pip\r?\n    directory: /tests\r?$') "pin: $($copierPin.Trim()) | install: $(@($ciWorkflow -split '\r?\n' -match 'uv tool install') -join ' / ')"
 $excludeCheck = 'import sys, yaml, jinja2; c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); e = jinja2.Environment(); bad = [p for p in c["_exclude"] if e.from_string(p).render().strip()]; print("; ".join(bad)); sys.exit(1 if bad else 0)'
-$excludeOutput = uv run --quiet --no-project --with pyyaml --with jinja2 python -c $excludeCheck (Join-Path $repoRoot 'copier.yml') 2>&1 | Out-String
+$excludeOutput = uv run --quiet --no-project --with $pyyamlPin --with $jinja2Pin python -c $excludeCheck (Join-Path $repoRoot 'copier.yml') 2>&1 | Out-String
 Check 'copier.yml: _exclude patterns exclude nothing when workflow_tools is missing' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()
 $executorChecks = @(
     @{ Path = 'template\.github\agents\copilot-implementer.agent.md'; Text = "model: 'Claude Sonnet 5.5 (copilot)'" }
