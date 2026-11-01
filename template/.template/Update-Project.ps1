@@ -126,12 +126,19 @@ function Get-TemplateList([string]$Repo, [string]$Version, [string]$Key) {
     }
 }
 
-# The files the template renders at a version, named as in a project: without template/, each Jinja tag and the .jinja suffix. A file whose name holds a condition is listed whatever the answers.
+# A template source's name as in a project: without template/, each Jinja tag and the .jinja suffix.
+function ConvertTo-ProjectName([string]$Source) {
+    $Source -replace '^template/' -replace ('\{' + '%.*?%' + '\}') -replace '\.jinja$'
+}
+
+# Whether a project can own a file the template renders: any but the update's own files. tests/Test-Adoption.ps1 checks that Get-OwnableFile in tools/adopt/Adoption.psm1 follows the same rule.
+function Test-OwnableName([string]$Name) {
+    $Name -notmatch '^\.template/' -and -not $Name.Contains('{') -and $Name -notin '.copier-answers.yml', '.template-version'
+}
+
+# The files the template renders at a version, named as in a project. A file whose name holds a condition is listed whatever the answers.
 function Get-RenderedFile([string]$Repo, [string]$Version) {
-    $tag = '\{' + '%.*?%' + '\}'
-    foreach ($source in git -C $Repo ls-tree -r --name-only $Version -- template/) {
-        $source -replace '^template/' -replace $tag -replace '\.jinja$'
-    }
+    foreach ($source in git -C $Repo ls-tree -r --name-only $Version -- template/) { ConvertTo-ProjectName $source }
 }
 
 # The newest version tag, as Copier picks it: v1.2.3 or 1.2.3, prereleases ignored.
@@ -334,10 +341,9 @@ try {
     if ($Data.ContainsKey('project_owned_files')) { $Data['project_owned_files'] = @($Data['project_owned_files'] | Where-Object { $_ } | Select-Object -Unique) }
     $ownedFiles = @(if ($Data.ContainsKey('project_owned_files')) { $Data['project_owned_files'] } else { Get-AnswerList 'project_owned_files' })
     # Checked against the version the update moves to, so a file that version first adds or merges can be owned from this update on; the update's own files can't be.
-    $ownable = @(Get-RenderedFile $TemplateClone $to | Where-Object { $_ -notmatch '^\.template/' -and -not $_.Contains('{') -and $_ -notin '.copier-answers.yml', '.template-version' })
+    $ownable = @(Get-RenderedFile $TemplateClone $to | Where-Object { Test-OwnableName $_ })
     $notOwnable = @($ownedFiles | Where-Object { $_ -notin $ownable })
     if ($notOwnable) { throw "project_owned_files names $($notOwnable -join ', '), which template $to doesn't render or the update itself needs. It can name any file template $to renders except .copier-answers.yml, .template-version and the files in .template/." }
-    $jinjaTag = '\{' + '%.*?%' + '\}'
     # A merged file the project rewrote shares few lines with the template's render of it, so the template's changes to it conflict in unrelated places (copier-org/copier#2759): suggest the project_owned_files answer. Only a file the template changed can conflict.
     $rewritten = @()
     $fromRendered = $null
@@ -345,7 +351,7 @@ try {
     if ($from -ne $to) {
         try {
             $changedMerged = @(foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
-                    $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
+                    $file = ConvertTo-ProjectName $source
                     if ($file -in $merged -and $file -notin $ownedFiles -and (Test-Path -LiteralPath $file -PathType Leaf)) { $file }
                 })
             # A renamed template source, such as one that gained .jinja, lists its file under both names: keep each file once.
@@ -441,7 +447,7 @@ try {
     $projectOwnedChanged = @(if ($from -ne $to) {
             $owned = @(Get-TemplateList $TemplateClone $to '_skip_if_exists') + $ownedFiles
             $changedOwned = @(foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
-                    $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
+                    $file = ConvertTo-ProjectName $source
                     if ($file -in $owned -and (Test-Path -LiteralPath $file)) { [pscustomobject]@{ File = $file; Source = $source } }
                 })
             # A renamed template source lists its file twice: show the file once, with every source.
