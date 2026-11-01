@@ -366,9 +366,23 @@ try {
 
     # Start the calls that wait on the network at the same time; each part below receives its own.
     $fetchCall = $null; $tagsCall = $null
+    $cli = if ($hostName -eq 'github') { 'gh' } elseif ($hostName -eq 'gitlab') { 'glab' } else { '' }
+    $hasCli = $cli -and [bool](Get-Command $cli -ErrorAction SilentlyContinue)
+    $requestsCall = $null; $releaseCall = $null
     if ($hostName -ne 'none' -and -not $NoFetch) { $fetchCall = Start-Concurrent $folder 'git' @('fetch', 'origin', '--prune', '--tags', '--quiet') }
     if ($hostName -ne 'none' -and $release -ne '-') { $tagsCall = Start-Concurrent $folder 'Get-OriginTags' -Functions 'Get-OriginTags' }
     $protectedCall = Start-Concurrent $folder 'Get-Protected' @($hostName, $default, $policy['protect']) -Functions 'Get-Protected', 'Invoke-HostApi'
+    if ($hasCli -and $branch -ne '-' -and $branch -ne $default) {
+        $requestsCall = if ($hostName -eq 'github') { Start-Concurrent $folder 'gh' @('pr', 'list', '--head', $branch, '--state', 'all', '--limit', '100', '--json', 'number,state,mergeCommit,headRefOid,baseRefName') }
+        else { Start-Concurrent $folder 'glab' @('mr', 'list', '--source-branch', $branch, '--all', '--output', 'json') }
+    }
+    $releaseArgs = @('release', 'view', $release) + $(if ($hostName -eq 'github') { @('--json', 'tagName') } else { @() })
+    if ($hasCli -and $releasePolicy -eq 'tag+release' -and $release -ne '-') {
+        & git rev-parse -q --verify "refs/tags/$release" 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $releaseCall = Start-Concurrent $folder $cli $releaseArgs }
+    }
+    $issueRefs = @($issue -split '[\s,]+' | Where-Object { $_ -and $_ -ne '-' })
+    $issueCalls = @(foreach ($ref in $issueRefs) { Start-Concurrent $folder 'Get-IssueState' @($ref, $hostName) -Functions 'Get-IssueState' })
     if ($fetchCall) { $null = Receive-Concurrent $fetchCall }
     $protected = (Receive-Concurrent $protectedCall).Value
 
@@ -399,16 +413,11 @@ try {
     # Pull request or merge request
     $pr = '-'; $prNumber = ''; $prState = ''; $prMerge = ''; $prBase = ''
     if ($hostName -in 'github', 'gitlab' -and $branch -ne '-' -and $branch -ne $default) {
-        $cli = if ($hostName -eq 'github') { 'gh' } else { 'glab' }
         $pr = 'unknown'
-        if (Get-Command $cli -ErrorAction SilentlyContinue) {
-            $json = if ($hostName -eq 'github') {
-                & gh pr list --head $branch --state all --limit 100 --json number,state,mergeCommit,headRefOid,baseRefName 2>$null | Out-String
-            }
-            else {
-                & glab mr list --source-branch $branch --all --output json 2>$null | Out-String
-            }
-            if ($LASTEXITCODE -eq 0) {
+        if ($requestsCall) {
+            $requestsResult = Receive-Concurrent $requestsCall
+            $json = $requestsResult.Value | Out-String
+            if ($requestsResult.ExitCode -eq 0) {
                 try {
                     $items = @($json | ConvertFrom-Json -ErrorAction Stop)
                     $requests = @(foreach ($item in $items) {
@@ -493,23 +502,20 @@ try {
 
     # Release published on the host
     $published = '-'
+    $releaseResult = if ($releaseCall) { Receive-Concurrent $releaseCall } else { $null }
     if ($releasePolicy -eq 'tag+release' -and $tag -eq 'present') {
         $published = 'unknown'
-        if ($hostName -in 'github', 'gitlab') {
-            $cli = if ($hostName -eq 'github') { 'gh' } else { 'glab' }
-            if (Get-Command $cli -ErrorAction SilentlyContinue) {
-                if ($hostName -eq 'github') { & gh release view $release --json tagName 2>$null | Out-Null }
-                else { & glab release view $release 2>$null | Out-Null }
-                $published = if ($LASTEXITCODE -eq 0) { 'yes' } else { 'no' }
-            }
+        if ($hasCli) {
+            if (-not $releaseResult) { $releaseResult = Receive-Concurrent (Start-Concurrent $folder $cli $releaseArgs) }
+            $published = if ($releaseResult.ExitCode -eq 0) { 'yes' } else { 'no' }
         }
     }
 
     # State of the linked issue
     $issueState = '-'; $issueStates = '-'
     if ($issue -ne '-') {
-        $refs = @($issue -split '[\s,]+' | Where-Object { $_ })
-        $states = @(foreach ($ref in $refs) { Get-IssueState $ref $hostName })
+        $refs = $issueRefs
+        $states = @(foreach ($call in $issueCalls) { (Receive-Concurrent $call).Value })
         $issueStates = @(for ($i = 0; $i -lt $refs.Count; $i++) { "$($refs[$i])=$($states[$i])" }) -join ' '
         $issueState = if ($states -contains 'OPEN') { 'OPEN' } elseif (@($states | Where-Object { $_ -ne 'CLOSED' }).Count -eq 0) { 'CLOSED' } else { 'unknown' }
     }
