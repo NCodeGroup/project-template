@@ -5,8 +5,8 @@
 .DESCRIPTION
     Renders a project from v0.1.0 that lists .github/workflows/ci.yml in project_owned_files and replaces that file with
     its own, then updates it to a v0.2.0 that changes the template's ci.yml and .gitignore. The update must leave the
-    project's ci.yml alone without a conflict, show the template's change to it, and still merge .gitignore. A file that
-    isn't merged must stop the update before it changes anything, and an empty list must give the file back and
+    project's ci.yml alone without a conflict, show the template's change to it, and still merge .gitignore. A file the
+    template doesn't render, or one of the update's own files, must stop the update before it changes anything, and an empty list must give the file back and
     leave the answer empty (project_owned_files: []). Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -96,9 +96,9 @@ try {
     Check 'update: .copier-answers.yml still records project_owned_files' ([IO.File]::ReadAllText($answers) -match $answerPattern) ([IO.File]::ReadAllText($answers))
 
     $head = git rev-parse HEAD
-    $r = Invoke-Update @{ project_owned_files = 'CLAUDE.md' }
+    $r = Invoke-Update @{ project_owned_files = '.template/Update-Project.ps1', '.copier-answers.yml', '.template-version', 'not-in-template.txt' }
     $status = git status --porcelain
-    Check "reject: a file that isn't merged stops the update before it changes anything" (($r.ExitCode -ne 0) -and $r.Output.Contains("which isn't a merged file") -and -not $status -and ((git rev-parse HEAD) -eq $head)) "exit $($r.ExitCode)`n$($r.Output.Trim())`n$($status | Out-String)"
+    Check "reject: a file the template doesn't render or the update needs stops the update before it changes anything" (($r.ExitCode -ne 0) -and $r.Output.Contains("project_owned_files names .template/Update-Project.ps1, .copier-answers.yml, .template-version, not-in-template.txt, which template v0.2.0 doesn't render or the update itself needs") -and -not $status -and ((git rev-parse HEAD) -eq $head)) "exit $($r.ExitCode)`n$($r.Output.Trim())`n$($status | Out-String)"
 
     $r = Invoke-Update @{ project_owned_files = @() }
     $text = [IO.File]::ReadAllText($answers)
