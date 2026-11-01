@@ -247,6 +247,35 @@ function Get-Conflicts([string]$Default) {
     'unknown'
 }
 
+# The calls Start-Concurrent started, so the script's finally can wait for any that a step never received.
+$concurrentCalls = [Collections.Generic.List[object]]::new()
+
+# Starts Command, a native command or one of this script's functions, in a runspace of its own whose current folder is
+# Folder, and returns the call without waiting for it, so the calls that wait on the network run at the same time.
+# Functions names the script's functions the runspace needs: Command, when it is one, and each function it calls.
+function Start-Concurrent([string]$Folder, [string]$Command, [object[]]$Arguments = @(), [string[]]$Functions = @()) {
+    $state = [initialsessionstate]::CreateDefault()
+    foreach ($name in $Functions) { $state.Commands.Add([Management.Automation.Runspaces.SessionStateFunctionEntry]::new($name, (Get-Item -LiteralPath "function:$name").Definition)) }
+    $shell = [powershell]::Create($state)
+    $null = $shell.AddScript({
+            param($Folder, $Command, $Arguments)
+            $ErrorActionPreference = 'Stop'
+            Set-Location -LiteralPath $Folder
+            $value = & $Command @Arguments 2>$null
+            [pscustomobject]@{ Value = $value; ExitCode = $LASTEXITCODE }
+        }.ToString()).AddArgument($Folder).AddArgument($Command).AddArgument($Arguments)
+    $call = [pscustomobject]@{ Shell = $shell; Handle = $shell.BeginInvoke(); Done = $false }
+    $concurrentCalls.Add($call)
+    $call
+}
+
+# Waits for a call Start-Concurrent started and returns what Command returned, as Value, and its exit code, as ExitCode.
+function Receive-Concurrent([object]$Call) {
+    $Call.Done = $true
+    try { @($Call.Shell.EndInvoke($Call.Handle))[0] }
+    finally { $Call.Shell.Dispose() }
+}
+
 Push-Location -LiteralPath $Path
 try {
     $folder = (& git rev-parse --show-toplevel 2>$null | Out-String).Trim()
@@ -565,4 +594,7 @@ try {
     Write-Output "plans: $plans"
     Write-Output "next: $next"
 }
-finally { Pop-Location }
+finally {
+    foreach ($call in $concurrentCalls) { if (-not $call.Done) { try { $null = Receive-Concurrent $call } catch { $null = $_ } } }
+    Pop-Location
+}
