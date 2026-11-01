@@ -22,9 +22,11 @@
       Project-owned   Written once, never touched again (copier.yml's _skip_if_exists). When the template changed
                       one since the project's version, the script shows the template's change, rendered with
                       the project's answers, leaving out what the project's file already has.
-                      A merged file that the project's project_owned_files answer names
+                      A merged or template-owned file that the project's project_owned_files answer names
                       is project-owned too; a project that replaced one sets it with -Data @{ project_owned_files
-                      = '.github/workflows/ci.yml' }, and only merged files can be named.
+                      = '.github/workflows/ci.yml', 'build/dod.ps1' }. The answer can name any file the version
+                      the update moves to renders, except .copier-answers.yml, .template-version and the files in
+                      .template/; any other name stops the update before it changes anything.
                       When the template changed a merged file that shares less than half its lines with the
                       template's version, the script suggests that answer, with the -Data to run;
                       it doesn't stop the update. When Copier can't render the project's version, it warns
@@ -122,6 +124,21 @@ function Get-TemplateList([string]$Repo, [string]$Version, [string]$Key) {
         if ($inList -and $line -match '^\s+-\s+(.+?)\s*$') { $Matches[1].Trim("'", '"') }
         elseif ($inList -and $line -match '^\S') { break }
     }
+}
+
+# A template source's name as in a project: without template/, each Jinja tag and the .jinja suffix.
+function ConvertTo-ProjectName([string]$Source) {
+    $Source -replace '^template/' -replace ('\{' + '%.*?%' + '\}') -replace '\.jinja$'
+}
+
+# Whether a project can own a file the template renders: any but the update's own files. tests/Test-Adoption.ps1 checks that Get-OwnableFile in tools/adopt/Adoption.psm1 follows the same rule.
+function Test-OwnableName([string]$Name) {
+    $Name -notmatch '^\.template/' -and -not $Name.Contains('{') -and $Name -notin '.copier-answers.yml', '.template-version'
+}
+
+# The files the template renders at a version, named as in a project. A file whose name holds a condition is listed whatever the answers.
+function Get-RenderedFile([string]$Repo, [string]$Version) {
+    foreach ($source in git -C $Repo ls-tree -r --name-only $Version -- template/) { ConvertTo-ProjectName $source }
 }
 
 # The newest version tag, as Copier picks it: v1.2.3 or 1.2.3, prereleases ignored.
@@ -319,13 +336,14 @@ try {
 
     $projectOwned = @(Get-TemplateList $TemplateClone $from '_skip_if_exists')
     $merged = @(Get-TemplateList $TemplateClone $from '_merged_files')
-    # Merged files the project owns (its project_owned_files answer): updates leave them alone and show the template's change, as for project-owned files.
+    # Files the project owns (its project_owned_files answer), merged or template-owned: updates leave them alone and show the template's change, as for project-owned files.
     # -Data wins, because this update records it, and a single file becomes the list the answer must be.
-    if ($Data.ContainsKey('project_owned_files')) { $Data['project_owned_files'] = @($Data['project_owned_files'] | Where-Object { $_ }) }
-    $ownedMerged = @(if ($Data.ContainsKey('project_owned_files')) { $Data['project_owned_files'] } else { Get-AnswerList 'project_owned_files' })
-    $notMerged = @($ownedMerged | Where-Object { $_ -notin $merged })
-    if ($notMerged) { throw "project_owned_files names $($notMerged -join ', '), which isn't a merged file. It can name only these: $($merged -join ', ')." }
-    $jinjaTag = '\{' + '%.*?%' + '\}'
+    if ($Data.ContainsKey('project_owned_files')) { $Data['project_owned_files'] = @($Data['project_owned_files'] | Where-Object { $_ } | Select-Object -Unique) }
+    $ownedFiles = @(if ($Data.ContainsKey('project_owned_files')) { $Data['project_owned_files'] } else { Get-AnswerList 'project_owned_files' })
+    # Checked against the version the update moves to, so a file that version first adds or merges can be owned from this update on; the update's own files can't be.
+    $ownable = @(Get-RenderedFile $TemplateClone $to | Where-Object { Test-OwnableName $_ })
+    $notOwnable = @($ownedFiles | Where-Object { $_ -notin $ownable })
+    if ($notOwnable) { throw "project_owned_files names $($notOwnable -join ', '), which template $to doesn't render or the update itself needs. It can name any file template $to renders except .copier-answers.yml, .template-version and the files in .template/." }
     # A merged file the project rewrote shares few lines with the template's render of it, so the template's changes to it conflict in unrelated places (copier-org/copier#2759): suggest the project_owned_files answer. Only a file the template changed can conflict.
     $rewritten = @()
     $fromRendered = $null
@@ -333,9 +351,11 @@ try {
     if ($from -ne $to) {
         try {
             $changedMerged = @(foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
-                    $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
-                    if ($file -in $merged -and $file -notin $ownedMerged -and (Test-Path -LiteralPath $file -PathType Leaf)) { $file }
+                    $file = ConvertTo-ProjectName $source
+                    if ($file -in $merged -and $file -notin $ownedFiles -and (Test-Path -LiteralPath $file -PathType Leaf)) { $file }
                 })
+            # A renamed template source, such as one that gained .jinja, lists its file under both names: keep each file once.
+            $changedMerged = @($changedMerged | Select-Object -Unique)
             if ($changedMerged) { $fromRendered = Invoke-TemplateRender $from $renderedFrom }
             if ($fromRendered) { $rewritten = @(Get-RewrittenFile $changedMerged $renderedFrom) }
             elseif ($changedMerged) { Write-Warning "Skipped the rewritten-file suggestion: without template $from rendered, the update can't tell which merged files this project rewrote." }
@@ -346,15 +366,15 @@ try {
         }
     }
     try {
-        # Reset the template-owned files to the project's current version; what changes was edited or deleted here.
-        $exclude = foreach ($file in $projectOwned + $merged) { '--exclude', $file }
+        # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
+        $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', $file }
         Invoke-Copier recopy --force --quiet --vcs-ref :current: @exclude
         $reset = @(Get-Change)
         # The template's Adopt-Project.ps1 ends these files with the repository's own lines under a "# Kept from …" comment. Set them aside while
         # Copier merges, so a template change to the file's last lines can't conflict with them or take them into its conflict.
         $keptLines = @{}
         foreach ($file in '.gitignore', '.gitattributes', '.editorconfig') {
-            if ($file -notin $merged -or $file -in $ownedMerged -or -not (Test-Path -LiteralPath $file)) { continue }
+            if ($file -notin $merged -or $file -in $ownedFiles -or -not (Test-Path -LiteralPath $file)) { continue }
             $text = [IO.File]::ReadAllText((Join-Path $project $file))
             $match = [regex]::Match($text, "(?m)^# Kept from this repository's own \S+ when it adopted the project template\r?$")
             if (-not $match.Success) { continue }
@@ -370,8 +390,8 @@ try {
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
         foreach ($file in $deleted) { $copierArgs += '--exclude', $file }
-        # A merged file the project owns stays as it is; its template change is shown below.
-        foreach ($file in $ownedMerged) { $copierArgs += '--exclude', $file }
+        # A file the project owns, merged or template-owned, stays as it is; its template change is shown below.
+        foreach ($file in $ownedFiles) { $copierArgs += '--exclude', $file }
         # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes
         # every path Git reports as ignored to one `git apply` command. Keep the project's rules in force meanwhile, or a
         # folder only they ignore, such as node_modules/, is listed file by file and overflows Windows' command line.
@@ -425,11 +445,13 @@ try {
     }
     $changes = @(Get-Change)
     $projectOwnedChanged = @(if ($from -ne $to) {
-            $owned = @(Get-TemplateList $TemplateClone $to '_skip_if_exists') + $ownedMerged
-            foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
-                $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
-                if ($file -in $owned -and (Test-Path -LiteralPath $file)) { [pscustomobject]@{ File = $file; Source = $source } }
-            }
+            $owned = @(Get-TemplateList $TemplateClone $to '_skip_if_exists') + $ownedFiles
+            $changedOwned = @(foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
+                    $file = ConvertTo-ProjectName $source
+                    if ($file -in $owned -and (Test-Path -LiteralPath $file)) { [pscustomobject]@{ File = $file; Source = $source } }
+                })
+            # A renamed template source lists its file twice: show the file once, with every source.
+            foreach ($group in $changedOwned | Group-Object File) { [pscustomobject]@{ File = $group.Name; Source = @($group.Group | ForEach-Object Source) } }
         })
 
     # A success ends with exit 0, not return, which would hand a caller that runs this with & the exit code of the last git command, such as git apply --check's 1 for a hunk the project lacks.
@@ -456,7 +478,7 @@ try {
             }
             else {
                 $diff = git -C $TemplateClone diff --no-color --unified=1 $from $to -- $changed.Source
-                $title = "  $($changed.File), from the template source $($changed.Source), which Copier couldn't render with this project's answers:"
+                $title = "  $($changed.File), from the template source $($changed.Source -join ', '), which Copier couldn't render with this project's answers:"
             }
             # Leave out a hunk the project's file already has; a file left with none isn't shown.
             $hunk = @(
@@ -483,7 +505,7 @@ try {
         "These merged files share less than half their lines with the template's version, so the project seems to have replaced them, and the template's changes to them can conflict in unrelated places:"
         $rewritten | ForEach-Object { "  $_" }
         "To make them project-owned, so updates leave them alone and show the template's changes instead, run the update with (after abandoning it with git reset --hard; git clean -fd if it stops with a conflict below):"
-        "  .\.template\Update-Project.ps1 -Data @{ project_owned_files = $((@($ownedMerged) + $rewritten | ForEach-Object { "'$_'" }) -join ', ') }"
+        "  .\.template\Update-Project.ps1 -Data @{ project_owned_files = $((@($ownedFiles) + $rewritten | Select-Object -Unique | ForEach-Object { "'$_'" }) -join ', ') }"
     }
 
     # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).

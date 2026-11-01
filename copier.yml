@@ -11,7 +11,7 @@ _answers_file: .copier-answers.yml
 # - Merged (_merged_files): files whose tools can't include a second file. Updates merge the template's changes
 #   with the project's edits, like a Git merge. .template\Update-Project.ps1 reads this list; Copier ignores it.
 # - Template-owned: every other file. Updates replace it, discarding any edit.
-# A project that replaced a merged file makes it project-owned with the project_owned_files answer; Adopt-Project.ps1 and .template\Update-Project.ps1 enforce it.
+# A project that replaced a merged or template-owned file makes it project-owned with the project_owned_files answer, which can name any file the template renders except .copier-answers.yml, .template-version and the files in .template/; Adopt-Project.ps1 and .template\Update-Project.ps1 enforce it.
 _skip_if_exists:
   - AGENTS.md
   - README.md
@@ -174,7 +174,7 @@ repository_license:
 
 project_owned_files:
   type: yaml
-  help: "Merged files the project owns, such as [.github/workflows/ci.yml]: updates leave them alone and show the template's changes to them"
+  help: "Files the project owns, merged or template-owned, such as [.github/workflows/ci.yml, build/dod.ps1]: updates leave them alone and show the template's changes to them"
   default: []
   # Not asked when the project is created; recorded only when -Data supplies it.
   when: "{{ project_owned_files | default([]) | length > 0 }}"
