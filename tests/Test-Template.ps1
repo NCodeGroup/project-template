@@ -6,7 +6,7 @@
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML with
     PyYAML through uv. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1, that the generated workflow files under template/ and at the repository root
-    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
+    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. It runs the code review auto-merge workflow's diff check, as rendered, against a stand-in for gh with fixture pages of changed files. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
 .EXAMPLE
@@ -37,6 +37,41 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
 function Invoke-Git {
     git -c user.name=template-test -c user.email=template-test@example.invalid @args
     if ($LASTEXITCODE) { throw "git $($args -join ' ') failed." }
+}
+# The run: block of the step with the given id in a workflow, dedented as YAML reads a block scalar: its lines up to the
+# next line indented no deeper than run: itself. Empty when the step or its run: | block isn't there.
+function Get-StepScript([string]$Workflow, [string]$Id) {
+    $lines = $Workflow -split '\r?\n'
+    $at = [array]::FindIndex($lines, [Predicate[string]] { param($l) $l -match "^\s+id: $([regex]::Escape($Id))\s*$" })
+    if ($at -lt 0) { return '' }
+    $runAt = [array]::FindIndex($lines, $at, [Predicate[string]] { param($l) $l -match '^\s+run: \|\s*$' })
+    if ($runAt -lt 0) { return '' }
+    $runIndent = $lines[$runAt].Length - $lines[$runAt].TrimStart().Length
+    $block = @(for ($i = $runAt + 1; $i -lt $lines.Count; $i++) {
+        if ($lines[$i].Trim() -and $lines[$i].Length - $lines[$i].TrimStart().Length -le $runIndent) { break }
+        $lines[$i]
+    })
+    $first = @($block | Where-Object { $_.Trim() })[0]
+    if (-not $first) { return '' }
+    $indent = $first.Length - $first.TrimStart().Length
+    ($block | ForEach-Object { if ($_.Length -ge $indent) { $_.Substring($indent) } else { '' } }) -join "`n"
+}
+# Runs the code review auto-merge workflow's diff check as the runner does (pwsh, $ErrorActionPreference Stop), with gh
+# as a stand-in that answers pulls/7/files of o/r with $Pages, the pages gh api --paginate --slurp prints. Returns what
+# it wrote to GITHUB_OUTPUT, what it printed, the gh calls it made and the error it stopped with, if any.
+function Invoke-AutoMergeDiffCheck([string]$Script, [object[]]$Pages, [string]$Folder) {
+    $calls = [Collections.Generic.List[string]]::new()
+    $json = '[' + ($(for ($i = 0; $i -lt $Pages.Count; $i++) { ConvertTo-Json -Compress -Depth 6 -InputObject @($Pages[$i]) }) -join ',') + ']'
+    function gh { $calls.Add($args -join ' '); if (($args -join ' ') -eq 'api --paginate --slurp repos/o/r/pulls/7/files') { $json } else { throw "unexpected gh $($args -join ' ')" } }
+    $output = Join-Path $Folder "output-$([guid]::NewGuid().ToString('N')).txt"
+    $saved = @{ GH_REPO = $env:GH_REPO; PR_NUMBER = $env:PR_NUMBER; GITHUB_OUTPUT = $env:GITHUB_OUTPUT }
+    $env:GH_REPO = 'o/r'; $env:PR_NUMBER = '7'; $env:GITHUB_OUTPUT = $output
+    $printed = ''; $failed = ''
+    try { $printed = (& ([scriptblock]::Create("`$ErrorActionPreference = 'Stop'`n$Script")) 2>&1 | Out-String).Trim() }
+    catch { $failed = "$_" }
+    finally { foreach ($key in $saved.Keys) { [Environment]::SetEnvironmentVariable($key, $saved[$key]) } }
+    $written = if (Test-Path -LiteralPath $output) { (Get-Content -LiteralPath $output -Raw).Trim() } else { '' }
+    [pscustomobject]@{ Output = $written; Printed = $printed; Calls = @($calls); Error = $failed }
 }
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
@@ -270,6 +305,47 @@ foreach ($case in $cases) {
             if ($inRun -and $line.Contains('${{')) { $runExpressions++ }
         }
         Check "${name}: the code review auto-merge workflow passes the event's values to its commands through env only" ($runExpressions -eq 0 -and [regex]::Matches($autoMerge, '(?m)^\s+run: ').Count -eq 2) $autoMerge
+        # The diff check that decides only-pin, run once: every GitHub render has the same file.
+        if (-not $diffCheckRan) {
+            $diffCheckRan = $true
+            $diffCheck = Get-StepScript $autoMerge 'diff'
+            $diffFolder = Join-Path $Work 'auto-merge-diff-check'
+            New-Item -ItemType Directory -Force $diffFolder | Out-Null
+            $oldPin = '        uses: NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0'
+            $newPin = '        uses: NCodeGroup/code-review@0123456789abcdef0123456789abcdef01234567 # v0.5.0'
+            $bump = "@@ -60,7 +60,7 @@ jobs:`n       - name: Review`n-$oldPin`n+$newPin`n         with:"
+            function New-ChangedFile([string]$Path = '.github/workflows/code-review.yml', [string]$Status = 'modified', $Patch = $bump) {
+                $file = @{ filename = $Path; status = $Status }
+                if ($null -ne $Patch) { $file.patch = $Patch }
+                $file
+            }
+            $passes = [ordered]@{
+                'a clean pin bump' = @(, @((New-ChangedFile)))
+                'a clean pin bump in two workflows, on two pages' = @(@((New-ChangedFile)), @((New-ChangedFile '.github/workflows/other.yml' -Patch $bump.Replace('        uses:', '      - uses:'))))
+            }
+            $refuses = [ordered]@{
+                'a bump that also edits another line' = @(, @((New-ChangedFile -Patch "$bump`n+          timeout: 5")))
+                'a bump that also changes a line in another step' = @(, @((New-ChangedFile -Patch "$bump`n@@ -80,3 +80,3 @@`n-      - run: echo a`n+      - run: echo b")))
+                'a file outside .github/workflows' = @(, @((New-ChangedFile), (New-ChangedFile 'src/app.ps1' -Patch "@@ -1 +1 @@`n-a`n+b")))
+                'a workflow in a folder below .github/workflows' = @(, @((New-ChangedFile '.github/workflows/nested/code-review.yml')))
+                'an added workflow' = @(, @((New-ChangedFile '.github/workflows/new.yml' 'added' "@@ -0,0 +1 @@`n+$newPin")))
+                'a removed workflow' = @(, @((New-ChangedFile '.github/workflows/code-review.yml' 'removed' "@@ -1 +0,0 @@`n-$oldPin")))
+                'a renamed workflow' = @(, @((New-ChangedFile '.github/workflows/review.yml' 'renamed')))
+                'an empty patch' = @(, @((New-ChangedFile -Patch '')))
+                'no patch at all' = @(, @((New-ChangedFile -Patch $null)))
+                'a pin removed and none added' = @(, @((New-ChangedFile -Patch "@@ -60,2 +60,1 @@`n-$oldPin`n         with:")))
+                'two pins removed and one added' = @(, @((New-ChangedFile -Patch "@@ -60,3 +60,2 @@`n-$oldPin`n-$oldPin`n+$newPin")))
+                'no file at all' = @(, @())
+            }
+            foreach ($case in $passes.Keys) {
+                $r = Invoke-AutoMergeDiffCheck $diffCheck $passes[$case] $diffFolder
+                Check "${name}: the auto-merge diff check passes $case" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=true' -and -not $r.Printed -and ($r.Calls -join '|') -eq 'api --paginate --slurp repos/o/r/pulls/7/files') "output=$($r.Output) printed=$($r.Printed) calls=$($r.Calls -join '|') error=$($r.Error)"
+            }
+            foreach ($case in $refuses.Keys) {
+                $r = Invoke-AutoMergeDiffCheck $diffCheck $refuses[$case] $diffFolder
+                Check "${name}: the auto-merge diff check refuses $case" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=false' -and $r.Printed -like 'Left for a person to merge: *') "output=$($r.Output) printed=$($r.Printed) error=$($r.Error)"
+            }
+        }
     }
     else {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
