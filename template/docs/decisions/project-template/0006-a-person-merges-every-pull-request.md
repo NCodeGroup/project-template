@@ -32,6 +32,21 @@ turns on auto-merge, resolves a review thread, dismisses a review or force-pushe
 A project with `integrate: direct` has no pull request to merge: `/ship-plan` pushes to the default branch only after
 asking the person once, which keeps the same decision with the person.
 
+### One exception: Dependabot's NCode Review pin bump
+
+At the maintainer's request ([NCodeGroup/code-review#33](https://github.com/NCodeGroup/code-review/issues/33)), one
+workflow turns on auto-merge: `.github/workflows/code-review-auto-merge.yml`. Its scope is narrow. It acts only on a
+pull request that Dependabot opened from the repository itself, whose only change is the
+`uses: NCodeGroup/code-review@<full commit SHA> # vX.Y.Z` line of a workflow, moving it to a minor or patch release, and
+the pull request merges with a merge commit, only after the checks the default branch requires pass.
+
+The rule exists so that nothing merges while its author is still reviewing it, over a review thread no person read.
+That reason doesn't hold here: the change is a pin to a release whose code was itself reviewed and merged by a person
+in NCodeGroup/code-review, so the bump brings no change nobody reviewed. The review bot doesn't review a pull request a
+bot opened unless someone asks with `/review`, and any thread on it, a person's or the bot's, still keeps it from
+merging until it is resolved, as the ruleset requires. A major release, which can change the inputs the caller passes,
+a pull request that updates anything else, and every other pull request are still merged by a person.
+
 ## Options considered
 
 - An agent opens the pull request ready and turns on auto-merge. Rejected: it can merge before the author has
@@ -44,7 +59,8 @@ asking the person once, which keeps the same decision with the person.
 
 ## Consequences
 
-- No agent's change reaches the default branch without a person's explicit action.
+- No agent's change reaches the default branch without a person's explicit action. The one change that merges without
+  one is a minor or patch bump of the NCode Review pin, which a person already reviewed as that release.
 - Opening and merging are two steps, and the person may batch reviews; `/continue-plan` shows where each open plan
   stands and the command to run next.
 - Auto-merge, once the person turns it on, merges as soon as the checks pass; a person who wants to look again first

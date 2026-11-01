@@ -8,7 +8,8 @@ name: Code review auto-merge
 # A major release, which may change the inputs the caller passes, a pull request that updates other dependencies too,
 # and one that changes any other line wait for you. Auto-merge has to be allowed in the repository's settings, which
 # tools/Set-RepositoryBaseline.ps1 in NCodeGroup/project-template turns on. A project without code-review.yml gets no
-# such pull request, so this never merges anything there.
+# such pull request, so this never merges anything there. This is the one exception to "a person merges every pull
+# request", with its scope and reasons: docs/decisions/project-template/0006-a-person-merges-every-pull-request.md.
 #
 # pull_request_target runs this file from the default branch, with a token that can turn on auto-merge, which a
 # pull_request run that Dependabot started doesn't get. Nothing from the pull request is checked out or run: its changed
