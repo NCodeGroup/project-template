@@ -346,6 +346,8 @@ try {
                     $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
                     if ($file -in $merged -and $file -notin $ownedFiles -and (Test-Path -LiteralPath $file -PathType Leaf)) { $file }
                 })
+            # A renamed template source, such as one that gained .jinja, lists its file under both names: keep each file once.
+            $changedMerged = @($changedMerged | Select-Object -Unique)
             if ($changedMerged) { $fromRendered = Invoke-TemplateRender $from $renderedFrom }
             if ($fromRendered) { $rewritten = @(Get-RewrittenFile $changedMerged $renderedFrom) }
             elseif ($changedMerged) { Write-Warning "Skipped the rewritten-file suggestion: without template $from rendered, the update can't tell which merged files this project rewrote." }
@@ -436,10 +438,12 @@ try {
     $changes = @(Get-Change)
     $projectOwnedChanged = @(if ($from -ne $to) {
             $owned = @(Get-TemplateList $TemplateClone $to '_skip_if_exists') + $ownedFiles
-            foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
-                $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
-                if ($file -in $owned -and (Test-Path -LiteralPath $file)) { [pscustomobject]@{ File = $file; Source = $source } }
-            }
+            $changedOwned = @(foreach ($source in git -C $TemplateClone diff --name-only $from $to -- template/ 2>$null) {
+                    $file = $source -replace '^template/' -replace $jinjaTag -replace '\.jinja$'
+                    if ($file -in $owned -and (Test-Path -LiteralPath $file)) { [pscustomobject]@{ File = $file; Source = $source } }
+                })
+            # A renamed template source lists its file twice: show the file once, with every source.
+            foreach ($group in $changedOwned | Group-Object File) { [pscustomobject]@{ File = $group.Name; Source = @($group.Group | ForEach-Object Source) } }
         })
 
     # A success ends with exit 0, not return, which would hand a caller that runs this with & the exit code of the last git command, such as git apply --check's 1 for a hunk the project lacks.
@@ -466,7 +470,7 @@ try {
             }
             else {
                 $diff = git -C $TemplateClone diff --no-color --unified=1 $from $to -- $changed.Source
-                $title = "  $($changed.File), from the template source $($changed.Source), which Copier couldn't render with this project's answers:"
+                $title = "  $($changed.File), from the template source $($changed.Source -join ', '), which Copier couldn't render with this project's answers:"
             }
             # Leave out a hunk the project's file already has; a file left with none isn't shown.
             $hunk = @(
@@ -493,7 +497,7 @@ try {
         "These merged files share less than half their lines with the template's version, so the project seems to have replaced them, and the template's changes to them can conflict in unrelated places:"
         $rewritten | ForEach-Object { "  $_" }
         "To make them project-owned, so updates leave them alone and show the template's changes instead, run the update with (after abandoning it with git reset --hard; git clean -fd if it stops with a conflict below):"
-        "  .\.template\Update-Project.ps1 -Data @{ project_owned_files = $((@($ownedFiles) + $rewritten | ForEach-Object { "'$_'" }) -join ', ') }"
+        "  .\.template\Update-Project.ps1 -Data @{ project_owned_files = $((@($ownedFiles) + $rewritten | Select-Object -Unique | ForEach-Object { "'$_'" }) -join ', ') }"
     }
 
     # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).
