@@ -41,8 +41,8 @@
 
     Without conflicts the result is one commit, "Update from project-template <version>"; -NoCommit stages it
     instead. Either way it exits 0, as it does when there is nothing to update. With a conflict it commits nothing,
-    says how to finish or abandon the update, and exits 1. On any other failure the project is reset to where it
-    was.
+    says how to finish or abandon the update, and exits 1; each file without a conflict is then either unstaged or
+    staged as it is in the working tree. On any other failure the project is reset to where it was.
 
     On the default branch (the branch origin/HEAD names) it refuses to run unless -NoCommit is given, because it
     commits. It enables the template's hooks (core.hooksPath .githooks) unless the clone already has a hooks path,
