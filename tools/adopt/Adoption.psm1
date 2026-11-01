@@ -13,11 +13,21 @@ function Get-CopierList([string]$CopierYml, [string]$Key) {
     }
 }
 
-# The project_owned_files answer as the list Copier needs: a single file becomes a one-item list and empty items are dropped. Throws for a file that isn't merged.
-function Get-OwnedMergedFile($Value, [string[]]$Merged) {
-    $files = @($Value | Where-Object { $_ })
-    $notMerged = @($files | Where-Object { $_ -notin $Merged })
-    if ($notMerged) { throw "project_owned_files names $($notMerged -join ', '), which isn't a merged file. It can name only these: $($Merged -join ', ')." }
+# The files a repository can own: each file the template folder renders, named as the project has it, without the update's own files. Keep the rules the same as $ownable in template/.template/Update-Project.ps1.
+function Get-OwnableFile([string]$TemplateFolder) {
+    $root = (Resolve-Path -LiteralPath $TemplateFolder).Path.TrimEnd('\', '/')
+    $jinjaTag = '\{' + '%.*?%' + '\}'
+    foreach ($item in Get-ChildItem -LiteralPath $root -Recurse -File -Force) {
+        $name = $item.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/') -replace $jinjaTag -replace '\.jinja$'
+        if ($name -notmatch '^\.template/' -and -not $name.Contains('{') -and $name -notin '.copier-answers.yml', '.template-version') { $name }
+    }
+}
+
+# The project_owned_files answer as the list Copier needs: a single file becomes a one-item list and empty or repeated items are dropped. Throws for a file the template doesn't render or the update itself needs.
+function Get-OwnedFile($Value, [string[]]$Ownable) {
+    $files = @($Value | Where-Object { $_ } | Select-Object -Unique)
+    $notOwnable = @($files | Where-Object { $_ -notin $Ownable })
+    if ($notOwnable) { throw "project_owned_files names $($notOwnable -join ', '), which the template doesn't render or the update itself needs. It can name any file the template renders except .copier-answers.yml, .template-version and the files in .template/." }
     , $files
 }
 
@@ -382,4 +392,4 @@ function Get-ChangelogBackfill {
     [pscustomobject]@{ File = $file; Range = $range }
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-CopierList, Get-OwnedMergedFile, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
