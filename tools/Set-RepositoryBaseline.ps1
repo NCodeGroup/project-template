@@ -231,21 +231,35 @@ function Set-Baseline([string]$Name) {
     Set-AutoMerge $Name $info
 }
 
+# Reads CodeQL's default setup. Status is the HTTP status, or $null for no response; Answer the parsed answer, or $null;
+# Why the reason it couldn't be read, or $null when it was read or not found (404).
+function Read-DefaultSetup([string]$Name) {
+    $setup = Invoke-HostApi gh "repos/$Owner/$Name/code-scanning/default-setup"
+    $answer = $null
+    if ($setup.Status -eq 200) { try { $answer = $setup.Body | ConvertFrom-Json -ErrorAction Stop } catch { $answer = $null } }
+    $why = if ($answer -or $setup.Status -eq 404) { $null } elseif ($null -eq $setup.Status) { 'no response' } elseif ($setup.Status -eq 200) { 'an answer that is not JSON' } else { "HTTP $($setup.Status)" }
+    [pscustomobject]@{ Status = $setup.Status; Answer = $answer; Why = $why }
+}
+
+# The query suite a configured default setup runs, worded for the notice and the summary, or $null when it runs the
+# extended one or isn't configured.
+function Get-SuiteText($Answer) {
+    if ($Answer.state -ne 'configured' -or $Answer.query_suite -eq 'extended') { return $null }
+    if ("$($Answer.query_suite)") { "the $($Answer.query_suite) query suite" } else { 'a query suite it did not report' }
+}
+
 # A "Protect main" ruleset that already has a code-scanning rule keeps it and its thresholds. Its repository's default
 # setup is never switched (the extended suite can raise new alerts the rule would block merges on), so this only reads
 # the setup and prints a notice; it changes nothing.
 function Write-SuiteNotice([string]$Name) {
-    $setup = Invoke-HostApi gh "repos/$Owner/$Name/code-scanning/default-setup"
+    $setup = Read-DefaultSetup $Name
     if ($setup.Status -eq 404) { return }
-    $answer = $null
-    if ($setup.Status -eq 200) { try { $answer = $setup.Body | ConvertFrom-Json -ErrorAction Stop } catch { $answer = $null } }
-    if (-not $answer) {
-        $why = if ($null -eq $setup.Status) { 'no response' } elseif ($setup.Status -eq 200) { 'an answer that is not JSON' } else { "HTTP $($setup.Status)" }
-        Write-Host "${Name}: couldn't read CodeQL's default setup to check its query suite ($why); its ruleset's code-scanning rule is kept as it is"
+    if ($setup.Why) {
+        Write-Host "${Name}: couldn't read CodeQL's default setup to check its query suite ($($setup.Why)); its ruleset's code-scanning rule is kept as it is"
         return
     }
-    if ($answer.state -ne 'configured' -or $answer.query_suite -eq 'extended') { return }
-    $suite = if ("$($answer.query_suite)") { "the $($answer.query_suite) query suite" } else { 'a query suite it did not report' }
+    $suite = Get-SuiteText $setup.Answer
+    if (-not $suite) { return }
     Write-Host "${Name}: notice: CodeQL's default setup runs $suite, not the extended one the baseline uses, and this script doesn't switch a repository whose ruleset already has a code-scanning rule. To switch it by hand: gh api -X PATCH repos/$Owner/$Name/code-scanning/default-setup -f query_suite=extended. The extended suite can raise new alerts, and the ruleset's code-scanning rule may then block merges on them."
 }
 
@@ -290,24 +304,10 @@ function Set-BranchRuleset {
     # that names no suite is switched too, and the summary says the suite wasn't reported.
     $suite = $null
     if (-not $kept.Count) {
-        $setup = Invoke-HostApi gh "repos/$Owner/$Name/code-scanning/default-setup"
-        $codeql = $null
-        if ($setup.Status -eq 200) {
-            try {
-                $answer = $setup.Body | ConvertFrom-Json -ErrorAction Stop
-                $codeql = $answer.state -eq 'configured'
-                if ($codeql -and $answer.query_suite -ne 'extended') {
-                    $suite = if ("$($answer.query_suite)") { "the $($answer.query_suite) query suite" } else { 'a query suite it did not report' }
-                }
-            }
-            catch { $codeql = $null }
-        }
-        elseif ($setup.Status -eq 404) { $codeql = $false }
-        if ($null -eq $codeql) {
-            $why = if ($null -eq $setup.Status) { 'no response' } elseif ($setup.Status -eq 200) { 'an answer that is not JSON' } else { "HTTP $($setup.Status)" }
-            Write-Host "${Name}: skipped (couldn't read CodeQL's default setup: $why)"
-            return $false
-        }
+        $setup = Read-DefaultSetup $Name
+        if ($setup.Why) { Write-Host "${Name}: skipped (couldn't read CodeQL's default setup: $($setup.Why))"; return $false }
+        $codeql = $setup.Status -ne 404 -and $setup.Answer.state -eq 'configured'
+        if ($codeql) { $suite = Get-SuiteText $setup.Answer }
     }
     else { Write-SuiteNotice $Name }
 
