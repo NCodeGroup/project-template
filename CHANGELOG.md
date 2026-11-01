@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A GitHub project gets `.github/workflows/code-review-auto-merge.yml`, a template-owned workflow that turns on auto-merge, with a merge commit, for a Dependabot pull request that only moves the NCode Review pin in `.github/workflows/code-review.yml` to a newer minor or patch release, so the bump merges itself once the checks the default branch requires pass. It runs from the default branch on `pull_request_target` for Dependabot's pull requests from the repository itself, with only `contents: write` and `pull-requests: write`, and checks nothing out: it reads the update with `dependabot/fetch-metadata`, pinned by commit SHA, which must name `NCodeGroup/code-review` alone; checks through the API that every changed line is in a `.github/workflows/*.yml` file and is that action's `uses:` line, pinned to a full commit SHA with its `# vX.Y.Z` tag; and runs `gh pr merge --auto --merge` for the commit it checked. A major release, a pull request that updates other dependencies too and any other change wait for a person. A project without `code-review.yml` gets no such pull request, so the workflow merges nothing there. `Adopt-Project.ps1` doesn't ask to reconcile it with `ci.yml` ([NCodeGroup/code-review#33](https://github.com/NCodeGroup/code-review/issues/33)).
+
+### Changed
+
+- `tools/Set-RepositoryBaseline.ps1` also allows auto-merge where it is off, which the code review auto-merge workflow needs, read first and reported as set, already set, would set or not available like the security settings, on a repository whose branch ruleset it leaves alone too. Run it again, such as `.\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup`, to allow it in the repositories it protected before ([NCodeGroup/code-review#33](https://github.com/NCodeGroup/code-review/issues/33)).
+
 ## [0.47.0] - 2026-10-31
 
 ### Added

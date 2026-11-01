@@ -20,7 +20,11 @@
       - turns on the security settings a public project should have, each where it is off: the workflow token
         (GITHUB_TOKEN) read-only by default, with GitHub Actions not allowed to approve pull requests; secret scanning
         and its push protection; Dependabot alerts and Dependabot security updates, which need the alerts; and private
-        vulnerability reporting.
+        vulnerability reporting;
+      - turns on "Allow auto-merge" where it is off, so the template's code-review-auto-merge.yml workflow can turn on
+        auto-merge for a Dependabot pull request that only moves the NCode Review pin. Allowing it merges nothing by
+        itself: a pull request merges itself only once someone, or that workflow, turns it on, and still waits for what
+        the ruleset requires and merges only as it allows.
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's required
@@ -31,8 +35,8 @@
     reason (CodeQL's default setup can't be read, or -RequireChecks auto finds nothing to require): it changes nothing
     there.
 
-    Each security setting is read first and printed as set, already set, would set (-WhatIf) or not available, with the
-    reason, and none costs money. Secret scanning and its push protection are left out of a repository that isn't public,
+    Each security setting, and auto-merge, is read first and printed as set, already set, would set (-WhatIf) or not
+    available, with the reason, and none costs money. Secret scanning and its push protection are left out of a repository that isn't public,
     where they need the paid GitHub Secret Protection. A setting the API won't read or refuses to change, such as private
     vulnerability reporting on a private repository or a token setting the organization decides, is reported, and the
     run goes on with the next one. Requiring actions pinned to a full-length commit SHA is left out: it fails every
@@ -219,6 +223,7 @@ function Set-Baseline([string]$Name) {
     if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets)) { return }
     Set-TagRuleset $Name $rulesets
     Set-SecuritySettings $Name $info
+    Set-AutoMerge $Name $info
 }
 
 # The default branch's ruleset, the suite switch and delete-branch-on-merge. Returns $false when it skips the
@@ -421,6 +426,14 @@ function Set-SecuritySettings([string]$Name, $Info) {
     Set-SecuritySetting $Name 'Dependabot security updates' $state PUT "$base/automated-security-fixes"
     $state = Get-SettingState (Invoke-HostApi gh "$base/private-vulnerability-reporting") { param($answer) $answer.enabled }
     Set-SecuritySetting $Name 'private vulnerability reporting' $state PUT "$base/private-vulnerability-reporting"
+}
+
+# "Allow auto-merge", which the template's code-review-auto-merge.yml needs to have a Dependabot bump of NCode Review
+# merge itself once the required checks pass. GitHub reports it with the repository only to someone who may change it,
+# so an answer without it is reported, not written.
+function Set-AutoMerge([string]$Name, $Info) {
+    $state = if ($null -eq $Info.allow_auto_merge) { "couldn't read it: the repository's answer doesn't include it" } else { [bool]$Info.allow_auto_merge }
+    Set-SecuritySetting $Name 'allow auto-merge' $state PATCH "repos/$Owner/$Name" @{ allow_auto_merge = $true }
 }
 
 foreach ($name in Get-Targets) {

@@ -1,0 +1,83 @@
+name: Code review auto-merge
+
+# Turns on auto-merge, with a merge commit, for a Dependabot pull request that only moves the NCode Review action
+# (NCodeGroup/code-review, which .github/workflows/code-review.yml calls) to a newer minor or patch release: every line
+# it changes is in .github/workflows and is that action's uses: line, pinned to a release's full commit SHA with its tag
+# in a comment. The pull request then merges by itself once the checks the default branch requires pass. A major
+# release, which may change the inputs the caller passes, a pull request that updates other dependencies too, and one
+# that changes any other line wait for you. Auto-merge has to be allowed in the repository's settings, which
+# tools/Set-RepositoryBaseline.ps1 in NCodeGroup/project-template turns on. A project without code-review.yml gets no
+# such pull request, so this never merges anything there.
+#
+# pull_request_target runs this file from the default branch, with a token that can turn on auto-merge, which a
+# pull_request run that Dependabot started doesn't get. Nothing from the pull request is checked out or run: its changed
+# lines are read through the API, as text, and gh pr merge turns on auto-merge only while the pull request's head is
+# still the commit this run started for. The template owns this file: a template update replaces it, so a local edit is
+# lost. To stop it, disable the workflow instead: gh workflow disable code-review-auto-merge.yml
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: code-review-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  auto-merge:
+    name: Code review auto-merge
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # What gh pr merge --auto needs, and nothing more.
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Read what Dependabot updates
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      # A comma-separated list names more than one dependency, so NCode Review alone is an exact match.
+      - name: Check that the pull request changes only the NCode Review pin
+        id: diff
+        if: >-
+          steps.metadata.outputs.dependency-names == 'NCodeGroup/code-review' &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+            steps.metadata.outputs.update-type == 'version-update:semver-patch')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          # Each removed and added line is a uses: line that pins the action to a full commit SHA with its tag in a
+          # comment, and each file removes as many as it adds. The API's patch has hunks only, no file headers. The
+          # reasons printed name no file and quote no line: both come from the pull request.
+          $pin = '^[-+]\s*(- )?uses: NCodeGroup/code-review@[0-9a-f]{40} # v\d+\.\d+\.\d+\s*$'
+          $files = @(gh api --paginate --slurp "repos/$env:GH_REPO/pulls/$env:PR_NUMBER/files" | ConvertFrom-Json | ForEach-Object { $_ })
+          $why = @(foreach ($file in $files) {
+              $lines = @("$($file.patch)" -split "`n" | Where-Object { $_ -match '^[-+]' })
+              $added = @($lines | Where-Object { $_.StartsWith('+') }).Count
+              if ($file.filename -cnotmatch '^\.github/workflows/[^/]+\.yml$') { 'it changes a file that is not a workflow in .github/workflows' }
+              elseif ($file.status -ne 'modified' -or -not $file.patch) { 'it adds, removes, renames or empties a workflow' }
+              elseif (@($lines | Where-Object { $_ -cnotmatch $pin }).Count) { 'it changes a line that is not the NCode Review pin' }
+              elseif (-not $added -or 2 * $added -ne $lines.Count) { 'it removes or adds an NCode Review pin' }
+          })
+          if (-not $files.Count) { $why = @('it changes no file') }
+          if ($why.Count) {
+              $why | Sort-Object -Unique | ForEach-Object { "Left for a person to merge: $_." }
+              'only-pin=false' >> $env:GITHUB_OUTPUT
+          }
+          else { 'only-pin=true' >> $env:GITHUB_OUTPUT }
+
+      - name: Turn on auto-merge with a merge commit
+        if: steps.diff.outputs.only-pin == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: gh pr merge --auto --merge --match-head-commit "$env:HEAD_SHA" "$env:PR_URL"

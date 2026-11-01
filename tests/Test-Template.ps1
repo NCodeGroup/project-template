@@ -59,7 +59,7 @@ $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\Pro
     '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
-$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml'; gitlab = @('.gitlab-ci.yml') }
+$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\code-review-auto-merge.yml'; gitlab = @('.gitlab-ci.yml') }
 # tests\Test-TemplateDotnet.ps1 renders the dotnet and dotnet-library-apache cases again with the same answers: change both together.
 $cases = @(
     @{ Name = 'dotnet'; Stack = 'dotnet'; Host = 'github' }
@@ -251,6 +251,22 @@ foreach ($case in $cases) {
         $uses = [regex]::Matches($notice, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the template update workflow runs weekly and by hand, with only contents: read and issues: write, and runs .template/Get-TemplateUpdate.ps1" ($notice.Contains("- cron: '0 7 * * 1'") -and $notice.Contains('workflow_dispatch:') -and $notice -match '(?m)^permissions:\r?\n  contents: read\r?\n  issues: write\r?\n\r?\n' -and $notice.Contains('GH_TOKEN: ${{ github.token }}') -and $notice.Contains('run: ./.template/Get-TemplateUpdate.ps1')) $notice
         Check "${name}: the template update workflow pins each action to a full commit SHA, with its tag in a comment, and persists no credentials" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($notice, '(?m)^\s+persist-credentials: false\r?$').Count -eq $uses.Count) $notice
+        # The code review auto-merge workflow: every GitHub project gets it, and it merges nothing where no Dependabot pull
+        # request moves the NCode Review pin.
+        $autoMerge = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\code-review-auto-merge.yml') -Raw
+        $uses = [regex]::Matches($autoMerge, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        Check "${name}: the code review auto-merge workflow runs from the default branch, only on Dependabot's pull requests from the repository itself, with no permissions but its job's contents: write and pull-requests: write" ($autoMerge -match '(?m)^  pull_request_target:\r?\n    types: \[opened, synchronize, reopened\]\r?$' -and -not $autoMerge.Contains('pull_request:') -and $autoMerge -match '(?m)^permissions: \{\}\r?$' -and $autoMerge.Contains("if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository") -and $autoMerge -match '(?m)^    permissions:\r?\n      contents: write\r?\n      pull-requests: write\r?\n    steps:\r?$' -and [regex]::Matches($autoMerge, ': write').Count -eq 2 -and $autoMerge -match '(?m)^    timeout-minutes: \d+\r?$') $autoMerge
+        Check "${name}: the code review auto-merge workflow checks out nothing and pins its one action, fetch-metadata, to a full commit SHA, with its tag in a comment" ($uses.Count -eq 1 -and $uses[0].Groups[1].Value -eq 'dependabot/fetch-metadata' -and $uses[0].Groups[2].Value -match '^[0-9a-f]{40}$' -and $uses[0].Groups[3].Value -match '^# v\d+\.\d+\.\d+$' -and -not $autoMerge.Contains('actions/checkout')) $autoMerge
+        Check "${name}: the code review auto-merge workflow merges, with a merge commit, only a minor or patch bump of NCode Review alone whose every changed line is its pin" ($autoMerge.Contains("steps.metadata.outputs.dependency-names == 'NCodeGroup/code-review'") -and $autoMerge.Contains("steps.metadata.outputs.update-type == 'version-update:semver-minor'") -and $autoMerge.Contains("steps.metadata.outputs.update-type == 'version-update:semver-patch'") -and -not $autoMerge.Contains('semver-major') -and $autoMerge.Contains('uses: NCodeGroup/code-review@[0-9a-f]{40} # v\d+\.\d+\.\d+') -and $autoMerge.Contains('pulls/$env:PR_NUMBER/files') -and $autoMerge.Contains("if: steps.diff.outputs.only-pin == 'true'") -and $autoMerge.Contains('run: gh pr merge --auto --merge --match-head-commit "$env:HEAD_SHA" "$env:PR_URL"') -and $autoMerge -notmatch '--squash|--rebase') $autoMerge
+        # The event's values reach the shell through env only: no expression in a run line or a run block.
+        $inRun = $false; $runIndent = 0; $runExpressions = 0
+        foreach ($line in $autoMerge -split '\r?\n') {
+            $indent = $line.Length - $line.TrimStart().Length
+            if ($inRun -and $line.Trim() -and $indent -le $runIndent) { $inRun = $false }
+            if ($line -match '^(\s+)run: (.*)$') { $runIndent = $Matches[1].Length; $inRun = $Matches[2] -eq '|'; if ($Matches[2].Contains('${{')) { $runExpressions++ }; continue }
+            if ($inRun -and $line.Contains('${{')) { $runExpressions++ }
+        }
+        Check "${name}: the code review auto-merge workflow passes the event's values to its commands through env only" ($runExpressions -eq 0 -and [regex]::Matches($autoMerge, '(?m)^\s+run: ').Count -eq 2) $autoMerge
     }
     else {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
