@@ -6,7 +6,7 @@
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, default, host, plan, issue, refs, release, steps, reviewed, landing, protected, ahead, behind, landed,
     pr, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, changelog-duplicates, published, issue-state, issue-states, unfiled, dirty, plans and next. A fact that does not apply prints
-    "-". With an origin remote, the script first fetches it, ignoring a failure, unless -NoFetch is given. landed is
+    "-". With an origin remote, the script fetches it, ignoring a failure, unless -NoFetch is given. The calls that wait on the network start together, each in a runspace of its own: the fetch, git ls-remote for origin's tags, and, through gh or glab, the pull request or merge request list, the branch protection, each issue's state and the release. The release check starts with them only when the clone already has the Release: tag, and otherwise once the fetch shows origin has it. The script waits for the fetch before it reads origin's refs, and for each other call where it uses the answer. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
     merge is the commit that request merged as, when it merged. issue is the plan's Issue: line, which names one
@@ -247,6 +247,35 @@ function Get-Conflicts([string]$Default) {
     'unknown'
 }
 
+# The calls Start-Concurrent started, so the script's finally can wait for any that a step never received.
+$concurrentCalls = [Collections.Generic.List[object]]::new()
+
+# Starts Command, a native command or one of this script's functions, in a runspace of its own whose current folder is
+# Folder, and returns the call without waiting for it, so the calls that wait on the network run at the same time.
+# Functions names the script's functions the runspace needs: Command, when it is one, and each function it calls.
+function Start-Concurrent([string]$Folder, [string]$Command, [object[]]$Arguments = @(), [string[]]$Functions = @()) {
+    $state = [initialsessionstate]::CreateDefault()
+    foreach ($name in $Functions) { $state.Commands.Add([Management.Automation.Runspaces.SessionStateFunctionEntry]::new($name, (Get-Item -LiteralPath "function:$name").Definition)) }
+    $shell = [powershell]::Create($state)
+    $null = $shell.AddScript({
+            param($Folder, $Command, $Arguments)
+            $ErrorActionPreference = 'Stop'
+            Set-Location -LiteralPath $Folder
+            $value = & $Command @Arguments 2>$null
+            [pscustomobject]@{ Value = $value; ExitCode = $LASTEXITCODE }
+        }.ToString()).AddArgument($Folder).AddArgument($Command).AddArgument($Arguments)
+    $call = [pscustomobject]@{ Shell = $shell; Handle = $shell.BeginInvoke(); Done = $false }
+    $concurrentCalls.Add($call)
+    $call
+}
+
+# Waits for a call Start-Concurrent started and returns what Command returned, as Value, and its exit code, as ExitCode.
+function Receive-Concurrent([object]$Call) {
+    $Call.Done = $true
+    try { @($Call.Shell.EndInvoke($Call.Handle))[0] }
+    finally { $Call.Shell.Dispose() }
+}
+
 Push-Location -LiteralPath $Path
 try {
     $folder = (& git rev-parse --show-toplevel 2>$null | Out-String).Trim()
@@ -264,7 +293,6 @@ try {
     }
     else {
         $hostName = if ($originUrl -match 'gitlab') { 'gitlab' } elseif ($originUrl -match 'github\.com') { 'github' } else { 'other' }
-        if (-not $NoFetch) { & git fetch origin --prune --tags --quiet 2>$null | Out-Null }
     }
 
     if ($hostName -eq 'none') { $default = '-' }
@@ -335,7 +363,28 @@ try {
     if ($policy['max-review-rounds'] -notmatch '^[1-9]\d{0,2}\z') { $policy['max-review-rounds'] = '3' }
     $integrate = $policy['integrate']; $releasePolicy = $policy['release']
     $landing = @(foreach ($key in $policy.Keys) { if ($policy[$key] -match '\s') { "$key=`"$($policy[$key])`"" } else { "$key=$($policy[$key])" } }) -join ' '
-    $protected = Get-Protected $hostName $default $policy['protect']
+
+    # Start the calls that wait on the network at the same time; each part below receives its own.
+    $fetchCall = $null; $tagsCall = $null
+    $cli = if ($hostName -eq 'github') { 'gh' } elseif ($hostName -eq 'gitlab') { 'glab' } else { '' }
+    $hasCli = $cli -and [bool](Get-Command $cli -ErrorAction SilentlyContinue)
+    $requestsCall = $null; $releaseCall = $null
+    if ($hostName -ne 'none' -and -not $NoFetch) { $fetchCall = Start-Concurrent $folder 'git' @('fetch', 'origin', '--prune', '--tags', '--quiet') }
+    if ($hostName -ne 'none' -and $release -ne '-') { $tagsCall = Start-Concurrent $folder 'Get-OriginTags' -Functions 'Get-OriginTags' }
+    $protectedCall = Start-Concurrent $folder 'Get-Protected' @($hostName, $default, $policy['protect']) -Functions 'Get-Protected', 'Invoke-HostApi'
+    if ($hasCli -and $branch -ne '-' -and $branch -ne $default) {
+        $requestsCall = if ($hostName -eq 'github') { Start-Concurrent $folder 'gh' @('pr', 'list', '--head', $branch, '--state', 'all', '--limit', '100', '--json', 'number,state,mergeCommit,headRefOid,baseRefName') }
+        else { Start-Concurrent $folder 'glab' @('mr', 'list', '--source-branch', $branch, '--all', '--output', 'json') }
+    }
+    $releaseArgs = @('release', 'view', $release) + $(if ($hostName -eq 'github') { @('--json', 'tagName') } else { @() })
+    if ($hasCli -and $releasePolicy -eq 'tag+release' -and $release -ne '-') {
+        & git rev-parse -q --verify "refs/tags/$release" 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $releaseCall = Start-Concurrent $folder $cli $releaseArgs }
+    }
+    $issueRefs = @($issue -split '[\s,]+' | Where-Object { $_ -and $_ -ne '-' })
+    $issueCalls = @(foreach ($ref in $issueRefs) { Start-Concurrent $folder 'Get-IssueState' @($ref, $hostName) -Functions 'Get-IssueState' })
+    if ($fetchCall) { $null = Receive-Concurrent $fetchCall }
+    $protected = (Receive-Concurrent $protectedCall).Value
 
     # Position against the default branch
     $ahead = '-'; $behind = '-'; $landed = '-'
@@ -350,7 +399,7 @@ try {
 
     $tag = '-'
     $originTags = $null
-    if ($hostName -ne 'none' -and $release -ne '-') { $originTags = Get-OriginTags }
+    if ($tagsCall) { $originTags = (Receive-Concurrent $tagsCall).Value }
     if ($release -ne '-') {
         & git rev-parse -q --verify "refs/tags/$release" 2>$null | Out-Null
         $localTag = ($LASTEXITCODE -eq 0)
@@ -364,16 +413,11 @@ try {
     # Pull request or merge request
     $pr = '-'; $prNumber = ''; $prState = ''; $prMerge = ''; $prBase = ''
     if ($hostName -in 'github', 'gitlab' -and $branch -ne '-' -and $branch -ne $default) {
-        $cli = if ($hostName -eq 'github') { 'gh' } else { 'glab' }
         $pr = 'unknown'
-        if (Get-Command $cli -ErrorAction SilentlyContinue) {
-            $json = if ($hostName -eq 'github') {
-                & gh pr list --head $branch --state all --limit 100 --json number,state,mergeCommit,headRefOid,baseRefName 2>$null | Out-String
-            }
-            else {
-                & glab mr list --source-branch $branch --all --output json 2>$null | Out-String
-            }
-            if ($LASTEXITCODE -eq 0) {
+        if ($requestsCall) {
+            $requestsResult = Receive-Concurrent $requestsCall
+            $json = $requestsResult.Value | Out-String
+            if ($requestsResult.ExitCode -eq 0) {
                 try {
                     $items = @($json | ConvertFrom-Json -ErrorAction Stop)
                     $requests = @(foreach ($item in $items) {
@@ -458,23 +502,20 @@ try {
 
     # Release published on the host
     $published = '-'
+    $releaseResult = if ($releaseCall) { Receive-Concurrent $releaseCall } else { $null }
     if ($releasePolicy -eq 'tag+release' -and $tag -eq 'present') {
         $published = 'unknown'
-        if ($hostName -in 'github', 'gitlab') {
-            $cli = if ($hostName -eq 'github') { 'gh' } else { 'glab' }
-            if (Get-Command $cli -ErrorAction SilentlyContinue) {
-                if ($hostName -eq 'github') { & gh release view $release --json tagName 2>$null | Out-Null }
-                else { & glab release view $release 2>$null | Out-Null }
-                $published = if ($LASTEXITCODE -eq 0) { 'yes' } else { 'no' }
-            }
+        if ($hasCli) {
+            if (-not $releaseResult) { $releaseResult = Receive-Concurrent (Start-Concurrent $folder $cli $releaseArgs) }
+            $published = if ($releaseResult.ExitCode -eq 0) { 'yes' } else { 'no' }
         }
     }
 
     # State of the linked issue
     $issueState = '-'; $issueStates = '-'
     if ($issue -ne '-') {
-        $refs = @($issue -split '[\s,]+' | Where-Object { $_ })
-        $states = @(foreach ($ref in $refs) { Get-IssueState $ref $hostName })
+        $refs = $issueRefs
+        $states = @(foreach ($call in $issueCalls) { (Receive-Concurrent $call).Value })
         $issueStates = @(for ($i = 0; $i -lt $refs.Count; $i++) { "$($refs[$i])=$($states[$i])" }) -join ' '
         $issueState = if ($states -contains 'OPEN') { 'OPEN' } elseif (@($states | Where-Object { $_ -ne 'CLOSED' }).Count -eq 0) { 'CLOSED' } else { 'unknown' }
     }
@@ -565,4 +606,7 @@ try {
     Write-Output "plans: $plans"
     Write-Output "next: $next"
 }
-finally { Pop-Location }
+finally {
+    foreach ($call in $concurrentCalls) { if (-not $call.Done) { try { $null = Receive-Concurrent $call } catch { $null = $_ } } }
+    Pop-Location
+}
