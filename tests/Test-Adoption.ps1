@@ -67,7 +67,7 @@ New-Item -ItemType Directory -Force $Work | Out-Null
 $copierYml = Join-Path $repoRoot 'copier.yml'
 $skip = @(Get-CopierList $copierYml '_skip_if_exists')
 $merged = @(Get-CopierList $copierYml '_merged_files')
-Check 'unit: Get-CopierList reads the file lists' (($skip -join ',') -eq 'AGENTS.md,README.md,Directory.Build.props,.github/workflows/code-review.yml' -and '.gitignore' -in $merged -and 'global.json' -in $merged) "$($skip -join ',') | $($merged -join ',')"
+Check 'unit: Get-CopierList reads the file lists' (($skip -join ',') -eq 'AGENTS.md,README.md,Directory.Build.props,.github/workflows/code-review.yml,.github/workflows/publish.yml,docs/decisions/README.md,docs/decisions/0000-template.md,LICENSE.txt,COPYRIGHT.txt,NCodeGroup.png,SECURITY.md,CONTRIBUTING.md,docs/README.md,docs/metrics.md,docs/designs/_template.md' -and '.gitignore' -in $merged -and 'global.json' -in $merged -and 'nuget.config' -in $merged -and '.github/workflows/copilot-setup-steps.yml' -in $merged) "$($skip -join ',') | $($merged -join ',')"
 $one = Get-OwnedMergedFile '.github/workflows/ci.yml' $merged
 $dropped = Get-OwnedMergedFile @('.gitignore', '', $null) $merged
 $none = Get-OwnedMergedFile @() $merged
@@ -192,7 +192,9 @@ Check 'unit: Test-KeepAChangelog' ((Test-KeepAChangelog "# Changelog`n`n## [Unre
 $x = "<?xml version=""1.0""?>`n<Project>`n  <PropertyGroup>`n    <A>1</A>`n  </PropertyGroup>`n</Project>`n"
 $r = Add-ProjectTemplateImport $x
 Check 'unit: Add-ProjectTemplateImport' ($r.StartsWith("<?xml version=""1.0""?>`n<Project>`n") -and $r.Contains('<Import Project="$(MSBuildThisFileDirectory)build/ProjectTemplate.props" />') -and $r.IndexOf('<Import') -lt $r.IndexOf('<PropertyGroup>') -and (Add-ProjectTemplateImport $r) -eq $r) $r
-$central = Get-Content -Raw -LiteralPath (Join-Path $repoRoot "template\{% if stack == 'dotnet' %}Directory.Packages.props{% endif %}")
+# The template's Directory.Packages.props as a project without nuget_package renders it.
+$central = (Get-Content -Raw -LiteralPath (Join-Path $repoRoot "template\{% if stack == 'dotnet' %}Directory.Packages.props{% endif %}.jinja")) -replace '\{%-? if nuget_package %\}[\s\S]*?\{%-? endif %\}', ''
+if ($central.Contains('{%')) { throw "The test can't render the template's Directory.Packages.props: it has Jinja this test doesn't strip." }
 $folder = New-TestFolder 'central' @{
     'Directory.Packages.props' = $central
     'A/A.csproj'               = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <ItemGroup>`n    <PackageReference Include=""Foo"" Version=""1.0.0"" />`n  </ItemGroup>`n</Project>`n"
@@ -209,8 +211,14 @@ $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA
 $adapters = Join-Path $repoRoot 'tools\adopt\legacy'
 $scaffold = Join-Path $adapters 'NCode.ProjectSettings.Scaffold.ps1'
 $folder = New-TestFolder 'scaffold-adapter' @{
-    'NCodeGroup.png' = $png
-    'src/A/A.csproj' = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <ItemGroup>`n    <PackageReference Include=""NCode.ProjectSettings.Scaffold""`n                      Version=""1.0.0"">`n      <PrivateAssets>all</PrivateAssets>`n    </PackageReference>`n    <PackageReference Include=""JetBrains.Annotations"" Version=""2.0.0"" />`n  </ItemGroup>`n</Project>`n"
+    'NCodeGroup.png'                = $png
+    'src/A/A.csproj'                = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <DocumentationFile>bin\`$(Configuration)\A.xml</DocumentationFile>`n  </PropertyGroup>`n  <ItemGroup>`n    <PackageReference Include=""NCode.ProjectSettings.Scaffold""`n                      Version=""1.0.0"">`n      <PrivateAssets>all</PrivateAssets>`n    </PackageReference>`n    <PackageReference Include=""JetBrains.Annotations"" Version=""2.0.0"" />`n    <PackageReference Include=""Microsoft.SourceLink.GitHub"" Version=""10.0.0"" PrivateAssets=""all"" />`n  </ItemGroup>`n</Project>`n"
+    'src/A/project.props'           = "<Project>`n  <PropertyGroup>`n    <Description>A.</Description>`n  </PropertyGroup>`n</Project>`n"
+    # Build output the leftover reports must leave alone.
+    'src/A/bin/Debug/project.props' = "<Project />`n"
+    'A.sln.DotSettings'             = "<wpf:ResourceDictionary />`n"
+    '.github/workflows/main.yml'    = "on: release`njobs:`n  publish:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push x.nupkg`n"
+    '.github/workflows/publish.yml' = "on: release`njobs:`n  publish:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push x.nupkg`n"
 }
 $detected = & $scaffold -Path $folder -Phase Detect
 $a = & $scaffold -Path $folder -Phase Answers
@@ -218,6 +226,8 @@ $out = @(& $scaffold -Path $folder -Phase Apply)
 $proj = Get-Content -Raw -LiteralPath (Join-Path $folder 'src/A/A.csproj')
 $after = & $scaffold -Path $folder -Phase Detect
 Check 'unit: scaffold adapter' ($detected -eq $true -and $a.nuget_package -eq $true -and $a.package_license -eq 'Apache-2.0' -and $a.author_name -eq 'NCode Group' -and $a.package_icon -eq 'NCodeGroup.png' -and $out[0] -like '*src/A/A.csproj' -and $proj.Contains('JetBrains.Annotations') -and -not $proj.Contains('NCode.ProjectSettings.Scaffold') -and $after -eq $false) "$detected | $($out -join ' / ') | $proj | $after"
+$leftovers = $out -join "`n"
+Check 'unit: scaffold adapter reports what the package left behind' ($leftovers.Contains('References Microsoft.SourceLink.GitHub, which the .NET SDK builds in: remove it from src/A/A.csproj') -and $leftovers.Contains('Sets DocumentationFile') -and $leftovers.Contains('Nothing imports src/A/project.props now') -and -not $leftovers.Contains('bin/Debug/project.props') -and $leftovers.Contains('A.sln.DotSettings holds the scaffold''s ReSharper file header') -and $leftovers.Contains('.github/workflows/main.yml pushes packages to NuGet too') -and -not $leftovers.Contains('.github/workflows/publish.yml pushes')) $leftovers
 
 $workflow = Join-Path $adapters 'HybridWorkflowInstall.ps1'
 $folder = New-TestFolder 'workflow-install' @{ '.github/prompts/execute-step-copilot.prompt.md' = "old`n" }
@@ -317,6 +327,16 @@ if (-not $UnitOnly) {
     Check 'scaffold: reconciles the C# instructions' ($out.Contains('reconcile .github/instructions/csharp.instructions.md with csharp-production.instructions.md')) $out
     Check 'scaffold: no commit attribution follow-up when the template added ci.yml' (-not $out.Contains('commit-attribution job')) $out
     Check 'scaffold: enables the template hooks' (((git -C $scaffoldRepo config core.hooksPath) -join '') -eq '.githooks') ''
+    Check 'scaffold: a library without a license of its own gets the template''s LICENSE.txt and COPYRIGHT.txt' ((Test-Path -LiteralPath (Join-Path $scaffoldRepo 'LICENSE.txt')) -and (Test-Path -LiteralPath (Join-Path $scaffoldRepo 'COPYRIGHT.txt')) -and -not $out.Contains('Skipped LICENSE.txt')) $out
+
+    # A library with a license file of its own keeps it alone, without the template's beside it.
+    $ownLicense = New-Fixture 'own-license' @{
+        'src/Lib/Lib.csproj' = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n</Project>`n"
+        'README.md'          = "# Lib`n"
+        'LICENSE'            = "Own license.`n"
+    } 'https://github.com/example/lib.git'
+    $licenseOut = & $adopt -Path $ownLicense -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; nuget_package = $true; package_license = 'Apache-2.0'; test_command = '' } -NoVerify | Out-String
+    Check 'own-license: keeps its own license, without LICENSE.txt or COPYRIGHT.txt, and says so' ((Get-Content -Raw -LiteralPath (Join-Path $ownLicense 'LICENSE')) -eq "Own license.`n" -and -not (Test-Path -LiteralPath (Join-Path $ownLicense 'LICENSE.txt')) -and -not (Test-Path -LiteralPath (Join-Path $ownLicense 'COPYRIGHT.txt')) -and $licenseOut.Contains('Skipped LICENSE.txt') -and $licenseOut.Contains('Skipped COPYRIGHT.txt') -and -not (git -C $ownLicense status --porcelain)) $licenseOut
 
     if (-not $SkipDotnetBuild) {
         $subject = git -C $scaffoldRepo log -1 --format=%s
@@ -335,6 +355,9 @@ if (-not $UnitOnly) {
             }
             finally { $zip.Dispose() }
         }
+        $unshippedApi = Join-Path $scaffoldRepo 'src/NCode.Demo/PublicAPI.Unshipped.txt'
+        $apiText = if (Test-Path -LiteralPath $unshippedApi) { [IO.File]::ReadAllText($unshippedApi) } else { '' }
+        Check 'scaffold: records the public API before verifying, and commits it' ($out.Contains('Running ./build/Update-PublicApi.ps1') -and $apiText.StartsWith("#nullable enable`n") -and $apiText.Contains('static NCode.Demo.Greeter.Greet(string! name) -> string!') -and (Test-Path -LiteralPath (Join-Path $scaffoldRepo 'src/NCode.Demo/PublicAPI.Shipped.txt')) -and -not (git -C $scaffoldRepo status --porcelain)) "$apiText | $out"
         Check 'scaffold: verified, committed, and packed with README, icon and license' ($out.Contains('Running dotnet build') -and $subject -eq 'Adopt project-template v0.1.0' -and $nupkg.Count -eq 1 -and 'README.md' -in $entries -and 'NCodeGroup.png' -in $entries -and $nuspec.Contains('<license type="expression">Apache-2.0</license>') -and $snupkg.Count -eq 1) "$subject | $($entries -join ',') | $nuspec | $packOut | $out"
     }
 

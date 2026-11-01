@@ -13,7 +13,14 @@
     workflow runs, Commit attribution among them, leaves out the review bot's Code review and its job, CodeQL and its
     Analyze jobs, push-only jobs, jobs no workflow run accounts for, other apps' checks and skipped, neutral, failed or
     unfinished ones, lists them with -WhatIf with a command that names them, quoted so it parses, gives each repository
-    its own checks with -All, and skips a repository with no merged pull request or no check to require; that -All skips
+    its own checks with -All, and skips a repository with no merged pull request or no check to require; that every
+    repository it doesn't skip, one whose default branch it leaves alone too, gets a "Protect release tags" ruleset on
+    v* tags with no deletion, no update and no bypass, which -WhatIf shows, unless it has one of that name, whatever its
+    state, or an active tag ruleset that refuses both already; that it turns on, in order, the read-only workflow token
+    with Actions not approving pull requests, secret scanning, its push protection, Dependabot alerts, Dependabot
+    security updates and private vulnerability reporting, each with the call and body the API takes, and only where it
+    is off, reports each as set, already set, would set or not available, leaves secret scanning out of a repository
+    that isn't public, and reports a setting the API won't read or refuses without failing the run; that -All skips
     archived repositories and forks; and that bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any
     failure.
 
@@ -41,9 +48,12 @@ if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -For
 $bin = Join-Path $Work 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 
-# The stand-in for gh. It serves repos.json (repository name -> repository, rulesets and their full forms), records every
-# call in calls.log, and keeps the body of the last create or update in posted.json.
+# The stand-in for gh. It serves repos.json (repository name -> repository, rulesets and their full forms, and its
+# security settings), records every call in calls.log, and keeps the body of every change in bodies.log.
 Write-Text (Join-Path $bin 'gh.ps1') @'
+# The script runs this in its own session, so a -WhatIf run would reach it as $WhatIfPreference, and its log would stay
+# empty: it has to record the calls of a -WhatIf run too, to show that they change nothing.
+$WhatIfPreference = $false
 $log = Join-Path $PSScriptRoot 'calls.log'
 Add-Content -LiteralPath $log -Value ($args -join ' ')
 $data = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'repos.json') | ConvertFrom-Json -AsHashtable
@@ -62,18 +72,47 @@ function Out-Pages([string]$Key, $Items) {
     })
     if ($paginate) { ConvertTo-Json -InputObject $pages -Depth 8 } else { ConvertTo-Json -InputObject $pages[0] -Depth 8 }
 }
+# Answers with a status and a body; with --include the status line and a header come first, as gh prints them. A status
+# of 300 or more exits 1, as gh does.
+function Out-Answer([int]$Status, [string]$Body) {
+    if ($include) { "HTTP/2.0 $Status Status"; 'Content-Type: application/json'; '' }
+    if ($Body) { $Body }
+    if ($Status -ge 300) { exit 1 }
+    exit 0
+}
 if ($rest[0] -eq '-X') { $method = $rest[1]; $rest = @($rest[2..($rest.Count - 1)]) }
 $path = $rest[0]
-if ($rest -contains '--input') {
-    $file = $rest[[array]::IndexOf($rest, '--input') + 1]
-    Copy-Item -LiteralPath $file -Destination (Join-Path $PSScriptRoot 'posted.json') -Force
-    if ($path -match '^repos/[^/]+/([^/]+)/rulesets') { Copy-Item -LiteralPath $file -Destination (Join-Path $PSScriptRoot "posted-$($Matches[1]).json") -Force }
-    Add-Content -LiteralPath $log -Value "BODY $method $path"
-    '{}'; exit 0
+if ($method -ne 'GET') {
+    # A change. A body sent with --input is logged as BODY <method> <path> and kept in bodies.log, one JSON line each.
+    # writeFails (what is changed -> status) refuses it: the key is the path after the repository's, or for a
+    # security_and_analysis change the feature's name.
+    $repo = $null; $key = ''
+    if ($path -match '^repos/[^/]+/([^/]+)/?(.*)$') { $repo = $data.repos[$Matches[1]]; $key = $Matches[2] }
+    if ($rest -contains '--input') {
+        $file = $rest[[array]::IndexOf($rest, '--input') + 1]
+        $sent = Get-Content -Raw -LiteralPath $file | ConvertFrom-Json -AsHashtable
+        Add-Content -LiteralPath (Join-Path $PSScriptRoot 'bodies.log') -Value (ConvertTo-Json -Compress -Depth 20 -InputObject @{ method = $method; path = $path; body = $sent })
+        Add-Content -LiteralPath $log -Value "BODY $method $path"
+        if ($sent.security_and_analysis) { $key = @($sent.security_and_analysis.Keys)[0] }
+    }
+    if ($key -eq 'code-scanning/default-setup' -and $repo.switchFails) { exit 1 }
+    $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] }
+    if ($refused) { Out-Answer ([int]$refused) "{""message"":""Stand-in refused $key""}" }
+    if ($rest -contains '--input') { Out-Answer 200 '{}' } else { Out-Answer 204 '' }
 }
-if ($method -eq 'PATCH') {
-    if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$' -and $data.repos[$Matches[1]].switchFails) { exit 1 }
-    exit 0
+# The security settings' reads: on, off, readApproves (the workflow token read-only, but Actions may approve pull
+# requests) or fail:<code>, as GitHub answers each.
+if ($path -match '^repos/[^/]+/([^/]+)/(actions/permissions/workflow|vulnerability-alerts|automated-security-fixes|private-vulnerability-reporting)$') {
+    $key = $Matches[2]
+    $state = "$($data.repos[$Matches[1]].security[$key])"
+    if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
+    $on = $state -eq 'on'
+    switch ($key) {
+        'actions/permissions/workflow' { Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ default_workflow_permissions = if ($on -or $state -eq 'readApproves') { 'read' } else { 'write' }; can_approve_pull_request_reviews = -not $on }) }
+        'vulnerability-alerts' { if ($on) { Out-Answer 204 '' } else { Out-Answer 404 '{"message":"Vulnerability alerts are disabled."}' } }
+        'automated-security-fixes' { if ($on) { Out-Answer 200 '{"enabled":true,"paused":false}' } else { Out-Answer 404 '{"message":"Not Found"}' } }
+        default { Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ enabled = $on }) }
+    }
 }
 if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
     # codeql is a state, 404 for not found, fail:<code> for another status, fail:none for no response at all, or
@@ -111,14 +150,28 @@ function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_f
         conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
         rules = @($Types | ForEach-Object { @{ type = $_ } }) }
 }
-function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{}) {
+function New-TagRuleset([string]$Name, [string[]]$Types = @('deletion', 'update'), [string]$Include = 'refs/tags/v*', [string]$Enforcement = 'active') {
+    @{ name = $Name; target = 'tag'; enforcement = $Enforcement
+        conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
+        rules = @($Types | ForEach-Object { @{ type = $_ } }) }
+}
+# $Security sets the state the stand-in reads for a setting, by its path after the repository's (on, off, readApproves
+# or fail:<code>): every one is off unless it says otherwise. $WriteFails refuses a change with a status (see the
+# stand-in). Secret scanning and its push protection are read from the repository itself, as GitHub reports them.
+function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
+    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}) {
     $full = @{}
     $summaries = @()
     $id = 100
     foreach ($ruleset in $Rulesets) { $id++; $ruleset.id = $id; $full["$id"] = $ruleset; $summaries += @{ id = $id; name = $ruleset.name } }
-    @{ info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork }; rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; switchFails = $SwitchFails
-        pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns }
+    $settings = @{ 'actions/permissions/workflow' = 'off'; 'vulnerability-alerts' = 'off'; 'automated-security-fixes' = 'off'; 'private-vulnerability-reporting' = 'off' }
+    foreach ($key in $Security.Keys) { $settings[$key] = $Security[$key] }
+    $analysis = @{ secret_scanning = @{ status = $SecretScanning }; secret_scanning_push_protection = @{ status = $PushProtection } }
+    @{ info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork; private = $Visibility -ne 'public'; visibility = $Visibility; security_and_analysis = $analysis }
+        rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; switchFails = $SwitchFails
+        pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails }
 }
+$allSecurityOn = @{ 'actions/permissions/workflow' = 'on'; 'vulnerability-alerts' = 'on'; 'automated-security-fixes' = 'on'; 'private-vulnerability-reporting' = 'on' }
 function New-Pull([int]$Number, [string]$Sha, [string]$MergedAt) { @{ number = $Number; head = @{ sha = $Sha }; merged_at = if ($MergedAt) { $MergedAt } else { $null } } }
 function New-CheckRun([long]$Id, [string]$Name, [string]$Conclusion = 'success', [long]$Suite = 1, [long]$App = 15368, [string]$Slug = 'github-actions', [string]$Status = 'completed') {
     @{ id = $Id; name = $Name; status = $Status; conclusion = if ($Status -eq 'completed') { $Conclusion } else { $null }; app = @{ id = $App; slug = $Slug }; check_suite = @{ id = $Suite } }
@@ -187,6 +240,19 @@ $repos = @{
     # A second repository with checks of its own, for -All -RequireChecks auto.
     autoOther = New-Repo -Pulls @((New-Pull 3 'sha3' '2026-10-04T10:00:00Z')) -CheckRuns @{ sha3 = @((New-CheckRun 1 'other-build')) } -WorkflowRuns @{ sha3 = $prWorkflowRuns }
     # Seven closed pull requests, five to a page: the latest merged one (#30) is on the second page.
+    # Release tags: a ruleset of this name, turned off, is still left alone; so is another active one on v* tags, or on
+    # every tag, that refuses both deletion and update.
+    tagsOurs = New-Repo -Rulesets @((New-TagRuleset 'Protect release tags' -Enforcement 'disabled'))
+    tagsOwned = New-Repo -Rulesets @((New-TagRuleset 'release-tags'))
+    tagsAll = New-Repo -Rulesets @((New-TagRuleset 'every tag' -Include '~ALL'))
+    tagsInactive = New-Repo -Rulesets @((New-TagRuleset 'release-tags' -Enforcement 'evaluate'))
+    # Security settings: every one on already; a private repository, where private vulnerability reporting can't be
+    # read; settings the API refuses to change; a workflow token setting it won't read; and some on, some off.
+    complete = New-Repo -Rulesets @((New-Ruleset 'Protect main'), (New-TagRuleset 'Protect release tags')) -SecretScanning 'enabled' -PushProtection 'enabled' -Security $allSecurityOn
+    private = New-Repo -Visibility 'private' -Security @{ 'private-vulnerability-reporting' = 'fail:422' }
+    refused = New-Repo -WriteFails @{ 'actions/permissions/workflow' = 409; 'secret_scanning_push_protection' = 422; 'automated-security-fixes' = 422 }
+    workflowUnreadable = New-Repo -Security @{ 'actions/permissions/workflow' = 'fail:403' }
+    partial = New-Repo -SecretScanning 'enabled' -Security @{ 'actions/permissions/workflow' = 'readApproves'; 'vulnerability-alerts' = 'on'; 'private-vulnerability-reporting' = 'on' }
     autoPaged = New-Repo -Pulls @((New-Pull 21 'sha21' '2026-10-01T10:00:00Z'), (New-Pull 22 'sha22' '2026-10-02T10:00:00Z'), (New-Pull 23 'sha23' ''), (New-Pull 24 'sha24' '2026-10-03T10:00:00Z'), (New-Pull 25 'sha25' '2026-10-04T10:00:00Z'), (New-Pull 26 'sha26' ''), (New-Pull 30 'sha30' '2026-10-25T10:00:00Z')) -CheckRuns @{ sha25 = @((New-CheckRun 1 'first-page-job')); sha30 = @((New-CheckRun 1 'paged-build')) } -WorkflowRuns @{ sha25 = $prWorkflowRuns; sha30 = $prWorkflowRuns }
 }
 Write-Text (Join-Path $bin 'repos.json') (ConvertTo-Json -Depth 12 -InputObject @{
@@ -199,16 +265,22 @@ Write-Text (Join-Path $bin 'repos.json') (ConvertTo-Json -Depth 12 -InputObject 
 
 $script = Join-Path $repoRoot 'tools/Set-RepositoryBaseline.ps1'
 $calls = Join-Path $bin 'calls.log'
-$posted = Join-Path $bin 'posted.json'
+$bodyLog = Join-Path $bin 'bodies.log'
+# A run: its output and exit code, its changes in order (a call with a body as its BODY line, without --include), every
+# body it sent with its method and path, and the bodies of the last "Protect main" and "Protect release tags" it sent.
 function Invoke-Baseline([string[]]$Arguments) {
-    foreach ($file in @($calls, $posted) + @(Get-ChildItem -LiteralPath $bin -Filter 'posted-*.json' | ForEach-Object FullName)) { if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force } }
+    foreach ($file in $calls, $bodyLog) { if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force } }
     $output = & pwsh -NoProfile -File $script @Arguments 2>&1 | Out-String
+    $exitCode = $LASTEXITCODE
     $log = if (Test-Path -LiteralPath $calls) { Get-Content -LiteralPath $calls } else { @() }
+    $sent = @(if (Test-Path -LiteralPath $bodyLog) { Get-Content -LiteralPath $bodyLog | ForEach-Object { $_ | ConvertFrom-Json } })
     [pscustomobject]@{
         Output = $output
-        ExitCode = $LASTEXITCODE
-        Changes = @($log | Where-Object { $_ -like 'BODY *' -or $_ -like '*-X PATCH*' })
-        Body = if (Test-Path -LiteralPath $posted) { Get-Content -Raw -LiteralPath $posted | ConvertFrom-Json } else { $null }
+        ExitCode = $exitCode
+        Changes = @($log | Where-Object { $_ -like 'BODY *' -or ($_ -like '*-X *' -and $_ -notlike '*--input*') } | ForEach-Object { $_ -replace ' --include', '' })
+        Bodies = $sent
+        Body = ($sent | Where-Object { $_.body.name -eq 'Protect main' } | Select-Object -Last 1).body
+        TagBody = ($sent | Where-Object { $_.body.name -eq 'Protect release tags' } | Select-Object -Last 1).body
     }
 }
 # The command a -RequireChecks auto -WhatIf run prints, parsed: the line, the parse errors, the command, the names it
@@ -229,12 +301,17 @@ $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
 try {
     # 1. -WhatIf.
     $r = Invoke-Baseline @('-Repo', 'fresh', '-WhatIf')
-    Check 'whatif: changes nothing' ($r.Changes.Count -eq 0 -and $r.Output -match "would: fresh \(main\): create 'Protect main'") "changes=$($r.Changes -join '|') output=$($r.Output)"
+    Check 'whatif: changes nothing' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output -match "would: fresh \(main\): create 'Protect main'") "changes=$($r.Changes -join '|') output=$($r.Output)"
+    Check 'whatif: shows the release tags ruleset it would create' ($r.Output -match [regex]::Escape("would: fresh: create 'Protect release tags' on v* tags: no deletion, no update")) $r.Output
+    foreach ($label in 'read-only workflow token, and Actions not approving pull requests', 'secret scanning', 'secret scanning push protection', 'Dependabot alerts', 'Dependabot security updates', 'private vulnerability reporting') {
+        Check "whatif: shows the security setting it would turn on ($label)" ($r.Output -match [regex]::Escape("fresh: ${label}: would set")) $r.Output
+    }
 
     # 2. A repository with no ruleset.
     $r = Invoke-Baseline @('-Repo', 'fresh')
     $types = @($r.Body.rules.type)
-    Check 'create: switches CodeQL to the extended suite first, then posts one ruleset and turns on delete-branch-on-merge' (($r.Changes -join '|') -eq 'api -X PATCH repos/NCodeGroup/fresh/code-scanning/default-setup -f query_suite=extended|BODY POST repos/NCodeGroup/fresh/rulesets|api -X PATCH repos/NCodeGroup/fresh -F delete_branch_on_merge=true') ($r.Changes -join '|')
+    Check 'create: switches CodeQL to the extended suite first, then posts one ruleset and turns on delete-branch-on-merge' (($r.Changes[0..2] -join '|') -eq 'api -X PATCH repos/NCodeGroup/fresh/code-scanning/default-setup -f query_suite=extended|BODY POST repos/NCodeGroup/fresh/rulesets|api -X PATCH repos/NCodeGroup/fresh -F delete_branch_on_merge=true' -and $r.Bodies[0].body.name -eq 'Protect main') ($r.Changes -join '|')
+    Check 'create: then the release tags ruleset, then each security setting, Dependabot alerts before its security updates' (($r.Changes[3..($r.Changes.Count - 1)] -join '|') -eq 'BODY POST repos/NCodeGroup/fresh/rulesets|BODY PUT repos/NCodeGroup/fresh/actions/permissions/workflow|BODY PATCH repos/NCodeGroup/fresh|BODY PATCH repos/NCodeGroup/fresh|api -X PUT repos/NCodeGroup/fresh/vulnerability-alerts|api -X PUT repos/NCodeGroup/fresh/automated-security-fixes|api -X PUT repos/NCodeGroup/fresh/private-vulnerability-reporting') ($r.Changes -join '|')
     Check 'create: the summary says CodeQL moves to the extended suite' ($r.Output -match 'switch CodeQL from the default query suite to extended') $r.Output
     Check 'create: protects the default branch and cannot be bypassed' (($r.Body.name -eq 'Protect main') -and ($r.Body.target -eq 'branch') -and ($r.Body.enforcement -eq 'active') -and ($r.Body.conditions.ref_name.include -contains '~DEFAULT_BRANCH') -and ($r.Body.bypass_actors.Count -eq 0))
     Check 'create: no deletion, no force push, a pull request, a code-scanning rule, and nothing more' (($types -join ',') -eq 'deletion,non_fast_forward,pull_request,code_scanning') ($types -join ',')
@@ -285,12 +362,17 @@ try {
     Check 'create: works for a default branch that is not main' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/legacy/rulesets*') ($r.Changes -join '|')
 
     # 5. Repositories left alone.
+    # The default branch's ruleset and delete-branch-on-merge are left alone; the release tags ruleset and the security
+    # settings still come, so a run brings a repository an older baseline protected up to date.
     $r = Invoke-Baseline @('-Repo', 'owned')
-    Check 'alone: a default branch that already requires pull requests' ($r.Changes.Count -eq 0 -and $r.Output -match "owned: left alone \('main' already requires pull requests\)") $r.Output
+    Check 'alone: a default branch that already requires pull requests' (-not $r.Body -and ($r.Changes -join '|') -notmatch 'delete_branch_on_merge' -and $r.Output -match "owned: left alone \('main' already requires pull requests\)") "$($r.Changes -join '|') $($r.Output)"
+    Check 'alone: a default branch that already requires pull requests still gets the release tags ruleset and the security settings' ($r.TagBody -and $r.Output -match "done: owned: create 'Protect release tags'" -and $r.Output -match 'owned: private vulnerability reporting: set') $r.Output
     $r = Invoke-Baseline @('-Repo', 'ours')
-    Check 'alone: a repository that already has Protect main' ($r.Changes.Count -eq 0 -and $r.Output -match "ours: left alone \(already has 'Protect main'\)") $r.Output
+    Check 'alone: a repository that already has Protect main' (-not $r.Body -and ($r.Changes -join '|') -notmatch 'delete_branch_on_merge|rulesets/101' -and $r.Output -match "ours: left alone \(already has 'Protect main'\)") "$($r.Changes -join '|') $($r.Output)"
+    Check 'alone: a repository that already has Protect main still gets the release tags ruleset and the security settings' ($r.TagBody -and $r.Output -match "done: ours: create 'Protect release tags'" -and $r.Output -match 'ours: secret scanning: set') $r.Output
     $r = Invoke-Baseline @('-Repo', 'tags')
-    Check 'create: a tag ruleset does not count as protecting the default branch' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/tags/rulesets*') ($r.Changes -join '|')
+    Check 'create: a tag ruleset does not count as protecting the default branch' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/tags/rulesets*' -and $r.Body) ($r.Changes -join '|')
+    Check 'tags: a tag ruleset that refuses deletion but not update gets Protect release tags beside it' ($r.TagBody -and $r.Output -match "done: tags: create 'Protect release tags'") $r.Output
     $r = Invoke-Baseline @('-Repo', 'noPullRequest')
     Check 'create: a ruleset without a pull request rule does not count' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/noPullRequest/rulesets*') ($r.Changes -join '|')
 
@@ -362,8 +444,7 @@ try {
 
     $r = Invoke-Baseline @('-All', '-RequireChecks', 'auto')
     $each = foreach ($name in 'autoChecks', 'autoOther') {
-        $file = Join-Path $bin "posted-$name.json"
-        $body = if (Test-Path -LiteralPath $file) { Get-Content -Raw -LiteralPath $file | ConvertFrom-Json } else { $null }
+        $body = ($r.Bodies | Where-Object { $_.path -eq "repos/NCodeGroup/$name/rulesets" -and $_.body.name -eq 'Protect main' } | Select-Object -Last 1).body
         "${name}=$(@(($body.rules | Where-Object type -eq 'required_status_checks').parameters.required_status_checks.context) -join ',')"
     }
     Check 'auto: -All gives each repository the checks of its own pull request' (($each -join '|') -eq 'autoChecks=build-and-test,Commit attribution,flaky|autoOther=other-build' -and $r.Output -match 'fresh: skipped \(-RequireChecks auto found no pull request') "$($each -join '|') $($r.Output)"
@@ -371,6 +452,69 @@ try {
     # 7. -All.
     $r = Invoke-Baseline @('-All')
     Check 'all: skips archived repositories and forks' (($r.Output -notmatch 'old') -and ($r.Output -notmatch 'forked') -and ($r.Output -match 'done: fresh') -and ($r.Output -match 'owned: left alone')) $r.Output
+
+    # 7b. The release tags ruleset.
+    $r = Invoke-Baseline @('-Repo', 'fresh')
+    $tag = $r.TagBody
+    Check 'tags: Protect release tags is on v* tags only, active, and cannot be bypassed' ($tag -and $tag.target -eq 'tag' -and $tag.enforcement -eq 'active' -and (@($tag.conditions.ref_name.include) -join ',') -eq 'refs/tags/v*' -and @($tag.conditions.ref_name.exclude).Count -eq 0 -and @($tag.bypass_actors).Count -eq 0) ($tag | ConvertTo-Json -Depth 6 -Compress)
+    Check 'tags: refuses deleting and updating (moving) a tag, and nothing more, so a release can still be tagged' ((@($tag.rules.type) -join ',') -eq 'deletion,update') ($tag | ConvertTo-Json -Depth 6 -Compress)
+    Check 'tags: posted to the repository''s rulesets, and the run says so' (@($r.Bodies | Where-Object { $_.body.name -eq 'Protect release tags' -and $_.method -eq 'POST' -and $_.path -eq 'repos/NCodeGroup/fresh/rulesets' }).Count -eq 1 -and $r.Output -match [regex]::Escape("done: fresh: create 'Protect release tags' on v* tags: no deletion, no update (a tag is never moved), no bypass")) $r.Output
+    foreach ($case in @(
+            @{ Repo = 'tagsOurs'; Says = "tagsOurs: left alone (already has 'Protect release tags')"; What = 'a ruleset of that name, even one turned off' },
+            @{ Repo = 'tagsOwned'; Says = "tagsOwned: left alone ('release-tags' already refuses deleting and moving v* tags)"; What = 'an active tag ruleset on v* that refuses deletion and update' },
+            @{ Repo = 'tagsAll'; Says = "tagsAll: left alone ('every tag' already refuses deleting and moving v* tags)"; What = 'an active ruleset on every tag that refuses deletion and update' })) {
+        $r = Invoke-Baseline @('-Repo', $case.Repo)
+        Check "tags: leaves alone $($case.What)" (-not $r.TagBody -and $r.Output.Contains($case.Says) -and $r.Body -and $r.Output -match "done: $($case.Repo) \(main\)") $r.Output
+    }
+    $r = Invoke-Baseline @('-Repo', 'tagsInactive')
+    Check 'tags: a tag ruleset that is not active does not count' ($r.TagBody -and $r.Output -match "done: tagsInactive: create 'Protect release tags'") $r.Output
+    $r = Invoke-Baseline @('-Repo', 'tagsOurs', '-WhatIf')
+    Check 'tags: -WhatIf says it leaves an existing one alone, and changes nothing' ($r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("tagsOurs: left alone (already has 'Protect release tags')") -and $r.Output -notmatch "would: tagsOurs: create 'Protect release tags'") $r.Output
+
+    # 7c. The security settings.
+    $r = Invoke-Baseline @('-Repo', 'fresh')
+    $settings = @($r.Bodies | Where-Object { $_.path -ne 'repos/NCodeGroup/fresh/rulesets' })
+    $workflow = $settings | Where-Object { $_.path -eq 'repos/NCodeGroup/fresh/actions/permissions/workflow' }
+    Check 'security: the workflow token is read-only by default and Actions may not approve pull requests' ($workflow.method -eq 'PUT' -and $workflow.body.default_workflow_permissions -eq 'read' -and $workflow.body.can_approve_pull_request_reviews -eq $false -and @($workflow.body.PSObject.Properties).Count -eq 2) ($workflow | ConvertTo-Json -Depth 6 -Compress)
+    $analysis = @($settings | Where-Object { $_.path -eq 'repos/NCodeGroup/fresh' -and $_.method -eq 'PATCH' } | ForEach-Object { $_.body.security_and_analysis | ConvertTo-Json -Depth 6 -Compress })
+    Check 'security: secret scanning, then its push protection, each turned on in its own PATCH of the repository' (($analysis -join '|') -eq '{"secret_scanning":{"status":"enabled"}}|{"secret_scanning_push_protection":{"status":"enabled"}}') ($analysis -join '|')
+    Check 'security: Dependabot alerts, Dependabot security updates and private vulnerability reporting are turned on with a PUT and no body' (@($settings | Where-Object { $_.path -match 'vulnerability-alerts|automated-security-fixes|private-vulnerability-reporting' }).Count -eq 0 -and (@($r.Changes | Where-Object { $_ -like 'api -X PUT *' }) -join '|') -eq 'api -X PUT repos/NCodeGroup/fresh/vulnerability-alerts|api -X PUT repos/NCodeGroup/fresh/automated-security-fixes|api -X PUT repos/NCodeGroup/fresh/private-vulnerability-reporting') ($r.Changes -join '|')
+    foreach ($label in 'read-only workflow token, and Actions not approving pull requests', 'secret scanning', 'secret scanning push protection', 'Dependabot alerts', 'Dependabot security updates', 'private vulnerability reporting') {
+        Check "security: reports the setting as set ($label)" ($r.Output -match [regex]::Escape("fresh: ${label}: set")) $r.Output
+    }
+
+    $r = Invoke-Baseline @('-Repo', 'complete')
+    Check 'security: a repository with everything on already changes nothing' ($r.Changes.Count -eq 0) ($r.Changes -join '|')
+    foreach ($label in 'read-only workflow token, and Actions not approving pull requests', 'secret scanning', 'secret scanning push protection', 'Dependabot alerts', 'Dependabot security updates', 'private vulnerability reporting') {
+        Check "security: reports a setting that is on as already set ($label)" ($r.Output -match [regex]::Escape("complete: ${label}: already set")) $r.Output
+    }
+
+    $r = Invoke-Baseline @('-Repo', 'partial')
+    Check 'security: only the settings that are off are changed' ((@($r.Changes | Where-Object { $_ -notlike '*rulesets*' -and $_ -notlike '*default-setup*' -and $_ -notlike '*delete_branch_on_merge*' }) -join '|') -eq 'BODY PUT repos/NCodeGroup/partial/actions/permissions/workflow|BODY PATCH repos/NCodeGroup/partial|api -X PUT repos/NCodeGroup/partial/automated-security-fixes') ($r.Changes -join '|')
+    Check 'security: a read-only token that may still approve pull requests counts as off' ($r.Output -match [regex]::Escape('partial: read-only workflow token, and Actions not approving pull requests: set')) $r.Output
+    Check 'security: with secret scanning on, only its push protection is turned on' ((@($r.Bodies | Where-Object { $_.path -eq 'repos/NCodeGroup/partial' } | ForEach-Object { $_.body.security_and_analysis | ConvertTo-Json -Depth 6 -Compress }) -join '|') -eq '{"secret_scanning_push_protection":{"status":"enabled"}}' -and $r.Output -match 'partial: secret scanning: already set') $r.Output
+
+    $r = Invoke-Baseline @('-Repo', 'private')
+    Check 'security: secret scanning is left out of a repository that is not public, with the reason, since it would be paid there' (@($r.Bodies | Where-Object { $_.body.security_and_analysis }).Count -eq 0 -and $r.Output -match [regex]::Escape("private: secret scanning: not available (the repository isn't public") -and $r.Output -match [regex]::Escape("private: secret scanning push protection: not available (the repository isn't public")) $r.Output
+    Check 'security: a setting the API will not read is reported, with its answer, and not written' (($r.Changes -join '|') -notmatch 'private-vulnerability-reporting' -and $r.Output -match [regex]::Escape("private: private vulnerability reporting: not available (couldn't read it: HTTP 422: Stand-in refused to read it)")) "$($r.Changes -join '|') $($r.Output)"
+    Check 'security: an unavailable setting does not fail the run' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match "done: private \(main\)" -and $r.Output -match 'private: Dependabot security updates: set') $r.Output
+
+    $r = Invoke-Baseline @('-Repo', 'refused')
+    foreach ($case in @(
+            @{ Label = 'read-only workflow token, and Actions not approving pull requests'; Why = 'HTTP 409: Stand-in refused actions/permissions/workflow' },
+            @{ Label = 'secret scanning push protection'; Why = 'HTTP 422: Stand-in refused secret_scanning_push_protection' },
+            @{ Label = 'Dependabot security updates'; Why = 'HTTP 422: Stand-in refused automated-security-fixes' })) {
+        Check "security: a change the API refuses is reported as not available, with its answer ($($case.Label))" ($r.Output -match [regex]::Escape("refused: $($case.Label): not available ($($case.Why))")) $r.Output
+    }
+    Check 'security: after a refusal the next settings are still turned on, and the run does not fail' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and ($r.Changes -join '|') -match 'api -X PUT repos/NCodeGroup/refused/private-vulnerability-reporting' -and $r.Output -match 'refused: secret scanning: set' -and $r.Output -match 'refused: private vulnerability reporting: set') $r.Output
+
+    $r = Invoke-Baseline @('-Repo', 'workflowUnreadable')
+    Check 'security: a workflow token setting that cannot be read is reported and left as it is' (($r.Changes -join '|') -notmatch 'actions/permissions/workflow' -and $r.Output -match [regex]::Escape("workflowUnreadable: read-only workflow token, and Actions not approving pull requests: not available (couldn't read it: HTTP 403: Stand-in refused to read it)") -and $r.Output -match 'workflowUnreadable: secret scanning: set') "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'private', '-WhatIf')
+    Check 'security: -WhatIf reads the settings, reports them, and writes nothing' ($r.Changes.Count -eq 0 -and $r.Output -match 'private: Dependabot alerts: would set' -and $r.Output -match [regex]::Escape("private: secret scanning: not available (the repository isn't public")) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'setupFailed')
+    Check 'security: a repository skipped for its default branch gets no tag ruleset and no setting' ($r.Changes.Count -eq 0 -and $r.Output -notmatch 'Protect release tags|secret scanning') $r.Output
 
     # 8. Bad parameters.
     $r = Invoke-Baseline @()

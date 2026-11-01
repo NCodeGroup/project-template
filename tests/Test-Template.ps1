@@ -46,7 +46,8 @@ $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.vscode\settings.json', '.vscode\extensions.json'
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
+    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
     claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
@@ -56,8 +57,10 @@ $toolFiles = @{
     local = '.github\agents\local-implementer.agent.md', '.github\agents\hybrid-planner.agent.md',
         '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-local.prompt.md'
 }
-$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'Directory.Packages.props', 'global.json', '.claude\rules\csharp.md',
-    '.github\instructions\csharp.instructions.md'
+$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
+    '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md'
+# Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
+$libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
 $hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml'; gitlab = @('.gitlab-ci.yml') }
 $cases = @(
     @{ Name = 'dotnet'; Stack = 'dotnet'; Host = 'github' }
@@ -77,7 +80,10 @@ $cases = @(
     @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
     @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'MIT'; package_icon = 'icon.png' } }
+    @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'Apache-2.0' } }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
+    @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT' } }
+    @{ Name = 'python-claude'; Stack = 'python'; Host = 'github'; Tools = @('claude') }
 )
 if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
 $yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
@@ -108,13 +114,90 @@ foreach ($case in $cases) {
     else { Check "${name}: no .NET layer" ($present.Count -eq 0) ($present -join ', ') }
     if ($case.Stack -eq 'dotnet') {
         $buildProps = Get-Content -LiteralPath (Join-Path $dest 'build\ProjectTemplate.props') -Raw
-        $nugetOk = if ($case.Data.nuget_package) { $buildProps.Contains('<PackageLicenseExpression>MIT</PackageLicenseExpression>') -and $buildProps.Contains('<PackageIcon>icon.png</PackageIcon>') -and $buildProps.Contains('../icon.png') }
-            else { -not $buildProps.Contains('PackageLicenseExpression') }
+        $library = [bool]$case.Data.nuget_package
+        # Without an answer, an NCode Group library takes the template's own icon.
+        $icon = if ($case.Data.package_icon) { $case.Data.package_icon } else { 'NCodeGroup.png' }
+        $nugetOk = if ($library) { $buildProps.Contains("<PackageLicenseExpression>$($case.Data.package_license)</PackageLicenseExpression>") -and $buildProps.Contains("<PackageIcon>$icon</PackageIcon>") -and $buildProps.Contains("../$icon") -and -not $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
+            else { -not $buildProps.Contains('PackageLicenseExpression') -and $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
         Check "${name}: NuGet package settings" $nugetOk
+        Check "${name}: analyzers, banned APIs and test-project suppressions in the build settings" ($buildProps.Contains('<AnalysisLevel>latest-recommended</AnalysisLevel>') -and $buildProps.Contains('<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>') -and $buildProps.Contains('ProjectTemplate.globalconfig') -and $buildProps.Contains('BannedSymbols.txt') -and $buildProps.Contains('ProjectTemplate.Tests.globalconfig')) $buildProps
+        $packages = Get-Content -LiteralPath (Join-Path $dest 'Directory.Packages.props') -Raw
+        Check "${name}: every project references the banned API analyzer" ($packages -match '<GlobalPackageReference Include="Microsoft\.CodeAnalysis\.BannedApiAnalyzers" Version="\d+\.\d+\.\d+" />') $packages
+        Check "${name}: the null-forgiving operator is banned outside test projects" ($packages -match '<PackageVersion Include="Nullable\.Extended\.Analyzer" Version="\d+\.\d+\.\d+" />' -and $buildProps.Contains('<PackageReference Include="Nullable.Extended.Analyzer"') -and $buildProps.Contains("<ItemGroup Condition=`"!`$(MSBuildProjectName.EndsWith('.Tests'))`">")) "$packages | $buildProps"
+        $apiTracked = ($packages -match '<PackageVersion Include="Microsoft\.CodeAnalysis\.PublicApiAnalyzers" Version="\d+\.\d+\.\d+" />') -and $buildProps.Contains('<PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers"')
+        $versionPinned = $buildProps.Contains('Name="ProjectTemplatePinAssemblyVersion"')
+        Check "${name}: the public API is tracked and AssemblyVersion pinned to the major version only for a library" ($apiTracked -eq $library -and $versionPinned -eq $library) "$packages | $buildProps"
+        $agentsText = Get-Content -LiteralPath (Join-Path $dest 'AGENTS.md') -Raw
+        Check "${name}: AGENTS.md names the Definition of Done and gates each push with it" ($agentsText.Contains('- Definition of Done: `./build/dod.ps1`') -and $agentsText -match '(?m)^- gate: \./build/dod\.ps1 -Fast\r?$' -and ($agentsText.Contains('./build/Update-PublicApi.ps1') -eq $library)) $agentsText
+        $ciFile = if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' }
+        $ciText = Get-Content -LiteralPath (Join-Path $dest $ciFile) -Raw
+        Check "${name}: CI runs the Definition of Done for the default commands" ($ciText.Contains('build/dod.ps1') -and -not ($ciText -match '(?m)^\s+(- )?dotnet (build|test)\s*$')) $ciText
+        if ($case.Host -eq 'github') {
+            Check "${name}: CI caches NuGet packages, keyed on the restore's inputs" ($ciText.Contains('uses: actions/cache@') -and $ciText.Contains('path: ~/.nuget/packages') -and $ciText.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $ciText.Contains('${{ runner.os }}-nuget-' + "`n")) $ciText
+            Check "${name}: CI keeps the test results, after a failure too, and for a library the packages, as artifacts" ($ciText -match '(?m)^      - name: Upload test results\r?\n        if: always\(\)\r?\n        uses: actions/upload-artifact@[0-9a-f]{40} # v\d+\.\d+\.\d+\r?\n        with:\r?\n          name: test-results\r?\n          path: artifacts/test-results/\r?$' -and $ciText.Contains('if-no-files-found: ignore') -and $ciText.Contains('retention-days: 14') -and ($ciText.Contains('- name: Upload packages') -eq $library) -and -not $ciText.Contains('codecov')) $ciText
+        }
+        else {
+            Check "${name}: CI caches NuGet packages in the project folder, keyed on the package versions and the SDK" ($ciText.Contains('NUGET_PACKAGES: $CI_PROJECT_DIR/.nuget/packages') -and $ciText.Contains('files: [Directory.Packages.props, global.json]') -and $ciText.Contains('paths: [.nuget/packages/]')) $ciText
+            Check "${name}: CI keeps the test results and packages, after a failure too" ($ciText -match '(?m)^  artifacts:\r?\n    when: always\r?\n    paths: \[artifacts/test-results/, artifacts/packages/\]\r?\n    expire_in: 14 days\r?$') $ciText
+        }
+        $libraryWrong = @($libraryOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -ErrorAction SilentlyContinue) -ne $library })
+        Check "${name}: library decisions only for a library" (-not $libraryWrong) ($libraryWrong -join ', ')
+        $license = Join-Path $dest 'LICENSE.txt'
+        $licenseOk = switch ($case.Data.package_license) {
+            'MIT' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).StartsWith("MIT License`n`nCopyright (c) NCode Group`n") }
+            'Apache-2.0' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).Contains('Apache License') }
+            default { -not (Test-Path -LiteralPath $license) }
+        }
+        Check "${name}: LICENSE.txt for the license answered" $licenseOk
+        Check "${name}: COPYRIGHT.txt only for an Apache-2.0 library" ((Test-Path -LiteralPath (Join-Path $dest 'COPYRIGHT.txt')) -eq ($case.Data.package_license -eq 'Apache-2.0'))
+        $templateIcon = Join-Path $dest 'NCodeGroup.png'
+        Check "${name}: the template's icon only for a library that uses it" ((Test-Path -LiteralPath $templateIcon) -eq ($library -and $icon -eq 'NCodeGroup.png'))
+        $editorconfig = Get-Content -LiteralPath (Join-Path $dest '.editorconfig') -Raw
+        $header = if ($case.Data.package_license -eq 'Apache-2.0') { 'Licensed under the Apache License, Version 2.0' } elseif ($library) { "SPDX-License-Identifier: $($case.Data.package_license)" } else { "file_header_template = Copyright $([char]0xA9) NCode Group" }
+        Check "${name}: the C# file header for the license answered" ($editorconfig.Contains($header) -and $editorconfig.Contains('dotnet_diagnostic.IDE0073.severity = suggestion')) $editorconfig
+        $publish = Join-Path $dest '.github\workflows\publish.yml'
+        $wantsPublish = $library -and $case.Host -eq 'github'
+        Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)
+        if ($wantsPublish) {
+            $workflow = Get-Content -LiteralPath $publish -Raw
+            $uses = [regex]::Matches($workflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+            Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 5 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
+            Check "${name}: the publish workflow runs on a published release, holds no permission by default, and pushes through trusted publishing in the nuget environment" ($workflow.Contains('types: [published]') -and $workflow -match '(?m)^permissions: \{\}\r?$' -and $workflow.Contains('environment: nuget') -and $workflow.Contains('id-token: write') -and $workflow.Contains('uses: NuGet/login@') -and $workflow.Contains('persist-credentials: false') -and -not $workflow.Contains('secrets.')) $workflow
+            Check "${name}: the publish workflow packs only a tag whose commit the default branch holds" ($workflow.Contains('fetch-depth: 0') -and $workflow.Contains('DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}') -and $workflow.Contains('git merge-base --is-ancestor HEAD "origin/$env:DEFAULT_BRANCH"') -and $workflow.IndexOf('merge-base --is-ancestor') -lt $workflow.IndexOf('dotnet pack')) $workflow
+        }
     }
     $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
     $wrong = @($hostOnly[$case.Host] | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($hostOnly[$otherHost] | Where-Object { Test-Path (Join-Path $dest $_) })
     Check "${name}: $($case.Host) files only" (-not $wrong) ($wrong -join ', ')
+    $ciForIndex = Get-Content -LiteralPath (Join-Path $dest $(if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' })) -Raw
+    Check "${name}: CI checks the decision index" ($ciForIndex.Contains('.template/Test-AdrIndex.ps1')) $ciForIndex
+    # The repository's license: the license answer, or a library's package license from before that answer existed.
+    $licenseAnswer = if ($case.Data.license) { $case.Data.license } elseif ($case.Data.nuget_package) { $case.Data.package_license } else { '' }
+    $licensePath = Join-Path $dest 'LICENSE.txt'
+    $licenseText = if (Test-Path -LiteralPath $licensePath) { Get-Content -LiteralPath $licensePath -Raw } else { '' }
+    $licenseRight = switch ($licenseAnswer) { 'MIT' { $licenseText.StartsWith("MIT License`n`nCopyright (c) NCode Group`n") } 'Apache-2.0' { $licenseText.Contains('Apache License') } default { -not $licenseText } }
+    Check "${name}: LICENSE.txt for an MIT or Apache-2.0 license, on any stack" $licenseRight $licenseText
+    # The Copilot cloud agent's environment: only for a GitHub project that uses Copilot.
+    $copilotSetup = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
+    $wantsSetup = $case.Host -eq 'github' -and 'copilot' -in $tools
+    Check "${name}: the Copilot setup workflow only for a GitHub project that uses Copilot" ((Test-Path -LiteralPath $copilotSetup) -eq $wantsSetup) "exists=$(Test-Path -LiteralPath $copilotSetup) wanted=$wantsSetup"
+    if ($wantsSetup) {
+        $setup = Get-Content -LiteralPath $copilotSetup -Raw
+        $setupUses = [regex]::Matches($setup, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        $setupCheckouts = [regex]::Matches($setup, '(?m)^\s+- uses: actions/checkout@').Count
+        Check "${name}: the Copilot setup workflow has the one job Copilot runs, runs by hand and when it changes, reads only contents and stops at 59 minutes" ($setup -match '(?m)^jobs:\r?\n  copilot-setup-steps:\r?$' -and [regex]::Matches($setup, '(?m)^    runs-on: ').Count -eq 1 -and $setup.Contains('workflow_dispatch:') -and [regex]::Matches($setup, '(?m)^    paths: \[\.github/workflows/copilot-setup-steps\.yml\]\r?$').Count -eq 2 -and $setup -match '(?m)^    timeout-minutes: 59\r?$' -and $setup -match '(?m)^    permissions:\r?\n      contents: read\r?$' -and -not $setup.Contains(': write')) $setup
+        Check "${name}: the Copilot setup workflow pins each action to a full commit SHA, with its tag in a comment, and persists no credentials" ($setupUses.Count -gt 0 -and $setupCheckouts -eq 1 -and -not ($setupUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($setup, '(?m)^\s+persist-credentials: false\r?$').Count -eq $setupCheckouts) $setup
+        # Copilot ignores a job's defaults, so every run step names its shell.
+        Check "${name}: every step of the Copilot setup workflow that runs a command names its shell" ([regex]::Matches($setup, '(?m)^\s+run: ').Count -eq [regex]::Matches($setup, '(?m)^\s+shell: pwsh\r?$').Count -and -not $setup.Contains('defaults:')) $setup
+        $setupOk = switch ($case.Stack) {
+            'dotnet' { $setup.Contains('global-json-file: global.json') -and $setup.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $setup.Contains('run: dotnet tool restore') -and $setup.Contains("if: hashFiles('*.sln', '*.slnx') != ''") -and $setup.Contains('run: dotnet restore') }
+            'python' { $setup.Contains('uses: actions/setup-python@') -and $setup.Contains('$PSNativeCommandUseErrorActionPreference = $true') -and $setup.Contains('python -m pip install -r requirements.txt') }
+            'node' { $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }; $setup.Contains('uses: actions/setup-node@') -and $setup.Contains(@{ npm = 'run: npm ci'; pnpm = 'run: pnpm install --frozen-lockfile'; yarn = 'run: yarn install'; bun = 'run: bun install --frozen-lockfile' }[$pm]) }
+            'powershell' { $setup.Contains('Install-Module Pester, PSScriptAnalyzer') }
+            default { $setupUses.Count -eq 1 }
+        }
+        Check "${name}: the Copilot setup workflow installs what CI installs for the stack" $setupOk $setup
+    }
     # The code review caller: only for a GitHub project that asked for it, and never a GitLab one, which isn't asked.
     $reviewCaller = Join-Path $dest '.github\workflows\code-review.yml'
     $wantsReview = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
@@ -123,24 +206,37 @@ foreach ($case in $cases) {
         $caller = Get-Content -LiteralPath $reviewCaller -Raw
         $uses = [regex]::Matches($caller, '(?m)^\s+uses: NCodeGroup/code-review@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the code review caller pins a release's full commit SHA, with its tag in a comment" ($uses.Count -eq 1 -and $uses[0].Groups[1].Value -match '^[0-9a-f]{40}$' -and $uses[0].Groups[2].Value -match '^# v\d+\.\d+\.\d+$') ($uses | ForEach-Object Value)
-        Check "${name}: the code review caller runs from the default branch, in its environment, with no permissions by default" ($caller.Contains('pull_request_target:') -and $caller.Contains('environment: code-review') -and $caller -match '(?m)^permissions: \{\}?$' -and -not $caller.Contains('pull_request:')) $caller
+        Check "${name}: the code review caller runs from the default branch, in its environment, with no permissions by default" ($caller.Contains('pull_request_target:') -and $caller.Contains('environment: code-review') -and $caller -match '(?m)^permissions: \{\}?$' -and -not $caller.Contains('pull_request:')) $caller
         Check "${name}: the code review caller records outcomes when a pull request closes, without cancelling a review" ($caller -match '(?m)^\s+types: \[[^\]\r\n]*\bclosed\b[^\]\r\n]*\]\r?$' -and $caller.Contains("cancel-in-progress: `${{ github.event.action != 'closed' }}") -and $caller.Contains('issues: read')) $caller
         $checkouts = [regex]::Matches($caller, '(?m)^\s+uses: actions/checkout@').Count
         Check "${name}: the code review caller checks out only the default branch, without persisted credentials, and never the pull request's head" ($checkouts -eq 1 -and [regex]::Matches($caller, '(?m)^\s+persist-credentials: false\r?$').Count -eq 1 -and -not $caller.Contains('refs/pull/') -and -not $caller.Contains('head.sha')) $caller
         $answers = Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw
-        Check "${name}: the answer is recorded" ($answers -match '(?m)^code_review: true?$') $answers
+        Check "${name}: the answer is recorded" ($answers -match '(?m)^code_review: true?$') $answers
     }
     if ($case.Host -eq 'github') {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD') -and $ci.Contains('merge_group:') -and $ci.Contains('${{ github.event.pull_request.base.sha'))
         $checkouts = [regex]::Matches($ci, '(?m)^\s+- uses: actions/checkout@').Count
         Check "${name}: CI checkouts set persist-credentials false" ($checkouts -gt 0 -and [regex]::Matches($ci, '(?m)^\s+persist-credentials: false\r?$').Count -eq $checkouts) $ci
-        # One pull request per ecosystem: a filter on the update type would give each major update a pull request of its own.
         $dependabot = Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw
-        Check "${name}: Dependabot groups every update of an ecosystem, major ones included" (-not $dependabot.Contains('update-types') -and $dependabot.Contains('patterns: ["*"]')) $dependabot
+        # One pull request per ecosystem: a filter on the update type would give each major update a pull request of its own. The one
+        # update-types line is the .NET SDK's major ignore: a new .NET major is a planned migration.
+        $majorIgnores = [regex]::Matches($dependabot, '(?m)^    ignore:\r?\n      - dependency-name: "\*"\r?\n        update-types: \["version-update:semver-major"\]\r?$').Count
+        Check "${name}: Dependabot groups every update of an ecosystem, major ones included, and ignores only the .NET SDK's majors" ([regex]::Matches($dependabot, 'update-types').Count -eq $majorIgnores -and $majorIgnores -eq [int]($case.Stack -eq 'dotnet') -and $dependabot.Contains('patterns: ["*"]')) $dependabot
         # A version published minutes ago waits out the cooldown before it reaches the project.
         $ecosystems = [regex]::Matches($dependabot, '(?m)^  - package-ecosystem: ').Count
         Check "${name}: every Dependabot entry has a cooldown" ($ecosystems -gt 0 -and [regex]::Matches($dependabot, '(?m)^    cooldown:\r?\n      default-days: 3\r?$').Count -eq $ecosystems) $dependabot
+        Check "${name}: CI cancels a superseded run, but never a default-branch commit's or a merge queue entry's, whose group holds the commit SHA" ($ci.Contains('  group: ci-${{ github.ref }}-${{ (github.ref == format(''refs/heads/{0}'', github.event.repository.default_branch) || github.event_name == ''merge_group'') && github.sha || ''latest'' }}') -and $ci.Contains('  cancel-in-progress: ${{ github.ref != format(''refs/heads/{0}'', github.event.repository.default_branch) && github.event_name != ''merge_group'' }}')) $ci
+        Check "${name}: every CI job has a timeout, 30 minutes for the build" ([regex]::Matches($ci, '(?m)^    runs-on: ').Count -eq [regex]::Matches($ci, '(?m)^    timeout-minutes: \d+\r?$').Count -and $ci -match '(?m)^  build-and-test:\r?\n    runs-on: ubuntu-latest\r?\n    timeout-minutes: 30\r?$') $ci
+        $ciUses = [regex]::Matches($ci, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        Check "${name}: CI pins each action to a full commit SHA, with its tag in a comment" ($ciUses.Count -gt 0 -and -not ($ciUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $ci
+        # Security updates arrive as one pull request per ecosystem too.
+        $grouped = [regex]::Matches($dependabot, '(?m)^    groups:\r?$').Count
+        $securityGroups = [regex]::Matches($dependabot, '(?m)^      [\w-]+-security:\r?\n        applies-to: security-updates\r?\n        patterns: \["\*"\]\r?$').Count
+        Check "${name}: Dependabot gives security updates a group of their own in every grouped ecosystem" ($grouped -gt 0 -and $securityGroups -eq $grouped) $dependabot
+        if ($case.Stack -eq 'python') {
+            Check "${name}: a failed pip install fails the CI step" ($ci.Contains('$PSNativeCommandUseErrorActionPreference = $true') -and $ci.IndexOf('$PSNativeCommandUseErrorActionPreference') -lt $ci.IndexOf('python -m pip install')) $ci
+        }
         $notice = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\template-update.yml') -Raw
         $uses = [regex]::Matches($notice, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the template update workflow runs weekly and by hand, with only contents: read and issues: write, and runs .template/Get-TemplateUpdate.ps1" ($notice.Contains("- cron: '0 7 * * 1'") -and $notice.Contains('workflow_dispatch:') -and $notice -match '(?m)^permissions:\r?\n  contents: read\r?\n  issues: write\r?\n\r?\n' -and $notice.Contains('GH_TOKEN: ${{ github.token }}') -and $notice.Contains('run: ./.template/Get-TemplateUpdate.ps1')) $notice
@@ -168,7 +264,8 @@ foreach ($case in $cases) {
     $wrong = @($wanted | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($unwanted | Where-Object { Test-Path (Join-Path $dest $_) })
     Check "${name}: workflow files for $($tools -join ', ') only" (-not $wrong) ($wrong -join ', ')
 
-    $files = Get-ChildItem -LiteralPath $dest -Recurse -File -Force
+    # Text files: an image is copied byte for byte.
+    $files = Get-ChildItem -LiteralPath $dest -Recurse -File -Force | Where-Object Extension -NotIn '.png'
     $crlf = $files | Where-Object { $_.Extension -notin '.cmd', '.bat' -and [IO.File]::ReadAllText($_.FullName).Contains("`r") } | ForEach-Object Name
     Check "${name}: LF line endings" (-not $crlf) ($crlf -join ', ')
     $badEnd = $files | Where-Object { $b = [IO.File]::ReadAllBytes($_.FullName); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.FullName.Substring($dest.Length).TrimStart('\', '/') }
@@ -746,8 +843,71 @@ if (-not $SkipDotnetBuild) {
         if ($LASTEXITCODE -eq 0) { $output = dotnet test 2>&1 | Out-String }
         $errors = ($output -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | '
         Check 'dotnet: classlib and xunit in the root solution pass dotnet build and dotnet test' ($LASTEXITCODE -eq 0) $errors
+
+        # A malformed or mistyped entry in build/BannedSymbols.txt bans nothing, silently: a bare M:Type.Method matches only
+        # the overload without parameters. Each probe line calls one banned method or property overload, and every line
+        # must fail the build with RS0030; the type entries (Newtonsoft.Json) need the package, so they are checked by form.
+        $entries = @(Get-Content -LiteralPath 'build/BannedSymbols.txt' | Where-Object { $_ -and -not $_.StartsWith('#') })
+        $malformed = @($entries | Where-Object { $_ -notmatch '^[TMPFE]:[^;\s]+;\S.*$' })
+        Check 'dotnet: every banned symbol is a documentation ID with a message' ($entries.Count -gt 0 -and -not $malformed) ($malformed -join ' | ')
+        $calls = @(
+            '_ = t.Result;', '_ = vt.Result;', 'task.Wait();', 'task.Wait(1);', 'task.Wait(TimeSpan.Zero);', 'task.Wait(CancellationToken.None);',
+            'task.Wait(1, CancellationToken.None);', 'task.Wait(TimeSpan.Zero, CancellationToken.None);', 'Task.WaitAll(tasks);', 'Task.WaitAll(task);',
+            'Task.WaitAll(tasks, TimeSpan.Zero);', 'Task.WaitAll(tasks, 1);', 'Task.WaitAll(tasks, CancellationToken.None);', 'Task.WaitAll(tasks, 1, CancellationToken.None);',
+            'Task.WaitAll(new List<Task> { task }, CancellationToken.None);', 'Task.WaitAny(tasks);', 'Task.WaitAny(tasks, TimeSpan.Zero);', 'Task.WaitAny(tasks, CancellationToken.None);',
+            'Task.WaitAny(tasks, 1);', 'Task.WaitAny(tasks, 1, CancellationToken.None);', 'task.GetAwaiter().GetResult();', '_ = t.GetAwaiter().GetResult();',
+            'v.GetAwaiter().GetResult();', '_ = vt.GetAwaiter().GetResult();', 'JsonDocument.Parse("{}").Dispose();', 'JsonDocument.Parse(new ReadOnlyMemory<byte>([])).Dispose();',
+            'JsonDocument.Parse("{}".AsMemory()).Dispose();', 'JsonDocument.Parse(new ReadOnlySequence<byte>([])).Dispose();', 'JsonDocument.Parse(stream).Dispose();',
+            '_ = JsonDocument.ParseAsync(stream);', 'JsonDocument.ParseValue(ref reader).Dispose();', '_ = JsonDocument.TryParseValue(ref reader, out _);')
+        $methodEntries = @($entries | Where-Object { $_ -match '^[MP]:' })
+        $probe = "using System.Buffers;`nusing System.Text.Json;`n`nnamespace Demo;`n`ninternal static class BannedProbe`n{`n    public static void Run(Task task, Task<int> t, ValueTask<int> vt, ValueTask v, Stream stream)`n    {`n        Task[] tasks = [task];`n        var reader = new Utf8JsonReader(""{}""u8);`n" + (($calls | ForEach-Object { "        $_" }) -join "`n") + "`n    }`n}`n"
+        $first = 12
+        [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Demo/BannedProbe.cs'), $probe)
+        try { $probeOutput = dotnet build src/Demo 2>&1 | Out-String }
+        finally { [IO.File]::Delete((Join-Path (Get-Location) 'src/Demo/BannedProbe.cs')) }
+        $hitLines = @([regex]::Matches($probeOutput, 'BannedProbe\.cs\((\d+),\d+\): error RS0030') | ForEach-Object { [int]$_.Groups[1].Value } | Sort-Object -Unique)
+        $missed = @(for ($i = 0; $i -lt $calls.Count; $i++) { if (($first + $i) -notin $hitLines) { $calls[$i] } })
+        Check 'dotnet: every banned method and property overload fails the build with RS0030' ($calls.Count -eq $methodEntries.Count -and -not $missed) "$($calls.Count) probe calls for $($methodEntries.Count) method and property entries; not banned: $($missed -join ' ')"
+
+        # The null-forgiving operator fails the build outside test projects.
+        [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Demo/Forgiving.cs'), "namespace Demo;`n`ninternal static class Forgiving`n{`n    public static int Length(string? text) => text!.Length;`n}`n")
+        try { $forgivingOutput = dotnet build src/Demo 2>&1 | Out-String }
+        finally { [IO.File]::Delete((Join-Path (Get-Location) 'src/Demo/Forgiving.cs')) }
+        Check 'dotnet: the null-forgiving operator fails the build' ($forgivingOutput -match 'Forgiving\.cs\(\d+,\d+\): error NX000\d') (($forgivingOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ')
+
+        $dodOutput = pwsh -NoProfile -File build/dod.ps1 2>&1 | Out-String
+        Check 'dotnet: build/dod.ps1 passes and says so' ($LASTEXITCODE -eq 0 -and $dodOutput.TrimEnd().EndsWith('Definition of Done: PASSED') -and $dodOutput.Contains('== Decisions') -and $dodOutput.Contains('== Test') -and -not $dodOutput.Contains('== Pack')) $dodOutput
     }
     finally { Pop-Location }
+
+    # A library: its public API is recorded and checked, the Definition of Done packs it, and AssemblyVersion follows the major version.
+    $libraryDest = Join-Path $Work 'dotnet-library-apache'
+    if (Test-Path -LiteralPath $libraryDest) {
+        Push-Location $libraryDest
+        try {
+            dotnet new classlib -o src/Greetings | Out-Null
+            [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Greetings/Class1.cs'), "namespace Greetings;`n`n/// <summary>`n/// A greeter.`n/// </summary>`npublic sealed class Greeter`n{`n    /// <summary>`n    /// Greets someone.`n    /// </summary>`n    /// <param name=`"name`">Who to greet.</param>`n    /// <returns>The greeting.</returns>`n    public static string Greet(string name) => `$`"Hello, {name}!`";`n}`n")
+            dotnet new sln | Out-Null
+            dotnet sln add src/Greetings | Out-Null
+            $apiOutput = pwsh -NoProfile -File build/Update-PublicApi.ps1 2>&1 | Out-String
+            $unshipped = Join-Path (Get-Location) 'src/Greetings/PublicAPI.Unshipped.txt'
+            $apiText = if (Test-Path -LiteralPath $unshipped) { [IO.File]::ReadAllText($unshipped) } else { '' }
+            Check 'dotnet-library-apache: Update-PublicApi.ps1 creates the files and records the public API' ($LASTEXITCODE -eq 0 -and $apiText.StartsWith("#nullable enable`n") -and $apiText.Contains('static Greetings.Greeter.Greet(string! name) -> string!') -and (Test-Path -LiteralPath (Join-Path (Get-Location) 'src/Greetings/PublicAPI.Shipped.txt'))) "$apiOutput | $apiText"
+            $libDod = pwsh -NoProfile -File build/dod.ps1 2>&1 | Out-String
+            $packed = @(Get-ChildItem -LiteralPath (Join-Path (Get-Location) 'artifacts/packages') -Filter 'Greetings.*' -ErrorAction SilentlyContinue | ForEach-Object Name)
+            Check 'dotnet-library-apache: build/dod.ps1 builds, tests and packs the library with its symbols' ($LASTEXITCODE -eq 0 -and $libDod.Contains('== Pack') -and $packed -contains 'Greetings.1.0.0.nupkg' -and $packed -contains 'Greetings.1.0.0.snupkg') "$($packed -join ', ') | $libDod"
+            [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Greetings/Extra.cs'), "namespace Greetings;`n`n/// <summary>`n/// Not recorded.`n/// </summary>`npublic sealed class Extra`n{`n}`n")
+            $unrecorded = dotnet build src/Greetings 2>&1 | Out-String
+            [IO.File]::Delete((Join-Path (Get-Location) 'src/Greetings/Extra.cs'))
+            Check 'dotnet-library-apache: a public type the API files do not record fails the build' ($unrecorded -match "error RS0016: Symbol 'Greetings\.Extra'") (($unrecorded -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ')
+            dotnet build src/Greetings --configuration Release -p:Version=2.5.0-rc.1 2>&1 | Out-Null
+            $dll = Join-Path (Get-Location) 'src/Greetings/bin/Release/net10.0/Greetings.dll'
+            $assemblyVersion = if (Test-Path -LiteralPath $dll) { "$([Reflection.AssemblyName]::GetAssemblyName($dll).Version)" } else { 'missing' }
+            $fileVersion = if (Test-Path -LiteralPath $dll) { [Diagnostics.FileVersionInfo]::GetVersionInfo($dll).FileVersion } else { 'missing' }
+            Check 'dotnet-library-apache: AssemblyVersion moves only with the major version, FileVersion keeps the exact one' ($assemblyVersion -eq '2.0.0.0' -and $fileVersion -eq '2.5.0') "AssemblyVersion=$assemblyVersion FileVersion=$fileVersion"
+        }
+        finally { Pop-Location }
+    }
 }
 
 ''

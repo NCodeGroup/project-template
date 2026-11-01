@@ -17,6 +17,17 @@ _skip_if_exists:
   - README.md
   - Directory.Build.props
   - .github/workflows/code-review.yml
+  - .github/workflows/publish.yml
+  - docs/decisions/README.md
+  - docs/decisions/0000-template.md
+  - LICENSE.txt
+  - COPYRIGHT.txt
+  - NCodeGroup.png
+  - SECURITY.md
+  - CONTRIBUTING.md
+  - docs/README.md
+  - docs/metrics.md
+  - docs/designs/_template.md
 _merged_files:
   - .gitignore
   - .gitattributes
@@ -25,10 +36,12 @@ _merged_files:
   - .vscode/extensions.json
   - .claude/settings.json
   - .github/workflows/ci.yml
+  - .github/workflows/copilot-setup-steps.yml
   - .github/dependabot.yml
   - .gitlab-ci.yml
   - Directory.Packages.props
   - global.json
+  - nuget.config
 
 # The workflow files of tools the project doesn't use; an empty pattern excludes nothing.
 # Each pattern reads its answer through a default or an `is defined` test, because an update renders the old version's files with these patterns before the project has that answer.
@@ -91,11 +104,16 @@ code_review:
   default: false
   when: "{{ git_host == 'github' }}"
 
+license:
+  type: str
+  help: "SPDX license expression for the repository, such as MIT or Apache-2.0, or blank for none; MIT and Apache-2.0 get their LICENSE.txt written"
+  default: ""
+
 author_name:
   type: str
-  help: Author and copyright holder for .NET assembly and package metadata
+  help: Author and copyright holder for the license and for .NET assembly and package metadata
   default: NCode Group
-  when: "{{ stack == 'dotnet' }}"
+  when: "{{ stack == 'dotnet' or license }}"
 
 nuget_package:
   type: bool
@@ -106,13 +124,14 @@ nuget_package:
 package_license:
   type: str
   help: SPDX license expression for the packages, such as MIT or Apache-2.0
+  default: "{{ license | default('') }}"
   when: "{{ stack == 'dotnet' and nuget_package }}"
   validator: "{% if not package_license.strip() %}Required for a NuGet package{% endif %}"
 
 package_icon:
   type: str
-  help: "Package icon: a PNG file at the repository root, or blank for none"
-  default: ""
+  help: "Package icon: a PNG file at the repository root, or blank for none. NCodeGroup.png is the template's own, written for you"
+  default: "{% if author_name == 'NCode Group' %}NCodeGroup.png{% endif %}"
   when: "{{ stack == 'dotnet' and nuget_package }}"
   validator: '{% if "/" in package_icon or "\\" in package_icon %}A file name at the repository root, without a folder{% endif %}'
 
@@ -145,6 +164,13 @@ test_command:
     {%- elif stack == 'node' -%}{{ package_manager | default('npm') }} run test
     {%- elif stack == 'powershell' -%}Invoke-Pester -CI
     {%- endif -%}
+
+# Computed, never asked or recorded: the repository's license — the license answer, or for a project from before it, a
+# library's package license.
+repository_license:
+  type: str
+  when: false
+  default: "{{ license | default('') or (package_license | default('') if nuget_package | default(false) else '') }}"
 
 project_owned_files:
   type: yaml

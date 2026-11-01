@@ -137,13 +137,24 @@ try {
         if ((Test-Path -LiteralPath Directory.Packages.props) -and -not $originals.ContainsKey('Directory.Packages.props')) {
             foreach ($line in @(Move-PackageVersionsToCentral $project)) { $report.Add("  $line") }
         }
+        # A repository that already has a license under another name keeps it alone, without the template's LICENSE.txt beside it.
+        $rootFiles = @(git ls-tree --name-only $head)
+        $ownLicense = @($rootFiles | Where-Object { $_ -match '^(LICEN[CS]E|COPYING)(\.\w+)?$' -and $_ -ne 'LICENSE.txt' })
+        if ($ownLicense) {
+            foreach ($p in 'LICENSE.txt', 'COPYRIGHT.txt') {
+                if ((Test-Path -LiteralPath $p) -and $p -notin $rootFiles) {
+                    Remove-Item -LiteralPath $p
+                    $report.Add("  Skipped $p $([char]0x2014) the repository has its own license, $($ownLicense -join ', ')")
+                }
+            }
+        }
 
         $followUps = [Collections.Generic.List[string]]::new()
         if (Test-Path -LiteralPath .github/copilot-instructions.md) { $followUps.Add('fold .github/copilot-instructions.md into AGENTS.md or a file it lists') }
         # A ci.yml the repository already had was kept, so its other workflows are not in conflict with the template's.
         if ((Test-Path -LiteralPath .github/workflows/ci.yml) -and -not $originals.ContainsKey('.github/workflows/ci.yml')) {
-            # code-review.yml is the template's own workflow for the review bot, separate from CI by design: nothing to reconcile.
-            foreach ($f in Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Extension -in '.yml', '.yaml' -and $_.Name -notin 'ci.yml', 'code-review.yml' } | Sort-Object Name) {
+            # code-review.yml and publish.yml are the template's own workflows for the review bot and for publishing packages, separate from CI by design: nothing to reconcile.
+            foreach ($f in Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Extension -in '.yml', '.yaml' -and $_.Name -notin 'ci.yml', 'code-review.yml', 'publish.yml' } | Sort-Object Name) {
                 $followUps.Add("reconcile .github/workflows/$($f.Name) with ci.yml")
             }
         }
@@ -161,13 +172,15 @@ try {
         $backfill = Get-ChangelogBackfill
         if ($backfill.Range -ne '-') { $followUps.Add("backfill $($backfill.File) from the releases $($backfill.Range)") }
         if ((Get-Answer 'stack') -eq 'dotnet') {
-            $otherInstructions = @(Get-ChildItem -LiteralPath .github/instructions -Filter '*.instructions.md' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin 'csharp.instructions.md', 'project-template.instructions.md' } | Sort-Object Name | ForEach-Object Name)
+            $otherInstructions = @(Get-ChildItem -LiteralPath .github/instructions -Filter '*.instructions.md' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin 'csharp.instructions.md', 'csharp-tests.instructions.md', 'project-template.instructions.md' } | Sort-Object Name | ForEach-Object Name)
             if ($otherInstructions.Count) { $followUps.Add("reconcile .github/instructions/csharp.instructions.md with $($otherInstructions -join ', ')") }
             # The template's build settings are a new import, so each list of the build's files must admit them.
             if (Test-Path -LiteralPath build/ProjectTemplate.props) {
                 $buildLists = @(Get-BuildFileList $project)
                 if ($buildLists.Count) { $followUps.Add("re-admit Directory.Build.props and build/ProjectTemplate.props, which it imports, in each list of the build's files: $($buildLists -join ', ')") }
             }
+            # A library's build fails on a public symbol its PublicAPI.*.txt files don't list; the verification below records the API as it is.
+            if ($NoVerify -and (Test-Path -LiteralPath build/Update-PublicApi.ps1)) { $followUps.Add('record each packable project''s public API with ./build/Update-PublicApi.ps1, which the build now checks') }
         }
 
         git add -A
@@ -218,6 +231,18 @@ try {
 
     ''
     if (-not $NoVerify) {
+        # A library's build fails on a public symbol its PublicAPI.*.txt files don't list: record the API as it is now, the baseline the next changes are reviewed against.
+        if (Test-Path -LiteralPath build/Update-PublicApi.ps1) {
+            'Running ./build/Update-PublicApi.ps1'
+            $apiOutput = pwsh -NoProfile -File build/Update-PublicApi.ps1 2>&1 | Out-String
+            if ($LASTEXITCODE) {
+                $apiOutput.TrimEnd()
+                'Recording the public API failed after adopting. The adoption is staged, not committed: fix it and commit, or abandon it with: git reset --hard; git clean -fd'
+                exit 1
+            }
+            @($apiOutput -split '\r?\n' | Where-Object { $_ -ne '' }) | ForEach-Object { "  $_" }
+            git add -A
+        }
         foreach ($key in 'build_command', 'test_command') {
             $command = Get-Answer $key
             if ($null -eq $command -or $command -in '', "''", '""', 'null') { continue }

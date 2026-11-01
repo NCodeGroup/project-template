@@ -75,7 +75,7 @@ Check 'adopt: .copier-answers.yml records project_owned_files' ([IO.File]::ReadA
 Check 'adopt: one commit' ((git -C $repo log -1 --format=%s) -eq 'Adopt project-template v0.1.0')
 
 Push-Location (Join-Path $tpl 'template')
-try { Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "    runs-on: ubuntu-latest`n    defaults:" "    runs-on: ubuntu-latest`n    timeout-minutes: 30`n    defaults:" }
+try { Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "    runs-on: ubuntu-latest`n    timeout-minutes: 30`n    defaults:" "    runs-on: ubuntu-latest`n    timeout-minutes: 45`n    defaults:" }
 finally { Pop-Location }
 Push-Location $tpl
 try { Invoke-Git commit -q -am 'Change ci.yml'; Invoke-Git tag v0.2.0 }
@@ -91,7 +91,7 @@ try {
     }
     catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
     $updateOut = $lines -join "`n"
-    Check "update: shows the template's ci.yml change and leaves the file alone" (($exitCode -eq 0) -and ([IO.File]::ReadAllText($ci) -eq $ownCi) -and ($updateOut -match '(?m)^  \.github/workflows/ci\.yml:\r?$') -and $updateOut.Contains('+    timeout-minutes: 30')) "exit $exitCode`n$updateOut"
+    Check "update: shows the template's ci.yml change and leaves the file alone" (($exitCode -eq 0) -and ([IO.File]::ReadAllText($ci) -eq $ownCi) -and ($updateOut -match '(?m)^  \.github/workflows/ci\.yml:\r?$') -and $updateOut.Contains('+    timeout-minutes: 45')) "exit $exitCode`n$updateOut"
 }
 finally { Pop-Location }
 ''
