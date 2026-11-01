@@ -139,7 +139,7 @@ try {
         foreach ($line in $message) {
             foreach ($pattern in $attributionLines) {
                 if ($line -match $pattern) {
-                    $findings.Add("${prefix}: message has agent attribution: $($line.Trim())")
+                    $findings.Add("${prefix}: message has agent attribution: $(($line -replace '[\x00-\x1F\x7F]', ' ').Trim())")
                     break
                 }
             }
@@ -153,7 +153,7 @@ try {
             foreach ($line in ($entry.Value -split '\r?\n')) {
                 foreach ($pattern in $attributionLines) {
                     if ($line -match $pattern) {
-                        $requestFindings.Add("$requestLabel $($entry.Key): has agent attribution: $($line.Trim())")
+                        $requestFindings.Add("$requestLabel $($entry.Key): has agent attribution: $(($line -replace '[\x00-\x1F\x7F]', ' ').Trim())")
                         break
                     }
                 }
