@@ -46,18 +46,8 @@ function Invoke-Git {
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 $tpl = Join-Path $Work 'template-repo'
-New-Item -ItemType Directory -Force $tpl | Out-Null
-Get-ChildItem -LiteralPath $repoRoot -Force | Where-Object Name -NotIn '.git', '.claude' | Copy-Item -Destination $tpl -Recurse -Force
-# Claude Code's plan worktrees are other checkouts, not part of the snapshot.
-$claudeCopy = New-Item -ItemType Directory -Force (Join-Path $tpl '.claude')
-Get-ChildItem -LiteralPath (Join-Path $repoRoot '.claude') -Force | Where-Object Name -NE 'worktrees' | Copy-Item -Destination $claudeCopy.FullName -Recurse -Force
-Push-Location $tpl
-try {
-    # v0.1.0 has the secrets rule the template had before v0.15.0, which v0.2.0 changes back.
-    Edit-File template/.gitignore.jinja "`n/secrets/`n" "`nsecrets/`n"
-    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0
-}
-finally { Pop-Location }
+# v0.1.0 has the secrets rule the template had before v0.15.0, which v0.2.0 changes back.
+$null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl -BeforeCommit { Edit-File template/.gitignore.jinja "`n/secrets/`n" "`nsecrets/`n" }
 
 Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
 $marker = "# Kept from this repository's own .gitignore when it adopted the project template"

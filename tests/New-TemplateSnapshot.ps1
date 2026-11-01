@@ -10,11 +10,15 @@
 .PARAMETER Path
     The folder to build the snapshot in.
 
+.PARAMETER BeforeCommit
+    A script block run in the snapshot folder before it is committed, to change the snapshot's v0.1.0, such as an
+    older version of a template file.
+
 .EXAMPLE
     $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') (Join-Path $Work 'template-repo')
 #>
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Path)
+param([Parameter(Mandatory)][string]$Path, [scriptblock]$BeforeCommit)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
@@ -29,7 +33,7 @@ Get-ChildItem -LiteralPath $repoRoot -Force | Where-Object Name -NotIn '.git', '
 $claudeCopy = New-Item -ItemType Directory -Force (Join-Path $Path '.claude')
 Get-ChildItem -LiteralPath (Join-Path $repoRoot '.claude') -Force | Where-Object Name -NE 'worktrees' | Copy-Item -Destination $claudeCopy.FullName -Recurse -Force
 Push-Location $Path
-try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
+try { if ($BeforeCommit) { $null = & $BeforeCommit }; Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
 finally { Pop-Location }
 # Serve the snapshot as a host does: over a URL with partial clones allowed, so a --filter=blob:none clone really is blob-filtered; Git ignores the filter for a plain path.
 Invoke-Git -C $Path config uploadpack.allowFilter true
