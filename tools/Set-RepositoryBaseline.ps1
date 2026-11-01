@@ -33,7 +33,11 @@
     whatever its state, is left alone, and so is an active tag ruleset on v* tags that already refuses both deletion and
     update. An archived repository and a fork are skipped, and so is a repository whose default branch it skips with a
     reason (CodeQL's default setup can't be read, or -RequireChecks auto finds nothing to require): it changes nothing
-    there.
+    there. A "Protect main" ruleset that already has a code-scanning rule, such as one an older version of this script
+    made, keeps that rule and its alert thresholds, and its repository's CodeQL suite is never switched: the script
+    reads the default setup and, when it runs a suite other than extended, prints a notice with the command that
+    switches it by hand, which can start blocking merges on new alerts. A setup it can't read is reported, and the run
+    goes on.
 
     Each security setting, and auto-merge, is read first and printed as set, already set, would set (-WhatIf) or not
     available, with the reason, and none costs money. Secret scanning and its push protection are left out of a
@@ -227,6 +231,24 @@ function Set-Baseline([string]$Name) {
     Set-AutoMerge $Name $info
 }
 
+# A "Protect main" ruleset that already has a code-scanning rule keeps it and its thresholds. Its repository's default
+# setup is never switched (the extended suite can raise new alerts the rule would block merges on), so this only reads
+# the setup and prints a notice; it changes nothing.
+function Write-SuiteNotice([string]$Name) {
+    $setup = Invoke-HostApi gh "repos/$Owner/$Name/code-scanning/default-setup"
+    if ($setup.Status -eq 404) { return }
+    $answer = $null
+    if ($setup.Status -eq 200) { try { $answer = $setup.Body | ConvertFrom-Json -ErrorAction Stop } catch { $answer = $null } }
+    if (-not $answer) {
+        $why = if ($null -eq $setup.Status) { 'no response' } elseif ($setup.Status -eq 200) { 'an answer that is not JSON' } else { "HTTP $($setup.Status)" }
+        Write-Host "${Name}: couldn't read CodeQL's default setup to check its query suite ($why); its ruleset's code-scanning rule is kept as it is"
+        return
+    }
+    if ($answer.state -ne 'configured' -or $answer.query_suite -eq 'extended') { return }
+    $suite = if ("$($answer.query_suite)") { "the $($answer.query_suite) query suite" } else { 'a query suite it did not report' }
+    Write-Host "${Name}: notice: CodeQL's default setup runs $suite, not the extended one the baseline uses, and this script doesn't switch a repository whose ruleset already has a code-scanning rule. To switch it by hand: gh api -X PATCH repos/$Owner/$Name/code-scanning/default-setup -f query_suite=extended. The extended suite can raise new alerts, and the ruleset's code-scanning rule may then block merges on them."
+}
+
 # The default branch's ruleset, the suite switch and delete-branch-on-merge. Returns $false when it skips the
 # repository, which then changes nothing, and $true otherwise: done, shown by -WhatIf, or left alone.
 function Set-BranchRuleset {
@@ -242,7 +264,11 @@ function Set-BranchRuleset {
     }
 
     # A ruleset of this name that exists already is changed only when -RequireChecks asks for new checks.
-    if ($own -and -not $RequireChecks.Count) { Write-Host "${Name}: left alone (already has '$rulesetName')"; return $true }
+    if ($own -and -not $RequireChecks.Count) {
+        Write-Host "${Name}: left alone (already has '$rulesetName')"
+        if ($own.rules.type -contains 'code_scanning') { Write-SuiteNotice $Name }
+        return $true
+    }
     $checks = @($RequireChecks)
     if ($autoChecks) {
         $found = Get-PassingChecks $Name $Branch
@@ -283,6 +309,7 @@ function Set-BranchRuleset {
             return $false
         }
     }
+    else { Write-SuiteNotice $Name }
 
     $rules = @(
         @{ type = 'deletion' },
