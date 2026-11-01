@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.50.2] - 2026-11-01
+
+### Fixed
+
+- The `Commit attribution` check also reads a pull request's title and description, which GitHub's squash merge, with the repository's commit message set to "Pull request title and description", makes the message of the commit on the default branch: a `Co-authored-by:` line naming an AI agent, a `Claude-Session:` line or a "Generated with Claude Code" line there fails the pull request, where it used to pass and fail only on the push to the default branch. `.template/Test-CommitAttribution.ps1` takes them as `-PullRequestTitle` and `-PullRequestBody`, and such a finding says to edit them, not to rebase. `ci.yml` passes them through the environment and also runs when a pull request is edited, so a description changed after the last push is checked again; `.gitlab-ci.yml` passes the merge request's, though GitLab gives CI only the first 2700 characters of the description and starts no pipeline on an edit. ADR-0002, the project instructions, `CONTRIBUTING.md` and the README say so ([#201](https://github.com/NCodeGroup/project-template/issues/201)).
+
+### Changed
+
+- The merge method has a decision record of its own, ADR-0013, "Pull requests merge with a merge commit or by rebasing". It keeps a merge commit or a rebase as the default, and ADR-0004, ADR-0005 and ADR-0006 refer to it instead of each stating it, so a project that squash-merges, such as through a merge queue, supersedes ADR-0013 alone; the record names the required `Commit attribution` check as the guard such a project needs. ADR-0005 accepts a merge queue's run on the merged result in place of a branch up to date with the default branch ([#200](https://github.com/NCodeGroup/project-template/issues/200), [ADR-0013](template/docs/decisions/project-template/0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md)).
+
 ## [0.50.1] - 2026-11-01
 
 ### Fixed
@@ -773,7 +783,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.50.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.50.2...HEAD
+[0.50.2]: https://github.com/NCodeGroup/project-template/compare/v0.50.1...v0.50.2
 [0.50.1]: https://github.com/NCodeGroup/project-template/compare/v0.50.0...v0.50.1
 [0.50.0]: https://github.com/NCodeGroup/project-template/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/NCodeGroup/project-template/compare/v0.48.4...v0.49.0
