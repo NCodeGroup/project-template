@@ -236,6 +236,8 @@ $repos = @{
     oursScanExtended = New-Repo -Suite 'extended' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
     oursScanUnreported = New-Repo -Suite '' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
     oursScanUnreadable = New-Repo -CodeQL 'fail:403' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
+    oursScanNoResponse = New-Repo -CodeQL 'fail:none' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
+    oursScanNotJson = New-Repo -CodeQL 'raw:<html>Bad Gateway</html>' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
     oursScanLoose = New-Repo -Rulesets @($looseRuleset)
     legacy = New-Repo -Branch master
     owned = New-Repo -Rulesets @((New-Ruleset 'main'))
@@ -418,6 +420,10 @@ try {
     Check 'suite: a setup that names no suite gets the notice' ($r.Output.Contains('oursScanUnreported: notice: CodeQL''s default setup runs a query suite it did not report') -and ($r.Changes -join '|') -notmatch 'default-setup') "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'oursScanUnreadable')
     Check 'suite: a setup it can''t read is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("oursScanUnreadable: couldn't read CodeQL's default setup to check its query suite (HTTP 403)") -and $r.Output -notmatch 'FAILED' -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    foreach ($case in @(@('oursScanNoResponse', 'no response'), @('oursScanNotJson', 'an answer that is not JSON'))) {
+        $r = Invoke-Baseline @('-Repo', $case[0])
+        Check "suite: a setup read that gets $($case[1]) is reported with that reason, and the run goes on" ($r.ExitCode -eq 0 -and $r.Output.Contains("$($case[0]): couldn't read CodeQL's default setup to check its query suite ($($case[1]))") -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/101' -and $r.TagBody) "$($r.ExitCode) $($r.Changes -join '|') $($r.Output)"
+    }
     $r = Invoke-Baseline @('-Repo', 'oursScanLoose', '-RequireChecks', 'test')
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
     Check 'suite: -RequireChecks keeps the ruleset''s own code-scanning thresholds and doesn''t switch the suite' ((($r.Changes -join '|') -like '*BODY PUT repos/NCodeGroup/oursScanLoose/rulesets/101*') -and ($r.Changes -join '|') -notmatch 'default-setup' -and ($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors') -and ($scan[0].security_alerts_threshold -eq 'high_or_higher') -and $r.Output.Contains('oursScanLoose: notice:')) "$($r.Changes -join '|') $($r.Output)"
