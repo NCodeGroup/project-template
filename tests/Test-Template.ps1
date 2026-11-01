@@ -244,6 +244,9 @@ foreach ($case in $cases) {
         $grouped = [regex]::Matches($dependabot, '(?m)^    groups:\r?$').Count
         $securityGroups = [regex]::Matches($dependabot, '(?m)^      [\w-]+-security:\r?\n        applies-to: security-updates\r?\n        patterns: \["\*"\]\r?$').Count
         Check "${name}: Dependabot gives security updates a group of their own in every grouped ecosystem" ($grouped -gt 0 -and $securityGroups -eq $grouped) $dependabot
+        # Dependabot puts an update in the first group that matches it: NCode Review's group has to come before the
+        # catch-all one, so its bump arrives alone, as code-review-auto-merge.yml needs.
+        Check "${name}: Dependabot gives the NCode Review action a group of its own, ahead of the catch-all actions group" ($dependabot -match '(?m)^  - package-ecosystem: github-actions\r?\n(?:    .*\r?\n)*?    groups:\r?\n(?:      #.*\r?\n)*      ncode-review:\r?\n        patterns: \["NCodeGroup/code-review"\]\r?\n      github-actions:\r?\n        patterns: \["\*"\]\r?$' -and [regex]::Matches($dependabot, 'NCodeGroup/code-review"').Count -eq 1) $dependabot
         if ($case.Stack -eq 'python') {
             Check "${name}: a failed pip install fails the CI step" ($ci.Contains('$PSNativeCommandUseErrorActionPreference = $true') -and $ci.IndexOf('$PSNativeCommandUseErrorActionPreference') -lt $ci.IndexOf('python -m pip install')) $ci
         }

@@ -3,9 +3,10 @@ name: Code review auto-merge
 # Turns on auto-merge, with a merge commit, for a Dependabot pull request that only moves the NCode Review action
 # (NCodeGroup/code-review, which .github/workflows/code-review.yml calls) to a newer minor or patch release: every line
 # it changes is in .github/workflows and is that action's uses: line, pinned to a release's full commit SHA with its tag
-# in a comment. The pull request then merges by itself once the checks the default branch requires pass. A major
-# release, which may change the inputs the caller passes, a pull request that updates other dependencies too, and one
-# that changes any other line wait for you. Auto-merge has to be allowed in the repository's settings, which
+# in a comment. The ncode-review group in .github/dependabot.yml gives that bump a pull request of its own, apart from
+# the other actions' updates. The pull request then merges by itself once the checks the default branch requires pass.
+# A major release, which may change the inputs the caller passes, a pull request that updates other dependencies too,
+# and one that changes any other line wait for you. Auto-merge has to be allowed in the repository's settings, which
 # tools/Set-RepositoryBaseline.ps1 in NCodeGroup/project-template turns on. A project without code-review.yml gets no
 # such pull request, so this never merges anything there.
 #
