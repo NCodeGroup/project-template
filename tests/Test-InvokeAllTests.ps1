@@ -5,12 +5,12 @@
 .DESCRIPTION
     Writes fixture folders of tiny Test-*.ps1 scripts, runs tests/Invoke-AllTests.ps1 on each in a child process, and
     checks the result lines, the summary line, the exit code, the logs and the -SkipDotnetBuild forwarding, that suites
-    run at the same time and print in name order, not the order they finish, and that -Serial and -ThrottleLimit 1 run
-    one at a time, and that two
-    runs at once without -Work log to folders of their own, deleted when the run passes. Also checks that
-    tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that every suite with -Work defaults to a
-    folder of its own, kept on a failure and deleted through it on a pass, and, through a trap line, kept with its path
-    printed when the suite stops with an error. Prints PASS or FAIL per check and exits 1 on any failure.
+    run at the same time at -ThrottleLimit 2 and print in name order, not the order they finish, that -Serial and
+    -ThrottleLimit 1 run one at a time, and that two runs at once without -Work log to folders of their own, deleted
+    when the run passes. Also checks that tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that
+    every suite with -Work defaults to a folder of its own, kept on a failure and deleted through it on a pass, and,
+    through a trap line, kept with its path printed when the suite stops with an error. Prints PASS or FAIL per check
+    and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-all-tests-test-<process ID> in the
@@ -102,7 +102,7 @@ function Invoke-PairRunner([string[]]$RunnerArgs = @()) {
     [pscustomobject]@{ Runner = $r; Spans = @($spans) }
 }
 
-$p = Invoke-PairRunner
+$p = Invoke-PairRunner @('-ThrottleLimit', '2')
 $ok = ($p.Spans.Count -eq 2) -and ($p.Runner.ExitCode -eq 0)
 $a, $b = $p.Spans
 Check 'parallel: suites run at the same time' ($ok -and ($a.Start -lt $b.End) -and ($b.Start -lt $a.End)) $p.Runner.Text
