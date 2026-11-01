@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-10-31
+
+### Added
+
+- No change for projects made from the template. `tests/Measure-Suites.ps1` times the test suites it names, one at a time, prints each one's median over `-Repeat` runs and fails a suite that fails or takes longer than `-MaxSeconds`, so a change to the tests can be measured against a baseline ([#177](https://github.com/NCodeGroup/project-template/issues/177)).
+
+### Changed
+
+- No change for projects made from the template. The .NET build checks move from `tests/Test-Template.ps1` into a new suite, `tests/Test-TemplateDotnet.ps1`, which CI runs as a job of its own, and `tests/Test-PlanState.ps1` runs `workflow/Get-PlanState.ps1` in a runspace of its own process instead of starting PowerShell for each of its 88 calls, so CI's two longest jobs end sooner. CI lists its suites longest first and cancels a pull request's run when a newer push replaces it ([#177](https://github.com/NCodeGroup/project-template/issues/177)).
+
+### Fixed
+
+- No change for projects made from the template. `tests/Test-Template.ps1` gives each of its parallel renders a Copier cache of its own, since Copier 9.19 refreshes one shared mirror per template URL without a lock and a render failed on it; `tests/Invoke-AllTests.ps1` keeps the suites' Copier mirrors in its own work folder, deleted with it, instead of leaving one per suite in the user's cache on every run; and `tests/Test-ScriptAnalyzer.ps1` leaves out `.claude/worktrees/`, where it analyzed, and failed on, other plans' checkouts ([#177](https://github.com/NCodeGroup/project-template/issues/177)).
+
 ## [0.46.1] - 2026-10-31
 
 ### Changed
@@ -681,7 +695,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.46.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.47.0...HEAD
+[0.47.0]: https://github.com/NCodeGroup/project-template/compare/v0.46.1...v0.47.0
 [0.46.1]: https://github.com/NCodeGroup/project-template/compare/v0.46.0...v0.46.1
 [0.46.0]: https://github.com/NCodeGroup/project-template/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/NCodeGroup/project-template/compare/v0.44.0...v0.45.0
