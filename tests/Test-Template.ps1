@@ -5,7 +5,7 @@
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML with
-    PyYAML through uv. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1, that the generated workflow files under template/ and at the repository root
+    PyYAML through uv. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1 and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, that the generated workflow files under template/ and at the repository root
     match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -387,6 +387,12 @@ $unlisted = @(Get-UnlistedTestScript $ciFixture)
 Check 'repository: the CI listing check names a test script the workflow leaves out' (($unlisted -join ',') -eq 'Test-Unlisted.ps1') ($unlisted -join ',')
 $unlisted = @(Get-UnlistedTestScript $repoRoot)
 Check 'repository: CI runs every tests/Test-*.ps1 (add a "run: ./tests/<name>" entry to the matrix in .github/workflows/test-template.yml)' (-not $unlisted) ($unlisted -join ', ')
+# CI installs Copier from the exact pin in tests/requirements.txt, and Dependabot's pip entry for /tests moves that pin.
+$copierPinPath = Join-Path $repoRoot 'tests\requirements.txt'
+$copierPin = if (Test-Path -LiteralPath $copierPinPath) { [IO.File]::ReadAllText($copierPinPath) } else { '' }
+$ciWorkflow = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\workflows\test-template.yml'))
+$ownDependabot = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\dependabot.yml'))
+Check 'repository: CI installs the Copier version tests/requirements.txt pins, and Dependabot keeps the pin current' ($copierPin -match '(?m)^copier==\d+\.\d+\.\d+\r?$' -and $ciWorkflow -match '(?m)^ +uv tool install --constraints tests/requirements\.txt copier\r?$' -and $ownDependabot -match '(?m)^  - package-ecosystem: pip\r?\n    directory: /tests\r?$') "pin: $($copierPin.Trim()) | install: $(@($ciWorkflow -split '\r?\n' -match 'uv tool install') -join ' / ')"
 $excludeCheck = 'import sys, yaml, jinja2; c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); e = jinja2.Environment(); bad = [p for p in c["_exclude"] if e.from_string(p).render().strip()]; print("; ".join(bad)); sys.exit(1 if bad else 0)'
 $excludeOutput = uv run --quiet --no-project --with pyyaml --with jinja2 python -c $excludeCheck (Join-Path $repoRoot 'copier.yml') 2>&1 | Out-String
 Check 'copier.yml: _exclude patterns exclude nothing when workflow_tools is missing' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()
