@@ -6,7 +6,7 @@
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md and its prelude, valid or not, a push to the default
     branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
-    Get-PlanState.ps1 and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
+    Get-PlanState.ps1, in a runspace of its own in this process that a check compares once with a pwsh of its own, and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -33,10 +33,20 @@ function Invoke-Git {
 }
 
 $script = Join-Path $repoRoot 'workflow/Get-PlanState.ps1'
+# Runs Get-PlanState.ps1 in a runspace of its own in this process: no pwsh start per call, and none of this script's variables or functions.
+function Invoke-PlanState([string]$Path, [switch]$NoFetch) {
+    $ps = [powershell]::Create()
+    try {
+        $null = $ps.AddCommand($script).AddParameter('Path', $Path)
+        if ($NoFetch) { $null = $ps.AddParameter('NoFetch') }
+        @($ps.Invoke() | ForEach-Object { "$_" })
+    }
+    catch { @() }
+    finally { $ps.Dispose() }
+}
 function Get-State([string]$Path, [switch]$NoFetch) {
     $state = @{}
-    $extra = @(if ($NoFetch) { '-NoFetch' })
-    foreach ($line in (& pwsh -NoProfile -File $script -Path $Path @extra 2>$null)) {
+    foreach ($line in (Invoke-PlanState $Path -NoFetch:$NoFetch)) {
         if ("$line" -match '^([a-z-]+): (.*)$') { $state[$Matches[1]] = $Matches[2] }
     }
     $state
@@ -113,6 +123,9 @@ $r = Test-State (Get-State $repo) @{ plan = '-'; refs = '-'; default = 'main'; b
 Check 'local: a clean default branch with no plan' $r.Ok $r.Detail
 $state = Get-State $repo
 Check 'next: no plan means nothing to do' ($state['next'] -like 'none *') "next='$($state['next'])' expected 'none *'"
+$child = @(& pwsh -NoProfile -File $script -Path $repo -NoFetch 2>$null | ForEach-Object { "$_" })
+$inProcess = @(Invoke-PlanState $repo -NoFetch)
+Check 'runspace: Get-PlanState.ps1 prints the same lines in a runspace as in a pwsh of its own' (($child.Count -gt 0) -and (($child -join "`n") -eq ($inProcess -join "`n"))) "pwsh: $($child -join ' | ') runspace: $($inProcess -join ' | ')"
 
 # 2. A plan branch with one finished step and one open step.
 Push-Location $repo
