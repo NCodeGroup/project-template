@@ -14,11 +14,14 @@ phase lands.
 
 ## How to Write One
 
-- Copy [0000-template.md](0000-template.md) to `NNNN-kebab-case-title.md`, starting from `0001`.
-- Take a number no one else holds. Fetch first, then take the next number above both the highest record on
-  `origin/<default branch>` and any record an open branch, pull request or worktree is writing. Check again after
-  rebasing or merging the default branch, and when the number was taken meanwhile, renumber the file, its title, its
-  index row and every link to it. Two records never share a number; `.template/Test-AdrIndex.ps1` fails when they do.
+- Copy [0000-template.md](0000-template.md) to `NNNN-kebab-case-title.md`, starting from `1000`. Numbers below 1000
+  are the project template's, in [project-template/](project-template/README.md), so an ADR number names one record
+  across both folders.
+- Take a number no one else holds. Fetch first, then take the next number above both the highest record numbered 1000
+  or more on `origin/<default branch>` and any record an open branch, pull request or worktree is writing. Check again
+  after rebasing or merging the default branch, and when the number was taken meanwhile, renumber the file, its title,
+  its index row and every link to it. Two records never share a number; `.template/Test-AdrIndex.ps1` fails when they
+  do.
 - Add the record to the index below, in the same change.
 
 ## Statuses

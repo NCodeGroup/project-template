@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.50.2] - 2026-11-01
+## [0.50.3] - 2026-11-01
 
 ### Fixed
 
@@ -15,6 +15,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - The merge method has a decision record of its own, ADR-0013, "Pull requests merge with a merge commit or by rebasing". It keeps a merge commit or a rebase as the default, and ADR-0004, ADR-0005 and ADR-0006 refer to it instead of each stating it, so a project that squash-merges, such as through a merge queue, supersedes ADR-0013 alone; the record names the required `Commit attribution` check as the guard such a project needs. ADR-0005 accepts a merge queue's run on the merged result in place of a branch up to date with the default branch ([#200](https://github.com/NCodeGroup/project-template/issues/200), [ADR-0013](template/docs/decisions/project-template/0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md)).
+
+## [0.50.2] - 2026-11-01
+
+### Added
+
+- Template decision ADR-0012, "The template's decision records are numbered below 1000, a project's from 1000", in `docs/decisions/project-template/`: the template's records keep their numbers below 1000 (0001–0099 for every project, from 0100 for a stack's or an option's), and a project numbers its own from 1000, so a bare number such as "ADR-0102" names one record and a template update never brings a number the project already uses.
+
+### Changed
+
+- `/analyze-decision` gives a project's next decision record the next number above its highest record numbered 1000 or more, or 1000 for the first, and `.github/instructions/project-template.instructions.md` says project records are numbered from 1000; a new project's `docs/decisions/README.md` says to start from `1000`. Records a project already has below 1000 keep their numbers, and `.template/Test-AdrIndex.ps1` still accepts them. `docs/decisions/README.md` is project-owned, so a project made from an earlier version keeps its own: `Update-Project.ps1` shows the template's change to it, and you make it by hand, changing "starting from `0001`" to "starting from `1000`" and "the highest record" to "the highest record numbered 1000 or more". The changelog example in the planning commands cites a project record as `ADR-1007`.
 
 ## [0.50.1] - 2026-11-01
 
@@ -783,7 +793,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.50.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.50.3...HEAD
+[0.50.3]: https://github.com/NCodeGroup/project-template/compare/v0.50.2...v0.50.3
 [0.50.2]: https://github.com/NCodeGroup/project-template/compare/v0.50.1...v0.50.2
 [0.50.1]: https://github.com/NCodeGroup/project-template/compare/v0.50.0...v0.50.1
 [0.50.0]: https://github.com/NCodeGroup/project-template/compare/v0.49.0...v0.50.0
