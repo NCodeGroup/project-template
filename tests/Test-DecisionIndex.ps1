@@ -45,6 +45,10 @@ function Invoke-AdrIndex([string]$Root) {
 function Get-Readme([string[]]$Rows) {
     (@('| ADR | Decision | Status |', '| --- | --- | --- |') + $Rows) -join "`n"
 }
+# The decision records in a template folder; most names start with Jinja, so the pattern is not anchored.
+function Get-TemplateRecord([string]$Folder) { @(Get-ChildItem -LiteralPath $Folder -File | ForEach-Object { if ($_.Name -match '(\d{4})-[^{}%]+?\.md') { [pscustomobject]@{ Number = [int]$Matches[1]; Record = $Matches[0] } } }) }
+function Get-OutOfRange([object[]]$Records) { @($Records | Where-Object { $_.Number -lt 1 -or $_.Number -gt 999 } | ForEach-Object Record) }
+function Get-SharedNumber([object[]]$Records) { @($Records | Group-Object Number | Where-Object Count -GT 1 | ForEach-Object { '{0:D4}: {1}' -f [int]$_.Name, (($_.Group.Record | Sort-Object) -join ', ') }) }
 
 $adrIndex = Join-Path $repoRoot 'template\.template\Test-AdrIndex.ps1'
 $record = '# x'
@@ -149,16 +153,34 @@ foreach ($case in $cases) {
     Check "index: $($case.Name)" $ok "exit $($result.Exit), expected $($case.Exit); expected output to contain: $($case.Text); output: $($result.Output)"
 }
 
+# A fixture folder of template records shows each repository check's building blocks working, and failing.
+$fixtureRoot = New-Fixture 'template-records' @{
+    '0001-a.md'                                     = $record
+    "{% if stack == 'dotnet' %}0100-b.md{% endif %}" = $record
+    '0100-c.md'                                     = $record
+    '1000-D.md'                                     = $record
+    'README.md.jinja'                               = $record
+}
+$fixtureRecords = Get-TemplateRecord $fixtureRoot
+$found = ($fixtureRecords.Record | Sort-Object) -join ','
+Check 'template records: the pattern finds plain, Jinja-named and capitalised names' ($found -eq '0001-a.md,0100-b.md,0100-c.md,1000-D.md') "found: $found"
+$fixtureOutside = (Get-OutOfRange $fixtureRecords) -join ','
+Check 'template records: a record numbered 1000 is out of range' ($fixtureOutside -eq '1000-D.md') "out of range: $fixtureOutside"
+$fixtureShared = (Get-SharedNumber $fixtureRecords) -join ';'
+Check 'template records: two records with one number are named' ($fixtureShared -eq '0100: 0100-b.md, 0100-c.md') "shared: $fixtureShared"
+
 # The template's own records, in the folder every template update replaces.
 $templateFolder = Join-Path $repoRoot 'template\docs\decisions\project-template'
-# Most names start with Jinja, such as {% if stack == 'dotnet' %}0100-a.md{% endif %}, so the pattern is not anchored.
-$templateRecords = @(Get-ChildItem -LiteralPath $templateFolder -File | ForEach-Object { if ($_.Name -match '(\d{4})-[a-z0-9-]+\.md') { [pscustomobject]@{ Number = [int]$Matches[1]; Record = $Matches[0] } } })
-$outside = @($templateRecords | Where-Object { $_.Number -lt 1 -or $_.Number -gt 999 } | ForEach-Object Record)
+$templateRecords = Get-TemplateRecord $templateFolder
+$outside = Get-OutOfRange $templateRecords
 Check 'repository: every template decision record is numbered 0001-0999' (($templateRecords.Count -gt 0) -and -not $outside) "records: $($templateRecords.Count); outside 0001-0999: $($outside -join ', ')"
 
 $templateIndex = [IO.File]::ReadAllText((Join-Path $templateFolder 'README.md.jinja'))
 $unlinked = @($templateRecords | Where-Object { -not $templateIndex.Contains("($($_.Record))") } | ForEach-Object Record)
 Check "repository: the template's decision index links every template record" (($templateRecords.Count -gt 0) -and -not $unlinked) "records: $($templateRecords.Count); not linked: $($unlinked -join ', ')"
+
+$shared = Get-SharedNumber $templateRecords
+Check 'repository: no two template decision records share a number' (($templateRecords.Count -gt 0) -and -not $shared) "records: $($templateRecords.Count); sharing a number: $($shared -join '; ')"
 
 if ($failures.Count) { "Kept the work folder: $Work"; "Decision index tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
