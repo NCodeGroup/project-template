@@ -358,8 +358,8 @@ try {
         }
     }
     try {
-        # Reset the template-owned files to the project's current version; what changes was edited or deleted here.
-        $exclude = foreach ($file in $projectOwned + $merged) { '--exclude', $file }
+        # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
+        $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', $file }
         Invoke-Copier recopy --force --quiet --vcs-ref :current: @exclude
         $reset = @(Get-Change)
         # The template's Adopt-Project.ps1 ends these files with the repository's own lines under a "# Kept from …" comment. Set them aside while
@@ -382,7 +382,7 @@ try {
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
         foreach ($file in $deleted) { $copierArgs += '--exclude', $file }
-        # A merged file the project owns stays as it is; its template change is shown below.
+        # A file the project owns, merged or template-owned, stays as it is; its template change is shown below.
         foreach ($file in $ownedFiles) { $copierArgs += '--exclude', $file }
         # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes
         # every path Git reports as ignored to one `git apply` command. Keep the project's rules in force meanwhile, or a
