@@ -23,8 +23,9 @@ Develop on one trunk, the default branch, `main`. There is no long-lived integra
 - A branch lives for one change. It lands on `main` as the Landing section of `AGENTS.md` says, then it is deleted:
   `/finish-plan` deletes a plan's merged branch, and the host deletes a pull request's head branch when it merges.
 - How a change reaches `main` (a pull request whose checks pass, by default) is
-  [ADR-0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md). A pull request merges with a merge
-  commit or by rebasing, so the plan's `Plan step N` commits stay on `main`; `/ship-plan` drops the empty `Plan:` and
+  [ADR-0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md). The method that merges it, which
+  decides whether the plan's `Plan step N` commits stay on `main`, is
+  [ADR-0013](0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md); `/ship-plan` drops the empty `Plan:` and
   `Re-plan step` commits before the branch is first pushed.
 - A branch that falls behind `main` takes `main` in by a merge, never a rebase of pushed commits. `/ship-plan` adds that
   merge as a plan step only when it is needed: when the push must fast-forward, when the branch conflicts with `main`,
@@ -59,3 +60,5 @@ version while `main` moves on.
   on a frontier model and executed on a cheaper one.
 - [ADR-0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md): the default branch accepts changes
   only through pull requests that pass CI.
+- [ADR-0013](0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md): pull requests merge with a merge commit
+  or by rebasing.

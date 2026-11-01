@@ -23,7 +23,8 @@ turns on auto-merge, resolves a review thread, dismisses a review or force-pushe
    (`draft: no`), or as a draft with `draft: yes` or `/ship-plan draft`. `/run-issues` always opens drafts.
 2. The author reviews. Requesting changes is a comment left as an unresolved review thread, which the ruleset's
    conversation rule keeps from merging. Approving is resolving every thread, marking a draft ready, and merging, or
-   turning on auto-merge with a merge commit; those are the author's actions.
+   turning on auto-merge with the merge method
+   [ADR-0013](0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md) sets; those are the author's actions.
 3. `/run-issues` answers review feedback and fixes the review bot's findings that hold, then recommends the merge after
    `max-review-rounds` rounds, or a round of only minor findings; the person merges.
 4. After the merge, the next `/ship-plan` tags the release when the Landing section asks for one and closes any of the
@@ -73,3 +74,5 @@ a pull request that updates anything else, and every other pull request are stil
 - [ADR-0002](0002-commits-are-attributed-to-people-not-agents.md): commits are attributed to people, not agents.
 - [ADR-0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md): the default branch accepts changes
   only through pull requests that pass CI.
+- [ADR-0013](0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md): pull requests merge with a merge commit
+  or by rebasing.
