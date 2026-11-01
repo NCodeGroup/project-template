@@ -36,11 +36,12 @@
     there.
 
     Each security setting, and auto-merge, is read first and printed as set, already set, would set (-WhatIf) or not
-    available, with the reason, and none costs money. Secret scanning and its push protection are left out of a repository that isn't public,
-    where they need the paid GitHub Secret Protection. A setting the API won't read or refuses to change, such as private
-    vulnerability reporting on a private repository or a token setting the organization decides, is reported, and the
-    run goes on with the next one. Requiring actions pinned to a full-length commit SHA is left out: it fails every
-    workflow that names an action by tag, and an adopted repository's workflows may.
+    available, with the reason, and none costs money. Secret scanning and its push protection are left out of a
+    repository that isn't public, where they need the paid GitHub Secret Protection. A setting the API won't read or
+    refuses to change, such as private vulnerability reporting on a private repository or a token setting the
+    organization decides, is reported, and the run goes on with the next one. Requiring actions pinned to a full-length
+    commit SHA is left out: it fails every workflow that names an action by tag, and an adopted repository's workflows
+    may.
 
     Name only jobs that run on pull requests. A job that runs on a release or a schedule never reports on a pull
     request, so requiring it would block every merge.

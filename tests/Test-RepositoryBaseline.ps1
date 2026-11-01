@@ -22,9 +22,8 @@
     is off, reports each as set, already set, would set or not available, leaves secret scanning out of a repository
     that isn't public, and reports a setting the API won't read or refuses without failing the run; that it allows
     auto-merge, with a PATCH that changes nothing else, where it is off, on a repository whose default branch it leaves
-    alone too, and reports an answer without it or a refusal; that -All skips
-    archived repositories and forks; and that bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any
-    failure.
+    alone too, and reports an answer without it or a refusal; that -All skips archived repositories and forks; and that
+    bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-baseline-test-<process ID> in the
