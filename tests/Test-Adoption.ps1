@@ -57,11 +57,12 @@ $copierYml = Join-Path $repoRoot 'copier.yml'
 $skip = @(Get-CopierList $copierYml '_skip_if_exists')
 $merged = @(Get-CopierList $copierYml '_merged_files')
 Check 'unit: Get-CopierList reads the file lists' (($skip -join ',') -eq 'AGENTS.md,README.md,Directory.Build.props,.github/workflows/code-review.yml,.github/workflows/publish.yml,docs/decisions/README.md,docs/decisions/0000-template.md,LICENSE.txt,COPYRIGHT.txt,NCodeGroup.png,SECURITY.md,CONTRIBUTING.md,docs/README.md,docs/metrics.md,docs/designs/_template.md' -and '.gitignore' -in $merged -and 'global.json' -in $merged -and 'nuget.config' -in $merged -and '.github/workflows/copilot-setup-steps.yml' -in $merged) "$($skip -join ',') | $($merged -join ',')"
-$one = Get-OwnedMergedFile '.github/workflows/ci.yml' $merged
-$dropped = Get-OwnedMergedFile @('.gitignore', '', $null) $merged
-$none = Get-OwnedMergedFile @() $merged
-$ownedMsg = try { Get-OwnedMergedFile 'CLAUDE.md' $merged | Out-Null } catch { $_.Exception.Message }
-Check 'unit: Get-OwnedMergedFile makes a list and rejects a file that isn''t merged' (($one -is [array]) -and $one.Count -eq 1 -and $one[0] -eq '.github/workflows/ci.yml' -and $dropped.Count -eq 1 -and $none.Count -eq 0 -and "$ownedMsg".Contains('which isn''t a merged file')) "$($one -join ',') | $($dropped.Count) | $($none.Count) | $ownedMsg"
+$ownable = @(Get-OwnableFile (Join-Path $repoRoot 'template'))
+$one = Get-OwnedFile '.github/workflows/ci.yml' $ownable
+$dropped = Get-OwnedFile @('build/dod.ps1', '', $null, 'build/dod.ps1') $ownable
+$none = Get-OwnedFile @() $ownable
+$ownedMsg = try { Get-OwnedFile @('.template/Update-Project.ps1', '.copier-answers.yml', '.template-version', 'no-such-file.txt') $ownable | Out-Null } catch { $_.Exception.Message }
+Check 'unit: Get-OwnedFile makes a list of files the template renders and rejects the update''s own files' (($one -is [array]) -and $one.Count -eq 1 -and $one[0] -eq '.github/workflows/ci.yml' -and $dropped.Count -eq 1 -and $dropped[0] -eq 'build/dod.ps1' -and $none.Count -eq 0 -and 'CLAUDE.md' -in $ownable -and '.github/workflows/copilot-setup-steps.yml' -in $ownable -and '.template-version' -notin $ownable -and "$ownedMsg".Contains('project_owned_files names .template/Update-Project.ps1, .copier-answers.yml, .template-version, no-such-file.txt, which the template doesn''t render or the update itself needs')) "$($one -join ',') | $($dropped -join ',') | $($none.Count) | $ownedMsg"
 
 $demo = New-TestFolder 'demo' @{
     'src/NCode.Demo.slnx'   = '<Solution />'

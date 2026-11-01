@@ -77,6 +77,7 @@ try {
     }
 
     $merged = @(Get-CopierList (Join-Path $PSScriptRoot 'copier.yml') '_merged_files')
+    $ownable = @(Get-OwnableFile (Join-Path $PSScriptRoot 'template'))
     $answers = Get-AdoptionAnswers $project
     $adapters = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'tools\adopt\legacy') -Filter '*.ps1' -File | Sort-Object Name | Where-Object { & $_.FullName -Path $project -Phase Detect })
     foreach ($adapter in $adapters) {
@@ -85,9 +86,9 @@ try {
         foreach ($k in $adapterAnswers.Keys) { $answers[$k] = $adapterAnswers[$k] }
     }
     foreach ($k in $Data.Keys) { $answers[$k] = $Data[$k] }
-    # Merged files the repository owns (its project_owned_files answer): Copier leaves them as they are, and updates show the template's changes to them.
-    $ownedMerged = @()
-    if ($answers.Contains('project_owned_files')) { $ownedMerged = Get-OwnedMergedFile $answers['project_owned_files'] $merged; $answers['project_owned_files'] = $ownedMerged }
+    # Files the repository owns, merged or template-owned (its project_owned_files answer): Copier leaves them as they are, and updates show the template's changes to them.
+    $ownedFiles = @()
+    if ($answers.Contains('project_owned_files')) { $ownedFiles = Get-OwnedFile $answers['project_owned_files'] $ownable; $answers['project_owned_files'] = $ownedFiles }
     'Answers:'
     foreach ($k in $answers.Keys) {
         if ($null -ne $answers[$k]) { "  ${k}: $(ConvertTo-CopierValue $answers[$k])" }
@@ -110,8 +111,8 @@ try {
         foreach ($k in $answers.Keys) {
             if ($null -ne $answers[$k]) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $answers[$k])" }
         }
-        # A merged file the repository owns stays exactly as it is.
-        foreach ($file in $ownedMerged) { $copierArgs += '--exclude', $file }
+        # Files the repository owns, merged or template-owned, stay exactly as they are.
+        foreach ($file in $ownedFiles) { $copierArgs += '--exclude', $file }
         $copierArgs += $Template, $project
         Invoke-Copier @copierArgs
 
@@ -119,12 +120,13 @@ try {
         $report = [Collections.Generic.List[string]]::new()
         foreach ($p in $merged) {
             if (-not $originals.ContainsKey($p)) { continue }
-            if ($p -in $ownedMerged) { $report.Add("  Owned $p $([char]0x2014) kept as the repository had it (project_owned_files)"); continue }
+            if ($p -in $ownedFiles) { $report.Add("  Owned $p $([char]0x2014) kept as the repository had it (project_owned_files)"); continue }
             $full = Join-Path $project $p
             $result = Merge-AdoptedFile $p $originals[$p] ([IO.File]::ReadAllText($full))
             [IO.File]::WriteAllText($full, $result.Text, $utf8)
             $report.Add("  $($result.Strategy) $p" + $(if ($result.Note) { " $([char]0x2014) $($result.Note)" } else { '' }))
         }
+        foreach ($p in $ownedFiles | Where-Object { $_ -notin $merged -and (Test-Path -LiteralPath $_ -PathType Leaf) }) { $report.Add("  Owned $p $([char]0x2014) kept as the repository had it (project_owned_files)") }
         if ($originals.ContainsKey('AGENTS.md')) {
             [IO.File]::WriteAllText((Join-Path $project 'AGENTS.md'), (Add-TemplateIndexEntry $originals['AGENTS.md']), $utf8)
         }
