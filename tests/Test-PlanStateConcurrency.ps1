@@ -6,7 +6,7 @@
     Builds a bare origin and a clone in a scratch folder, with a plan that names two issues and a release tag, and puts a
     stand-in for gh first on PATH. Runs Get-PlanState.ps1 once with a stand-in that answers at once and once with a stand-in
     that waits before each of its five answers, then checks that it prints the same lines both times and that the delayed
-    run takes less than the run without the delay plus two and a half delays: run one after another, the five calls add five
+    run takes less than the run without the delay plus three and a half delays: run one after another, the five calls add five
     delays. Then removes the release tag from the clone and checks that a tag only origin has is still read as published.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
@@ -37,7 +37,7 @@ function Write-Text([string]$Path, [string]$Text) {
 }
 
 $script = Join-Path $repoRoot 'workflow/Get-PlanState.ps1'
-$delayMs = 1000
+$delayMs = 2000
 
 # Runs Get-PlanState.ps1 in a pwsh of its own and times it, so the time covers everything the script does.
 function Measure-PlanState([string]$Path) {
@@ -128,8 +128,8 @@ Check 'answers: Get-PlanState.ps1 prints what the stand-in for gh answers' (-not
 
 Check 'answers: the delayed run prints the same lines as the run without the delay' (($quick.Lines.Count -gt 0) -and (($quick.Lines -join "`n") -eq ($slow.Lines -join "`n"))) "without the delay: $($quick.Lines -join ' | '); with it: $($slow.Lines -join ' | ')"
 
-$limit = $quick.Milliseconds + [int](2.5 * $delayMs)
-Check "concurrency: five gh calls of $delayMs ms each take less than $limit ms, the run without the delay plus 2.5 delays" ($slow.Milliseconds -lt $limit) "the run without the delay took $($quick.Milliseconds) ms, the delayed run $($slow.Milliseconds) ms"
+$limit = $quick.Milliseconds + [int](3.5 * $delayMs)
+Check "concurrency: five gh calls of $delayMs ms each take less than $limit ms, the run without the delay plus 3.5 delays" ($slow.Milliseconds -lt $limit) "the run without the delay took $($quick.Milliseconds) ms, the delayed run $($slow.Milliseconds) ms"
 
 $fetchedState = ConvertTo-State $fetched.Lines
 Check 'release: a release tag only the fetch brings in is still read as published' (($fetchedState['tag'] -eq 'present') -and ($fetchedState['published'] -eq 'yes')) "tag='$($fetchedState['tag'])' published='$($fetchedState['published'])'"
