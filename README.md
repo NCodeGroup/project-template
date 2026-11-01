@@ -551,6 +551,7 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `tests/Test-InvokeAllTests.ps1` | Test the runner that runs every test suite |
 | `tests/Remove-TestWork.ps1` | Delete a passing run's own work folder, or say it couldn't |
 | `tests/New-TemplateSnapshot.ps1` | Build the tagged snapshot of the working tree that `tests/Test-Template.ps1`, `tests/Test-ProjectUpdate.ps1` and `tests/Test-ProjectUpdateHooks.ps1` render from and `tests/Test-AdoptEdgeCases.ps1` adopts from |
+| `tests/AdoptionFixtures.ps1` | The Git calls, fixture repositories and image `tests/Test-Adoption.ps1` and `tests/Test-AdoptEdgeCases.ps1` share |
 | `tests/e2e/Test-RunIssues.ps1` | Run `/run-issues` end to end on a fixture project, by hand |
 | `tests/e2e/Test-AddressFeedback.ps1` | Run `/address-feedback` end to end on a fixture pull request, by hand |
 | `tests/e2e/Fixture.ps1` | The fixture project, environment and checks the end-to-end tests share |

@@ -27,37 +27,13 @@ $failures = [Collections.Generic.List[string]]::new()
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
-function Invoke-Git {
-    git -c user.name=template-test -c user.email=template-test@example.invalid @args
-    if ($LASTEXITCODE) { throw "git $($args -join ' ') failed." }
-}
-# Creates $Work\$Name with the given files (relative paths with forward slashes) and returns its path.
-function New-TestFolder([string]$Name, [hashtable]$Files) {
-    $folder = Join-Path $Work $Name
-    New-Item -ItemType Directory -Force $folder | Out-Null
-    foreach ($relative in $Files.Keys) {
-        $file = Join-Path $folder $relative
-        New-Item -ItemType Directory -Force (Split-Path -Parent $file) | Out-Null
-        if ($relative.EndsWith('.png')) { [IO.File]::WriteAllBytes($file, [Convert]::FromBase64String($Files[$relative])) }
-        else { [IO.File]::WriteAllText($file, $Files[$relative], [Text.UTF8Encoding]::new($false)) }
-    }
-    $folder
-}
+. (Join-Path $PSScriptRoot 'AdoptionFixtures.ps1')
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 New-Item -ItemType Directory -Force $Work | Out-Null
 $tpl = Join-Path $Work 'template-repo'
 $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 $adopt = Join-Path $repoRoot 'Adopt-Project.ps1'
-$png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-
-function New-Fixture([string]$Name, [hashtable]$Files, [string]$Remote) {
-    $folder = New-TestFolder $Name $Files
-    Push-Location $folder
-    try { Invoke-Git init -q -b main; Invoke-Git remote add origin $Remote; Invoke-Git add -A; Invoke-Git commit -q -m 'Initial' }
-    finally { Pop-Location }
-    $folder
-}
 
 $broken = New-Fixture 'broken' @{
     'App.csproj'            = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>'
@@ -82,7 +58,9 @@ Check 'ci-existing: the baseline command suggests -RequireChecks auto for its ow
 Check 'ci-existing: says it left local out and how to add it' ($ciOut.Contains("workflow_tools: [claude, copilot], the template's default") -and $ciOut.Contains("-Data @{ workflow_tools = 'claude', 'copilot', 'local' }")) $ciOut
 
 # A .NET repository with catch-all .gitattributes rules, a global.json with a partial SDK version, an image and its own
-# workflow, adopted with the code review question: three gaps found by adopting NCodeGroup's libraries.
+# workflow: three gaps found by adopting NCodeGroup's libraries. It answers the code review question
+# (code_review = 'true' in -Data), so the template adds its own code-review.yml beside the repository's main.yml, and
+# the report must ask to reconcile only main.yml with ci.yml.
 $gaps = New-Fixture 'gaps' @{
     'README.md'                = "# Gaps`n"
     'Gaps.csproj'              = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n</Project>`n"

@@ -44,22 +44,7 @@ function Edit-File([string]$Path, [string]$Old, [string]$New) {
     if (-not $text.Contains($Old)) { throw "'$Old' not found in $full." }
     [IO.File]::WriteAllText($full, $text.Replace($Old, $New))
 }
-function Invoke-Git {
-    git -c user.name=template-test -c user.email=template-test@example.invalid @args
-    if ($LASTEXITCODE) { throw "git $($args -join ' ') failed." }
-}
-# Creates $Work\$Name with the given files (relative paths with forward slashes) and returns its path.
-function New-TestFolder([string]$Name, [hashtable]$Files) {
-    $folder = Join-Path $Work $Name
-    New-Item -ItemType Directory -Force $folder | Out-Null
-    foreach ($relative in $Files.Keys) {
-        $file = Join-Path $folder $relative
-        New-Item -ItemType Directory -Force (Split-Path -Parent $file) | Out-Null
-        if ($relative.EndsWith('.png')) { [IO.File]::WriteAllBytes($file, [Convert]::FromBase64String($Files[$relative])) }
-        else { [IO.File]::WriteAllText($file, $Files[$relative], [Text.UTF8Encoding]::new($false)) }
-    }
-    $folder
-}
+. (Join-Path $PSScriptRoot 'AdoptionFixtures.ps1')
 
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
@@ -208,7 +193,6 @@ $pp = Get-Content -Raw -LiteralPath (Join-Path $folder 'Directory.Packages.props
 $iBar = $pp.IndexOf('<PackageVersion Include="Bar" Version="2.0.0" />')
 $iFoo = $pp.IndexOf('<PackageVersion Include="Foo" Version="1.2.0" />')
 Check 'unit: Move-PackageVersionsToCentral' (-not $pa.Contains('Version="') -and -not $pb.Contains('Version="') -and $pb.Contains('PrivateAssets="all"') -and $iBar -ge 0 -and $iBar -lt $iFoo -and 'Foo: 1.0.0, 1.2.0 -> 1.2.0' -in $report) "$pa | $pb | $pp | $($report -join ' / ')"
-$png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 $adapters = Join-Path $repoRoot 'tools\adopt\legacy'
 $scaffold = Join-Path $adapters 'NCode.ProjectSettings.Scaffold.ps1'
 $folder = New-TestFolder 'scaffold-adapter' @{
@@ -248,14 +232,6 @@ if (-not $UnitOnly) {
     Push-Location $tpl
     try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
     finally { Pop-Location }
-
-    function New-Fixture([string]$Name, [hashtable]$Files, [string]$Remote) {
-        $folder = New-TestFolder $Name $Files
-        Push-Location $folder
-        try { Invoke-Git init -q -b main; Invoke-Git remote add origin $Remote; Invoke-Git add -A; Invoke-Git commit -q -m 'Initial' }
-        finally { Pop-Location }
-        $folder
-    }
 
     $plain = New-Fixture 'plain' @{
         'AGENTS.md'             = "# Legacy Agents`n`nOwn rules.`n`n## Conventions`n`n- Keep it simple.`n"
