@@ -80,6 +80,8 @@ jobs:
             run: ./tests/Test-ChangelogHeadings.ps1
           - name: Test the plan state script's concurrent calls
             run: ./tests/Test-PlanStateConcurrency.ps1
+          - name: Test the decision index check
+            run: ./tests/Test-DecisionIndex.ps1
     defaults:
       run:
         shell: pwsh
