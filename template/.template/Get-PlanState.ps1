@@ -247,7 +247,7 @@ function Get-Conflicts([string]$Default) {
     'unknown'
 }
 
-# The calls Start-Concurrent started, so the script's finally can wait for any that a step never received.
+# The calls Start-Concurrent started, so the script's finally can stop any that a step never received.
 $concurrentCalls = [Collections.Generic.List[object]]::new()
 
 # Starts Command, a native command or one of this script's functions, in a runspace of its own whose current folder is
@@ -384,6 +384,14 @@ try {
     $issueRefs = @($issue -split '[\s,]+' | Where-Object { $_ -and $_ -ne '-' })
     $issueCalls = @(foreach ($ref in $issueRefs) { Start-Concurrent $folder 'Get-IssueState' @($ref, $hostName) -Functions 'Get-IssueState' })
     if ($fetchCall) { $null = Receive-Concurrent $fetchCall }
+
+    # The fetch may have brought the release tag in: then start the release check now, alongside the calls still running.
+    $localTag = $false
+    if ($release -ne '-') {
+        & git rev-parse -q --verify "refs/tags/$release" 2>$null | Out-Null
+        $localTag = ($LASTEXITCODE -eq 0)
+    }
+    if (-not $releaseCall -and $localTag -and $hasCli -and $releasePolicy -eq 'tag+release') { $releaseCall = Start-Concurrent $folder $cli $releaseArgs }
     $protected = (Receive-Concurrent $protectedCall).Value
 
     # Position against the default branch
@@ -401,8 +409,6 @@ try {
     $originTags = $null
     if ($tagsCall) { $originTags = (Receive-Concurrent $tagsCall).Value }
     if ($release -ne '-') {
-        & git rev-parse -q --verify "refs/tags/$release" 2>$null | Out-Null
-        $localTag = ($LASTEXITCODE -eq 0)
         if ($hostName -eq 'none') { $tag = if ($localTag) { 'present' } else { 'absent' } }
         elseif ($null -eq $originTags) { $tag = 'unknown' }
         elseif ($originTags -ccontains $release) { $tag = 'present' }
@@ -607,6 +613,14 @@ try {
     Write-Output "next: $next"
 }
 finally {
-    foreach ($call in $concurrentCalls) { if (-not $call.Done) { try { $null = Receive-Concurrent $call } catch { $null = $_ } } }
+    # Every call is received on the way to the output, so a call left here means the script stopped with an error.
+    # Nothing reads its answer then: stop it instead of waiting for it, and ignore its own error, which the script's
+    # error already outranks.
+    foreach ($call in $concurrentCalls) {
+        if ($call.Done) { continue }
+        $call.Done = $true
+        try { $call.Shell.Stop() } catch { $null = $_ }
+        $call.Shell.Dispose()
+    }
     Pop-Location
 }
