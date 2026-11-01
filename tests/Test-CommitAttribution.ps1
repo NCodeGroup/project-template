@@ -55,15 +55,26 @@ function New-CaseBranch([string]$Branch, [string]$Message, [string]$Author = '',
     Add-CaseCommit $Message $Author $CommitterName $CommitterEmail
     $Branch
 }
-function Assert-Attribution([string]$Name, [string]$Base, [string]$Head, [int]$ExitCode, [string[]]$Contains = @(), [string[]]$NotContains = @(), [int]$CodePage = 0) {
-    if ($CodePage -eq 0) {
-        $output = & pwsh -NoProfile -File $checker -Root $repository -Base $Base -Head $Head 2>&1 | Out-String
+function Assert-Attribution([string]$Name, [string]$Base, [string]$Head, [int]$ExitCode, [string[]]$Contains = @(), [string[]]$NotContains = @(), [int]$CodePage = 0, [string]$Title = '', [string]$Body = '', [switch]$GitLab, [switch]$GitHubActions) {
+    $savedGitLab = $env:GITLAB_CI; $savedActions = $env:GITHUB_ACTIONS
+    $env:GITLAB_CI = if ($GitLab) { 'true' } else { $null }
+    $env:GITHUB_ACTIONS = if ($GitHubActions) { 'true' } else { $null }
+    try {
+        if ($CodePage -eq 0 -and -not ($Title -or $Body)) {
+            $output = & pwsh -NoProfile -File $checker -Root $repository -Base $Base -Head $Head 2>&1 | Out-String
+        }
+        elseif ($Title -or $Body) {
+            $env:PR_TITLE = $Title; $env:PR_BODY = $Body
+            try { $output = & pwsh -NoProfile -Command "& '$checker' -Root '$repository' -Base '$Base' -Head '$Head' -PullRequestTitle `$env:PR_TITLE -PullRequestBody `$env:PR_BODY; exit `$LASTEXITCODE" 2>&1 | Out-String }
+            finally { Remove-Item Env:PR_TITLE, Env:PR_BODY -ErrorAction SilentlyContinue }
+        }
+        else {
+            $command = "[Console]::OutputEncoding = [Text.Encoding]::GetEncoding($CodePage); & '$checker' -Root '$repository' -Base '$Base' -Head '$Head'; exit `$LASTEXITCODE"
+            $output = & pwsh -NoProfile -Command $command 2>&1 | Out-String
+        }
+        $code = $LASTEXITCODE
     }
-    else {
-        $command = "[Console]::OutputEncoding = [Text.Encoding]::GetEncoding($CodePage); & '$checker' -Root '$repository' -Base '$Base' -Head '$Head'; exit `$LASTEXITCODE"
-        $output = & pwsh -NoProfile -Command $command 2>&1 | Out-String
-    }
-    $code = $LASTEXITCODE
+    finally { $env:GITLAB_CI = $savedGitLab; $env:GITHUB_ACTIONS = $savedActions }
     $missing = @($Contains | Where-Object { -not $output.Contains($_) })
     $unwanted = @($NotContains | Where-Object { $output.Contains($_) })
     Check $Name (($code -eq $ExitCode) -and -not $missing -and -not $unwanted) "exit $code, expected $ExitCode; missing: $($missing -join ' | '); unexpected: $($unwanted -join ' | '); output: $output"
@@ -91,7 +102,7 @@ try {
     $baseCommit = (Invoke-Git @('rev-parse', 'HEAD') | Out-String).Trim()
 
     $head = New-CaseBranch 'human' "Add a feature`n`nA plain message.`n"
-    Assert-Attribution 'a human commit passes' $baseCommit $head 0 @('1 commit(s) checked')
+    Assert-Attribution 'a human commit passes' $baseCommit $head 0 @('1 commit(s) checked') @('title and description')
 
     $head = New-CaseBranch 'agent-author' "Add a feature`n" $agent
     Assert-Attribution 'an agent-authored commit fails' $baseCommit $head 1 @('is an AI agent account', '--reset-author')
@@ -135,6 +146,19 @@ try {
 
     $head = New-CaseBranch 'empty-base' "Add a feature`n"
     Assert-Attribution 'an empty base checks only the head' '' $head 0 @('checking')
+
+    $head = New-CaseBranch 'described' "Add a feature`n"
+    Assert-Attribution 'a pull request description with a Generated with line fails' $baseCommit $head 1 @('Pull request description: has agent attribution', 'Edit the pull request', 'Editing the pull request runs this check again.') @('--reset-author') -Title 'Add a feature' -Body "Adds a feature.`n`n$robot Generated with [Claude Code](https://claude.com/claude-code)`n"
+    Assert-Attribution 'a pull request description with a Copilot co-author line fails' $baseCommit $head 1 @('Pull request description: has agent attribution') -Title 'Add a feature' -Body "Adds a feature.`n`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+    Assert-Attribution 'a pull request title with a Claude-Session line fails' $baseCommit $head 1 @('Pull request title: has agent attribution') -Title 'Claude-Session: 0f8fad5b-d9cb-469f-a165-70867728950e' -Body 'Adds a feature.'
+    Assert-Attribution 'a clean pull request description passes as text' $baseCommit $head 0 @("the pull request's title and description have no agent attribution", '1 commit(s) checked') -Title 'Add "a" feature' -Body "- Closes #1`n`nThe hook strips the Generated with Claude Code line. `$(exit 3) and `"quotes`" stay text.`n"
+    Assert-Attribution 'a merge request description on GitLab names the merge request' $baseCommit $head 1 @('Merge request description: has agent attribution', "run the merge request's pipeline again") -Body 'Co-authored-by: Claude <noreply@anthropic.com>' -GitLab
+    Assert-Attribution 'a pull request description with Windows line endings fails on its agent line' $baseCommit $head 1 @('Pull request description: has agent attribution: Co-authored-by: Copilot') -Title 'Add a feature' -Body "Adds a feature.`r`n`r`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`r`n"
+    Assert-Attribution 'a workflow annotation escapes the pull request text' $baseCommit $head 1 @('::error title=Commit attribution::Pull request title: has agent attribution: Claude-Session: 100%25 sure') @('::error title=Commit attribution::Pull request title: has agent attribution: Claude-Session: 100% sure') -Title 'Claude-Session: 100% sure' -Body 'Adds a feature.' -GitHubActions
+    Assert-Attribution 'a lone CR in a description line is printed as a space' $baseCommit $head 1 @('Pull request description: has agent attribution: Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com> ::notice::x') -Title 'Add a feature' -Body "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`r::notice::x"
+
+    $head = New-CaseBranch 'described-agent' "Add a feature`n" $agent
+    Assert-Attribution 'an agent commit and a description line print both remedies' $baseCommit $head 1 @('is an AI agent account', '--reset-author', 'Edit the pull request') -Title 'Add a feature' -Body "$robot Generated with [Claude Code](https://claude.com/claude-code)"
 }
 finally {
     if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }

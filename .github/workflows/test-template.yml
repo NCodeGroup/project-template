@@ -3,7 +3,10 @@ name: Test template
 on:
   push:
     branches: [main]
+  # edited: Commit attribution reads the pull request's title and description, which a merge commit's message can
+  # include, so it runs again when they change.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   # A required check must also report in a merge queue.
   merge_group:
     types: [checks_requested]
@@ -12,8 +15,8 @@ on:
 permissions:
   contents: read
 
-# A newer push to a pull request cancels its older run. Every other event's group includes its commit, so a push to
-# main, a merge queue entry and a manual run never cancel or replace another run.
+# A newer push to a pull request, or an edit of it, cancels its older run. Every other event's group includes its
+# commit, so a push to main, a merge queue entry and a manual run never cancel or replace another run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -132,4 +135,6 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-        run: ./template/.template/Test-CommitAttribution.ps1 -Root . -Base $env:BASE -Head $env:HEAD
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: ./template/.template/Test-CommitAttribution.ps1 -Root . -Base $env:BASE -Head $env:HEAD -PullRequestTitle $env:PR_TITLE -PullRequestBody $env:PR_BODY

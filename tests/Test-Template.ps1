@@ -5,7 +5,7 @@
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML with
-    PyYAML through uv, at the version tests/requirements.txt pins. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1 and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, that the generated workflow files under template/ and at the repository root
+    PyYAML through uv, at the version tests/requirements.txt pins. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1 and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, and passes a pull request's title and description to its Commit attribution job through env, that the generated workflow files under template/ and at the repository root
     match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. It runs the code review auto-merge workflow's diff check, as rendered, against a stand-in for gh with fixture pages of changed files. It runs its merge-method choice the same way, against a stand-in that answers with fixture repository settings and branch rules. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -289,6 +289,7 @@ foreach ($case in $cases) {
     if ($case.Host -eq 'github') {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD') -and $ci.Contains('merge_group:') -and $ci.Contains('${{ github.event.pull_request.base.sha'))
+        Check "${name}: CI checks the pull request's title and description, also after an edit" ($ci.Contains('PR_TITLE: ${{ github.event.pull_request.title }}') -and $ci.Contains('PR_BODY: ${{ github.event.pull_request.body }}') -and $ci.Contains('-PullRequestTitle $env:PR_TITLE -PullRequestBody $env:PR_BODY') -and $ci.Contains('types: [opened, synchronize, reopened, edited]')) $ci
         $checkouts = [regex]::Matches($ci, '(?m)^\s+- uses: actions/checkout@').Count
         Check "${name}: CI checkouts set persist-credentials false" ($checkouts -gt 0 -and [regex]::Matches($ci, '(?m)^\s+persist-credentials: false\r?$').Count -eq $checkouts) $ci
         $dependabot = Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw
@@ -400,6 +401,7 @@ foreach ($case in $cases) {
     else {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('commit-attribution:') -and $ci.Contains('mcr.microsoft.com/dotnet/sdk:10.0') -and $ci.Contains('GIT_DEPTH: "0"') -and $ci.Contains('.template/Test-CommitAttribution.ps1 -Base'))
+        Check "${name}: CI checks the merge request's title and description" ($ci.Contains('BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" pwsh -NoProfile -Command') -and $ci.Contains('-PullRequestTitle $env:CI_MERGE_REQUEST_TITLE -PullRequestBody $env:CI_MERGE_REQUEST_DESCRIPTION; exit $LASTEXITCODE')) $ci
     }
     if ($case.Stack -eq 'node') {
         $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }
@@ -541,6 +543,9 @@ $copierPin = if (Test-Path -LiteralPath $copierPinPath) { [IO.File]::ReadAllText
 $ciWorkflow = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\workflows\test-template.yml'))
 $ownDependabot = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\dependabot.yml'))
 Check 'repository: CI installs the Copier version tests/requirements.txt pins, and Dependabot keeps the pin current' ($copierPin -match '(?m)^copier==\d+\.\d+\.\d+\r?$' -and $ciWorkflow -match '(?m)^ +uv tool install --constraints tests/requirements\.txt copier\r?$' -and $ownDependabot -match '(?m)^  - package-ecosystem: pip\r?\n    directory: /tests\r?$') "pin: $($copierPin.Trim()) | install: $(@($ciWorkflow -split '\r?\n' -match 'uv tool install') -join ' / ')"
+# This repository's own Commit attribution job checks a pull request's title and description too, passed through env and never written into a run: line, and runs again when they are edited.
+$ownAttribution = [regex]::Match($ciWorkflow, '(?ms)^  commit-attribution:.*\z').Value
+Check 'repository: CI checks this repository''s pull request title and description through env, also after an edit' ($ciWorkflow.Contains('    types: [opened, synchronize, reopened, edited]') -and $ownAttribution.Contains('PR_TITLE: ${{ github.event.pull_request.title }}') -and $ownAttribution.Contains('PR_BODY: ${{ github.event.pull_request.body }}') -and $ownAttribution.Contains('-PullRequestTitle $env:PR_TITLE -PullRequestBody $env:PR_BODY') -and $ciWorkflow -notmatch '(?m)^\s*run:.*github\.event\.pull_request\.(title|body)') $ownAttribution
 # This repository's own Dependabot entries wait out the three-day cooldown and give security updates a group of their own, as every project's do.
 $ownEcosystems = [regex]::Matches($ownDependabot, '(?m)^  - package-ecosystem: ').Count
 $ownCooldowns = [regex]::Matches($ownDependabot, '(?m)^    cooldown:\r?\n      default-days: 3\r?$').Count
@@ -815,6 +820,21 @@ $gitHooksFiles = @($worktreeKinds.create + 'orchestrate-plan', 'run-issues', 'ad
     '.github\prompts\run-issues.prompt.md', '.github\skills\orchestrate-plan\SKILL.md', '.github\skills\run-issues\SKILL.md'
 $gitHooksMissing = @($gitHooksFiles | Where-Object { -not [IO.File]::ReadAllText((Join-Path $repoRoot "template\$_")).Contains($gitHooksText) })
 Check 'workflow: the commands that create or join a plan''s branch check that Git runs .githooks' (-not $gitHooksMissing) ($gitHooksMissing -join ', ')
+# The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
+$prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
+$prAttributionFiles = [ordered]@{
+    '.claude\commands\ship-plan.md' = '`gh pr create'; '.github\prompts\ship-plan.prompt.md' = '`gh pr create'; '.github\skills\ship-plan\SKILL.md' = '`gh pr create'
+    '.claude\commands\run-issues.md' = '`gh pr edit'; '.github\prompts\run-issues.prompt.md' = '`gh pr edit'; '.github\skills\run-issues\SKILL.md' = '`gh pr edit'
+}
+$prAttributionMissing = @(
+    foreach ($f in $prAttributionFiles.Keys) {
+        $text = [IO.File]::ReadAllText((Join-Path $repoRoot "template\$f"))
+        $at = $text.IndexOf($prAttributionText)
+        if ($at -lt 0 -or $at -gt $text.IndexOf($prAttributionFiles[$f])) { $f }
+    }
+    if (-not ($prAttributionText.Contains('`Co-authored-by:`') -and $prAttributionText.Contains('`Claude-Session:`') -and $prAttributionText.Contains('"Generated with"'))) { 'workflow\templates\_pr-attribution.md' }
+)
+Check 'workflow: ship-plan and run-issues delete agent attribution lines from a pull request''s title and description before they send them' (-not $prAttributionMissing) ($prAttributionMissing -join ', ')
 $includeLeft = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.claude'), (Join-Path $repoRoot 'template\.github') -Recurse -File |
     Where-Object { [IO.File]::ReadAllText($_.FullName) -match '\{\{(PROMPT|BODY):' } | ForEach-Object Name)
 Check 'workflow: no generated file keeps an unexpanded {{PROMPT:...}} or {{BODY:...}} include' (-not $includeLeft) ($includeLeft -join ', ')
