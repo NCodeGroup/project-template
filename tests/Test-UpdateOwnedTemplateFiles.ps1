@@ -109,7 +109,7 @@ try {
     $detail = "exit $($r.ExitCode)`n$($r.Output.Trim())"
     Check 'owned: the update commits and leaves all three files as the project has them' (($r.ExitCode -eq 0) -and $r.Output.Contains('Committed "Update from project-template v0.2.0"') -and -not $status -and ([IO.File]::ReadAllText((Join-Path $path 'CLAUDE.md')) -eq $ownClaude) -and ([IO.File]::ReadAllText((Join-Path $path 'scripts/check.ps1')) -eq $ownCheck) -and ([IO.File]::ReadAllText((Join-Path $path '.vscode/extensions.json')) -eq $ownExtensions)) $detail
     Check 'renamed: shows an owned file whose template source was renamed once' ([regex]::Matches($r.Output, '(?m)^  \.vscode/extensions\.json:\r?$').Count -eq 1) $detail
-    Check 'owned: .copier-answers.yml records the three files, a repeated name once' ([IO.File]::ReadAllText((Join-Path $path '.copier-answers.yml')) -match '(?m)^project_owned_files:\r?\n- CLAUDE\.md\r?\n- scripts/check\.ps1\r?\n- \.vscode/extensions\.json\r?$') $detail
+    Check 'owned: .copier-answers.yml records the three files, a repeated name once' ([IO.File]::ReadAllText((Join-Path $path '.copier-answers.yml')) -match '(?m)^project_owned_files:\r?\n- CLAUDE\.md\r?\n- scripts/check\.ps1\r?\n- \.vscode/extensions\.json\r?\n(?!- )') $detail
 }
 finally { Pop-Location }
 ''
