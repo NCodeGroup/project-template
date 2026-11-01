@@ -76,6 +76,8 @@ jobs:
             run: ./tests/Test-ChangelogBackfill.ps1
           - name: Check the changelog for duplicate headings
             run: ./tests/Test-ChangelogHeadings.ps1
+          - name: Test the plan state script's concurrent calls
+            run: ./tests/Test-PlanStateConcurrency.ps1
     defaults:
       run:
         shell: pwsh
