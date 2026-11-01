@@ -53,6 +53,9 @@ function Invoke-Git {
 }
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
+# A direct run keeps its Copier mirror in its own work folder, not in the user's cache; under tests\Invoke-AllTests.ps1 it keeps the runner's folder.
+$copierCache = $env:COPIER_CACHE_DIR
+if (-not $copierCache) { $env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache' }
 $tpl = Join-Path $Work 'template-repo'
 $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
@@ -121,6 +124,7 @@ try {
 }
 finally { Pop-Location }
 ''
+$env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Update ignored-files tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Update ignored-files tests: PASSED'

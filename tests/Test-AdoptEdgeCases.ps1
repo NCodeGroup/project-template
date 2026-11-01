@@ -30,6 +30,9 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
 . (Join-Path $PSScriptRoot 'AdoptionFixtures.ps1')
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
+# A direct run keeps its Copier mirror in its own work folder, not in the user's cache; under tests\Invoke-AllTests.ps1 it keeps the runner's folder.
+$copierCache = $env:COPIER_CACHE_DIR
+if (-not $copierCache) { $env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache' }
 New-Item -ItemType Directory -Force $Work | Out-Null
 $tpl = Join-Path $Work 'template-repo'
 $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
@@ -110,6 +113,7 @@ $notesSubject = git -C $notes log -1 --format=%s
 Check 'notes: a Node.js repository without build or test scripts commits without running a command' ($notesSubject -eq 'Adopt project-template v0.1.0' -and $notesAnswers -match '(?m)^stack: node\s*$' -and $notesAnswers -match "(?m)^build_command: ''\s*$" -and $notesAnswers -match "(?m)^test_command: ''\s*$" -and -not $notesOut.Contains('Running ') -and -not $notesCi.Contains('run build') -and -not $notesCi.Contains('npm test')) "$notesSubject | $notesAnswers | $notesOut | $notesCi"
 Check 'notes: CI installs with the package manager package.json names' ($notesAnswers -match '(?m)^package_manager: yarn\s*$' -and $notesCi.Contains('corepack enable yarn') -and $notesCi.Contains('yarn install') -and -not $notesCi.Contains('npm ci')) "$notesAnswers | $notesCi"
 ''
+$env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Adopt edge-case tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Adopt edge-case tests: PASSED'

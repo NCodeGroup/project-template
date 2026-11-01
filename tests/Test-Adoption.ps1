@@ -48,6 +48,9 @@ function Edit-File([string]$Path, [string]$Old, [string]$New) {
 
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
+# A direct run keeps its Copier mirror in its own work folder, not in the user's cache; under tests\Invoke-AllTests.ps1 it keeps the runner's folder.
+$copierCache = $env:COPIER_CACHE_DIR
+if (-not $copierCache) { $env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache' }
 New-Item -ItemType Directory -Force $Work | Out-Null
 
 $copierYml = Join-Path $repoRoot 'copier.yml'
@@ -352,6 +355,7 @@ if (-not $UnitOnly) {
     finally { Pop-Location }
 }
 ''
+$env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Adoption tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Adoption tests: PASSED'

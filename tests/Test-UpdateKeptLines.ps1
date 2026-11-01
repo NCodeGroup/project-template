@@ -45,6 +45,9 @@ function Invoke-Git {
 }
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
+# A direct run keeps its Copier mirror in its own work folder, not in the user's cache; under tests\Invoke-AllTests.ps1 it keeps the runner's folder.
+$copierCache = $env:COPIER_CACHE_DIR
+if (-not $copierCache) { $env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache' }
 $tpl = Join-Path $Work 'template-repo'
 # v0.1.0 has the secrets rule the template had before v0.15.0, which v0.2.0 changes back.
 $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl -BeforeCommit { Edit-File template/.gitignore.jinja "`n/secrets/`n" "`nsecrets/`n" }
@@ -114,6 +117,7 @@ try {
 }
 finally { Pop-Location }
 ''
+$env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Update kept-lines tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Update kept-lines tests: PASSED'
