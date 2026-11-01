@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.54.1] - 2026-11-01
+
+### Fixed
+
+- When `Update-Project.ps1` stops on a conflict, it stages each file it reset or set lines aside in as the update left it, so every file without a conflict is either unstaged or staged as it is in the working tree. Before, the index kept the version the update started from, such as an adopted project's `.gitignore` without the lines kept at adoption: the file was listed as `modified` even when the update left it as it was, and a commit that didn't stage it again, such as one that stages a list of files without it, dropped the project's lines. The update hands over to the new version's script, so this applies from the update to this version on ([#212](https://github.com/NCodeGroup/project-template/issues/212)).
+
 ## [0.54.0] - 2026-11-01
 
 ### Changed
@@ -824,7 +830,9 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.53.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.54.1...HEAD
+[0.54.1]: https://github.com/NCodeGroup/project-template/compare/v0.54.0...v0.54.1
+[0.54.0]: https://github.com/NCodeGroup/project-template/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/NCodeGroup/project-template/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/NCodeGroup/project-template/compare/v0.51.1...v0.52.0
 [0.51.1]: https://github.com/NCodeGroup/project-template/compare/v0.51.0...v0.51.1
