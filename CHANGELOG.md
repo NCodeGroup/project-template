@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-10-31
+
+### Changed
+
+- `tests/Invoke-AllTests.ps1` runs the suites in parallel, up to one per processor (`-ThrottleLimit <n>` sets how many, `-Serial` runs one at a time), prints each suite's result line in name order once all have finished, and ends with the run's wall-clock time as `Time: <m:ss>`. `tests/Test-Template.ps1` renders its answer sets in parallel, and the project update runs it made move into two new suites, `tests/Test-ProjectUpdate.ps1` and `tests/Test-ProjectUpdateHooks.ps1`, which CI runs as jobs of their own; its `-SkipUpdate` switch is gone. A full local run now takes about as long as its slowest suite instead of all of them added up ([#168](https://github.com/NCodeGroup/project-template/issues/168)).
+
 ## [0.43.1] - 2026-10-31
 
 ### Changed
@@ -622,7 +628,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.43.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.44.0...HEAD
+[0.44.0]: https://github.com/NCodeGroup/project-template/compare/v0.43.1...v0.44.0
 [0.43.1]: https://github.com/NCodeGroup/project-template/compare/v0.43.0...v0.43.1
 [0.43.0]: https://github.com/NCodeGroup/project-template/compare/v0.42.1...v0.43.0
 [0.42.1]: https://github.com/NCodeGroup/project-template/compare/v0.42.0...v0.42.1

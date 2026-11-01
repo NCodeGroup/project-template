@@ -23,6 +23,10 @@ jobs:
         include:
           - name: Test the template
             run: ./tests/Test-Template.ps1
+          - name: Test updating a rendered project
+            run: ./tests/Test-ProjectUpdate.ps1
+          - name: Test the update's hooks path and the root wrapper
+            run: ./tests/Test-ProjectUpdateHooks.ps1
           - name: Test adopting existing repositories
             run: ./tests/Test-Adoption.ps1
           - name: Test adopting a repository that owns a merged file
