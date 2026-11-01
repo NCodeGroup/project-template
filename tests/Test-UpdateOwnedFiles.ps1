@@ -6,8 +6,9 @@
     Renders a project from v0.1.0 that lists .github/workflows/ci.yml in project_owned_files and replaces that file with
     its own, then updates it to a v0.2.0 that changes the template's ci.yml and .gitignore. The update must leave the
     project's ci.yml alone without a conflict, show the template's change to it, and still merge .gitignore. A file the
-    template doesn't render, or one of the update's own files, must stop the update before it changes anything, and an empty list must give the file back and
-    leave the answer empty (project_owned_files: []). Prints PASS or FAIL per check and exits 1 on any failure.
+    template doesn't render, or one of the update's own files, must stop the update before it changes anything, and an
+    empty list must give the file back and leave the answer empty (project_owned_files: []). Prints PASS or FAIL per
+    check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-owned-test-<process ID> in the

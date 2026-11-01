@@ -104,12 +104,12 @@ try {
     Check 'renamed: the rewritten-file note and its -Data name a merged file with a renamed source once' (([regex]::Matches($r.Output, '(?m)^  \.vscode/extensions\.json\r?$').Count -eq 1) -and $r.Output.Contains("-Data @{ project_owned_files = 'CLAUDE.md', 'scripts/check.ps1', '.vscode/extensions.json' }")) $detail
 
     Invoke-Git reset -q --hard $head; Invoke-Git clean -fdq
-    $r = Invoke-Update @{ project_owned_files = 'CLAUDE.md', 'scripts/check.ps1', '.vscode/extensions.json' }
+    $r = Invoke-Update @{ project_owned_files = 'CLAUDE.md', 'scripts/check.ps1', '.vscode/extensions.json', 'CLAUDE.md' }
     $status = git status --porcelain
     $detail = "exit $($r.ExitCode)`n$($r.Output.Trim())"
     Check 'owned: the update commits and leaves all three files as the project has them' (($r.ExitCode -eq 0) -and $r.Output.Contains('Committed "Update from project-template v0.2.0"') -and -not $status -and ([IO.File]::ReadAllText((Join-Path $path 'CLAUDE.md')) -eq $ownClaude) -and ([IO.File]::ReadAllText((Join-Path $path 'scripts/check.ps1')) -eq $ownCheck) -and ([IO.File]::ReadAllText((Join-Path $path '.vscode/extensions.json')) -eq $ownExtensions)) $detail
     Check 'renamed: shows an owned file whose template source was renamed once' ([regex]::Matches($r.Output, '(?m)^  \.vscode/extensions\.json:\r?$').Count -eq 1) $detail
-    Check 'owned: .copier-answers.yml records the three files' ([IO.File]::ReadAllText((Join-Path $path '.copier-answers.yml')) -match '(?m)^project_owned_files:\r?\n- CLAUDE\.md\r?\n- scripts/check\.ps1\r?\n- \.vscode/extensions\.json\r?$') $detail
+    Check 'owned: .copier-answers.yml records the three files, a repeated name once' ([IO.File]::ReadAllText((Join-Path $path '.copier-answers.yml')) -match '(?m)^project_owned_files:\r?\n- CLAUDE\.md\r?\n- scripts/check\.ps1\r?\n- \.vscode/extensions\.json\r?$') $detail
 }
 finally { Pop-Location }
 ''
