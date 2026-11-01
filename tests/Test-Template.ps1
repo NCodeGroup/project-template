@@ -287,6 +287,7 @@ foreach ($case in $cases) {
     if ($case.Host -eq 'github') {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD') -and $ci.Contains('merge_group:') -and $ci.Contains('${{ github.event.pull_request.base.sha'))
+        Check "${name}: CI checks the pull request's title and description, also after an edit" ($ci.Contains('PR_TITLE: ${{ github.event.pull_request.title }}') -and $ci.Contains('PR_BODY: ${{ github.event.pull_request.body }}') -and $ci.Contains('-PullRequestTitle $env:PR_TITLE -PullRequestBody $env:PR_BODY') -and $ci.Contains('types: [opened, synchronize, reopened, edited]')) $ci
         $checkouts = [regex]::Matches($ci, '(?m)^\s+- uses: actions/checkout@').Count
         Check "${name}: CI checkouts set persist-credentials false" ($checkouts -gt 0 -and [regex]::Matches($ci, '(?m)^\s+persist-credentials: false\r?$').Count -eq $checkouts) $ci
         $dependabot = Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw
