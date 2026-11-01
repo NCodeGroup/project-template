@@ -22,7 +22,6 @@ param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-up
 $ErrorActionPreference = 'Stop'
 $ownWork = -not $PSBoundParameters.ContainsKey('Work')
 trap { "Kept the work folder: $Work"; break }
-$repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
@@ -47,14 +46,7 @@ function Invoke-Git {
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 $tpl = Join-Path $Work 'template-repo'
-New-Item -ItemType Directory -Force $tpl | Out-Null
-Get-ChildItem -LiteralPath $repoRoot -Force | Where-Object Name -NotIn '.git', '.claude' | Copy-Item -Destination $tpl -Recurse -Force
-# Claude Code's plan worktrees are other checkouts, not part of the snapshot.
-$claudeCopy = New-Item -ItemType Directory -Force (Join-Path $tpl '.claude')
-Get-ChildItem -LiteralPath (Join-Path $repoRoot '.claude') -Force | Where-Object Name -NE 'worktrees' | Copy-Item -Destination $claudeCopy.FullName -Recurse -Force
-Push-Location $tpl
-try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
-finally { Pop-Location }
+$null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $handoffMarker = 'Update-Project.ps1 from v0.2.0 is running.'
 $project = Join-Path $Work 'project'

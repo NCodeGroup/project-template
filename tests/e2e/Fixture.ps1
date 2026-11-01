@@ -27,14 +27,7 @@ function Write-Text([string]$Path, [string]$Text) {
 function New-FixtureProject([string]$RepoRoot, [string]$Work, [string]$App, [string]$Origin, [string]$Bin, [hashtable]$Data = @{}, [hashtable]$Landing = @{}) {
     if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
     $tpl = Join-Path $Work 'template-repo'
-    New-Item -ItemType Directory -Force $tpl | Out-Null
-    Get-ChildItem -LiteralPath $RepoRoot -Force | Where-Object Name -NotIn '.git', '.claude' | Copy-Item -Destination $tpl -Recurse -Force
-    # Claude Code's plan worktrees are other checkouts, not part of the snapshot.
-    $claudeCopy = New-Item -ItemType Directory -Force (Join-Path $tpl '.claude')
-    Get-ChildItem -LiteralPath (Join-Path $RepoRoot '.claude') -Force | Where-Object Name -NE 'worktrees' | Copy-Item -Destination $claudeCopy.FullName -Recurse -Force
-    Push-Location $tpl
-    try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Snapshot'; Invoke-Git tag v0.1.0 }
-    finally { Pop-Location }
+    $null = & (Join-Path $RepoRoot 'tests/New-TemplateSnapshot.ps1') $tpl
 
     $answers = @{ project_name = 'Fixture App'; stack = 'other'; workflow_tools = @('claude'); test_command = 'pwsh -NoProfile -File tests/Test-Greeting.ps1' }
     foreach ($key in $Data.Keys) { $answers[$key] = $Data[$key] }

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.46.2] - 2026-10-31
+
+### Changed
+
+- No change for projects made from the template. `tests/Test-UpdateExitCode.ps1`, `tests/Test-UpdateIgnoredFiles.ps1`, `tests/Test-UpdateKeptLines.ps1`, `tests/Test-UpdateOwnedFiles.ps1`, `tests/Test-UpdateRewrittenFiles.ps1` and the end-to-end fixture in `tests/e2e/Fixture.ps1` build the snapshot of the working tree they render from with `tests/New-TemplateSnapshot.ps1` instead of copying, committing and tagging it themselves, so what the snapshot leaves out is set in one place. Its new `-BeforeCommit` script block changes the snapshot before it is committed, as `tests/Test-UpdateKeptLines.ps1` does to start from an older `.gitignore` ([#176](https://github.com/NCodeGroup/project-template/issues/176)).
+
 ## [0.46.1] - 2026-10-31
 
 ### Changed
@@ -681,7 +687,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.46.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.46.2...HEAD
+[0.46.2]: https://github.com/NCodeGroup/project-template/compare/v0.46.1...v0.46.2
 [0.46.1]: https://github.com/NCodeGroup/project-template/compare/v0.46.0...v0.46.1
 [0.46.0]: https://github.com/NCodeGroup/project-template/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/NCodeGroup/project-template/compare/v0.44.0...v0.45.0
