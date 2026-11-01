@@ -237,6 +237,8 @@ foreach ($case in $cases) {
     Check "${name}: $($case.Host) files only" (-not $wrong) ($wrong -join ', ')
     $ciForIndex = Get-Content -LiteralPath (Join-Path $dest $(if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' })) -Raw
     Check "${name}: CI checks the decision index" ($ciForIndex.Contains('.template/Test-AdrIndex.ps1')) $ciForIndex
+    $indexHistory = if ($case.Host -eq 'github') { $ciForIndex -match '(?s)  build-and-test:.*?fetch-depth: 0.*?- name: Check the decision index' } else { $ciForIndex.Contains('- pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"') -and $ciForIndex.Contains('GIT_DEPTH: "0"') }
+    Check "${name}: CI checks the decision index with the history to tell a new record" $indexHistory $ciForIndex
     # The repository's license: the license answer, or a library's package license from before that answer existed.
     $licenseAnswer = if ($case.Data.license) { $case.Data.license } elseif ($case.Data.nuget_package) { $case.Data.package_license } else { '' }
     $licensePath = Join-Path $dest 'LICENSE.txt'

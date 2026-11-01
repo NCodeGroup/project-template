@@ -74,7 +74,8 @@ build-and-test:
 {%- endif %}
 
 # The .NET SDK image has git and PowerShell; the check needs the full history. It also checks the decision index,
-# which every project has, code or not.
+# which every project has, code or not, against the merge request's base: a merge request pipeline fetches no
+# default-branch ref.
 # On a merge request it also reads the title and description, passed through the environment so the shell never expands them.
 commit-attribution:
   image: mcr.microsoft.com/dotnet/sdk:10.0
@@ -83,4 +84,4 @@ commit-attribution:
   script:
     - |
       BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" pwsh -NoProfile -Command '& ./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:CI_COMMIT_SHA -PullRequestTitle $env:CI_MERGE_REQUEST_TITLE -PullRequestBody $env:CI_MERGE_REQUEST_DESCRIPTION; exit $LASTEXITCODE'
-    - pwsh -NoProfile -File .template/Test-AdrIndex.ps1
+    - pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"

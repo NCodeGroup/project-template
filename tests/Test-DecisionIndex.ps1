@@ -5,7 +5,10 @@
 .DESCRIPTION
     Builds one small fixture project per case, runs the check on it and compares the exit code and the output. Also
     checks that every decision record the template ships in docs/decisions/project-template/ is numbered 0001-0999 and
-    linked from the template's index. Prints PASS or FAIL per check and exits 1 on any failure. The checks take seconds.
+    linked from the template's index. Fixture Git repositories check that a record numbered below 1000 that is new since
+    the merge base with origin/main, or with -Base, fails, that a renamed older one passes, and that the check is
+    skipped, saying so, without a merge base or in a folder that isn't a repository's root. Prints PASS or FAIL per
+    check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-decision-index-test-<process ID> in the
@@ -27,6 +30,10 @@ $failures = [Collections.Generic.List[string]]::new()
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
+function Invoke-Git {
+    git -c user.name=template-test -c user.email=template-test@example.invalid @args
+    if ($LASTEXITCODE) { throw "git $($args -join ' ') failed." }
+}
 # Creates the fixture project $Work\<Name> and writes each file, keyed by its path relative to that root.
 function New-Fixture([string]$Name, [hashtable]$Files) {
     $root = Join-Path $Work $Name
@@ -38,8 +45,32 @@ function New-Fixture([string]$Name, [hashtable]$Files) {
     }
     $root
 }
-function Invoke-AdrIndex([string]$Root) {
-    $output = & $adrIndex -Path $Root 2>&1 | Out-String
+# A fixture repository whose main branch holds 0001-a.md, indexed, and whose checked-out topic branch makes the given changes: a file's text, or $null to delete it. -Origin points origin/main at main, as a full clone has it.
+function New-GitFixture([string]$Name, [hashtable]$Changes, [switch]$Origin) {
+    $root = New-Fixture $Name @{ 'docs/decisions/0001-a.md' = $record; 'docs/decisions/README.md' = Get-Readme @($rowA) }
+    Push-Location -LiteralPath $root
+    try {
+        Invoke-Git init -q -b main
+        Invoke-Git add -A
+        Invoke-Git commit -q -m Main
+        if ($Origin) { Invoke-Git update-ref refs/remotes/origin/main HEAD }
+        Invoke-Git switch -q -c topic
+        foreach ($relative in $Changes.Keys) {
+            $path = Join-Path $root $relative
+            if ($null -eq $Changes[$relative]) { Remove-Item -LiteralPath $path }
+            else {
+                New-Item -ItemType Directory -Force (Split-Path -Parent $path) | Out-Null
+                [IO.File]::WriteAllText($path, $Changes[$relative], [Text.UTF8Encoding]::new($false))
+            }
+        }
+        Invoke-Git add -A
+        Invoke-Git commit -q --allow-empty -m Topic
+    }
+    finally { Pop-Location }
+    $root
+}
+function Invoke-AdrIndex([string]$Root, [string]$Base) {
+    $output = & $adrIndex -Path $Root -Base $Base 2>&1 | Out-String
     [pscustomobject]@{ Exit = $LASTEXITCODE; Output = $output }
 }
 function Get-Readme([string[]]$Rows) {
@@ -170,6 +201,55 @@ foreach ($case in $cases) {
     $ok = ($result.Exit -eq $case.Exit) -and $result.Output.Contains($case.Text)
     Check "index: $($case.Name)" $ok "exit $($result.Exit), expected $($case.Exit); expected output to contain: $($case.Text); output: $($result.Output)"
 }
+
+# A new record below 1000 is one the default branch lacks; each fixture is a Git repository with a topic branch.
+$rowC = '| [1000](1000-c.md) | C | Accepted |'
+$newRecords = @{
+    'docs/decisions/0002-b.md' = $record
+    'docs/decisions/1000-c.md' = $record
+    'docs/decisions/README.md' = Get-Readme @($rowA, $rowB, $rowC)
+}
+$skipped = "Decision numbers: didn't check for new records numbered below 1000"
+
+$root = New-GitFixture 'git-new' $newRecords -Origin
+$result = Invoke-AdrIndex $root
+$ok = ($result.Exit -eq 1) -and $result.Output.Contains("New record numbered below 1000, the template's range: 0002-b.md") -and -not $result.Output.Contains('range: 0001-a.md') -and -not $result.Output.Contains('range: 1000-c.md')
+Check 'new record: a record numbered below 1000 that the default branch lacks fails' $ok "exit $($result.Exit); output: $($result.Output)"
+
+$root = New-GitFixture 'git-renamed' @{
+    'docs/decisions/0001-a.md'       = $null
+    'docs/decisions/0001-renamed.md' = $record
+    'docs/decisions/README.md'       = Get-Readme @('| [0001](0001-renamed.md) | A | Accepted |')
+} -Origin
+$result = Invoke-AdrIndex $root
+$ok = ($result.Exit -eq 0) -and $result.Output.Contains('Decision index: 1 records, all indexed.') -and -not $result.Output.Contains($skipped)
+Check 'new record: a record the default branch has, under a new title, passes' $ok "exit $($result.Exit); output: $($result.Output)"
+
+$root = New-GitFixture 'git-no-origin' $newRecords
+$result = Invoke-AdrIndex $root
+$ok = ($result.Exit -eq 0) -and $result.Output.Contains($skipped) -and $result.Output.Contains('Decision index: 3 records, all indexed.')
+Check 'new record: without a merge base the check is skipped, saying so' $ok "exit $($result.Exit); output: $($result.Output)"
+
+$unrelated = New-GitFixture 'git-unrelated-origin' $newRecords
+Push-Location -LiteralPath $unrelated
+try {
+    $orphan = git commit-tree 'HEAD^{tree}' -m Unrelated
+    Invoke-Git update-ref refs/remotes/origin/main $orphan
+}
+finally { Pop-Location }
+$result = Invoke-AdrIndex $unrelated
+$ok = ($result.Exit -eq 0) -and $result.Output.Contains($skipped) -and $result.Output.Contains('has no merge base') -and $result.Output.Contains('Decision index: 3 records, all indexed.')
+Check 'new record: a default branch with no shared history skips the check, saying so' $ok "exit $($result.Exit); output: $($result.Output)"
+
+$result = Invoke-AdrIndex $root 'main'
+$ok = ($result.Exit -eq 1) -and $result.Output.Contains('range: 0002-b.md')
+Check 'new record: -Base names the commit to compare with' $ok "exit $($result.Exit); output: $($result.Output)"
+
+$null = New-GitFixture 'git-outer' @{} -Origin
+$inner = New-Fixture 'git-outer/inner' @{ 'docs/decisions/0002-b.md' = $record; 'docs/decisions/README.md' = Get-Readme @($rowB) }
+$result = Invoke-AdrIndex $inner
+$ok = ($result.Exit -eq 0) -and $result.Output.Contains("isn't the root of a Git repository")
+Check 'new record: a folder inside another repository is skipped, not compared with it' $ok "exit $($result.Exit); output: $($result.Output)"
 
 # A fixture folder of template records shows each repository check's building blocks working, and failing.
 $fixtureRoot = New-Fixture 'template-records' @{

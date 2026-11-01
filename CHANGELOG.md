@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-11-01
+
+### Added
+
+- When `Update-Project.ps1` stops on a conflict in a file the version it moves to owns, such as a `build/dod.ps1` of the project's own that the template now adds, it names the file and prints the `.\.template\Update-Project.ps1 -Data @{ project_owned_files = ... }` to run after abandoning the update, so the project keeps its copy. The command also names the files the answer already lists and any merged file the project seems to have replaced. The update hands over to the new version's script, so this applies from the update to this version on ([#207](https://github.com/NCodeGroup/project-template/issues/207)).
+- `.template/Test-AdrIndex.ps1` fails a new project decision record numbered below 1000, the range the template's own records use: one whose number no record in `docs/decisions/` had at the merge base with the default branch (`origin/HEAD`, else `origin/main` or `origin/master`, or the commit the new `-Base` parameter names). Records a project already had below 1000 still pass, also under a new title; renumber a new one from 1000. Without a merge base, as in a shallow clone or a clone without `origin`, it skips that check and says so. So that CI can run it, `ci.yml`'s `build-and-test` job checks out the full history (`fetch-depth: 0`), and `.gitlab-ci.yml` passes the merge request's base with `-Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"`. Both files are merged, so an update brings this in; a project that owns its CI file makes that change itself ([#206](https://github.com/NCodeGroup/project-template/issues/206)).
+
 ## [0.52.0] - 2026-11-01
 
 ### Changed
@@ -810,7 +817,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.52.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.53.0...HEAD
+[0.53.0]: https://github.com/NCodeGroup/project-template/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/NCodeGroup/project-template/compare/v0.51.1...v0.52.0
 [0.51.1]: https://github.com/NCodeGroup/project-template/compare/v0.51.0...v0.51.1
 [0.51.0]: https://github.com/NCodeGroup/project-template/compare/v0.50.2...v0.51.0

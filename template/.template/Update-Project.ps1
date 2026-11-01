@@ -31,6 +31,9 @@
                       template's version, the script suggests that answer, with the -Data to run;
                       it doesn't stop the update. When Copier can't render the project's version, it warns
                       with Copier's error and says it skipped the suggestion.
+                      When the update stops on a conflict in a file the version it moves to owns, such
+                      as a build/dod.ps1 of the project's own that the template now adds, it suggests
+                      the answer the same way, naming that file too.
 
     The update runs `copier recopy` at the project's current template version, which resets the template-owned
     files and shows any local edits, then `copier update --defaults` to the newest version (or -Ref), which merges
@@ -500,12 +503,26 @@ try {
         }
     }
 
+    # A conflict in a file the target version owns, neither merged nor project-owned there, comes from the project's own copy of it, such as a build/dod.ps1 the template now adds: the project_owned_files answer keeps that copy.
+    $ownedConflicts = @()
+    if ($conflicts) {
+        $mergedTo = @(Get-TemplateList $TemplateClone $to '_merged_files')
+        $skippedTo = @(Get-TemplateList $TemplateClone $to '_skip_if_exists')
+        $ownedConflicts = @($conflicts | Where-Object { $_ -in $ownable -and $_ -notin $mergedTo -and $_ -notin $skippedTo })
+    }
+    $ownedCommand = "  .\.template\Update-Project.ps1 -Data @{ project_owned_files = $((@($ownedFiles) + $rewritten + $ownedConflicts | Select-Object -Unique | ForEach-Object { "'$_'" }) -join ', ') }"
     if ($rewritten) {
         ''
         "These merged files share less than half their lines with the template's version, so the project seems to have replaced them, and the template's changes to them can conflict in unrelated places:"
         $rewritten | ForEach-Object { "  $_" }
-        "To make them project-owned, so updates leave them alone and show the template's changes instead, run the update with (after abandoning it with git reset --hard; git clean -fd if it stops with a conflict below):"
-        "  .\.template\Update-Project.ps1 -Data @{ project_owned_files = $((@($ownedFiles) + $rewritten | Select-Object -Unique | ForEach-Object { "'$_'" }) -join ', ') }"
+        if (-not $ownedConflicts) { "To make them project-owned, so updates leave them alone and show the template's changes instead, run the update with (after abandoning it with git reset --hard; git clean -fd if it stops with a conflict below):"; $ownedCommand }
+    }
+    if ($ownedConflicts) {
+        ''
+        "These files are template-owned in ${to}, and this project has its own version of each, so they conflict:"
+        $ownedConflicts | ForEach-Object { "  $_" }
+        "To keep the project's versions, make them project-owned$(if ($rewritten) { ', with the merged files above,' }) so updates leave them alone and show the template's changes instead. Abandon this update with git reset --hard; git clean -fd, then run:"
+        $ownedCommand
     }
 
     # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).
