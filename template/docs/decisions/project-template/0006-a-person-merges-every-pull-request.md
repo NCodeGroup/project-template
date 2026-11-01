@@ -38,7 +38,8 @@ At the maintainer's request ([NCodeGroup/code-review#33](https://github.com/NCod
 workflow turns on auto-merge: `.github/workflows/code-review-auto-merge.yml`. Its scope is narrow. It acts only on a
 pull request that Dependabot opened from the repository itself, whose only change is the
 `uses: NCodeGroup/code-review@<full commit SHA> # vX.Y.Z` line of a workflow, moving it to a minor or patch release, and
-the pull request merges with a merge commit, only after the checks the default branch requires pass.
+the pull request merges only after the checks the default branch requires pass, by the first merge method that both
+the repository's settings and the branch's rules allow: a merge commit, else a rebase, else a squash.
 
 The rule exists so that nothing merges while its author is still reviewing it, over a review thread no person read.
 That reason doesn't hold here: the change is a pin to a release whose code was itself reviewed and merged by a person

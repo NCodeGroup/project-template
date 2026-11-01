@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.50.1] - 2026-11-01
+## [0.50.2] - 2026-11-01
 
 ### Added
 
@@ -15,6 +15,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - `/analyze-decision` gives a project's next decision record the next number above its highest record numbered 1000 or more, or 1000 for the first, and `.github/instructions/project-template.instructions.md` says project records are numbered from 1000; a new project's `docs/decisions/README.md` says to start from `1000`. Records a project already has below 1000 keep their numbers, and `.template/Test-AdrIndex.ps1` still accepts them. `docs/decisions/README.md` is project-owned, so a project made from an earlier version keeps its own: `Update-Project.ps1` shows the template's change to it, and you make it by hand, changing "starting from `0001`" to "starting from `1000`" and "the highest record" to "the highest record numbered 1000 or more". The changelog example in the planning commands cites a project record as `ADR-1007`.
+
+## [0.50.1] - 2026-11-01
+
+### Fixed
+
+- `.github/instructions/project-template.instructions.md` lists "Secrets never enter the repository or a prompt" as a `## Conventions` item of its own again: since v0.45.0 it was joined to the end of the "Done" item, on the same line. `tests/Test-Template.ps1` now fails when a rendered Markdown line joins two list items ([#197](https://github.com/NCodeGroup/project-template/issues/197)).
+- `.github/workflows/code-review-auto-merge.yml` no longer always asks for a merge commit, which a repository that allows only squash merges, or whose default branch's ruleset requires linear history or allows only other methods, refused, failing the run on every NCode Review bump. It turns on auto-merge with the first method that both the repository's settings and the active rules of the pull request's base branch allow: a merge commit, else a rebase, else a squash; when none is left, the run fails and says so. Classic branch protection's "Require linear history" can't be read with the workflow's token: a repository that sets it there should turn merge commits off in its settings, or require linear history in a ruleset instead ([#195](https://github.com/NCodeGroup/project-template/issues/195)).
 
 ## [0.50.0] - 2026-11-01
 
@@ -776,7 +783,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.50.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.50.2...HEAD
+[0.50.2]: https://github.com/NCodeGroup/project-template/compare/v0.50.1...v0.50.2
 [0.50.1]: https://github.com/NCodeGroup/project-template/compare/v0.50.0...v0.50.1
 [0.50.0]: https://github.com/NCodeGroup/project-template/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/NCodeGroup/project-template/compare/v0.48.4...v0.49.0
