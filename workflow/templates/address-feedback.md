@@ -88,7 +88,7 @@ A thread gets its reply on the thread. GitHub: `gh api graphql -F threadId=<thre
 
 A top-level comment or review summary gets a top-level comment of its own, starting with `Autopilot:` and the URL of what it answers, then the reply as above; one comment may answer several items from the same review summary, one line each. GitHub: `gh pr comment <number> --body-file <file>`. GitLab: `glab api --method POST "projects/:id/merge_requests/<number>/notes" -F body=@<file>`.
 
-Then read the threads again with Start item 4's query. Each unresolved thread whose last comment doesn't start with `Autopilot:`, such as one that arrived during the run or one the 40-item limit left out, still awaits a reply: list it in the report, and say that another `/address-feedback <number>` answers it.
+Then read the threads again with Start item 4's query. Each unresolved thread whose last comment doesn't start with `Autopilot:` and that Start item 5 doesn't leave for me after two `Autopilot:` replies, such as one that arrived during the run or one the 40-item limit left out, still awaits a reply: list it in the report, and say that another `/address-feedback <number>` answers it.
 
 Then, when `git status --porcelain` prints nothing in the worktree and `git rev-parse HEAD` equals `git rev-parse "origin/<head>"`, return to the main checkout with the `ExitWorktree` tool and `action: "keep"`, then run `git worktree remove <worktree path>` and `git branch -D worktree-feedback-<number>`: its commits are on the pull request's branch. Otherwise leave the worktree as it is.
 
