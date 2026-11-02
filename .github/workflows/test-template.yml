@@ -89,6 +89,8 @@ jobs:
             run: ./tests/Test-PlanStateConcurrency.ps1
           - name: Test the decision index check
             run: ./tests/Test-DecisionIndex.ps1
+          - name: Test the GitLab baseline script
+            run: ./tests/Test-GitLabBaseline.ps1
     defaults:
       run:
         shell: pwsh
