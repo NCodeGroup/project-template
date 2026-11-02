@@ -7,8 +7,9 @@
     to change. Checks that -WhatIf changes nothing; that a repository with no ruleset gets "Protect main" on its default
     branch, with no deletion, no force push, a pull request with no approvals, merge-commit and rebase merges only and
     no bypass, and delete-branch-on-merge; that -RequireChecks adds required status checks; that a repository whose
-    default branch already requires pull requests, or already has this ruleset, is left alone, and that -RequireChecks
-    updates the ruleset the script made; that a ruleset that already has a code-scanning rule keeps it and its
+    default branch already requires pull requests, or already has this ruleset, is left alone, but gets conversation
+    resolution turned on, with a PUT of its rules alone, where it is off, shown by -WhatIf and reported when refused,
+    and that -RequireChecks updates the ruleset the script made; that a ruleset that already has a code-scanning rule keeps it and its
     thresholds, its repository's suite is never switched, and a notice, with -WhatIf too, says when the default setup
     runs a suite other than extended and how to switch it by hand, while a setup it can't read is reported without
     failing the run; that -RequireChecks auto requires the GitHub Actions checks that passed on the

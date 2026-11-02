@@ -27,8 +27,11 @@
         the ruleset requires and merges only as it allows.
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
-    owner shaped that ruleset. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's required
-    checks in place. Either way the repository still gets the tag ruleset and the security settings, so a second run
+    owner shaped that ruleset. It still turns on "require conversation resolution" in that ruleset, and in a "Protect
+    main" ruleset an older version of this script made, when it is off, sending only the ruleset's rules with that one
+    parameter changed, so no pull request merges past an unresolved discussion; -WhatIf shows it, and a refusal is
+    reported without failing the run. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's
+    required checks in place. Either way the repository still gets the tag ruleset and the security settings, so a second run
     brings a repository protected by an older version of this script up to date. A ruleset named "Protect release tags",
     whatever its state, is left alone, and so is an active tag ruleset on v* tags that already refuses both deletion and
     update. An archived repository and a fork are skipped, and so is a repository whose default branch it skips with a
