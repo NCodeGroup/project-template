@@ -13,6 +13,7 @@ a branch. `pr view` of a branch with no pull request fails as gh does (logged as
 pull request gets when it is opened. An optional `review-seed-push.json` holds the review a pull request gets on the first
 GraphQL read after a /review comment posted once its branch on origin has moved past the head it was opened at, as NCode Review reviews a push only when a writer asks.
 `api repos/<owner>/<repo>/commits/<sha>/check-runs` answers one completed `Code review` check run of the app `ncode-review` for a commit whose push review it has given, giving it first when a /review comment asked for it, and evaluates only simple `--jq` paths and the count of completed check runs of one app.
+`api repos/<owner>/<repo>/issues/comments/<id>` answers a comment it holds by its id, as the commands read a post back after making it; it never appends a footer to a body.
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -215,6 +216,16 @@ if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/commit
         exit 0
     }
     Stop-Call UNSUPPORTED "gh stand-in: unsupported --jq for check runs: $jq"
+}
+
+# A comment read back by its id, as the commands do after posting one. The stand-in never appends a footer, as gh in a local session doesn't.
+if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/issues/comments/(\d+)$') {
+    $commentId = $Matches[1]
+    $method = Get-Option '-X', '--method'
+    $comment = @(Read-Json 'comments.json' @()) | Where-Object { "$($_.url)".EndsWith("#issuecomment-$commentId") } | Select-Object -First 1
+    if (-not $comment -or ($method -and $method -ne 'GET')) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+    Write-Result @{ id = [long]$commentId; body = $comment.body; html_url = $comment.url; user = $comment.author }
+    exit 0
 }
 
 switch ("$($args[0]) $($args[1])") {
