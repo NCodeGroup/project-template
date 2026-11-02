@@ -16,7 +16,7 @@
     `gh repo create` for github, `glab repo create` for gitlab — named after the destination folder, with the given
     -Visibility (public unless told otherwise), and pushes. For GitHub it then runs tools/Set-RepositoryBaseline.ps1,
     which protects the default branch so changes reach it only through a pull request and requires the template's
-    CI jobs to pass. For GitLab it runs tools/Set-GitLabBaseline.ps1, which turns on the project's "All threads must be resolved" and "Pipelines must succeed" merge checks. -NoBaseline skips either.
+    CI jobs to pass. For GitLab it runs tools/Set-GitLabBaseline.ps1, which turns on the project's "All threads must be resolved" and "Pipelines must succeed" merge checks, sets "Squash commits when merging" to "Do not allow" and lets no one push to the default branch. -NoBaseline skips either. When either fails, or the signed-in GitHub user can't be read, the repository stays and a warning gives the command to run it again.
 
 .EXAMPLE
     .\New-Project.ps1 -Path C:\src\qso-viewer                                              # local only
@@ -114,9 +114,12 @@ try {
         if ($gitHost -ne 'gitlab' -and -not $NoBaseline) {
             # The repository exists by now, so a failure here warns and says how to rerun instead of throwing it away.
             $baseline = Join-Path $PSScriptRoot 'tools/Set-RepositoryBaseline.ps1'
-            $owner = if ($Owner) { $Owner } else { (gh api user --jq .login).Trim() }
+            $owner = $Owner
             try {
-                if ($LASTEXITCODE) { throw "Couldn't read the signed-in GitHub user." }
+                if (-not $owner) {
+                    $owner = "$(gh api user --jq .login)".Trim()
+                    if ($LASTEXITCODE -or -not $owner) { $owner = '<owner>'; throw "Couldn't read the signed-in GitHub user." }
+                }
                 & $baseline -Repo $name -Owner $owner -RequireChecks 'build-and-test,Commit attribution'
             }
             catch {
@@ -130,7 +133,7 @@ try {
             $here = (Get-Location).Path
             try { & $gitlabBaseline -Path $here }
             catch {
-                Write-Warning "Couldn't turn on the GitLab project's merge checks: $($_.Exception.Message) Run it again with: $gitlabBaseline -Path '$here'"
+                Write-Warning "Couldn't protect the GitLab project: $($_.Exception.Message) Run it again with: $gitlabBaseline -Path '$here'"
             }
         }
     }

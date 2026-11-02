@@ -93,6 +93,8 @@ jobs:
             run: ./tests/Test-DecisionIndex.ps1
           - name: Test the GitLab baseline script
             run: ./tests/Test-GitLabBaseline.ps1
+          - name: Test New-Project.ps1 -CreateRemote's baseline calls
+            run: ./tests/Test-NewProjectRemote.ps1
     defaults:
       run:
         shell: pwsh
