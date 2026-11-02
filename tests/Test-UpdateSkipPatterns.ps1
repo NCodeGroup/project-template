@@ -79,9 +79,14 @@ $skip = @(
 Check 'repository: every _skip_if_exists entry in copier.yml starts with /' (($skip.Count -ge 15) -and -not @($skip | Where-Object { -not $_.StartsWith('/') -or $_ -match '[*?\[]' }).Count) ($skip -join ',')
 
 # v0.1.0 lists the skip entries without a leading / and has no 0014 row in the decision index.
+# It also rejects a project name that v0.2.0 accepts, so Copier can't render v0.1.0 for a project renamed by the update.
+$validator = 'validator: "{% if not project_name.strip() %}Required{% endif %}"'
+$strictValidator = 'validator: "{% if not project_name.strip() %}Required{% elif project_name == ''Renamed'' %}Not yet{% endif %}"'
 $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl -BeforeCommit {
     $yml = Join-Path (Get-Location) 'copier.yml'
-    [IO.File]::WriteAllText($yml, ([IO.File]::ReadAllText($yml) -replace '(?m)^  - /', '  - '))
+    $ymlText = [IO.File]::ReadAllText($yml)
+    if (-not $ymlText.Contains($validator)) { throw "'$validator' not found in $yml." }
+    [IO.File]::WriteAllText($yml, ($ymlText -replace '(?m)^  - /', '  - ').Replace($validator, $strictValidator))
     $idx = Join-Path (Get-Location) $indexSource
     [IO.File]::WriteAllText($idx, ([IO.File]::ReadAllText($idx) -replace '(?m)^\| \[0014\]\(.*\r?\n', ''))
 }
@@ -106,12 +111,12 @@ try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Re
 finally { Pop-Location }
 $readmeHash = (Get-FileHash -LiteralPath (Join-Path $path 'README.md')).Hash
 
-function Invoke-Update([hashtable]$Data) {
+function Invoke-Update([hashtable]$Data, [string]$Project = $path) {
     $lines = [Collections.Generic.List[string]]::new()
     $exitCode = 0
     try {
-        if ($Data) { & (Join-Path $path '.template\Update-Project.ps1') -Data $Data 2>&1 | ForEach-Object { $lines.Add("$_") } }
-        else { & (Join-Path $path '.template\Update-Project.ps1') 2>&1 | ForEach-Object { $lines.Add("$_") } }
+        if ($Data) { & (Join-Path $Project '.template\Update-Project.ps1') -Data $Data *>&1 | ForEach-Object { $lines.Add("$_") } }
+        else { & (Join-Path $Project '.template\Update-Project.ps1') *>&1 | ForEach-Object { $lines.Add("$_") } }
         $exitCode = $LASTEXITCODE
     }
     catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
