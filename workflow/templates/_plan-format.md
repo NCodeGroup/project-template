@@ -89,6 +89,8 @@ After writing `PLAN.md`, post the plan once to each issue on its `Issue:` line, 
 - GitHub: `gh issue comment <number> --body-file <file>`, adding `--repo <owner/repo>` for an issue in another repository.
 - GitLab, when `git remote get-url origin` contains `gitlab`: `glab issue note <number> --message (Get-Content -Raw <file>)`, adding `--repo <group/project>` for an issue in another project.
 
+{{PROMPT:_session-footer}}
+
 Give each comment's URL in your reply. When the CLI is missing or the post fails, say so, with the command to run; the plan doesn't depend on the comment.
 
 After writing `PLAN.md`, reply with the step list (one line per step) and any open risks. Do not start implementing.
