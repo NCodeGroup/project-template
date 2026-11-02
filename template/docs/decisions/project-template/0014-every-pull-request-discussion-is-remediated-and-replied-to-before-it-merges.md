@@ -28,7 +28,9 @@ it.
    default-branch ruleset that requires pull requests, and on GitLab the project's "All threads must be resolved" merge
    check plays that part.
 5. `/address-feedback`, `/run-feedback`, `/run-issues` and `/continue-plan` reply to, or list, every unresolved thread,
-   and recommend a merge only when every thread is answered.
+   and recommend a merge only when every thread is answered. A thread that a run's item limit leaves out, such as
+   `/address-feedback`'s 40 items, gets no reply in that run, so its last comment still awaits one and the next run
+   takes it; the run lists it.
 6. An agent never resolves a thread: the person resolves it
    ([ADR-0006](0006-a-person-merges-every-pull-request.md)).
 
