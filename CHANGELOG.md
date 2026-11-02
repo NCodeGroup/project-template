@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- `tools/Set-GitLabBaseline.ps1` turns on a GitLab project's "All threads must be resolved" and "Pipelines must succeed" merge checks, which the decision records named but nothing enforced: each is read first, turned on only where it is off, and reported as set, already set, would set (`-WhatIf`) or not available, with the reason. Name the project with `-Project <group/name>` and `-Hostname`, or `-Path`, a clone whose `origin` remote names it. `New-Project.ps1 -CreateRemote` runs it for a new GitLab project unless `-NoBaseline` says not to, and `Adopt-Project.ps1` prints the command for a repository on GitLab. Run it once for each GitLab project made from the template before ([#223](https://github.com/NCodeGroup/project-template/issues/223)).
+- `tools/Set-GitLabBaseline.ps1` turns on a GitLab project's "All threads must be resolved" and "Pipelines must succeed" merge checks, which the decision records named but nothing enforced: each is read first, turned on only where it is off, and reported as set, already set, would set (`-WhatIf`) or not available, with the reason. Name the project with `-Project <group/name>` and `-Hostname`, or `-Path`, a clone whose `origin` remote names it. `New-Project.ps1 -CreateRemote` runs it for a new GitLab project unless `-NoBaseline` says not to, and `Adopt-Project.ps1` prints the command for a repository on GitLab. Run it once for each GitLab project made from the template before 0.58.0 ([#223](https://github.com/NCodeGroup/project-template/issues/223)).
 
 ### Changed
 
