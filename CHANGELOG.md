@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-11-02
+
+### Added
+
+- `tools/Set-GitLabBaseline.ps1` sets a GitLab project's "Squash commits when merging" to "Do not allow" (`squash_option` `never`), so a plan's step commits stay on the default branch, as ADR-0013 records, and lets no one push to its default branch ("Allowed to push and merge" set to "No one"), so a change reaches it only through a merge request, as ADR-0005 records, and `.template/Get-PlanState.ps1` reports `protected: host`. Each is read first, changed only where it isn't so already, and reported as set, already set, would set (`-WhatIf`) or not available. GitLab Free can't change a protected branch's access levels in place, so the script removes a protection made only of roles and protects the branch again with its own merge, unprotect and force-push settings, restoring the earlier protection when that fails and failing the run only when the branch is left unprotected; a protection that names users, groups, deploy keys or code owners is reported and left to change in Settings > Repository > Protected branches, and an unprotected default branch is protected. Run it again for each GitLab project made from the template before 0.59.0 ([#228](https://github.com/NCodeGroup/project-template/issues/228), [#229](https://github.com/NCodeGroup/project-template/issues/229)).
+- No change for projects made from the template. A new suite, `tests/Test-NewProjectRemote.ps1`, runs `New-Project.ps1 -CreateRemote` against stand-ins for `copier`, `gh`, `glab` and the two baseline scripts, and checks the GitHub and GitLab baseline calls, their `-NoBaseline` gate and their warning on failure; CI runs it ([#230](https://github.com/NCodeGroup/project-template/issues/230)).
+
+### Changed
+
+- ADR-0005 and ADR-0013 name `tools/Set-GitLabBaseline.ps1` as what lets no one push to a GitLab project's default branch and forbids squash merges there. Projects get them with `.\.template\Update-Project.ps1` ([#228](https://github.com/NCodeGroup/project-template/issues/228), [#229](https://github.com/NCodeGroup/project-template/issues/229)).
+
+### Fixed
+
+- `New-Project.ps1 -CreateRemote` no longer stops with "You cannot call a method on a null-valued expression" after creating a GitHub repository when `gh` can't read the signed-in user: it warns with the command that runs `tools/Set-RepositoryBaseline.ps1` again, with `<owner>` to fill in ([#230](https://github.com/NCodeGroup/project-template/issues/230)).
+
 ## [0.58.1] - 2026-11-01
 
 ### Added
@@ -886,7 +901,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.58.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.59.0...HEAD
+[0.59.0]: https://github.com/NCodeGroup/project-template/compare/v0.58.1...v0.59.0
 [0.58.1]: https://github.com/NCodeGroup/project-template/compare/v0.58.0...v0.58.1
 [0.58.0]: https://github.com/NCodeGroup/project-template/compare/v0.57.1...v0.58.0
 [0.57.1]: https://github.com/NCodeGroup/project-template/compare/v0.57.0...v0.57.1
