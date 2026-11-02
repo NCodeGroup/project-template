@@ -861,6 +861,13 @@ $prAttributionMissing = @(
     if (-not ($prAttributionText.Contains('`Co-authored-by:`') -and $prAttributionText.Contains('`Claude-Session:`') -and $prAttributionText.Contains('"Generated with"'))) { 'workflow\templates\_pr-attribution.md' }
 )
 Check 'workflow: ship-plan and run-issues delete agent attribution lines from a pull request''s title and description before they send them' (-not $prAttributionMissing) ($prAttributionMissing -join ', ')
+# The commands that post to GitHub read each post back and remove the footer a session's GitHub tooling appends, through {{PROMPT:_session-footer}}.
+$sessionFooterText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_session-footer.md')).Body.Trim()
+$sessionFooterFiles = @('ship-plan', 'run-issues', 'address-feedback', 'run-feedback', 'orchestrate-plan', 'replan-step', 'plan-issue', 'plan-feature', 'plan-template-update' | ForEach-Object { "template\.claude\commands\$_.md"; ".claude\commands\$_.md" }) + 'template\.github\prompts\run-issues.prompt.md', 'template\.github\skills\run-issues\SKILL.md'
+$m = @(Get-MissingText $sessionFooterFiles $sessionFooterText | ForEach-Object { ($_ -split ': ', 2)[0] + ': the session-footer rule is missing' })
+$m += @(foreach ($t in '`update_pull_request`', '`update_issue_comment`', '`issue_write`', '#issuecomment-', 'Never remove it through `gh`', 'A reply on a review thread is the one exception') { if (-not $sessionFooterText.Contains($t)) { "workflow\templates\_session-footer.md: missing $t" } })
+$m += @(if (-not ($reviewRequestText.Contains('issues/comments/<id>') -and $reviewRequestText.Contains('comment `/review` on the pull request myself'))) { 'workflow\templates\_review-request.md: no read-back of the /review comment, or no request to the maintainer' })
+Check 'workflow: the commands that post to GitHub read each post back and remove a session''s footer with the GitHub MCP tools, and a /review comment that came back with one asks the maintainer instead' (-not $m) ($m -join '; ')
 $includeLeft = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.claude'), (Join-Path $repoRoot 'template\.github') -Recurse -File |
     Where-Object { [IO.File]::ReadAllText($_.FullName) -match '\{\{(PROMPT|BODY):' } | ForEach-Object Name)
 Check 'workflow: no generated file keeps an unexpanded {{PROMPT:...}} or {{BODY:...}} include' (-not $includeLeft) ($includeLeft -join ', ')
