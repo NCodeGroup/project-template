@@ -9,7 +9,7 @@ Handle every open comment and discussion on this pull request, round after round
 
 {{INPUT}}
 
-You coordinate. Each round is one pass of `address-feedback`: read its installed file, `.claude/commands/address-feedback.md` in the repository, or `~/.claude/commands/address-feedback.md` when the repository has none, and follow its body after the front matter yourself, in this session, with the request above less its `wait:<hours>` word, and with the changes Each Pass makes. `<number>`, `<head>`, `<default>`, an item and its verdicts are as `address-feedback` defines them.
+You coordinate. Each round is one pass of `address-feedback`: read its installed file, `.claude/commands/address-feedback.md` in the repository, or `~/.claude/commands/address-feedback.md` when the repository has none, and follow its body after the front matter yourself, in this session, with the request above less its `wait:<hours>` word, and with the changes listed under Each Pass below. `<number>`, `<head>`, `<default>`, an item and its verdicts are as `address-feedback` defines them.
 
 ## Rules
 

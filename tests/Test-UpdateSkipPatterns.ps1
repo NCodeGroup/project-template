@@ -9,9 +9,11 @@
     own. Updates it to a v0.2.0 with the repository's own copier.yml and index plus a change to the template's
     README.md. The update must commit without a conflict, bring the index up to the target version and list it as
     refreshed, saying its local edit is discarded, not as a discarded local edit, and leave the project's own
-    README.md as it is while showing the template's change to it. Also checks that Test-CopierPattern reads file
-    patterns as Copier does and that every _skip_if_exists entry in copier.yml starts with /. Prints PASS or FAIL per
-    check and exits 1 on any failure.
+    README.md as it is while showing the template's change to it. A second project's update renames it to a name only
+    v0.2.0 accepts, so Copier can't render v0.1.0: the update must warn with Copier's error that it skipped
+    refreshing the index, list nothing as refreshed, keep the index's local line and still reach v0.2.0. Also checks
+    that Test-CopierPattern reads file patterns as Copier does and that every _skip_if_exists entry in copier.yml
+    starts with /. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-skip-test-<process ID> in the
@@ -79,9 +81,14 @@ $skip = @(
 Check 'repository: every _skip_if_exists entry in copier.yml starts with /' (($skip.Count -ge 15) -and -not @($skip | Where-Object { -not $_.StartsWith('/') -or $_ -match '[*?\[]' }).Count) ($skip -join ',')
 
 # v0.1.0 lists the skip entries without a leading / and has no 0014 row in the decision index.
+# It also rejects a project name that v0.2.0 accepts, so Copier can't render v0.1.0 for a project renamed by the update.
+$validator = 'validator: "{% if not project_name.strip() %}Required{% endif %}"'
+$strictValidator = 'validator: "{% if not project_name.strip() %}Required{% elif project_name == ''Renamed'' %}Not yet{% endif %}"'
 $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl -BeforeCommit {
     $yml = Join-Path (Get-Location) 'copier.yml'
-    [IO.File]::WriteAllText($yml, ([IO.File]::ReadAllText($yml) -replace '(?m)^  - /', '  - '))
+    $ymlText = [IO.File]::ReadAllText($yml)
+    if (-not $ymlText.Contains($validator)) { throw "'$validator' not found in $yml." }
+    [IO.File]::WriteAllText($yml, ($ymlText -replace '(?m)^  - /', '  - ').Replace($validator, $strictValidator))
     $idx = Join-Path (Get-Location) $indexSource
     [IO.File]::WriteAllText($idx, ([IO.File]::ReadAllText($idx) -replace '(?m)^\| \[0014\]\(.*\r?\n', ''))
 }
@@ -106,12 +113,12 @@ try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Re
 finally { Pop-Location }
 $readmeHash = (Get-FileHash -LiteralPath (Join-Path $path 'README.md')).Hash
 
-function Invoke-Update([hashtable]$Data) {
+function Invoke-Update([hashtable]$Data, [string]$Project = $path) {
     $lines = [Collections.Generic.List[string]]::new()
     $exitCode = 0
     try {
-        if ($Data) { & (Join-Path $path '.template\Update-Project.ps1') -Data $Data 2>&1 | ForEach-Object { $lines.Add("$_") } }
-        else { & (Join-Path $path '.template\Update-Project.ps1') 2>&1 | ForEach-Object { $lines.Add("$_") } }
+        if ($Data) { & (Join-Path $Project '.template\Update-Project.ps1') -Data $Data *>&1 | ForEach-Object { $lines.Add("$_") } }
+        else { & (Join-Path $Project '.template\Update-Project.ps1') *>&1 | ForEach-Object { $lines.Add("$_") } }
         $exitCode = $LASTEXITCODE
     }
     catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
@@ -129,6 +136,25 @@ try {
     Check 'update: lists the decision index as refreshed, not as a discarded local edit' (($r.Output -match '(?m)^Refreshed — .*\r?\n  docs/decisions/project-template/README\.md\r?$') -and -not $r.Output.Contains('Local edits discarded')) $detail
     Check 'update: says that refreshing the decision index discards its local edit' ((-not $index.Contains('Local note the refresh discards.')) -and $r.Output.Contains('a local edit to one is discarded, so make the change in a project file instead:')) $detail
     Check "update: leaves the project's own README.md untouched and shows the template's change to it" (((Get-FileHash -LiteralPath (Join-Path $path 'README.md')).Hash -eq $readmeHash) -and ($r.Output -match '(?m)^  README\.md:\r?$') -and $r.Output.Contains('+## Development and Tests')) $detail
+}
+finally { Pop-Location }
+
+# A second project, renamed by its update to a name only v0.2.0 accepts: Copier can't render v0.1.0 for it, so the update can't refresh the index.
+$renderPath = Join-Path $Work 'skip-render'
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Skip' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tpl $renderPath | Out-Null
+$renderNested = Join-Path $renderPath 'docs/decisions/project-template/README.md'
+[IO.File]::WriteAllText($renderNested, ([IO.File]::ReadAllText($renderNested) -replace '(?m)^\| \[0013\]\(.*\r?\n', ''))
+[IO.File]::AppendAllText($renderNested, "Local note the refresh discards.`n")
+Push-Location $renderPath
+try {
+    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Render project-template v0.1.0'
+    # Without the refresh, the update merges the index's local edits and may stop on a conflict there; the warning and the kept local line are what's checked.
+    $r = Invoke-Update @{ project_name = 'Renamed' } $renderPath
+    $index = [IO.File]::ReadAllText($renderNested)
+    $detail = "exit $($r.ExitCode)`n$($r.Output.Trim())"
+    $finished = (($r.ExitCode -eq 0 -and $r.Output.Contains('Committed "Update from project-template v0.2.0"')) -or ($r.ExitCode -eq 1 -and $r.Output.Contains('file(s) conflict'))) -and [bool](Select-String -LiteralPath (Join-Path $renderPath '.copier-answers.yml') -Pattern '^_commit: v0\.2\.0\s*$')
+    Check 'render failure: warns with Copier''s error and says it skipped refreshing the decision index' ($r.Output.Contains("Copier couldn't render template v0.1.0 with this project's answers:") -and $r.Output.Contains('Not yet') -and $r.Output.Contains("Skipped refreshing docs/decisions/project-template/README.md: without template v0.1.0 rendered, the update can't reset them.") -and $r.Output -notmatch '(?m)^Refreshed ') $detail
+    Check 'render failure: leaves the stale index''s local line and still reaches v0.2.0' ($index.Contains('Local note the refresh discards.') -and $finished) $detail
 }
 finally { Pop-Location }
 ''
