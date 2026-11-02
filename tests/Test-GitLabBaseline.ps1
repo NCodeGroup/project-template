@@ -142,6 +142,31 @@ try {
     Check 'missing: a project that can''t be read fails the run, with the reason, and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and $r.Output -match [regex]::Escape("Couldn't read GitLab project grp/missing on gitlab.com: HTTP 404: 404 Project Not Found")) "puts=$($r.Puts -join '|') output=$($r.Output)"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/old')
     Check 'archived: an archived project is skipped and changes nothing' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/old: skipped (archived)')) "puts=$($r.Puts -join '|') output=$($r.Output)"
+
+    # 8. A project named by a clone's origin remote.
+    $httpsClone = Join-Path $Work 'clone-https'
+    & git init -q $httpsClone
+    & git -C $httpsClone remote add origin 'https://gitlab.example.com/grp/sub/fresh.git'
+    $sshClone = Join-Path $Work 'clone-ssh'
+    & git init -q $sshClone
+    & git -C $sshClone remote add origin 'git@gitlab.com:grp/fresh.git'
+    $bareClone = Join-Path $Work 'clone-no-origin'
+    & git init -q $bareClone
+
+    $r = Invoke-GitLabBaseline @('-Path', $httpsClone)
+    Check 'path: the origin remote of a clone gives the host and the project' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 2 -and @($r.Puts | Where-Object { $_ -like '*--hostname gitlab.example.com*projects/grp%2Fsub%2Ffresh *' }).Count -eq 2 -and $r.Output -match [regex]::Escape('grp/sub/fresh: All threads must be resolved: set')) "puts=$($r.Puts -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @() $httpsClone
+    Check 'current folder: with no arguments, the clone the run starts in is used' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 2 -and @($r.Puts | Where-Object { $_ -like '*--hostname gitlab.example.com*projects/grp%2Fsub%2Ffresh *' }).Count -eq 2) "puts=$($r.Puts -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Path', $sshClone)
+    Check 'ssh: an scp-style origin remote gives the host and the project' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 2 -and @($r.Puts | Where-Object { $_ -like '*--hostname gitlab.com*projects/grp%2Ffresh *' }).Count -eq 2) "puts=$($r.Puts -join '|') output=$($r.Output)"
+
+    # 9. -Project with -Hostname, and the arguments that can't be used.
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/sub/fresh', '-Hostname', 'gitlab.example.com')
+    Check 'hostname: a project on another GitLab is written there' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 2 -and @($r.Puts | Where-Object { $_ -like '*--hostname gitlab.example.com --method PUT --include projects/grp%2Fsub%2Ffresh -F *' }).Count -eq 2) "puts=$($r.Puts -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/fresh', '-Path', $httpsClone)
+    Check 'both: -Project with -Path fails before any call' ($r.ExitCode -ne 0 -and -not (Test-Path -LiteralPath $calls) -and $r.Output -match [regex]::Escape('Pass -Project or -Path, not both.')) "output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Path', $bareClone)
+    Check 'no origin: a clone with no origin remote fails and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and ($r.Output -replace '[\s|]+', ' ') -match [regex]::Escape('pass -Project <group/name>')) "puts=$($r.Puts -join '|') output=$($r.Output)"
 }
 finally { $env:PATH = $savedPath }
 
