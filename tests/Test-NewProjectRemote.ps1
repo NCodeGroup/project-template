@@ -56,11 +56,12 @@ New-Item -ItemType Directory -Force $dest | Out-Null
 [IO.File]::WriteAllText((Join-Path $dest '.copier-answers.yml'), "_commit: v0.1.0`ngit_host: $env:NEW_PROJECT_TEST_HOST`n")
 exit 0
 '@
-# The stand-in for gh. It records its arguments, answers the signed-in user, and fails reading it when asked to.
+# The stand-in for gh. It records its arguments, answers the signed-in user, and fails reading it, or prints nothing and succeeds, when asked to.
 Write-Text (Join-Path $bin 'gh.ps1') @'
 Add-Content -LiteralPath $env:NEW_PROJECT_TEST_CALLS -Value ("gh " + ($args -join ' '))
 if ($args[0] -eq 'api' -and $args[1] -eq 'user') {
     if ($env:NEW_PROJECT_TEST_FAIL -eq 'user') { [Console]::Error.WriteLine('gh: not signed in'); exit 1 }
+    if ($env:NEW_PROJECT_TEST_FAIL -eq 'user-empty') { exit 0 }
     'tester'
 }
 exit 0
@@ -124,6 +125,8 @@ try {
     Check 'github failed: a baseline that fails warns with the command to run it again and the run succeeds' ($r.ExitCode -eq 0 -and (Compress $r.Output).Contains((Compress "Couldn't protect the default branch: Stand-in baseline failed. Run it again with:")) -and (Compress $r.Output).Contains((Compress "Set-RepositoryBaseline.ps1 -Repo gh-fail -Owner tester -RequireChecks '$checks'"))) "calls=$($r.Calls -join '|') output=$($r.Output)"
     $r = Invoke-NewProject 'gh-user' 'github' 'user'
     Check 'github no user: a signed-in user gh can''t read warns with the command to run, naming the owner to fill in, and the run succeeds' ($r.ExitCode -eq 0 -and -not [bool]($r.Calls -like 'Set-*') -and (Compress $r.Output).Contains((Compress "Couldn't protect the default branch: Couldn't read the signed-in GitHub user. Run it again with:")) -and (Compress $r.Output).Contains((Compress "Set-RepositoryBaseline.ps1 -Repo gh-user -Owner <owner> -RequireChecks '$checks'"))) "calls=$($r.Calls -join '|') output=$($r.Output)"
+    $r = Invoke-NewProject 'gh-user-empty' 'github' 'user-empty'
+    Check 'github empty user: a gh that prints no signed-in user warns with the command to run, naming the owner to fill in, and the run succeeds' ($r.ExitCode -eq 0 -and -not [bool]($r.Calls -like 'Set-*') -and (Compress $r.Output).Contains((Compress "Couldn't protect the default branch: Couldn't read the signed-in GitHub user. Run it again with:")) -and (Compress $r.Output).Contains((Compress "Set-RepositoryBaseline.ps1 -Repo gh-user-empty -Owner <owner> -RequireChecks '$checks'"))) "calls=$($r.Calls -join '|') output=$($r.Output)"
 
     # 2. GitLab.
     $r = Invoke-NewProject 'gl-app' 'gitlab'
