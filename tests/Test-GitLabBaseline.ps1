@@ -147,13 +147,13 @@ try {
 
     # 7. A project that can't be read, and an archived one.
     $r = Invoke-GitLabBaseline @('-Project', 'grp/missing')
-    Check 'missing: a project that can''t be read fails the run, with the reason, and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and $r.Output -match [regex]::Escape("Couldn't read GitLab project grp/missing on gitlab.com: HTTP 404: 404 Project Not Found")) "puts=$($r.Puts -join '|') output=$($r.Output)"
+    Check 'missing: a project that can''t be read fails the run, with the reason, and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and ($r.Output -replace '[\s|]', '').Contains(("Couldn't read GitLab project grp/missing on gitlab.com: HTTP 404: 404 Project Not Found" -replace '\s', ''))) "puts=$($r.Puts -join '|') output=$($r.Output)"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/old')
     Check 'archived: an archived project is skipped and changes nothing' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/old: skipped (archived)')) "puts=$($r.Puts -join '|') output=$($r.Output)"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/empty')
-    Check 'empty: a read that answers 200 with no project fails the run and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and $r.Output -match [regex]::Escape("Couldn't read GitLab project grp/empty on gitlab.com: an answer that is not a project.")) "puts=$($r.Puts -join '|') output=$($r.Output)"
+    Check 'empty: a read that answers 200 with no project fails the run and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and ($r.Output -replace '[\s|]', '').Contains(("Couldn't read GitLab project grp/empty on gitlab.com: an answer that is not a project." -replace '\s', ''))) "puts=$($r.Puts -join '|') output=$($r.Output)"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/text')
-    Check 'text: a read that answers 200 with text that is not JSON fails the run and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and $r.Output -match [regex]::Escape("Couldn't read GitLab project grp/text on gitlab.com: an answer that is not JSON.")) "puts=$($r.Puts -join '|') output=$($r.Output)"
+    Check 'text: a read that answers 200 with text that is not JSON fails the run and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and ($r.Output -replace '[\s|]', '').Contains(("Couldn't read GitLab project grp/text on gitlab.com: an answer that is not JSON." -replace '\s', ''))) "puts=$($r.Puts -join '|') output=$($r.Output)"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/offline')
     Check 'offline: a call with no response fails the run with glab''s error and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and ($r.Output -replace '[\s|]+', ' ') -match [regex]::Escape("Couldn't read GitLab project grp/offline on gitlab.com: no response: glab: could not reach gitlab.com.")) "puts=$($r.Puts -join '|') output=$($r.Output)"
 
