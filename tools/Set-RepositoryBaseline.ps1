@@ -396,24 +396,17 @@ function Set-BranchRuleset {
 
 # Turns on "require conversations resolved" in a ruleset that already requires pull requests, and changes nothing else in
 # it: its other rules and their parameters are sent back as they were read. A ruleset without a pull request rule, or
-# with the setting on already, is left as it is. A refusal is reported, not thrown, like a security setting's.
+# with the setting on already, is left as it is. A refusal is reported, not thrown, like a security setting's. A pull
+# request rule that came without parameters is reported and left as it is: writing it would mean inventing its other
+# parameters.
 function Enable-ThreadResolution {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Name, $Ruleset)
     $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
     if (-not $rule -or $rule.parameters.required_review_thread_resolution -eq $true) { return }
-    if ($null -eq $rule.parameters) {
-        $rule | Add-Member -NotePropertyName parameters -NotePropertyValue ([pscustomobject]@{
-            allowed_merge_methods = @('merge', 'rebase')
-            dismiss_stale_reviews_on_push = $false
-            require_code_owner_review = $false
-            require_last_push_approval = $false
-            required_approving_review_count = 0
-            required_review_thread_resolution = $true
-        }) -Force
-    }
-    else { $rule.parameters | Add-Member -NotePropertyName required_review_thread_resolution -NotePropertyValue $true -Force }
     $label = "'$($Ruleset.name)': require every conversation resolved"
+    if ($null -eq $rule.parameters) { Write-Host "${Name}: ${label}: not set (its pull request rule came without parameters; turn it on in the ruleset's settings on GitHub)"; return }
+    $rule.parameters | Add-Member -NotePropertyName required_review_thread_resolution -NotePropertyValue $true -Force
     if (-not $PSCmdlet.ShouldProcess($Name, "turn on $label")) { Write-Host "${Name}: ${label}: would set"; return }
     $result = Invoke-HostWrite PUT "repos/$Owner/$Name/rulesets/$($Ruleset.id)" @{ rules = @($Ruleset.rules) }
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Name}: ${label}: set" }

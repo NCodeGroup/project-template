@@ -221,6 +221,8 @@ $autoWorkflowRuns = @{ sha7 = $prWorkflowRuns; sha9 = $prWorkflowRuns }
 $scanTypes = @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')
 $looseRuleset = New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request')
 $looseRuleset.rules += @{ type = 'code_scanning'; parameters = @{ code_scanning_tools = @(@{ tool = 'CodeQL'; alerts_threshold = 'errors'; security_alerts_threshold = 'high_or_higher' }) } }
+$bareRuleset = New-Ruleset 'owner rules' -Threads $false
+$bareRuleset.rules[2].Remove('parameters')
 $repos = @{
     fresh = New-Repo
     extendedAlready = New-Repo -Suite 'extended'
@@ -246,6 +248,7 @@ $repos = @{
     ownedLoose = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false))
     oursLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false))
     looseRefused = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false)) -WriteFails @{ 'rulesets/101' = 403 }
+    ownedBare = New-Repo -Rulesets @($bareRuleset)
     twoOwnedLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $false), (New-Ruleset 'team rules' -Threads $false))
     ownedThenOursLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $false), (New-Ruleset 'Protect main' -Threads $false))
     tags = New-Repo -Rulesets @((@{ name = 'release-tags'; target = 'tag'; enforcement = 'active'; conditions = @{ ref_name = @{ include = @('refs/tags/v*'); exclude = @() } }; rules = @(@{ type = 'deletion' }) }))
@@ -415,6 +418,8 @@ try {
     Check 'threads: a Protect main ruleset without it gets the setting too' ($put -and (@($put.body.PSObject.Properties.Name) -join ',') -eq 'rules' -and ($put.body.rules | Where-Object type -eq 'pull_request').parameters.required_review_thread_resolution -eq $true -and $r.Output.Contains("oursLoose: 'Protect main': require every conversation resolved: set")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'looseRefused')
     Check 'threads: a refused change is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("looseRefused: 'main': require every conversation resolved: not available (HTTP 403") -and $r.Output -notmatch 'FAILED' -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedBare')
+    Check 'threads: a pull request rule without parameters is reported and not written' ($r.ExitCode -eq 0 -and ($r.Changes -join '|') -notmatch 'rulesets/101' -and $r.TagBody -and $r.Output.Contains("ownedBare: 'owner rules': require every conversation resolved: not set (its pull request rule came without parameters")) "$($r.ExitCode) $($r.Changes -join '|') $($r.Output)"
     foreach ($name in 'twoOwnedLoose', 'ownedThenOursLoose') {
         $r = Invoke-Baseline @('-Repo', $name)
         $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' })
