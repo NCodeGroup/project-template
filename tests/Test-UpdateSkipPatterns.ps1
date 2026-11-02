@@ -5,12 +5,13 @@
 .DESCRIPTION
     Renders a project from a v0.1.0 whose copier.yml lists README.md under _skip_if_exists without a leading /, which
     Copier reads like a .gitignore pattern and so also matches docs/decisions/project-template/README.md, and whose
-    decision index lacks the 0014 row. The project's copy of the index also lacks the 0013 row. Updates it to a v0.2.0
-    with the repository's own copier.yml and index plus a change to the template's README.md. The update must commit
-    without a conflict, bring the index up to the target version and list it as refreshed, not as a discarded local
-    edit, and leave the project's own README.md as it is while showing the template's change to it. Also checks that
-    Test-CopierPattern reads file patterns as Copier does and that every _skip_if_exists entry in copier.yml starts
-    with /. Prints PASS or FAIL per check and exits 1 on any failure.
+    decision index lacks the 0014 row. The project's copy of the index also lacks the 0013 row and has a line of its
+    own. Updates it to a v0.2.0 with the repository's own copier.yml and index plus a change to the template's
+    README.md. The update must commit without a conflict, bring the index up to the target version and list it as
+    refreshed, saying its local edit is discarded, not as a discarded local edit, and leave the project's own
+    README.md as it is while showing the template's change to it. Also checks that Test-CopierPattern reads file
+    patterns as Copier does and that every _skip_if_exists entry in copier.yml starts with /. Prints PASS or FAIL per
+    check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-skip-test-<process ID> in the
@@ -98,6 +99,8 @@ Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Skip
 $nested = Join-Path $path 'docs/decisions/project-template/README.md'
 # An earlier version wrote the index without the 0013 row.
 [IO.File]::WriteAllText($nested, ([IO.File]::ReadAllText($nested) -replace '(?m)^\| \[0013\]\(.*\r?\n', ''))
+# The project also added a line of its own to the index, which the refresh discards.
+[IO.File]::AppendAllText($nested, "Local note the refresh discards.`n")
 Push-Location $path
 try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Render project-template v0.1.0' }
 finally { Pop-Location }
@@ -124,6 +127,7 @@ try {
     Check 'update: commits without a conflict' (($r.ExitCode -eq 0) -and $r.Output.Contains('Committed "Update from project-template v0.2.0"') -and -not $status) $detail
     Check 'update: brings docs/decisions/project-template/README.md up to the target version' ($index.Contains('| [0013](0013-') -and $index.Contains('| [0014](0014-')) $detail
     Check 'update: lists the decision index as refreshed, not as a discarded local edit' (($r.Output -match '(?m)^Refreshed — .*\r?\n  docs/decisions/project-template/README\.md\r?$') -and -not $r.Output.Contains('Local edits discarded')) $detail
+    Check 'update: says that refreshing the decision index discards its local edit' ((-not $index.Contains('Local note the refresh discards.')) -and $r.Output.Contains('a local edit to one is discarded, so make the change in a project file instead:')) $detail
     Check "update: leaves the project's own README.md untouched and shows the template's change to it" (((Get-FileHash -LiteralPath (Join-Path $path 'README.md')).Hash -eq $readmeHash) -and ($r.Output -match '(?m)^  README\.md:\r?$') -and $r.Output.Contains('+## Development and Tests')) $detail
 }
 finally { Pop-Location }

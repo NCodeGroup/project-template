@@ -15,7 +15,7 @@
       Template-owned  Replaced by the new version. A local edit to one is discarded and a deleted one is
                       restored; the script lists both. A template-owned file that an earlier version's
                       _skip_if_exists kept from updates, such as docs/decisions/project-template/README.md, is
-                      reset first and listed as refreshed.
+                      reset first, discarding a local edit, and listed as refreshed.
       Merged          Files whose tools can't include a second file (copier.yml's _merged_files). The template's
                       changes are merged with the project's edits, like a Git merge; the same lines changed on
                       both sides conflict. An adopted project's own lines at the end of .gitignore,
@@ -386,9 +386,9 @@ try {
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
         Invoke-Copier recopy --force --quiet --vcs-ref :current: @exclude
         $reset = @(Get-Change)
-        # Earlier versions listed project-owned files by name alone, which Copier matches in every folder, so a template-owned file of that
-        # name deeper in the tree, such as docs/decisions/project-template/README.md, was never updated. The update resets each one to the
-        # project's version, as the recopy does the other template-owned files, after $reset, so it isn't listed as a discarded edit.
+        # A template-owned file that the project's version skips only through a name without a /, which Copier matches in every folder,
+        # and that the target version doesn't skip, was never updated, such as docs/decisions/project-template/README.md. Reset it to the
+        # project's version, as the recopy does the other template-owned files; after $reset, so it is listed as refreshed, not as an edit.
         $stale = @(Get-RenderedFile $TemplateClone $from | Select-Object -Unique | Where-Object { (Test-CopierPattern $_ $skipFrom) -and $_ -notin $projectOwned -and -not (Test-CopierPattern $_ $skipTo) -and $_ -notin $merged -and $_ -notin $ownedFiles -and (Test-Path -LiteralPath $_ -PathType Leaf) })
         $refreshed = @()
         if ($stale) {
@@ -503,7 +503,7 @@ try {
     $restored = @($reset | Where-Object Kind -EQ 'added' | ForEach-Object File)
     if ($edited) { ''; 'Local edits discarded — these files are the template''s; make the change in a project file instead:'; $edited | ForEach-Object { "  $_" } }
     if ($restored) { ''; 'Restored — these files are the template''s, so the project can''t delete them:'; $restored | ForEach-Object { "  $_" } }
-    if ($refreshed) { ''; 'Refreshed — these files are the template''s, but earlier template versions never updated them:'; $refreshed | ForEach-Object { "  $_" } }
+    if ($refreshed) { ''; 'Refreshed — these files are the template''s, but earlier template versions never updated them; a local edit to one is discarded, so make the change in a project file instead:'; $refreshed | ForEach-Object { "  $_" } }
     if ($projectOwnedChanged) {
         # Render both versions with the project's answers, so the diffs show what the project would get, not Jinja.
         New-Item -ItemType Directory -Force $scratch | Out-Null
