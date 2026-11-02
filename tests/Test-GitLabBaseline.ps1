@@ -40,7 +40,9 @@ New-Item -ItemType Directory -Force $bin | Out-Null
 # The stand-in for glab. It serves projects.json (host/project path -> the project's answer as info, and writeFails, the
 # field -> status that refuses a change to it) and records every call in calls.log. A project with raw answers its GET
 # with that body as it is, and one with offline prints that text to stderr and no status line, as glab does when it gets
-# no response.
+# no response. A project's branch is the answer for its protected branch (404 without it); branchFails is the status that
+# refuses reading it; deleteFails is the status that refuses removing it; and postFails lists the statuses that refuse
+# the first, second, ... POST of the run.
 Write-Text (Join-Path $bin 'glab.ps1') @'
 # The script runs this in its own session, so a -WhatIf run would reach it as $WhatIfPreference, and its log would stay
 # empty: it has to record the calls of a -WhatIf run too, to show that they change nothing.
@@ -58,7 +60,9 @@ for ($i = 1; $i -lt $args.Count; $i++) {
         default { $endpoint = $args[$i] }
     }
 }
-$key = "$hostname/$([uri]::UnescapeDataString(($endpoint -replace '^projects/', '')))"
+if ($endpoint -notmatch '^projects/(?<id>[^/]+)(?<rest>/.*)?$') { exit 1 }
+$key = "$hostname/$([uri]::UnescapeDataString($Matches.id))"
+$rest = "$($Matches.rest)"
 # Answers with a status and a body, preceded by the status line and a header, as glab prints them with --include. A
 # status of 300 or more exits 1, as glab does.
 function Out-Answer([int]$Status, [string]$Body) {
@@ -70,6 +74,21 @@ function Out-Answer([int]$Status, [string]$Body) {
 $project = $data[$key]
 if (-not $project) { Out-Answer 404 '{"message":"404 Project Not Found"}' }
 if ($project.offline) { Write-Error $project.offline -ErrorAction Continue; exit 1 }
+if ($rest -like '/protected_branches/*') {
+    if ($method -eq 'DELETE') {
+        if ($project.deleteFails) { Out-Answer ([int]$project.deleteFails) '{"message":"Stand-in refused unprotect"}' }
+        Out-Answer 204 ''
+    }
+    if ($project.branchFails) { Out-Answer ([int]$project.branchFails) '{"message":"Stand-in refused read"}' }
+    if (-not $project.branch) { Out-Answer 404 '{"message":"404 Not found"}' }
+    Out-Answer 200 (ConvertTo-Json -Compress -Depth 5 -InputObject $project.branch)
+}
+if ($rest -eq '/protected_branches') {
+    $posts = @(Get-Content -LiteralPath (Join-Path $PSScriptRoot 'calls.log') | Where-Object { $_ -like '*--method POST*' }).Count
+    $postFails = @($project.postFails)
+    if ($posts -le $postFails.Count -and $postFails[$posts - 1]) { Out-Answer ([int]$postFails[$posts - 1]) '{"message":"Stand-in refused protect"}' }
+    Out-Answer 201 '{}'
+}
 if ($method -eq 'GET' -and $project.ContainsKey('raw')) { Out-Answer 200 $project.raw }
 if ($method -eq 'GET') { Out-Answer 200 (ConvertTo-Json -Compress -Depth 5 -InputObject $project.info) }
 $field = ("$($fields | Select-Object -First 1)" -split '=')[0]
@@ -112,6 +131,7 @@ function Invoke-GitLabBaseline([string[]]$Arguments, [string]$In = $Work) {
         Output = $output
         ExitCode = $exitCode
         Puts = @($log | Where-Object { $_ -like '*--method PUT*' })
+        Writes = @($log | Where-Object { $_ -match '--method (PUT|POST|DELETE) ' })
     }
 }
 
