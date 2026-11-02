@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.55.0] - 2026-11-01
+
+### Changed
+
+- `/address-feedback` and `/run-issues`, run in a worktree the session entered with the `EnterWorktree` tool, such as a plan's worktree after `/ship-plan`, leave it with the `ExitWorktree` tool and `action: "keep"`, say so, and go on from the main checkout, so `/address-feedback <pr>` runs in the session that shipped the plan. The worktree, its branch and its `PLAN.md` stay as they were, for `/ship-plan` and `/finish-plan`. Both still stop and say to start a new session in the main checkout when the session can't leave, such as one started with `claude --worktree <name>` ([#214](https://github.com/NCodeGroup/project-template/issues/214)).
+
 ## [0.54.1] - 2026-11-01
 
 ### Fixed
@@ -830,7 +836,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.54.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.55.0...HEAD
+[0.55.0]: https://github.com/NCodeGroup/project-template/compare/v0.54.1...v0.55.0
 [0.54.1]: https://github.com/NCodeGroup/project-template/compare/v0.54.0...v0.54.1
 [0.54.0]: https://github.com/NCodeGroup/project-template/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/NCodeGroup/project-template/compare/v0.52.0...v0.53.0

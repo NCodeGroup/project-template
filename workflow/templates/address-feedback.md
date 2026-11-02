@@ -24,7 +24,7 @@ An item is one open review thread, one top-level comment or one review summary o
 
 ## Start
 
-1. Run `git rev-parse --show-toplevel`. When the path contains `/.claude/worktrees/`, stop and say to run this command in a new session in the main checkout.
+1. Run `git rev-parse --show-toplevel`. When the path contains `/.claude/worktrees/`, the session is in a worktree, such as a plan's after `/ship-plan`: leave it with the `ExitWorktree` tool and `action: "keep"`, which keeps the worktree, its branch and its `PLAN.md` as they are, then run `git rev-parse --show-toplevel` again. When that path no longer contains `/.claude/worktrees/`, say that you left the worktree `<the first path>` and kept it, and go on from the main checkout. When it still does, the session can't leave the worktree: it didn't enter it with the `EnterWorktree` tool, such as a session started with `claude --worktree <name>`, so `ExitWorktree` changed nothing, or the tool isn't there. Then stop and say to run this command in a new session in the main checkout.
 2. Run `{{STATE_SCRIPT}}`. `<default>` is its `default` value. Stop when `default` is `-`, because there is no `origin` remote.
 3. Find the pull request. The request must name exactly one, as `#42`, `owner/repo#42`, its URL or a bare number; take `only:<login>` and `exclude:<login>` words out of it first, which limit the items to one author's or leave one author's out. Stop when it names none, several, or one in another repository, and say so: this command works on this repository's pull requests.
    - GitHub: `gh pr view <number> --json number,url,title,state,isDraft,headRefName,headRefOid,isCrossRepository,baseRefName`.
