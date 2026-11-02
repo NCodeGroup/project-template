@@ -242,6 +242,9 @@ $repos = @{
     legacy = New-Repo -Branch master
     owned = New-Repo -Rulesets @((New-Ruleset 'main'))
     ours = New-Repo -Rulesets @((New-Ruleset 'Protect main'))
+    ownedLoose = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false))
+    oursLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false))
+    looseRefused = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false)) -WriteFails @{ 'rulesets/101' = 403 }
     tags = New-Repo -Rulesets @((@{ name = 'release-tags'; target = 'tag'; enforcement = 'active'; conditions = @{ ref_name = @{ include = @('refs/tags/v*'); exclude = @() } }; rules = @(@{ type = 'deletion' }) }))
     noPullRequest = New-Repo -Rulesets @((New-Ruleset 'no force push' @('non_fast_forward')))
     old = New-Repo -Archived $true
@@ -396,6 +399,21 @@ try {
     Check 'tags: a tag ruleset that refuses deletion but not update gets Protect release tags beside it' ($r.TagBody -and $r.Output -match "done: tags: create 'Protect release tags'") $r.Output
     $r = Invoke-Baseline @('-Repo', 'noPullRequest')
     Check 'create: a ruleset without a pull request rule does not count' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/noPullRequest/rulesets*') ($r.Changes -join '|')
+
+    # 5b. Conversation resolution: a ruleset that requires pull requests but not resolved conversations gets the setting,
+    # and nothing else in it changes.
+    $r = Invoke-Baseline @('-Repo', 'ownedLoose', '-WhatIf')
+    Check 'threads: -WhatIf changes nothing and says it would set it' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("ownedLoose: 'main': require every conversation resolved: would set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedLoose')
+    $put = $r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/ownedLoose/rulesets/101' } | Select-Object -Last 1
+    Check 'threads: a ruleset of the owner''s that requires pull requests gets only its rules sent, with every conversation required resolved' ($put -and (@($put.body.PSObject.Properties.Name) -join ',') -eq 'rules' -and (@($put.body.rules.type) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and ($put.body.rules | Where-Object type -eq 'pull_request').parameters.required_review_thread_resolution -eq $true -and $r.Output.Contains("ownedLoose: 'main': require every conversation resolved: set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursLoose')
+    $put = $r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursLoose/rulesets/101' } | Select-Object -Last 1
+    Check 'threads: a Protect main ruleset without it gets the setting too' ($put -and (@($put.body.PSObject.Properties.Name) -join ',') -eq 'rules' -and ($put.body.rules | Where-Object type -eq 'pull_request').parameters.required_review_thread_resolution -eq $true -and $r.Output.Contains("oursLoose: 'Protect main': require every conversation resolved: set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'looseRefused')
+    Check 'threads: a refused change is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("looseRefused: 'main': require every conversation resolved: not available (HTTP 403") -and $r.Output -notmatch 'FAILED' -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'owned')
+    Check 'threads: a ruleset that has it already is not written' (($r.Changes -join '|') -notmatch 'rulesets/101') ($r.Changes -join '|')
 
     # 6. -RequireChecks updates the ruleset the script made.
     $r = Invoke-Baseline @('-Repo', 'ours', '-RequireChecks', 'test')

@@ -274,12 +274,13 @@ function Set-BranchRuleset {
         $onDefault = $full.conditions.ref_name.include -contains '~DEFAULT_BRANCH' -or $full.conditions.ref_name.include -contains "refs/heads/$Branch"
         if (-not $onDefault) { continue }
         if ($full.name -eq $rulesetName) { $own = $full; continue }
-        if ($full.rules.type -contains 'pull_request') { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; return $true }
+        if ($full.rules.type -contains 'pull_request') { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full; return $true }
     }
 
     # A ruleset of this name that exists already is changed only when -RequireChecks asks for new checks.
     if ($own -and -not $RequireChecks.Count) {
         Write-Host "${Name}: left alone (already has '$rulesetName')"
+        Enable-ThreadResolution $Name $own
         if ($own.rules.type -contains 'code_scanning') { Write-SuiteNotice $Name }
         return $true
     }
@@ -382,6 +383,32 @@ function Set-BranchRuleset {
     if ($LASTEXITCODE) { throw "Couldn't turn on delete-branch-on-merge for $Name." }
     Write-Host "done: $summary"
     $true
+}
+
+# Turns on "require conversations resolved" in a ruleset that already requires pull requests, and changes nothing else in
+# it: its other rules and their parameters are sent back as they were read. A ruleset without a pull request rule, or
+# with the setting on already, is left as it is. A refusal is reported, not thrown, like a security setting's.
+function Enable-ThreadResolution {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$Name, $Ruleset)
+    $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
+    if (-not $rule -or $rule.parameters.required_review_thread_resolution -eq $true) { return }
+    if ($null -eq $rule.parameters) {
+        $rule | Add-Member -NotePropertyName parameters -NotePropertyValue ([pscustomobject]@{
+            allowed_merge_methods = @('merge', 'rebase')
+            dismiss_stale_reviews_on_push = $false
+            require_code_owner_review = $false
+            require_last_push_approval = $false
+            required_approving_review_count = 0
+            required_review_thread_resolution = $true
+        }) -Force
+    }
+    else { $rule.parameters | Add-Member -NotePropertyName required_review_thread_resolution -NotePropertyValue $true -Force }
+    $label = "'$($Ruleset.name)': require every conversation resolved"
+    if (-not $PSCmdlet.ShouldProcess($Name, "turn on $label")) { Write-Host "${Name}: ${label}: would set"; return }
+    $result = Invoke-HostWrite PUT "repos/$Owner/$Name/rulesets/$($Ruleset.id)" @{ rules = @($Ruleset.rules) }
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Name}: ${label}: set" }
+    else { Write-Host "${Name}: ${label}: not available ($(Get-FailureReason $result))" }
 }
 
 # The release tags' ruleset: no v* tag is deleted or updated (moved), by anyone, since a release tag names one published
