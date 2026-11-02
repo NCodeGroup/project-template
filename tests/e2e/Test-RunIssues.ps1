@@ -315,7 +315,8 @@ Use-FixtureEnvironment $Work $bin {
     $nitUrl = Get-ThreadUrl 'nit'
     Check 'the plan''s Follow-ups name NCode Review''s open nit, as the merge recommendation leaves it' ($nitUrl -and $followUps.Contains($nitUrl)) "nit: '$nitUrl'; Follow-ups: $(if ($followUps) { 'present' } else { 'missing' })"
     if ($Scenario -eq 'minor-round') {
-        Check 'NCode Review''s review of the run''s push arrived, after the run commented /review' ((-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) -and @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".Trim() -eq '/review' }).Count -ge 2) 'review-seed-push.json is still in the host folder, or the run did not comment /review'
+        $branchHead = "$(git --git-dir=$origin rev-parse worktree-issue-1 2>$null)".Trim()
+        Check 'NCode Review''s review of the run''s push arrived, after the run commented /review' ((-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) -and @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".Trim() -eq '/review' }).Count -ge 2 -and $pr -and $branchHead -and "$($pr.reviewRequestedOid)" -eq $branchHead) "review-seed-push.json is still in the host folder, the run did not comment /review, or its last /review asked for a review of '$(if ($pr) { $pr.reviewRequestedOid })', not the branch head '$branchHead'"
         $minorReplies = Get-ThreadReply 'minor'
         $minorBody = if ($minorReplies) { "$($minorReplies[0].body)" } else { '' }
         Check 'NCode Review''s minor finding after the push got one reply, a follow-up named in Follow-ups or a decline, and no step' ($null -ne $minorReplies -and $minorReplies.Count -eq 1 -and $minorBody -match '^Autopilot: (left as a follow-up|not changed)' -and ($minorBody -notmatch '^Autopilot: left as a follow-up' -or $followUps.Contains((Get-ThreadUrl 'minor')))) "reply: '$minorBody'"
