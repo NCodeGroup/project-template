@@ -34,6 +34,8 @@
 
 .PARAMETER CheckOnly
     Check the fixture of an earlier run again, without building it or calling a model.
+    Without -Scenario it checks the scenario the fixture was set up for: session-footer when the host folder has
+    footer.txt, push-review otherwise.
 
 .PARAMETER Scenario
     push-review, the default: the run's /review comment asks NCode Review for its review of the push. session-footer:
@@ -74,6 +76,8 @@ $app = Join-Path $Work 'app'
 $origin = Join-Path $Work 'github.com/fixture/app.git'
 $bin = Join-Path $Work 'bin'
 $hostDir = Join-Path $bin 'host'
+# Without -Scenario, -CheckOnly checks the scenario the fixture was set up for: footer.txt in the host folder marks session-footer.
+if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt'))) { $Scenario = 'session-footer' }
 $head = 'add-farewell'
 $prUrl = 'https://github.com/fixture/app/pull/1'
 $commandFile = Join-Path $app '.claude/commands/run-feedback.md'
@@ -364,7 +368,7 @@ Use-FixtureEnvironment $Work $bin {
     $pr = $pr1 | Select-Object -First 1
     if ($Scenario -eq 'session-footer') {
         $leftSlash = @($prComments | Where-Object { "$($_.body)".TrimStart() -match '^/review\b' })
-        $deletes = @($calls | Where-Object { $_ -match '^CALL api ' -and $_ -match ' (-X|--method) DELETE ' -and $_ -match 'issues/comments/\d+' })
+        $deletes = @($calls | Where-Object { $_ -match '^CALL api ' -and $_ -match '(^| )(-X|--method)[ =]?DELETE( |$)' -and $_ -match 'issues/comments/\d+' })
         Check 'no /review comment is left on the pull request: the run deleted the one that came back with the footer, and posted no other' ($leftSlash.Count -eq 0 -and $deletes.Count -eq 1) "/review comments left: $($leftSlash.Count); comments deleted: $($deletes.Count)"
         $asks = @(for ($i = 0; $i -lt $comments.Count; $i++) { if ($comments[$i].kind -eq 'pr' -and (Test-Autopilot $comments[$i].body) -and "$($comments[$i].body)".Contains('/review')) { $i } })
         Check 'an Autopilot: comment after the last push asks the maintainer to comment /review' ($asks.Count -ge 1 -and $pr -and $headNow -and "$($pr.reviewRequestedOid)" -eq $headNow) "comments that ask: $($asks.Count); reviewRequestedOid='$(if ($pr) { $pr.reviewRequestedOid })', branch head '$headNow'"
