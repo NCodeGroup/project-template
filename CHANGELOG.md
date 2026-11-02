@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.57.2] - 2026-11-01
+## [0.58.1] - 2026-11-01
 
 ### Added
 
@@ -15,6 +15,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - No change for projects made from the template. `tests/Test-UpdateConflictStaging.ps1` also checks that an update that stops on a conflict leaves a conflicted file with a non-ASCII name, one the update's reset changed, unmerged, so a restage that read its unmerged list without `core.quotePath=false` fails a test ([#217](https://github.com/NCodeGroup/project-template/issues/217)).
+
+## [0.58.0] - 2026-11-01
+
+### Added
+
+- `tools/Set-GitLabBaseline.ps1` turns on a GitLab project's "All threads must be resolved" and "Pipelines must succeed" merge checks, which the decision records named but nothing enforced: each is read first, turned on only where it is off, and reported as set, already set, would set (`-WhatIf`) or not available, with the reason. Name the project with `-Project <group/name>` and `-Hostname`, or `-Path`, a clone whose `origin` remote names it. `New-Project.ps1 -CreateRemote` runs it for a new GitLab project unless `-NoBaseline` says not to, and `Adopt-Project.ps1` prints the command for a repository on GitLab. Run it once for each GitLab project made from the template before 0.58.0 ([#223](https://github.com/NCodeGroup/project-template/issues/223)).
+
+### Changed
+
+- ADR-0005 and ADR-0014 name `tools/Set-GitLabBaseline.ps1` as what turns on GitLab's "Pipelines must succeed" and "All threads must be resolved". Projects get it with `.\.template\Update-Project.ps1` ([#223](https://github.com/NCodeGroup/project-template/issues/223)).
 
 ## [0.57.1] - 2026-11-01
 
@@ -876,8 +886,9 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.57.2...HEAD
-[0.57.2]: https://github.com/NCodeGroup/project-template/compare/v0.57.1...v0.57.2
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.58.1...HEAD
+[0.58.1]: https://github.com/NCodeGroup/project-template/compare/v0.58.0...v0.58.1
+[0.58.0]: https://github.com/NCodeGroup/project-template/compare/v0.57.1...v0.58.0
 [0.57.1]: https://github.com/NCodeGroup/project-template/compare/v0.57.0...v0.57.1
 [0.57.0]: https://github.com/NCodeGroup/project-template/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/NCodeGroup/project-template/compare/v0.55.0...v0.56.0

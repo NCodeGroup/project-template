@@ -213,6 +213,7 @@ try {
 
     # A GitHub repository's default branch should take changes only through pull requests. The baseline script changes the
     # repository's settings on GitHub, which an adoption that only commits locally shouldn't do on its own, so print it.
+    # On GitLab it prints the command that turns on the project's merge checks.
     $origin = "$(git remote get-url origin 2>$null)"
     if ($origin -match '^(?:https://github\.com/|git@github\.com:)([^/]+)/([^/]+?)(?:\.git)?/?$') {
         # The next -match overwrites $Matches.
@@ -223,6 +224,11 @@ try {
         "Protect the default branch, so changes reach it only through a pull request. From the template's clone, run:"
         "  $(Join-Path $PSScriptRoot 'tools/Set-RepositoryBaseline.ps1') -Repo $repo -Owner $owner$checks"
         if (-not $checks) { "  (this repository keeps its own CI: add -RequireChecks auto to require the checks that passed on its latest merged pull request, with -WhatIf first to list them, or -RequireChecks '<the jobs that run on pull requests>', comma-separated)" }
+    }
+    elseif ($origin -and (Get-Answer 'git_host') -eq 'gitlab') {
+        ''
+        'Turn on the GitLab project''s "All threads must be resolved" and "Pipelines must succeed" merge checks, so a merge request merges only once its pipeline passes and every thread is resolved. From the template''s clone, signed in to glab as a Maintainer of the project, run:'
+        "  $(Join-Path $PSScriptRoot 'tools/Set-GitLabBaseline.ps1') -Path '$($project.Replace("'", "''"))'"
     }
 
     if ($followUps.Count) {

@@ -26,7 +26,7 @@ it.
    posts at most two replies on a thread that a bot or someone else started.
 4. The default branch's ruleset requires conversation resolution. `tools/Set-RepositoryBaseline.ps1` turns it on in every
    default-branch ruleset that requires pull requests, and on GitLab the project's "All threads must be resolved" merge
-   check plays that part.
+   check plays that part, which `tools/Set-GitLabBaseline.ps1` turns on.
 5. `/address-feedback`, `/run-feedback`, `/run-issues` and `/continue-plan` reply to, or list, every unresolved thread,
    and recommend a merge only when every thread is answered. A thread that a run's item limit leaves out, such as
    `/address-feedback`'s 40 items, gets no reply in that run, so its last comment still awaits one and the next run
@@ -58,3 +58,4 @@ it.
 - [ADR-0006](0006-a-person-merges-every-pull-request.md): a person merges every pull request.
 - `AGENTS.md` Landing section: the pull request flow and the ruleset.
 - `tools/Set-RepositoryBaseline.ps1` in the project template's repository: the baseline's ruleset.
+- `tools/Set-GitLabBaseline.ps1` in the project template's repository: the GitLab project's merge checks.
