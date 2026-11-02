@@ -297,6 +297,37 @@ Use-FixtureEnvironment $Work $bin {
 
     $threads = Read-Threads
     $comments = @(Read-HostJson $hostDir 'comments.json' | Where-Object { $_ })
+
+    $writer = @((Get-Thread $threads 'PRRT_writer').comments)
+    $writerReply = if ($writer.Count -gt 1) { "$($writer[-1].body)".TrimStart() } else { '' }
+    Check 'the writer''s thread gets "Autopilot: fixed in <commit>"' ($writerReply -match '^Autopilot: fixed in [0-9a-f]{7,}') "comments: $($writer.Count); last: '$writerReply'"
+
+    $prComments = @($comments | Where-Object { $_.kind -eq 'pr' })
+    $slash = @($prComments | Where-Object { "$($_.body)".Trim() -eq '/review' })
+    $pr = $pr1 | Select-Object -First 1
+    Check 'the run commented /review after its last push' ($slash.Count -ge 1 -and $pr -and $headNow -and "$($pr.reviewRequestedOid)" -eq $headNow) "/review comments: $($slash.Count); reviewRequestedOid='$(if ($pr) { $pr.reviewRequestedOid })', branch head '$headNow'"
+
+    $checked = @($calls | Where-Object { $_ -match '^CALL api repos/\S+/commits/([0-9a-f]{7,40})/check-runs' -and $headNow.StartsWith($Matches[1]) })
+    Check 'the run asked for NCode Review''s check run on the pushed commit, and the review arrived' ($checked.Count -ge 1 -and -not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) "check-runs calls for the pushed commit: $($checked.Count); review-seed-push.json is still in the host folder: $(Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))"
+
+    $nitThread = $threads | Where-Object { $_.key -eq 'nit' } | Select-Object -First 1
+    $nitComments = @($nitThread.comments)
+    $nitReplies = @($nitComments | Select-Object -Skip 1)
+    Check 'NCode Review''s nit on the push got one reply, "Autopilot: not changed: a nit"' ($nitThread -and $nitReplies.Count -eq 1 -and "$($nitReplies[0].body)".TrimStart().StartsWith('Autopilot: not changed: a nit')) "comments on the nit: $($nitComments.Count); last: '$(if ($nitComments.Count -gt 1) { $nitComments[-1].body })'"
+
+    $resolved = @($threads | Where-Object { $_.isResolved })
+    Check 'no thread is resolved' ($threads.Count -eq 2 -and $resolved.Count -eq 0) "threads: $($threads.Count); resolved: $($resolved.Count)"
+
+    $lastSlash = -1
+    for ($i = 0; $i -lt $comments.Count; $i++) { if ($comments[$i].kind -eq 'pr' -and "$($comments[$i].body)".Trim() -eq '/review') { $lastSlash = $i } }
+    $merge = @(for ($i = 0; $i -lt $comments.Count; $i++) {
+            if ($comments[$i].kind -eq 'pr' -and "$($comments[$i].body)".TrimStart().StartsWith('Autopilot:') -and "$($comments[$i].body)" -match '(?i)\bmerg') { $i }
+        })
+    Check 'the run recommended the merge once, in a top-level Autopilot: comment after its /review' ($merge.Count -eq 1 -and $lastSlash -ge 0 -and $merge[0] -gt $lastSlash) "merge recommendations: $($merge.Count); at index $($merge -join ','), last /review at index $lastSlash"
+
+    $written = @($comments | Where-Object { "$($_.body)".Trim() -ne '/review' }) + @($threads | ForEach-Object { @($_.comments) | Select-Object -Skip 1 })
+    $unmarked = @($written | Where-Object { -not (Test-Autopilot $_.body) })
+    Check 'every comment and reply the run wrote, but /review, starts with Autopilot:' ($written.Count -ge 1 -and $unmarked.Count -eq 0) "written: $($written.Count); without the prefix: $($unmarked.Count)"
 }
 
 ''
