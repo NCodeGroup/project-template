@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.58.2] - 2026-11-02
+
+### Fixed
+
+- A .NET project whose `author_name` holds a `;` or `#`, such as `C# Tools; Inc.`, gets no `file_header_template` in `.editorconfig`, and a comment there that says why, instead of a header Roslyn cut short at that character: IDE0073 flagged every file carrying the whole copyright line, and its fix inserted the cut-off line. `author_name` keeps its exact text everywhere else. Projects get it with `.\.template\Update-Project.ps1` ([#227](https://github.com/NCodeGroup/project-template/issues/227)).
+
 ## [0.58.1] - 2026-11-01
 
 ### Added
@@ -886,7 +892,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.58.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.58.2...HEAD
+[0.58.2]: https://github.com/NCodeGroup/project-template/compare/v0.58.1...v0.58.2
 [0.58.1]: https://github.com/NCodeGroup/project-template/compare/v0.58.0...v0.58.1
 [0.58.0]: https://github.com/NCodeGroup/project-template/compare/v0.57.1...v0.58.0
 [0.57.1]: https://github.com/NCodeGroup/project-template/compare/v0.57.0...v0.57.1
