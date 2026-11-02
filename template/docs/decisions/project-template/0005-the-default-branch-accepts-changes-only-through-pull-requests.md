@@ -22,7 +22,9 @@ it, or, in a project that merges through a merge queue, on the merged result the
 1. On GitHub, one repository ruleset protects the default branch, with no bypass actors, as the template's repository
    baseline writes it:
    - the branch cannot be deleted or force-pushed;
-   - a pull request is required, with zero required approvals and every review conversation resolved before the merge;
+   - a pull request is required, with zero required approvals and every review conversation resolved before the merge,
+     each one remediated and replied to first
+     ([ADR-0014](0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md));
    - merges use the methods [ADR-0013](0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md) sets: a merge
      commit or a rebase;
    - the CI jobs, `build-and-test` and `Commit attribution` by default, are required status checks on a branch that is
@@ -69,3 +71,5 @@ it, or, in a project that merges through a merge queue, on the merged result the
 - [ADR-0006](0006-a-person-merges-every-pull-request.md): a person merges every pull request.
 - [ADR-0013](0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md): pull requests merge with a merge commit or
   by rebasing.
+- [ADR-0014](0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md): every pull request
+  discussion is remediated and replied to before it merges.
