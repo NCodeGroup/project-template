@@ -134,6 +134,7 @@ $cases = @(
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
     @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT' } }
     @{ Name = 'python-claude'; Stack = 'python'; Host = 'github'; Tools = @('claude') }
+    @{ Name = 'dotnet-author-comment'; Stack = 'dotnet'; Host = 'github'; Data = @{ author_name = 'C# Tools; Inc.' } }
 )
 if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
 $yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
@@ -219,11 +220,14 @@ foreach ($case in $cases) {
         $templateIcon = Join-Path $dest 'NCodeGroup.png'
         Check "${name}: the template's icon only for a library that uses it" ((Test-Path -LiteralPath $templateIcon) -eq ($library -and $icon -eq 'NCodeGroup.png'))
         $editorconfig = Get-Content -LiteralPath (Join-Path $dest '.editorconfig') -Raw
-        # Roslyn ends an .editorconfig value at the first ; or #, so the header must hold neither to be read whole.
+        # Roslyn ends an .editorconfig value at the first ; or #, so the header must hold neither to be read whole: an author_name holding either gets no header.
+        $author = if ($case.Data.author_name) { $case.Data.author_name } else { 'NCode Group' }
         $headerLicense = if ($case.Data.license) { $case.Data.license } elseif ($library) { $case.Data.package_license } else { '' }
-        $header = "file_header_template = Copyright $([char]0xA9) NCode Group" + $(if ($headerLicense) { '\nSPDX-License-Identifier: ' + $headerLicense } else { '' })
+        $header = "file_header_template = Copyright $([char]0xA9) $author" + $(if ($headerLicense) { '\nSPDX-License-Identifier: ' + $headerLicense } else { '' })
         $headerLines = @($editorconfig -split '\r?\n' | Where-Object { $_.StartsWith('file_header_template') })
-        Check "${name}: the C# file header for the license answered" ($headerLines.Count -eq 1 -and $headerLines[0] -ceq $header -and $headerLines[0] -notmatch '[;#]' -and $editorconfig.Contains('dotnet_diagnostic.IDE0073.severity = suggestion')) $editorconfig
+        $headerOk = if ($author -match '[;#]') { $headerLines.Count -eq 0 -and $editorconfig.Contains('# No file_header_template: author_name holds a ; or #, where Roslyn would cut the header short.') }
+            else { $headerLines.Count -eq 1 -and $headerLines[0] -ceq $header -and $headerLines[0] -notmatch '[;#]' }
+        Check "${name}: the C# file header for the license answered" ($headerOk -and $editorconfig.Contains('dotnet_diagnostic.IDE0073.severity = suggestion')) $editorconfig
         $publish = Join-Path $dest '.github\workflows\publish.yml'
         $wantsPublish = $library -and $case.Host -eq 'github'
         Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)
