@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-11-01
+
+### Added
+
+- A new `/run-feedback` command, the looping counterpart of `/address-feedback`, for any open pull request in the repository: every five minutes it runs an `/address-feedback` pass, which fixes what holds, pushes and replies with `Autopilot:`, until the pull request merges or closes. Like `/address-feedback`, it can start in the session that shipped a plan, leaving the plan's worktree and keeping it. After each push, when the project runs NCode Review, it comments `/review` and waits up to an hour for the bot's `Code review` check run on the pushed commit to complete. It keeps `/run-issues`' limits: the wait limit, 24 hours with nothing to answer unless `wait:<hours>` sets it, the Landing section's `max-review-rounds`, only NCode Review's `blocker` and `should-fix` findings, at most two `Autopilot:` replies per bot thread, and one merge recommendation once a pass finds nothing to fix or the rounds run out. It never merges, marks a pull request ready, resolves a thread or force-pushes. Claude Code only ([#218](https://github.com/NCodeGroup/project-template/issues/218)).
+
+### Changed
+
+- `/run-issues` comments `/review` on its draft pull request after it pushes a round's fix steps, when the project runs NCode Review, so the bot reviews the new commits. `code-review.yml` reviews a pull request when it opens or is marked ready, and again only when a writer comments `/review`, so before, NCode Review never saw the fix commits and the merge recommendation rested on findings about an older commit. In Claude Code, Copilot Chat and Copilot CLI ([#218](https://github.com/NCodeGroup/project-template/issues/218)).
+- No change for projects made from the template. The end-to-end tests' `gh` stand-in gives NCode Review's review of a push only after a `/review` comment that follows the push, as `code-review.yml` does, so `tests/e2e/Test-RunIssues.ps1` checks that `/run-issues` asks for it ([#218](https://github.com/NCodeGroup/project-template/issues/218)).
+
 ## [0.55.0] - 2026-11-01
 
 ### Changed
@@ -836,7 +847,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.55.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.56.0...HEAD
+[0.56.0]: https://github.com/NCodeGroup/project-template/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/NCodeGroup/project-template/compare/v0.54.1...v0.55.0
 [0.54.1]: https://github.com/NCodeGroup/project-template/compare/v0.54.0...v0.54.1
 [0.54.0]: https://github.com/NCodeGroup/project-template/compare/v0.53.0...v0.54.0
