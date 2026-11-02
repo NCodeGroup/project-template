@@ -55,6 +55,8 @@ jobs:
             run: ./tests/Test-ProjectUpdateHooks.ps1
           - name: Test updating an adopted project's kept lines
             run: ./tests/Test-UpdateKeptLines.ps1
+          - name: Test the index an update leaves on a conflict
+            run: ./tests/Test-UpdateConflictStaging.ps1
           - name: Test the update's exit code
             run: ./tests/Test-UpdateExitCode.ps1
           - name: Set up the address-feedback end-to-end fixture
