@@ -1,25 +1,37 @@
 <#
 .SYNOPSIS
-    Gives a GitLab project the baseline merge protection: no merge request merges past an unresolved thread or without a
-    passing pipeline.
+    Gives a GitLab project the baseline protection: changes reach the default branch only through a merge request, which
+    merges only with every thread resolved and a passing pipeline, and never by squashing.
 
 .DESCRIPTION
-    For one GitLab project it turns on two settings, each where it is off:
+    For one GitLab project it makes four settings, each where it isn't so already:
       - "All threads must be resolved" (only_allow_merge_if_all_discussions_are_resolved), so a review finding from the
         bot or a person can't be merged past;
       - "Pipelines must succeed" (only_allow_merge_if_pipeline_succeeds), so a merge request whose pipeline failed can't
         merge. It also blocks a merge request that has no pipeline at all. The template's .gitlab-ci.yml runs a pipeline
         on every merge request, with the always-on "Commit attribution" job, so a project made from the template always
-        has one; a project whose CI runs none can't merge until it does.
+        has one; a project whose CI runs none can't merge until it does;
+      - "Squash commits when merging" set to "Do not allow" (squash_option never), so a plan's step commits stay on the
+        default branch, as a project's ADR-0013 records;
+      - the default branch's "Allowed to push and merge" set to "No one", so a change reaches it only through a merge
+        request, as ADR-0005 records, and Get-PlanState.ps1 reports protected: host. GitLab Free can't change a
+        protected branch's access levels in place, so a protection made only of roles is removed (DELETE) and made
+        again (POST) with no one allowed to push and its own merge, unprotect and force-push settings. If making it
+        again fails, the earlier protection is restored, and the run fails, saying so, only when that fails too and
+        the branch is left unprotected. A protection that names users, groups, deploy keys or code owners, which GitLab
+        Premium allows, is reported and left as it is, to change by hand in the project's Settings > Repository >
+        Protected branches. An unprotected default branch is protected, with Maintainers allowed to merge. A project
+        with no default branch yet (nothing pushed) is reported, and its protection isn't read.
 
-    These are the settings that play, on GitLab, the part the "Protect main" ruleset's conversation resolution and
-    required checks play on GitHub (see Set-RepositoryBaseline.ps1). Both are on GitLab Free. Protecting the default
-    branch's push access and forbidding squash merges are not done here.
+    These are the settings that play, on GitLab, the part the "Protect main" ruleset's pull request rule, merge
+    methods, conversation resolution and required checks play on GitHub (see Set-RepositoryBaseline.ps1). All four are
+    on GitLab Free.
 
     Each setting is read first, from the project, and printed as set, already set, would set (-WhatIf) or not available,
     with the reason, one line each: <project>: <setting>: <outcome>. A setting the API refuses to change is reported, and
     the run goes on with the next one. A project the script can't read (no response, not found, or an answer that isn't
-    a project) fails the run with an error, and an archived project is skipped.
+    a project) fails the run with an error, and an archived project is skipped. A run also fails when it leaves the
+    default branch unprotected.
 
     Name the project with -Project <group/subgroup/name>, and -Hostname for a GitLab other than gitlab.com, or point
     -Path at a clone (the current folder by default), whose origin remote gives both. It needs glab, signed in to the
