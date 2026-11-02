@@ -76,9 +76,12 @@ The rule is enforced in layers that fail differently:
 ## Consequences
 
 - The contributor list names only people, without anyone remembering to check it.
-- A commit the check rejects is re-authored before it merges:
+- A commit the check rejects is rewritten before it merges, with the command the check prints:
   `git rebase <base> --exec "git commit --amend --no-edit --reset-author"`, then `git push --force-with-lease` on the
-  pull request's branch. The Copilot cloud agent's pull requests fail until they are re-authored this way.
+  pull request's branch. For a commit message with attribution the command adds `-c core.hooksPath=.githooks` after
+  `git`, so the project's `commit-msg` hook strips those lines, which `--amend --no-edit` alone keeps, and it leaves
+  out `--reset-author` when no agent account authored or committed the commit. The Copilot cloud agent's pull requests
+  fail until they are re-authored this way.
 - A pull request whose title or description the check rejects is edited, not rebased. On GitHub the edit runs the check
   again; on GitLab, which starts no pipeline for an edit, the merge request's pipeline is run again, and CI sees only
   the first 2700 characters of its description.
