@@ -8,26 +8,27 @@ _answers_file: .copier-answers.yml
 
 # Every file has one of three owners (the README's "What a Project Gets"):
 # - Project-owned (_skip_if_exists): written once when the project is created; updates never touch them.
+#   Each entry starts with /: Copier reads them like .gitignore patterns, and a name without a / matches that name in every folder.
 # - Merged (_merged_files): files whose tools can't include a second file. Updates merge the template's changes
 #   with the project's edits, like a Git merge. .template\Update-Project.ps1 reads this list; Copier ignores it.
 # - Template-owned: every other file. Updates replace it, discarding any edit.
 # A project that replaced a merged or template-owned file makes it project-owned with the project_owned_files answer, which can name any file the template renders except .copier-answers.yml, .template-version and the files in .template/; Adopt-Project.ps1 and .template\Update-Project.ps1 enforce it.
 _skip_if_exists:
-  - AGENTS.md
-  - README.md
-  - Directory.Build.props
-  - .github/workflows/code-review.yml
-  - .github/workflows/publish.yml
-  - docs/decisions/README.md
-  - docs/decisions/0000-template.md
-  - LICENSE.txt
-  - COPYRIGHT.txt
-  - NCodeGroup.png
-  - SECURITY.md
-  - CONTRIBUTING.md
-  - docs/README.md
-  - docs/metrics.md
-  - docs/designs/_template.md
+  - /AGENTS.md
+  - /README.md
+  - /Directory.Build.props
+  - /.github/workflows/code-review.yml
+  - /.github/workflows/publish.yml
+  - /docs/decisions/README.md
+  - /docs/decisions/0000-template.md
+  - /LICENSE.txt
+  - /COPYRIGHT.txt
+  - /NCodeGroup.png
+  - /SECURITY.md
+  - /CONTRIBUTING.md
+  - /docs/README.md
+  - /docs/metrics.md
+  - /docs/designs/_template.md
 _merged_files:
   - .gitignore
   - .gitattributes

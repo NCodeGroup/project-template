@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.59.1] - 2026-11-02
+
+### Fixed
+
+- `.\.template\Update-Project.ps1` now updates `docs/decisions/project-template/README.md`, the index of the template's decision records, like the rest of that template-owned folder. `copier.yml` listed `README.md` under `_skip_if_exists`, which Copier reads like a `.gitignore` pattern, so it also matched the index, and Copier wrote it once and never again. Every `_skip_if_exists` entry now starts with `/`, so it names one file from the project's root, and the update reads the entries as Copier does, also for the files it and `Adopt-Project.ps1` exclude. The first update to this version resets an index that earlier versions left out of date and lists it under `Refreshed`, which says that a local edit to it is discarded. Projects get it with `.\.template\Update-Project.ps1` ([#233](https://github.com/NCodeGroup/project-template/issues/233)).
+
 ## [0.59.0] - 2026-11-02
 
 ### Added
@@ -907,7 +913,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.59.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.59.1...HEAD
+[0.59.1]: https://github.com/NCodeGroup/project-template/compare/v0.59.0...v0.59.1
 [0.59.0]: https://github.com/NCodeGroup/project-template/compare/v0.58.2...v0.59.0
 [0.58.2]: https://github.com/NCodeGroup/project-template/compare/v0.58.1...v0.58.2
 [0.58.1]: https://github.com/NCodeGroup/project-template/compare/v0.58.0...v0.58.1
