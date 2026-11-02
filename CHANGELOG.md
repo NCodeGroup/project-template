@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.59.2] - 2026-11-02
+
+### Changed
+
+- `/run-feedback` says that each pass follows `address-feedback` "with the changes listed under Each Pass below", instead of "with the changes Each Pass makes", which read as an unfinished clause. A comment in `.template/Update-Project.ps1` now says why an update that stops on a conflict stages only the files its reset changed: `git add -A` would mark the conflicted files resolved, conflict markers and all. Neither changes behavior. Projects get them with `.\.template\Update-Project.ps1` ([#235](https://github.com/NCodeGroup/project-template/issues/235)).
+- No change for projects made from the template. `tests/Test-UpdateSkipPatterns.ps1` also checks an update whose project's version Copier can't render with its answers: the update warns with Copier's error that it skipped refreshing `docs/decisions/project-template/README.md`, lists nothing under Refreshed, keeps the index's local line and still reaches the target version ([#236](https://github.com/NCodeGroup/project-template/issues/236)).
+
 ## [0.59.1] - 2026-11-02
 
 ### Fixed
@@ -913,7 +920,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.59.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.59.2...HEAD
+[0.59.2]: https://github.com/NCodeGroup/project-template/compare/v0.59.1...v0.59.2
 [0.59.1]: https://github.com/NCodeGroup/project-template/compare/v0.59.0...v0.59.1
 [0.59.0]: https://github.com/NCodeGroup/project-template/compare/v0.58.2...v0.59.0
 [0.58.2]: https://github.com/NCodeGroup/project-template/compare/v0.58.1...v0.58.2
