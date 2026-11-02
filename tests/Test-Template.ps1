@@ -220,7 +220,7 @@ foreach ($case in $cases) {
         Check "${name}: the template's icon only for a library that uses it" ((Test-Path -LiteralPath $templateIcon) -eq ($library -and $icon -eq 'NCodeGroup.png'))
         $editorconfig = Get-Content -LiteralPath (Join-Path $dest '.editorconfig') -Raw
         # Roslyn ends an .editorconfig value at the first ; or #, so the header must hold neither to be read whole.
-        $headerLicense = if ($library) { $case.Data.package_license } else { '' }
+        $headerLicense = if ($case.Data.license) { $case.Data.license } elseif ($library) { $case.Data.package_license } else { '' }
         $header = "file_header_template = Copyright $([char]0xA9) NCode Group" + $(if ($headerLicense) { '\nSPDX-License-Identifier: ' + $headerLicense } else { '' })
         $headerLines = @($editorconfig -split '\r?\n' | Where-Object { $_.StartsWith('file_header_template') })
         Check "${name}: the C# file header for the license answered" ($headerLines.Count -eq 1 -and $headerLines[0] -ceq $header -and $headerLines[0] -notmatch '[;#]' -and $editorconfig.Contains('dotnet_diagnostic.IDE0073.severity = suggestion')) $editorconfig
