@@ -109,7 +109,6 @@ exit 0
 '@
     Invoke-Git -C $app add tests/Test-Greeting.ps1
     Invoke-Git -C $app commit -q -m 'Check Get-Farewell -Name Ada'
-    $checkCommit = "$(git -C $app rev-parse --short HEAD)".Trim()
     # The pull request's branch reaches origin as main did, and the main checkout is back on main, as a person's would be.
     Invoke-Git --git-dir=$origin fetch -q $app "${head}:$head"
     Invoke-Git -C $app switch -q main
@@ -151,6 +150,81 @@ exit 0
         comments = @()
     }
     Write-Text (Join-Path $hostDir 'review-seed-push.json') (ConvertTo-Json -InputObject $pushSeed -Depth 10)
+
+    # The installed commands name the queries the stand-in must answer.
+    $commandText = if (Test-Path -LiteralPath $commandFile) { [IO.File]::ReadAllText($commandFile) } else { '' }
+    $addressText = if (Test-Path -LiteralPath $addressFile) { [IO.File]::ReadAllText($addressFile) } else { '' }
+    $checkPath = ''
+    $checkJq = ''
+    if ($commandText -match 'gh api "(repos/\{owner\}/\{repo\}/commits/<pushed>/check-runs\?[^"]+)" --jq ''([^'']+)''') { $checkPath = $Matches[1]; $checkJq = $Matches[2] }
+    $readQuery = if ($addressText -match "gh api graphql -F owner='\{owner\}' -F name='\{repo\}' -F number=<number> -f query='(query[^']+)'") { $Matches[1] } else { '' }
+
+    # The self-checks below call the stand-in, which changes its state: they run on a copy that is put back afterwards.
+    $saved = @{}
+    foreach ($file in Get-ChildItem -LiteralPath $hostDir -File) { $saved[$file.Name] = [IO.File]::ReadAllText($file.FullName) }
+    Use-FixtureEnvironment $Work $bin {
+        $st = Get-State $app $app
+        $ok = $st['host'] -eq 'github' -and $st['default'] -eq 'main' -and $st['protected'] -eq 'hook' -and $st['landing'] -like '*integrate=pull-request*' -and $st['landing'] -like '*review-bots=ncode-review*' -and $st['next'] -eq 'none no plan in this folder'
+        git --git-dir=$origin cat-file -e 'main:.github/workflows/code-review.yml' 2>$null
+        $runsReview = $LASTEXITCODE -eq 0
+        Check 'fixture: the state script sees a GitHub origin whose main takes only pull requests and runs NCode Review' ($ok -and $runsReview) "host='$($st['host'])' default='$($st['default'])' protected='$($st['protected'])' landing='$($st['landing'])' next='$($st['next'])' code-review.yml on origin main: $runsReview"
+
+        $login = "$(gh api user --jq .login)".Trim()
+        Check 'fixture: gh on PATH is the stand-in, signed in as fixture-owner' ($login -eq 'fixture-owner') "login='$login'"
+
+        $view = gh pr view 1 --json number,url,title,state,isDraft,headRefName,headRefOid,isCrossRepository,baseRefName | Out-String | ConvertFrom-Json
+        $ok = $view.state -eq 'OPEN' -and $view.headRefName -eq $head -and $view.headRefOid -eq $headOid -and $view.isCrossRepository -eq $false -and $view.baseRefName -eq 'main'
+        Check 'fixture: pull request #1 is open, from add-farewell at its head on origin, not from a fork' $ok "state='$($view.state)' head='$($view.headRefName)' oid='$($view.headRefOid)' cross=$($view.isCrossRepository)"
+
+        Check 'fixture: the installed commands ask for NCode Review''s check run, answer a nit as mandated and read the pull request with a query' ($checkPath -and $checkJq -and $commandText.Contains($nitReply) -and $readQuery) "check path: '$checkPath' jq: '$checkJq' command file: $commandFile read query: $([bool]$readQuery)"
+
+        $data = $null
+        if ($readQuery) { $data = (gh api graphql -F 'owner={owner}' -F 'name={repo}' -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json).data.repository.pullRequest }
+        $ok = $data -and @($data.reviewThreads.nodes | Where-Object { -not $_.isResolved }).Count -eq 1 -and @($data.comments.nodes).Count -eq 0 -and @($data.reviews.nodes).Count -eq 0
+        Check 'fixture: the command''s query reads one open thread, no comments and no reviews' ([bool]$ok) "threads=$(@($data.reviewThreads.nodes).Count) comments=$(@($data.comments.nodes).Count) reviews=$(@($data.reviews.nodes).Count)"
+
+        $count = if ($checkPath) { "$(pwsh -NoProfile -File (Join-Path $bin 'gh.ps1') api ($checkPath.Replace('<pushed>', $headOid)) --jq $checkJq)".Trim() } else { '' }
+        Check 'fixture: the stand-in reports no completed check run for the head before any review is asked for, and still holds the push review' ($count -eq '0' -and (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) "completed check runs: '$count'"
+    }
+    Remove-Item -LiteralPath $hostDir -Recurse -Force
+    New-Item -ItemType Directory -Force $hostDir | Out-Null
+    foreach ($name in $saved.Keys) { [IO.File]::WriteAllText((Join-Path $hostDir $name), $saved[$name]) }
+
+    # The stand-in, in a folder of its own, completes NCode Review's check run on a pushed commit, and gives its review, only after a /review comment.
+    $probe = Join-Path $Work 'gh-probe'
+    New-Item -ItemType Directory -Force (Join-Path $probe 'host') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'gh.ps1') -Destination (Join-Path $probe 'gh.ps1')
+    Write-Text (Join-Path $probe 'host/issues.json') '{}'
+    Write-Text (Join-Path $probe 'host/prs.json') '[]'
+    Write-Text (Join-Path $probe 'host/comments.json') '[]'
+    Copy-Item -LiteralPath (Join-Path $hostDir 'review-seed-push.json') -Destination (Join-Path $probe 'host/review-seed-push.json')
+    [IO.File]::WriteAllText((Join-Path $probe 'host/origin.txt'), $origin)
+    Invoke-Git --git-dir=$origin branch probe main
+    $probeGh = Join-Path $probe 'gh.ps1'
+    $null = pwsh -NoProfile -File $probeGh pr create --draft --base main --head probe --title Probe --body Probe
+    $moved = "$(Invoke-Git --git-dir=$origin commit-tree 'main^{tree}' -p main -m 'Probe push')".Trim()
+    Invoke-Git --git-dir=$origin update-ref refs/heads/probe $moved
+    $probePath = $checkPath.Replace('<pushed>', $moved)
+    $before = "$(pwsh -NoProfile -File $probeGh api $probePath --jq $checkJq)".Trim()
+    Write-Text (Join-Path $probe 'review.md') "/review`n"
+    $null = pwsh -NoProfile -File $probeGh pr comment 1 --body-file (Join-Path $probe 'review.md')
+    $after = "$(pwsh -NoProfile -File $probeGh api $probePath --jq $checkJq)".Trim()
+    $read = pwsh -NoProfile -File $probeGh api graphql -F owner=fixture -F name=app -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json
+    $nodes = @($read.data.repository.pullRequest.reviewThreads.nodes)
+    $nit = @($nodes | Where-Object { "$($_.comments.nodes[0].body)" -match 'severity=nit' })
+    $calls = Join-Path $probe 'host/calls.log'
+    $unsupported = @(if (Test-Path -LiteralPath $calls) { Get-Content -LiteralPath $calls | Where-Object { $_ -match 'UNSUPPORTED' } })
+    $ok = $before -eq '0' -and $after -eq '1' -and $nodes.Count -eq 1 -and $nit.Count -eq 1 -and $nit[0].comments.nodes[0].author.login -eq 'ncode-review' -and
+        -not (Test-Path -LiteralPath (Join-Path $probe 'host/review-seed-push.json')) -and $unsupported.Count -eq 0
+    Check 'fixture: the stand-in completes NCode Review''s check run on a pushed commit, and gives its review, only after a /review comment that follows the push' $ok "before='$before' after='$after' threads=$($nodes.Count) nits=$($nit.Count) unsupported=$($unsupported.Count)"
+    Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
+    Remove-Item -LiteralPath $probe -Recurse -Force
+
+    $clone = Join-Path $Work 'setup-check'
+    Invoke-Git clone -q --branch $head $origin $clone
+    $result = Get-FarewellResult $clone
+    Check 'fixture: on the pull request''s branch the test passes and Get-Farewell says "Goodbye, !" without a name, as the writer says' ($result.Output -eq 'Goodbye, !|Goodbye, !|Goodbye, Ada!' -and $result.TestCode -eq 0) "output='$($result.Output)' test exit code $($result.TestCode)"
+    Remove-Item -LiteralPath $clone -Recurse -Force
 }
 
 if ($SetupOnly) {
