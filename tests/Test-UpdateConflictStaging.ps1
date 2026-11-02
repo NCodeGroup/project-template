@@ -5,9 +5,12 @@
 .DESCRIPTION
     Renders a project from v0.1.0 whose .gitignore ends with the block the adoption kept from the repository's own
     file, then updates it with -NoCommit to a v0.2.0 that changes .editorconfig, which the project changed too. The
-    update must stop on the conflict in .editorconfig and leave it unmerged. The .gitignore, which the update leaves
-    as it was, must be neither listed nor staged, and must still end with the kept block. Prints PASS or FAIL per
-    check and exits 1 on any failure.
+    update must stop on the conflict in .editorconfig and leave it unmerged. The template also adds cafe.txt with an
+    acute e (U+00E9), whose first line renders Copier's _folder_name, so the update conflicts on it too, and the
+    project edits its second line, so the update's reset commit changes it: it must stay unmerged as well, which
+    fails if the restage reads its unmerged list without core.quotePath=false. The .gitignore, which the update
+    leaves as it was, must be neither listed nor staged, and must still end with the kept block. Prints PASS or FAIL
+    per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-conflict-staging-test-<process ID>
@@ -49,7 +52,9 @@ if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 $copierCache = $env:COPIER_CACHE_DIR
 if (-not $copierCache) { $env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache' }
 $tpl = Join-Path $Work 'template-repo'
-$null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
+# A template file with a non-ASCII name whose first line renders Copier's _folder_name: Copier renders an update's base in a temporary folder, so the update always conflicts on that line, and the reset restores the project's edit to its second line, so the reset commit changes it too.
+$accented = "caf$([char]0xE9).txt"
+$null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl -BeforeCommit { [IO.File]::WriteAllText((Join-Path (Get-Location) "template/$accented.jinja"), "Rendered in {{ _folder_name }}`nA line the project edits`n") }
 
 Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
 $marker = "# Kept from this repository's own .gitignore when it adopted the project template"
@@ -63,6 +68,7 @@ $ignore = Join-Path $path '.gitignore'
 Push-Location $path
 try {
     Edit-File .editorconfig "indent_style = space`nindent_size = 4`n" "indent_style = space`nindent_size = 3`n"
+    Edit-File $accented "A line the project edits`n" "A line the project edited`n"
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Adopt project-template v0.1.0'
 }
 finally { Pop-Location }
@@ -83,6 +89,7 @@ try {
     $detail = "exit $exitCode`n$($output.Trim())`n$(git status --porcelain | Out-String)"
     Check 'conflict: the update stops on the conflict in .editorconfig' (($exitCode -eq 1) -and ($output -match '(?m)^  conflict  \.editorconfig\r?$')) $detail
     Check 'conflict: .editorconfig stays unmerged' ([bool](git ls-files -u -- .editorconfig)) $detail
+    Check "conflict: $accented, which the reset changed, stays unmerged" ([bool](git ls-files -u -- $accented)) $detail
     Check 'kept: .gitignore, which the update left as it was, is neither listed nor staged' (($output -notmatch '(?m)^  \S+ +\.gitignore\r?$') -and -not (git status --porcelain -- .gitignore)) $detail
     Check 'kept: .gitignore still ends with the kept block' (([IO.File]::ReadAllText($ignore) -eq $before) -and $before.EndsWith("$marker`n$kept")) $detail
 }

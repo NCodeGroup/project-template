@@ -12,6 +12,7 @@ a branch. `pr view` of a branch with no pull request fails as gh does (logged as
 `pr edit`. An optional `review-seed.json` holds the review threads, review summaries and top-level comments the first
 pull request gets when it is opened. An optional `review-seed-push.json` holds the review a pull request gets on the first
 GraphQL read after a /review comment posted once its branch on origin has moved past the head it was opened at, as NCode Review reviews a push only when a writer asks.
+`api repos/<owner>/<repo>/commits/<sha>/check-runs` answers one completed `Code review` check run of the app `ncode-review` for a commit whose push review it has given, giving it first when a /review comment asked for it, and evaluates only simple `--jq` paths and the count of completed check runs of one app.
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -146,7 +147,8 @@ function Add-ReviewSeed([int]$Number, [string]$PrUrl, [string]$SeedName = 'revie
     Remove-Item -LiteralPath $seedFile
 }
 # Gives a pull request the review in host/review-seed-push.json, as NCode Review reviews a push when a writer asks: on the first read
-# after a /review comment posted once its branch on origin has moved past the head it was opened at. Then deletes that seed.
+# after a /review comment posted once its branch on origin has moved past the head it was opened at. Then deletes that seed
+# and records the commit it reviewed as the pull request's reviewedOid.
 function Add-PushReview($Pr) {
     $originFile = Join-Path $hostDir 'origin.txt'
     if (-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json')) -or -not (Test-Path -LiteralPath $originFile)) { return }
@@ -154,6 +156,12 @@ function Add-PushReview($Pr) {
     if ($LASTEXITCODE -ne 0 -or "$oid" -eq "$($Pr.headRefOid)") { return }
     if ("$($Pr.reviewRequestedOid)" -ne "$oid") { return }
     Add-ReviewSeed ([int]$Pr.number) "$($Pr.url)" 'review-seed-push.json'
+    $prs = @(Read-Json 'prs.json' @())
+    $current = $prs | Where-Object { "$($_.number)" -eq "$($Pr.number)" } | Select-Object -First 1
+    if ($current) {
+        $current.reviewedOid = "$oid"
+        Write-Json 'prs.json' $prs
+    }
 }
 # Records the head a /review comment asks a review of: the pull request's branch on origin as it is now.
 function Set-ReviewRequest([int]$Number) {
@@ -179,6 +187,34 @@ if (Test-Path -LiteralPath $forbiddenFile) {
     foreach ($line in [IO.File]::ReadAllLines($forbiddenFile)) {
         if ($line.Trim() -and "$($args[0]) $($args[1])" -eq $line.Trim()) { Stop-Call FORBIDDEN "gh stand-in: $($line.Trim()) is not allowed in this test" }
     }
+}
+
+if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/commits/([0-9a-fA-F]{7,40})/check-runs(?:\?(.*))?$') {
+    $sha = $Matches[1]
+    $query = "$($Matches[2])"
+    foreach ($pr in @(Read-Json 'prs.json' @())) {
+        if ("$($pr.reviewRequestedOid)".StartsWith($sha)) { Add-PushReview $pr }
+    }
+    $runs = @()
+    $reviewed = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.reviewedOid)" -and "$($_.reviewedOid)".StartsWith($sha) } | Select-Object -First 1
+    if ($reviewed) {
+        $runs = @(@{ id = 4001; name = 'Code review'; head_sha = "$($reviewed.reviewedOid)"; status = 'completed'; conclusion = 'success'; app = @{ slug = 'ncode-review' } })
+    }
+    if ($query -match '(?:^|&)check_name=([^&]*)') {
+        $checkName = [uri]::UnescapeDataString($Matches[1])
+        $runs = @($runs | Where-Object { $_.name -eq $checkName })
+    }
+    $jq = Get-Option '--jq'
+    if (-not $jq -or $jq -match '^(\.[A-Za-z_]\w*)+$') {
+        Write-Result @{ total_count = $runs.Count; check_runs = $runs }
+        exit 0
+    }
+    if ($jq -match '^\[\.check_runs\[\] \| select\(\.app\.slug == "([^"]+)" and \.status == "completed"\)\] \| length$') {
+        $slug = $Matches[1]
+        "$(@($runs | Where-Object { $_.app.slug -eq $slug -and $_.status -eq 'completed' }).Count)"
+        exit 0
+    }
+    Stop-Call UNSUPPORTED "gh stand-in: unsupported --jq for check runs: $jq"
 }
 
 switch ("$($args[0]) $($args[1])") {

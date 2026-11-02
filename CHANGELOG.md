@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.58.1] - 2026-11-01
+
+### Added
+
+- No change for projects made from the template. A new end-to-end test, `tests/e2e/Test-RunFeedback.ps1`, runs `/run-feedback #1 wait:0` in headless Claude Code on a fixture pull request with a writer's fix request, and checks that the run pushes the fix, never forced, comments `/review` after the push, sees NCode Review's `Code review` check run complete on the pushed commit, answers the bot's nit once and recommends the merge once, and never resolves a thread or merges. The end-to-end tests' `gh` stand-in answers the check-runs call `/run-feedback` makes, and CI runs the test's fixture check with `-SetupOnly` ([#221](https://github.com/NCodeGroup/project-template/issues/221)).
+
+### Changed
+
+- No change for projects made from the template. `tests/Test-UpdateConflictStaging.ps1` also checks that an update that stops on a conflict leaves a conflicted file with a non-ASCII name, one the update's reset changed, unmerged, so a restage that read its unmerged list without `core.quotePath=false` fails a test ([#217](https://github.com/NCodeGroup/project-template/issues/217)).
+
 ## [0.58.0] - 2026-11-01
 
 ### Added
@@ -876,7 +886,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.58.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.58.1...HEAD
+[0.58.1]: https://github.com/NCodeGroup/project-template/compare/v0.58.0...v0.58.1
 [0.58.0]: https://github.com/NCodeGroup/project-template/compare/v0.57.1...v0.58.0
 [0.57.1]: https://github.com/NCodeGroup/project-template/compare/v0.57.0...v0.57.1
 [0.57.0]: https://github.com/NCodeGroup/project-template/compare/v0.56.0...v0.57.0
