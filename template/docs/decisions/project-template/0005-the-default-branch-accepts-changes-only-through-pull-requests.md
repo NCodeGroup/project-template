@@ -39,7 +39,8 @@ it, or, in a project that merges through a merge queue, on the merged result the
    decides inside the job what work to skip.
 4. On a host that cannot require pull requests, such as a private repository on GitHub Free, the Landing section sets
    `protect: hook`, and `.githooks/pre-push` refuses any push to the default branch from a clone that runs the
-   template's hooks. On GitLab, a protected branch with "Pipelines must succeed" plays the ruleset's part.
+   template's hooks. On GitLab, a protected branch with "Pipelines must succeed" plays the ruleset's part,
+   `tools/Set-GitLabBaseline.ps1` in the project template's repository turns that setting on.
 5. An approval requirement is added when a second maintainer exists.
 
 ## Options considered
@@ -66,6 +67,7 @@ it, or, in a project that merges through a merge queue, on the merged result the
 
 - `AGENTS.md` Landing section, `.githooks/pre-push`, `.github/workflows/ci.yml` or `.gitlab-ci.yml`
 - `tools/Set-RepositoryBaseline.ps1` in the project template's repository, which writes the ruleset
+- `tools/Set-GitLabBaseline.ps1` in the project template's repository, which turns on a GitLab project's merge checks
 - [ADR-0002](0002-commits-are-attributed-to-people-not-agents.md): commits are attributed to people, not agents.
 - [ADR-0004](0004-trunk-based-development-on-the-default-branch.md): trunk-based development on the default branch.
 - [ADR-0006](0006-a-person-merges-every-pull-request.md): a person merges every pull request.
