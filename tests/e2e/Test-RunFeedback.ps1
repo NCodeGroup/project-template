@@ -10,13 +10,17 @@
     stand-in also holds NCode Review's review of the run's push, a nit, which it gives once a /review comment follows
     the push, and it completes NCode Review's Code review check run on the pushed commit.
     In -SetupOnly it checks the fixture: the project's state, the pull request, the installed commands and the
-    stand-in's handling of the check-runs call and of the push review.
+    stand-in's handling of the check-runs call, of the push review, of a comment read back, edited and deleted by its
+    id, and of footer.txt.
     It runs /run-feedback #1 wait:0 in headless Claude Code, answers the run's one question by resuming the session, and
     checks that the writer's fix is pushed, never forced; that the writer's thread gets a reply that names the commit;
     that the run comments /review after its last push, asks for NCode Review's check run on the pushed commit and
     answers the bot's nit once; that it recommends the merge once, in a top-level comment after the /review; and that
     nothing is resolved, merged or edited, which the stand-in also refuses. It waits at least five minutes for the
-    review, as the command does.
+    review, as the command does. With -Scenario session-footer the stand-in saves each comment and thread reply with a
+    Claude Code cloud session's footer, so the run's /review comment starts no review: the test then checks that the
+    run deletes it and posts no other, asks the maintainer in an Autopilot: comment to comment /review, and removes
+    the footer from every top-level comment it leaves.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
@@ -30,6 +34,13 @@
 
 .PARAMETER CheckOnly
     Check the fixture of an earlier run again, without building it or calling a model.
+    Without -Scenario it checks the scenario the fixture was set up for: session-footer when the host folder has
+    footer.txt, push-review otherwise.
+
+.PARAMETER Scenario
+    push-review, the default: the run's /review comment asks NCode Review for its review of the push. session-footer:
+    the stand-in saves each comment and reply with the footer that footer.txt in its host folder holds, so the run
+    must delete its /review comment and ask the maintainer for one, which the stand-in then takes as posted. Run both.
 
 .PARAMETER Claude
     The Claude Code CLI. Defaults to claude.
@@ -41,6 +52,9 @@
     .\tests\e2e\Test-RunFeedback.ps1
 
 .EXAMPLE
+    .\tests\e2e\Test-RunFeedback.ps1 -Scenario session-footer
+
+.EXAMPLE
     .\tests\e2e\Test-RunFeedback.ps1 -SetupOnly
 #>
 [CmdletBinding()]
@@ -48,6 +62,7 @@ param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-run-feedback-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
+    [ValidateSet('push-review', 'session-footer')][string]$Scenario = 'push-review',
     [string]$Claude = 'claude',
     [double]$MaxBudgetUsd = 30
 )
@@ -61,6 +76,8 @@ $app = Join-Path $Work 'app'
 $origin = Join-Path $Work 'github.com/fixture/app.git'
 $bin = Join-Path $Work 'bin'
 $hostDir = Join-Path $bin 'host'
+# Without -Scenario, -CheckOnly checks the scenario the fixture was set up for: footer.txt in the host folder marks session-footer.
+if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt'))) { $Scenario = 'session-footer' }
 $head = 'add-farewell'
 $prUrl = 'https://github.com/fixture/app/pull/1'
 $commandFile = Join-Path $app '.claude/commands/run-feedback.md'
@@ -220,11 +237,66 @@ exit 0
     Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
     Remove-Item -LiteralPath $probe -Recurse -Force
 
+    # The stand-in, in a folder of its own, reads a comment back by its id, edits it with -X PATCH and deletes it with
+    # -X DELETE, refuses an id it doesn't hold and any other method, and with footer.txt saves each comment with that footer.
+    $probe = Join-Path $Work 'gh-comment-probe'
+    New-Item -ItemType Directory -Force (Join-Path $probe 'host') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'gh.ps1') -Destination (Join-Path $probe 'gh.ps1')
+    Write-Text (Join-Path $probe 'host/issues.json') '{}'
+    Write-Text (Join-Path $probe 'host/prs.json') '[]'
+    Write-Text (Join-Path $probe 'host/comments.json') '[]'
+    [IO.File]::WriteAllText((Join-Path $probe 'host/origin.txt'), $origin)
+    Invoke-Git --git-dir=$origin branch probe main
+    $probeGh = Join-Path $probe 'gh.ps1'
+    $null = pwsh -NoProfile -File $probeGh pr create --draft --base main --head probe --title Probe --body Probe
+    $moved = "$(Invoke-Git --git-dir=$origin commit-tree 'main^{tree}' -p main -m 'Probe push')".Trim()
+    Invoke-Git --git-dir=$origin update-ref refs/heads/probe $moved
+    $bodyFile = Join-Path $probe 'body.md'
+    Write-Text $bodyFile "Probe comment`n"
+    $id = ("$(pwsh -NoProfile -File $probeGh pr comment 1 --body-file $bodyFile)".Trim() -split '#issuecomment-')[-1]
+    $readBack = "$(pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$id" --jq .body)".Trim()
+    $null = pwsh -NoProfile -File $probeGh api repos/fixture/app/issues/comments/999999 --jq .body 2>$null; $unknownCode = $LASTEXITCODE
+    $null = pwsh -NoProfile -File $probeGh api -X POST "repos/fixture/app/issues/comments/$id" 2>$null; $postCode = $LASTEXITCODE
+    Write-Text $bodyFile "Edited comment`n"
+    $null = pwsh -NoProfile -File $probeGh api -X PATCH "repos/fixture/app/issues/comments/$id" -F "body=@$bodyFile"
+    $edited = "$(pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$id" --jq .body)".Trim()
+    $null = pwsh -NoProfile -File $probeGh api -X DELETE "repos/fixture/app/issues/comments/$id"; $deleteCode = $LASTEXITCODE
+    $null = pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$id" 2>$null; $goneCode = $LASTEXITCODE
+    $unsupported = @(Get-Content -LiteralPath (Join-Path $probe 'host/calls.log') | Where-Object { $_ -match '^UNSUPPORTED' })
+    Check 'fixture: the stand-in reads a comment back by its id, edits it with -X PATCH, deletes it with -X DELETE, and refuses an id it doesn''t hold and any other method' ($readBack -eq 'Probe comment' -and $unknownCode -ne 0 -and $postCode -ne 0 -and $edited -eq 'Edited comment' -and $deleteCode -eq 0 -and $goneCode -ne 0 -and $unsupported.Count -eq 3) "read back: '$readBack'; unknown id: exit $unknownCode; POST: exit $postCode; edited: '$edited'; DELETE: exit $deleteCode; read after it: exit $goneCode; unsupported: $($unsupported.Count)"
+    # gh also takes a method attached to -X, as in -XPATCH, and sends a POST when a call has fields and no method.
+    Write-Text $bodyFile "Probe comment`n"
+    $attachedId = ("$(pwsh -NoProfile -File $probeGh pr comment 1 --body-file $bodyFile)".Trim() -split '#issuecomment-')[-1]
+    Write-Text $bodyFile "Edited with -XPATCH`n"
+    $null = pwsh -NoProfile -File $probeGh api -XPATCH "repos/fixture/app/issues/comments/$attachedId" -F "body=@$bodyFile"
+    $attachedEdit = "$(pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$attachedId" --jq .body)".Trim()
+    $null = pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$attachedId" -f 'body=Posted' 2>$null; $impliedPostCode = $LASTEXITCODE
+    $impliedBody = "$(pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$attachedId" --jq .body)".Trim()
+    $unsupportedNow = @(Get-Content -LiteralPath (Join-Path $probe 'host/calls.log') | Where-Object { $_ -match '^UNSUPPORTED' })
+    Check 'fixture: the stand-in edits a comment with -XPATCH, and refuses a call with fields and no method, which gh sends as a POST' ($attachedEdit -eq 'Edited with -XPATCH' -and $impliedPostCode -ne 0 -and $impliedBody -eq 'Edited with -XPATCH' -and $unsupportedNow.Count -eq 4) "after -XPATCH: '$attachedEdit'; fields and no method: exit $impliedPostCode, body '$impliedBody'; unsupported: $($unsupportedNow.Count)"
+
+    $footer = '_Generated by [Claude Code](https://claude.ai/code/session_01AbCdEf)_'
+    Write-Text (Join-Path $probe 'host/footer.txt') "$footer`n"
+    Write-Text $bodyFile "/review`n"
+    $footerId = ("$(pwsh -NoProfile -File $probeGh pr comment 1 --body-file $bodyFile)".Trim() -split '#issuecomment-')[-1]
+    $saved = (pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$footerId" --jq .body | Out-String).Replace("`r`n", "`n").TrimEnd()
+    $unasked = "$(@(Get-Content -Raw -LiteralPath (Join-Path $probe 'host/prs.json') | ConvertFrom-Json)[0].reviewRequestedOid)"
+    Write-Text $bodyFile "Autopilot: please comment ``/review`` on this pull request, so NCode Review reviews the commits just pushed.`n"
+    $null = pwsh -NoProfile -File $probeGh pr comment 1 --body-file $bodyFile
+    $asked = "$(@(Get-Content -Raw -LiteralPath (Join-Path $probe 'host/prs.json') | ConvertFrom-Json)[0].reviewRequestedOid)"
+    Check 'fixture: with footer.txt the stand-in saves each comment with the footer under a new id, so a /review comment asks for no review, and an Autopilot: comment that names /review stands for the maintainer''s' ([long]$footerId -gt [long]$id -and $saved -eq "/review`n`n---`n$footer" -and -not $unasked -and $asked -eq $moved) "id $footerId after the deleted $id; saved: '$saved'; review asked for at '$unasked' before the Autopilot: comment and at '$asked' after it; the push is '$moved'"
+    Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
+    Remove-Item -LiteralPath $probe -Recurse -Force
+
     $clone = Join-Path $Work 'setup-check'
     Invoke-Git clone -q --branch $head $origin $clone
     $result = Get-FarewellResult $clone
     Check 'fixture: on the pull request''s branch the test passes and Get-Farewell says "Goodbye, !" without a name, as the writer says' ($result.Output -eq 'Goodbye, !|Goodbye, !|Goodbye, Ada!' -and $result.TestCode -eq 0) "output='$($result.Output)' test exit code $($result.TestCode)"
     Remove-Item -LiteralPath $clone -Recurse -Force
+
+    # In the session-footer scenario the stand-in saves each comment and reply the run posts with a cloud session's footer.
+    if ($Scenario -eq 'session-footer') { Write-Text (Join-Path $hostDir 'footer.txt') "_Generated by [Claude Code](https://claude.ai/code/session_01AbCdEf)_`n" }
+    Check "fixture: the stand-in saves what the run posts with a session footer only in the session-footer scenario ($Scenario)" ((Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt')) -eq ($Scenario -eq 'session-footer')) "footer.txt in the host folder: $(Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt'))"
 }
 
 if ($SetupOnly) {
@@ -305,7 +377,18 @@ Use-FixtureEnvironment $Work $bin {
     $prComments = @($comments | Where-Object { $_.kind -eq 'pr' })
     $slash = @($prComments | Where-Object { "$($_.body)".Trim() -eq '/review' })
     $pr = $pr1 | Select-Object -First 1
-    Check 'the run commented /review after its last push' ($slash.Count -ge 1 -and $pr -and $headNow -and "$($pr.reviewRequestedOid)" -eq $headNow) "/review comments: $($slash.Count); reviewRequestedOid='$(if ($pr) { $pr.reviewRequestedOid })', branch head '$headNow'"
+    if ($Scenario -eq 'session-footer') {
+        $leftSlash = @($prComments | Where-Object { "$($_.body)".TrimStart() -match '^/review\b' })
+        $deletes = @($calls | Where-Object { $_ -match '^CALL api ' -and $_ -match '(^| )(-X|--method)[ =]?DELETE( |$)' -and $_ -match 'issues/comments/\d+' })
+        Check 'no /review comment is left on the pull request: the run deleted the one that came back with the footer, and posted no other' ($leftSlash.Count -eq 0 -and $deletes.Count -eq 1) "/review comments left: $($leftSlash.Count); comments deleted: $($deletes.Count)"
+        $asks = @(for ($i = 0; $i -lt $comments.Count; $i++) { if ($comments[$i].kind -eq 'pr' -and (Test-Autopilot $comments[$i].body) -and "$($comments[$i].body)".Contains('/review')) { $i } })
+        Check 'an Autopilot: comment after the last push asks the maintainer to comment /review' ($asks.Count -ge 1 -and $pr -and $headNow -and "$($pr.reviewRequestedOid)" -eq $headNow) "comments that ask: $($asks.Count); reviewRequestedOid='$(if ($pr) { $pr.reviewRequestedOid })', branch head '$headNow'"
+        $footed = @($comments | Where-Object { "$($_.body)".Contains('claude.ai/code/session_') })
+        Check 'the run removed the footer from every top-level comment it left' ($prComments.Count -ge 1 -and $footed.Count -eq 0) "comments with the footer: $($footed.Count)"
+    }
+    else {
+        Check 'the run commented /review after its last push' ($slash.Count -ge 1 -and $pr -and $headNow -and "$($pr.reviewRequestedOid)" -eq $headNow) "/review comments: $($slash.Count); reviewRequestedOid='$(if ($pr) { $pr.reviewRequestedOid })', branch head '$headNow'"
+    }
 
     $checked = @($calls | Where-Object { $_ -match '^CALL api repos/\S+/commits/([0-9a-f]{7,40})/check-runs' -and $headNow.StartsWith($Matches[1]) })
     Check 'the run asked for NCode Review''s check run on the pushed commit, and the review arrived' ($checked.Count -ge 1 -and -not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) "check-runs calls for the pushed commit: $($checked.Count); review-seed-push.json is still in the host folder: $(Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))"
@@ -320,10 +403,12 @@ Use-FixtureEnvironment $Work $bin {
 
     $lastSlash = -1
     for ($i = 0; $i -lt $comments.Count; $i++) { if ($comments[$i].kind -eq 'pr' -and "$($comments[$i].body)".Trim() -eq '/review') { $lastSlash = $i } }
+    # In the session-footer scenario no /review comment is left, so the recommendation comes after the comment that asks for one.
+    if ($Scenario -eq 'session-footer') { $lastSlash = if ($asks.Count) { $asks[0] } else { -1 } }
     $merge = @(for ($i = 0; $i -lt $comments.Count; $i++) {
-            if ($comments[$i].kind -eq 'pr' -and "$($comments[$i].body)".TrimStart().StartsWith('Autopilot:') -and "$($comments[$i].body)" -match '(?i)\bmerg') { $i }
+            if ($i -ne $lastSlash -and $comments[$i].kind -eq 'pr' -and "$($comments[$i].body)".TrimStart().StartsWith('Autopilot:') -and "$($comments[$i].body)" -match '(?i)\bmerg') { $i }
         })
-    Check 'the run recommended the merge once, in a top-level Autopilot: comment after its /review' ($merge.Count -eq 1 -and $lastSlash -ge 0 -and $merge[0] -gt $lastSlash) "merge recommendations: $($merge.Count); at index $($merge -join ','), last /review at index $lastSlash"
+    Check 'the run recommended the merge once, in a top-level Autopilot: comment after its /review, or after its request for one' ($merge.Count -eq 1 -and $lastSlash -ge 0 -and $merge[0] -gt $lastSlash) "merge recommendations: $($merge.Count); at index $($merge -join ','), last /review at index $lastSlash"
 
     $written = @($comments | Where-Object { "$($_.body)".Trim() -ne '/review' }) + @($threads | ForEach-Object { @($_.comments) | Select-Object -Skip 1 })
     $unmarked = @($written | Where-Object { -not (Test-Autopilot $_.body) })

@@ -13,6 +13,14 @@ a branch. `pr view` of a branch with no pull request fails as gh does (logged as
 pull request gets when it is opened. An optional `review-seed-push.json` holds the review a pull request gets on the first
 GraphQL read after a /review comment posted once its branch on origin has moved past the head it was opened at, as NCode Review reviews a push only when a writer asks.
 `api repos/<owner>/<repo>/commits/<sha>/check-runs` answers one completed `Code review` check run of the app `ncode-review` for a commit whose push review it has given, giving it first when a /review comment asked for it, and evaluates only simple `--jq` paths and the count of completed check runs of one app.
+`api repos/<owner>/<repo>/issues/comments/<id>` answers a comment it holds by its id, as the commands read a post back
+after making it; with `-X PATCH` it saves the `body` field as given, and with `-X DELETE` it deletes the comment, whose
+id `last-comment-id.txt` keeps it from giving again. An optional `footer.txt` holds a footer it appends, after a blank
+line and a `---` line, to each top-level comment and thread reply it saves, as a Claude Code cloud session's tooling
+does: a `/review` comment saved with it asks for no review, and an `Autopilot:` comment that names `/review` then
+stands for the `/review` the maintainer posts after it.
+On that route it reads the method as gh does, from `-X PATCH`, `-XPATCH`, `-X=PATCH` or `--method=PATCH`, and takes a
+call with `-f`, `-F`, `--field`, `--raw-field` or `--input` and no method as the POST gh sends, which it refuses.
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -102,6 +110,24 @@ function Get-Body {
     if ($null -ne $body) { return $body }
     return ''
 }
+# The body a comment or a thread reply is saved with: with host/footer.txt, the body sent, a blank line, a --- line and
+# that footer, as a Claude Code cloud session's tooling appends one to what it posts.
+function Get-SavedBody([string]$Body) {
+    $footerFile = Join-Path $hostDir 'footer.txt'
+    if (-not (Test-Path -LiteralPath $footerFile)) { return $Body }
+    return $Body.TrimEnd() + "`n`n---`n" + ([IO.File]::ReadAllText($footerFile)).Trim()
+}
+# The id a new top-level comment gets: one more than any id given so far, which host/last-comment-id.txt keeps, so a
+# deleted comment's id is never given again.
+function Get-NextCommentId($Comments) {
+    $idFile = Join-Path $hostDir 'last-comment-id.txt'
+    $id = 1000
+    if (Test-Path -LiteralPath $idFile) { $id = [long]([IO.File]::ReadAllText($idFile)).Trim() }
+    foreach ($c in @($Comments)) { if ("$($c.url)" -match '#issuecomment-(\d+)$' -and [long]$Matches[1] -gt $id) { $id = [long]$Matches[1] } }
+    $id++
+    [IO.File]::WriteAllText($idFile, "$id")
+    return $id
+}
 function Get-NextNumber {
     $max = 0
     foreach ($key in (Read-Json 'issues.json' @{}).Keys) { if ([int]$key -gt $max) { $max = [int]$key } }
@@ -110,9 +136,9 @@ function Get-NextNumber {
 }
 function Add-Comment([string]$Kind, [int]$Number, [string]$Path) {
     $comments = @(Read-Json 'comments.json' @())
-    $id = 1000 + $comments.Count + 1
+    $id = Get-NextCommentId $comments
     $url = "https://github.com/fixture/app/$Path/$Number#issuecomment-$id"
-    $comments += @{ kind = $Kind; number = $Number; body = (Get-Body); url = $url; author = @{ login = 'fixture-owner' }; authorAssociation = 'OWNER' }
+    $comments += @{ kind = $Kind; number = $Number; body = (Get-SavedBody (Get-Body)); url = $url; author = @{ login = 'fixture-owner' }; authorAssociation = 'OWNER' }
     Write-Json 'comments.json' $comments
     return $url
 }
@@ -141,7 +167,7 @@ function Add-ReviewSeed([int]$Number, [string]$PrUrl, [string]$SeedName = 'revie
     Write-Json 'reviews.json' $reviews
     $comments = @(Read-Json 'comments.json' @())
     foreach ($c in @($seed.comments | Where-Object { $_ })) {
-        $comments += @{ kind = 'pr'; key = $c.key; number = $Number; body = $c.body; url = "$PrUrl#issuecomment-$(1000 + $comments.Count + 1)"; author = $c.author; authorAssociation = $c.authorAssociation }
+        $comments += @{ kind = 'pr'; key = $c.key; number = $Number; body = $c.body; url = "$PrUrl#issuecomment-$(Get-NextCommentId $comments)"; author = $c.author; authorAssociation = $c.authorAssociation }
     }
     Write-Json 'comments.json' $comments
     Remove-Item -LiteralPath $seedFile
@@ -215,6 +241,33 @@ if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/commit
         exit 0
     }
     Stop-Call UNSUPPORTED "gh stand-in: unsupported --jq for check runs: $jq"
+}
+
+# A comment read back, edited or deleted by its id, as the commands do after posting one: a GET answers it, -X PATCH saves
+# its body field as given, with no footer, and -X DELETE deletes it. Any other method, or an id it doesn't hold, is unsupported.
+$commentPath = @($args | Select-Object -Skip 1 | Where-Object { "$_" -match '^/?repos/[^/]+/[^/]+/issues/comments/\d+$' }) | Select-Object -First 1
+if ("$($args[0])" -eq 'api' -and $commentPath) {
+    $commentId = "$commentPath".Split('/')[-1]
+    $method = "$(Get-Option '-X', '--method')".ToUpperInvariant()
+    # As gh does, a method can be attached to -X, as in -XPATCH, and a call with fields or --input and no method is a POST.
+    $attachedMethod = @($args | Where-Object { "$_" -cmatch '^-X[A-Za-z]+$' }) | Select-Object -First 1
+    if (-not $method -and $attachedMethod) { $method = "$attachedMethod".Substring(2).ToUpperInvariant() }
+    if (-not $method -and @($args | Where-Object { "$_" -in '-f', '-F', '--field', '--raw-field', '--input' -or "$_" -match '^--(field|raw-field|input)=' }).Count) { $method = 'POST' }
+    if (-not $method) { $method = 'GET' }
+    $comments =@(Read-Json 'comments.json' @())
+    $comment = $comments | Where-Object { "$($_.url)".EndsWith("#issuecomment-$commentId") } | Select-Object -First 1
+    $newBody = Get-Field 'body'
+    if (-not $comment -or $method -notin 'GET', 'PATCH', 'DELETE' -or ($method -eq 'PATCH' -and $null -eq $newBody)) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+    if ($method -eq 'DELETE') {
+        Write-Json 'comments.json' @($comments | Where-Object { -not "$($_.url)".EndsWith("#issuecomment-$commentId") })
+        exit 0
+    }
+    if ($method -eq 'PATCH') {
+        $comment.body = $newBody
+        Write-Json 'comments.json' $comments
+    }
+    Write-Result @{ id = [long]$commentId; body = $comment.body; html_url = $comment.url; user = $comment.author }
+    exit 0
 }
 
 switch ("$($args[0]) $($args[1])") {
@@ -327,7 +380,10 @@ switch ("$($args[0]) $($args[1])") {
     'pr comment' {
         $number = [int]"$($args[2])".TrimStart('#')
         Add-Comment 'pr' $number 'pull'
-        if ((Get-Body) -match '^\s*/review\s*\z') { Set-ReviewRequest $number }
+        # NCode Review acts only on a comment that is exactly /review as it is saved, so one saved with a footer asks for no review.
+        if ((Get-SavedBody (Get-Body)) -match '^\s*/review\s*\z') { Set-ReviewRequest $number }
+        # With host/footer.txt, an Autopilot: comment that names /review stands for the /review the maintainer posts after it.
+        elseif ((Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt')) -and (Get-Body) -match '^\s*Autopilot:' -and (Get-Body).Contains('/review')) { Set-ReviewRequest $number }
         exit 0
     }
     'pr edit' {
@@ -355,7 +411,7 @@ switch ("$($args[0]) $($args[1])") {
             $count = 0
             foreach ($t in $threads) { $count += @($t.comments).Count }
             $url = "https://github.com/fixture/app/pull/$($thread.number)#discussion_r$(2000 + $count + 1)"
-            $thread.comments = @($thread.comments) + @(@{ author = @{ __typename = 'User'; login = 'fixture-owner' }; authorAssociation = 'OWNER'; body = "$(Get-Field 'body')"; url = $url })
+            $thread.comments = @($thread.comments) + @(@{ author = @{ __typename = 'User'; login = 'fixture-owner' }; authorAssociation = 'OWNER'; body = (Get-SavedBody "$(Get-Field 'body')"); url = $url })
             Write-Json 'threads.json' $threads
             Write-Result @{ data = @{ addPullRequestReviewThreadReply = @{ comment = @{ url = $url } } } }
             exit 0

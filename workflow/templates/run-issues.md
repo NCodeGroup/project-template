@@ -19,7 +19,7 @@ You coordinate. Each stage runs as the workflow's own command does: read that co
 - Every change reaches the default branch through a pull request that I merge. Open each one as a draft. Never merge it, mark it ready for review, turn on auto-merge, resolve a review thread, force-push, or push with `--no-verify`.
 - Every discussion on a pull request ends remediated and replied to, as ADR-0014 says: fixed in a commit, or answered with why nothing changed, in a reply that starts with `Autopilot:`. I resolve each thread.
 - Land one entry at a time, in queue order: run `ship-plan` for an entry, which opens its pull request, only once the entry before it has landed and `finish-plan` has run for it, or it has stopped. While an entry's draft pull request waits for review, the next entry runs ahead, as Run Ahead says, and no other. A plan that runs ahead starts from a default branch without the entry before it, so its `Release:` version is provisional: when that entry lands with it first, the state script's `renumber` line names the next free version, and `ship-plan` adds a step that merges the default branch in and moves the plan's changelog section to that version. When it lands that version, or a later one, while an entry's draft pull request is already open, Review the Pull Request item 3 renumbers that entry the same way and pushes the step to its pull request.
-- Write every comment and reply to a temporary file outside the repository with your file-writing tool, pass the file to the command, and delete it afterwards.
+- Write every comment and reply to a temporary file outside the repository with your file-writing tool, pass the file to the command, and delete it afterwards. {{PROMPT:_session-footer}}
 
 ## Start
 
