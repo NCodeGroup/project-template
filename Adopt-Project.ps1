@@ -112,7 +112,7 @@ try {
             if ($null -ne $answers[$k]) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $answers[$k])" }
         }
         # Files the repository owns, merged or template-owned, stay exactly as they are.
-        foreach ($file in $ownedFiles) { $copierArgs += '--exclude', $file }
+        foreach ($file in $ownedFiles) { $copierArgs += '--exclude', "/$file" }
         $copierArgs += $Template, $project
         Invoke-Copier @copierArgs
 
