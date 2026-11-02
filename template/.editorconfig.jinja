@@ -39,7 +39,9 @@ csharp_wrap_before_first_type_parameter_constraint = true
 csharp_wrap_multiple_type_parameter_constraints_style = chop_always
 
 # The header each new C# file starts with: the copyright line, and an SPDX line for the license answered. Visual Studio and Rider add it, and IDE0073 offers the fix. A suggestion, so files without it still build. Roslyn ends a value at the first ; or #, so the header holds neither.
-{%- if repository_license %}
+{%- if ';' in author_name or '#' in author_name %}
+# No file_header_template: author_name holds a ; or #, where Roslyn would cut the header short.
+{%- elif repository_license %}
 file_header_template = Copyright © {{ author_name }}\nSPDX-License-Identifier: {{ repository_license }}
 {%- else %}
 file_header_template = Copyright © {{ author_name }}
