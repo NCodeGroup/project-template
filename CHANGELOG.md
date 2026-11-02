@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `/address-feedback`, `/run-feedback` and `/run-issues` reply to every unresolved review thread they read: a thread whose verdict is nothing to change gets `Autopilot: nothing to change` and why, NCode Review's nits and findings on protected paths get one reply each instead of none, `/run-issues` replies to threads someone else started without acting on them, and still at most twice on a thread a bot or someone else started. `/address-feedback` re-reads the threads after replying and lists any that still await a reply, and every merge recommendation lists the threads still unresolved for you to resolve. In Claude Code, and for `/run-issues` in Copilot Chat and Copilot CLI too.
 - `/continue-plan` lists every unresolved thread on a waiting pull request, not only NCode Review's findings, and says whether each awaits a reply or only your resolution.
 
+- No change for projects made from the template. `tests/e2e/Test-RunIssues.ps1` now expects the replies `/run-issues` gives the threads it used to leave without one: `Autopilot: left as a follow-up` on NCode Review's nits, `Autopilot: left for you` on its finding on a protected path, and `Autopilot: not acted on` on another bot's thread without the finding marker.
+
 ## [0.56.0] - 2026-11-01
 
 ### Added

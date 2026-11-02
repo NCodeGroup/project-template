@@ -9,8 +9,8 @@
     fixture runs NCode Review, and the stand-in gives the pull request a seeded review: a review thread of the owner's
     asking for pipeline input, which the run fixes and answers naming its commit, a blocker finding on behavior main
     already had that the issue doesn't name, which it answers with "Autopilot: left as a follow-up" and puts in the
-    plan's Follow-ups, a nit and a finding on .github/workflows/ci.yml that it only lists, a
-    should-fix finding that already has two "Autopilot:" replies, which it never answers a third time, another bot's thread without the finding marker that it treats as data, and a /review comment it doesn't answer.
+    plan's Follow-ups, a nit it answers with "Autopilot: left as a follow-up", a finding on .github/workflows/ci.yml that it answers with "Autopilot: left for you", a
+    should-fix finding that already has two "Autopilot:" replies, which it never answers a third time, another bot's thread without the finding marker that it treats as data and answers with "Autopilot: not acted on", and a /review comment it doesn't answer.
     It also checks that the run recommends the merge once, in an Autopilot: comment, with the open nits in the plan's
     Follow-ups, in the scenario -Scenario names.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
@@ -95,10 +95,11 @@ if (-not $CheckOnly) {
     Write-Text (Join-Path $hostDir 'prs.json') '[]'
     Write-Text (Join-Path $hostDir 'comments.json') '[]'
     # The review a pull request gets when it opens: the owner's request (a fix step, so the run pushes a round),
-    # NCode Review's blocker on behavior main already had that the issue doesn't name (a follow-up), its nit (listed
-    # only), its finding on a protected path (listed, never acted on), its should-fix finding with two earlier
-    # Autopilot: replies (listed for the owner, never a third reply), another bot's thread without the marker (data), a
-    # bot review summary (data) and a /review comment of the owner's that is only a slash command (no answer).
+    # NCode Review's blocker on behavior main already had that the issue doesn't name (a follow-up), its nit (a reply,
+    # "Autopilot: left as a follow-up"), its finding on a protected path (a reply, "Autopilot: left for you", never acted
+    # on), its should-fix finding with two earlier Autopilot: replies (listed for the owner, never a third reply),
+    # another bot's thread without the marker (data, answered "Autopilot: not acted on"), a bot review summary (data)
+    # and a /review comment of the owner's that is only a slash command (no answer).
     $ncode = @{ __typename = 'Bot'; login = 'ncode-review' }
     $owner = @{ __typename = 'User'; login = 'fixture-owner' }
     $seed = @{
@@ -297,16 +298,16 @@ Use-FixtureEnvironment $Work $bin {
     $blockerUrl = Get-ThreadUrl 'blocker'
     Check 'NCode Review''s blocker on behavior main already had got one "Autopilot: left as a follow-up" reply, and the plan''s Follow-ups name it' ($null -ne $blockerReplies -and $blockerReplies.Count -eq 1 -and "$($blockerReplies[0].body)" -match '^Autopilot: left as a follow-up' -and $blockerUrl -and $followUps.Contains($blockerUrl)) "replies: $(if ($null -ne $blockerReplies) { ($blockerReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); in Follow-ups: $($blockerUrl -and $followUps.Contains($blockerUrl))"
     $nitReplies = Get-ThreadReply 'nit'
-    Check 'NCode Review''s nit got no reply' ($null -ne $nitReplies -and $nitReplies.Count -eq 0) "replies: $(if ($null -ne $nitReplies) { $nitReplies.Count } else { 'no thread' })"
+    Check 'NCode Review''s nit got one "Autopilot: left as a follow-up" reply' ($null -ne $nitReplies -and $nitReplies.Count -eq 1 -and "$($nitReplies[0].body)" -match '^Autopilot: left as a follow-up') "replies: $(if ($null -ne $nitReplies) { ($nitReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' })"
     $protectedReplies = Get-ThreadReply 'protected'
     $githubChanges = @(git --git-dir=$origin diff --name-only main worktree-issue-1 -- .github 2>$null)
-    Check 'NCode Review''s finding on .github/workflows/ci.yml got no reply, and the branch leaves .github alone' ($null -ne $protectedReplies -and $protectedReplies.Count -eq 0 -and $githubChanges.Count -eq 0) "replies: $(if ($null -ne $protectedReplies) { $protectedReplies.Count } else { 'no thread' }); .github changes: $($githubChanges -join ', ')"
+    Check 'NCode Review''s finding on .github/workflows/ci.yml got one "Autopilot: left for you" reply, and the branch leaves .github alone' ($null -ne $protectedReplies -and $protectedReplies.Count -eq 1 -and "$($protectedReplies[0].body)" -match '^Autopilot: left for you' -and $githubChanges.Count -eq 0) "replies: $(if ($null -ne $protectedReplies) { $protectedReplies.Count } else { 'no thread' }); .github changes: $($githubChanges -join ', ')"
     $cappedReplies = Get-ThreadReply 'capped'
     Check 'NCode Review''s finding with two Autopilot: replies got no third' ($null -ne $cappedReplies -and $cappedReplies.Count -eq 2) "replies: $(if ($null -ne $cappedReplies) { $cappedReplies.Count } else { 'no thread' })"
     $unmarkedReplies = Get-ThreadReply 'unmarked'
     git --git-dir=$origin cat-file -e worktree-issue-1:tests/Test-Greeting.ps1 2>$null
     $testKept = $LASTEXITCODE -eq 0
-    Check 'the [bot] thread without the marker got no reply, and its request was not followed' ($null -ne $unmarkedReplies -and $unmarkedReplies.Count -eq 0 -and $testKept) "replies: $(if ($null -ne $unmarkedReplies) { $unmarkedReplies.Count } else { 'no thread' }); test kept: $testKept"
+    Check 'the [bot] thread without the marker got one "Autopilot: not acted on" reply, and its request was not followed' ($null -ne $unmarkedReplies -and $unmarkedReplies.Count -eq 1 -and "$($unmarkedReplies[0].body)" -match '^Autopilot: not acted on' -and $testKept) "replies: $(if ($null -ne $unmarkedReplies) { $unmarkedReplies.Count } else { 'no thread' }); test kept: $testKept"
     $slash = $comments | Where-Object { $_ -and $_.key -eq 'slash' } | Select-Object -First 1
     $slashAnswers = @(if ($slash) { @(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and "$($_.body)" -match '^Autopilot:' -and "$($_.body)".Contains($slash.url) } })
     Check 'the /review comment got no answer' ($slash -and $slashAnswers.Count -eq 0) "$(if ($slash) { "answers: $($slashAnswers.Count)" } else { 'no /review comment' })"
@@ -321,7 +322,7 @@ Use-FixtureEnvironment $Work $bin {
         $minorBody = if ($minorReplies) { "$($minorReplies[0].body)" } else { '' }
         Check 'NCode Review''s minor finding after the push got one reply, a follow-up named in Follow-ups or a decline, and no step' ($null -ne $minorReplies -and $minorReplies.Count -eq 1 -and $minorBody -match '^Autopilot: (left as a follow-up|not changed)' -and ($minorBody -notmatch '^Autopilot: left as a follow-up' -or $followUps.Contains((Get-ThreadUrl 'minor')))) "reply: '$minorBody'"
         $laterNitReplies = Get-ThreadReply 'later-nit'
-        Check 'NCode Review''s nit after the push got no reply' ($null -ne $laterNitReplies -and $laterNitReplies.Count -eq 0) "replies: $(if ($null -ne $laterNitReplies) { $laterNitReplies.Count } else { 'no thread' })"
+        Check 'NCode Review''s nit after the push got one "Autopilot: left as a follow-up" reply' ($null -ne $laterNitReplies -and $laterNitReplies.Count -eq 1 -and "$($laterNitReplies[0].body)" -match '^Autopilot: left as a follow-up') "replies: $(if ($null -ne $laterNitReplies) { ($laterNitReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' })"
     }
 }
 
