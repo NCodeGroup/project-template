@@ -12,8 +12,10 @@
     not written; that a project that can't be read, answers 200 with no project or with text that isn't JSON, or gives no
     response fails the run without a change, with glab's error for no response; and that an archived project is skipped.
     For the default branch, it checks that a protection made of roles is removed and made again with no one allowed to
-    push and its other settings kept, that an unprotected branch is protected, that one naming a user is reported and
-    left as it is, that a refused read, removal or protection is reported, and that a branch left unprotected fails the run.
+    push and its other settings kept, that an unprotected branch is protected, that one naming a user, requiring
+    code-owner approval or letting a user unprotect the branch is reported and left as it is, that an answer that isn't
+    a protection is reported, that a refused read, removal or protection is reported, and that a branch left unprotected
+    fails the run.
     It also checks that a project that allows squash commits gets one PUT that sets squash_option to never, and that a
     project with every setting made is reported as already set and nothing is written.
     Prints PASS or FAIL per check and exits 1 on any failure.
@@ -85,6 +87,7 @@ if ($rest -like '/protected_branches/*') {
         Out-Answer 204 ''
     }
     if ($project.branchFails) { Out-Answer ([int]$project.branchFails) '{"message":"Stand-in refused read"}' }
+    if ($project.ContainsKey('branchRaw')) { Out-Answer 200 $project.branchRaw }
     if (-not $project.branch) { Out-Answer 404 '{"message":"404 Not found"}' }
     Out-Answer 200 (ConvertTo-Json -Compress -Depth 5 -InputObject $project.branch)
 }
@@ -105,7 +108,8 @@ Out-Answer 200 '{}'
 $threads = 'only_allow_merge_if_all_discussions_are_resolved'
 $pipelines = 'only_allow_merge_if_pipeline_succeeds'
 # A project with every merge setting made, GitLab's default protection of main, made of roles with Maintainers allowed
-# to push, and a protection that also lets a user push.
+# to push, and a protection that also lets a user push. Two more need code-owner approval, or let a user unprotect the
+# branch.
 $merged = @{ archived = $false; $threads = $true; $pipelines = $true; squash_option = 'never'; default_branch = 'main' }
 $openBranch = @{
     name = 'main'; allow_force_push = $false; code_owner_approval_required = $false
@@ -118,6 +122,8 @@ $granularBranch = @{
     push_access_levels = @(@{ id = 1; access_level = 40 }, @{ id = 4; access_level = 40; user_id = 5 })
     merge_access_levels = @(@{ id = 2; access_level = 40 })
 }
+$codeOwnerBranch = $openBranch.Clone(); $codeOwnerBranch.code_owner_approval_required = $true
+$unprotectUserBranch = $openBranch.Clone(); $unprotectUserBranch.unprotect_access_levels = @(@{ id = 6; access_level = $null; user_id = 7 })
 Write-Text (Join-Path $bin 'projects.json') (ConvertTo-Json -Depth 6 -InputObject @{
     'gitlab.com/grp/fresh' = @{ info = @{ archived = $false; $threads = $false; $pipelines = $false } }
     'gitlab.com/grp/complete' = @{ info = @{ archived = $false; $threads = $true; $pipelines = $true; squash_option = 'never'; default_branch = 'main' }; branch = @{ name = 'main'; push_access_levels = @(@{ access_level = 0 }); merge_access_levels = @(@{ access_level = 40 }) } }
@@ -125,6 +131,9 @@ Write-Text (Join-Path $bin 'projects.json') (ConvertTo-Json -Depth 6 -InputObjec
     'gitlab.com/grp/open' = @{ info = $merged; branch = $openBranch }
     'gitlab.com/grp/unprotected' = @{ info = $merged }
     'gitlab.com/grp/granular' = @{ info = $merged; branch = $granularBranch }
+    'gitlab.com/grp/codeowner' = @{ info = $merged; branch = $codeOwnerBranch }
+    'gitlab.com/grp/unprotectuser' = @{ info = $merged; branch = $unprotectUserBranch }
+    'gitlab.com/grp/oddbranch' = @{ info = $merged; branchRaw = '{}' }
     'gitlab.com/grp/branchfail' = @{ info = $merged; branchFails = 500 }
     'gitlab.com/grp/nodelete' = @{ info = $merged; branch = $openBranch; deleteFails = 403 }
     'gitlab.com/grp/restored' = @{ info = $merged; branch = $openBranch; postFails = @(422) }
@@ -219,6 +228,13 @@ try {
 
     $r = Invoke-GitLabBaseline @('-Project', 'grp/granular')
     Check 'push granular: a protection that names a user is reported and left as it is' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/granular: No one allowed to push to main: not available (its protection names users, groups, deploy keys or code owners')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/codeowner')
+    Check 'push code owners: a protection that requires code-owner approval is reported and left as it is' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/codeowner: No one allowed to push to main: not available (its protection names users, groups, deploy keys or code owners')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/unprotectuser')
+    Check 'push unprotect user: a protection that lets a user unprotect the branch is reported and left as it is' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/unprotectuser: No one allowed to push to main: not available (its protection names users, groups, deploy keys or code owners')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/oddbranch')
+    Check 'push odd answer: a branch answer that isn''t a protection is reported and nothing is written' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/oddbranch: No one allowed to push to main: not available (couldn''t read it: the answer is not a protected branch)')) "writes=$($r.Writes -join '|') output=$($r.Output)"
 
     $r = Invoke-GitLabBaseline @('-Project', 'grp/branchfail')
     Check 'push unread: a protection that can''t be read is reported with its answer and nothing is written' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/branchfail: No one allowed to push to main: not available (HTTP 500: Stand-in refused read)')) "writes=$($r.Writes -join '|') output=$($r.Output)"
