@@ -122,6 +122,8 @@ try {
     Check 'github -NoBaseline: the repository is created and the baseline isn''t run' ($r.ExitCode -eq 0 -and [bool]($r.Calls -like 'gh repo create gh-none *') -and -not [bool]($r.Calls -like 'Set-*') -and -not [bool]($r.Calls -like 'gh api *')) "calls=$($r.Calls -join '|') output=$($r.Output)"
     $r = Invoke-NewProject 'gh-fail' 'github' 'baseline'
     Check 'github failed: a baseline that fails warns with the command to run it again and the run succeeds' ($r.ExitCode -eq 0 -and (Compress $r.Output).Contains((Compress "Couldn't protect the default branch: Stand-in baseline failed. Run it again with:")) -and (Compress $r.Output).Contains((Compress "Set-RepositoryBaseline.ps1 -Repo gh-fail -Owner tester -RequireChecks '$checks'"))) "calls=$($r.Calls -join '|') output=$($r.Output)"
+    $r = Invoke-NewProject 'gh-user' 'github' 'user'
+    Check 'github no user: a signed-in user gh can''t read warns with the command to run, naming the owner to fill in, and the run succeeds' ($r.ExitCode -eq 0 -and -not [bool]($r.Calls -like 'Set-*') -and (Compress $r.Output).Contains((Compress "Couldn't protect the default branch: Couldn't read the signed-in GitHub user. Run it again with:")) -and (Compress $r.Output).Contains((Compress "Set-RepositoryBaseline.ps1 -Repo gh-user -Owner <owner> -RequireChecks '$checks'"))) "calls=$($r.Calls -join '|') output=$($r.Output)"
 
     # 2. GitLab.
     $r = Invoke-NewProject 'gl-app' 'gitlab'
@@ -133,7 +135,7 @@ try {
     $r = Invoke-NewProject 'gl-none' 'gitlab' '' @('-NoBaseline')
     Check 'gitlab -NoBaseline: the project is created and the baseline isn''t run' ($r.ExitCode -eq 0 -and [bool]($r.Calls -like 'glab repo create gl-none *') -and -not [bool]($r.Calls -like 'Set-*')) "calls=$($r.Calls -join '|') output=$($r.Output)"
     $r = Invoke-NewProject 'gl-fail' 'gitlab' 'baseline'
-    Check 'gitlab failed: a baseline that fails warns with the command to run it again and the run succeeds' ($r.ExitCode -eq 0 -and (Compress $r.Output).Contains((Compress 'Stand-in baseline failed. Run it again with:')) -and (Compress $r.Output).Contains((Compress "Set-GitLabBaseline.ps1 -Path '$($r.Path)'"))) "calls=$($r.Calls -join '|') output=$($r.Output)"
+    Check 'gitlab failed: a baseline that fails warns with the command to run it again and the run succeeds' ($r.ExitCode -eq 0 -and (Compress $r.Output).Contains((Compress "Couldn't protect the GitLab project: Stand-in baseline failed. Run it again with:")) -and (Compress $r.Output).Contains((Compress "Set-GitLabBaseline.ps1 -Path '$($r.Path)'"))) "calls=$($r.Calls -join '|') output=$($r.Output)"
 }
 finally {
     foreach ($savedName in $savedNames) { [Environment]::SetEnvironmentVariable($savedName, $saved[$savedName]) }
