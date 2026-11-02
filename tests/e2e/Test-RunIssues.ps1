@@ -27,7 +27,7 @@
     Check the fixture of an earlier run again, without building it or calling a model.
 
 .PARAMETER Scenario
-    minor-round, the default: NCode Review reviews the run's first push with a should-fix finding that asks only for
+    minor-round, the default: NCode Review reviews the run's first push, once the run comments /review after it, with a should-fix finding that asks only for
     another test of what tests/Test-Greeting.ps1 tests, and a nit; the run must leave both without a step and recommend
     the merge. max-rounds: max-review-rounds is 1 and there is no second review; the run must recommend the merge after
     its first round. Run both.
@@ -179,10 +179,13 @@ if (-not $CheckOnly) {
     if ($Scenario -eq 'minor-round') {
         $moved = "$(Invoke-Git --git-dir=$origin commit-tree 'main^{tree}' -p main -m 'Probe push')".Trim()
         Invoke-Git --git-dir=$origin update-ref refs/heads/probe $moved
+        $unasked = pwsh -NoProfile -File $probeGh api graphql -F owner=fixture -F name=app -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json
+        Write-Text (Join-Path $probe 'review.md') "/review`n"
+        $null = pwsh -NoProfile -File $probeGh pr comment 1 --body-file (Join-Path $probe 'review.md')
         $pushed = pwsh -NoProfile -File $probeGh api graphql -F owner=fixture -F name=app -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json
         $nodes = @($pushed.data.repository.pullRequest.reviewThreads.nodes)
         $minor = @($nodes | Where-Object { $_.path -eq 'tests/Test-Greeting.ps1' -and "$($_.comments.nodes[0].body)" -match 'severity=should-fix' })
-        Check 'fixture: the stand-in gives NCode Review''s review of a push on the first read after it, and not before' (@($again.data.repository.pullRequest.reviewThreads.nodes).Count -eq 6 -and $nodes.Count -eq 8 -and $minor.Count -eq 1 -and $minor[0].comments.nodes[0].author.login -eq 'ncode-review' -and -not (Test-Path -LiteralPath (Join-Path $probe 'host/review-seed-push.json'))) "threads after the push: $($nodes.Count)"
+        Check 'fixture: the stand-in gives NCode Review''s review of a push on the first read after a /review comment that follows the push, and not before' (@($again.data.repository.pullRequest.reviewThreads.nodes).Count -eq 6 -and @($unasked.data.repository.pullRequest.reviewThreads.nodes).Count -eq 6 -and $nodes.Count -eq 8 -and $minor.Count -eq 1 -and $minor[0].comments.nodes[0].author.login -eq 'ncode-review' -and -not (Test-Path -LiteralPath (Join-Path $probe 'host/review-seed-push.json'))) "threads after the push: $($nodes.Count)"
     }
     Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
     Remove-Item -LiteralPath $probe -Recurse -Force
@@ -312,7 +315,7 @@ Use-FixtureEnvironment $Work $bin {
     $nitUrl = Get-ThreadUrl 'nit'
     Check 'the plan''s Follow-ups name NCode Review''s open nit, as the merge recommendation leaves it' ($nitUrl -and $followUps.Contains($nitUrl)) "nit: '$nitUrl'; Follow-ups: $(if ($followUps) { 'present' } else { 'missing' })"
     if ($Scenario -eq 'minor-round') {
-        Check 'NCode Review''s review of the run''s push arrived' (-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) 'review-seed-push.json is still in the host folder'
+        Check 'NCode Review''s review of the run''s push arrived, after the run commented /review' ((-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) -and @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".Trim() -eq '/review' }).Count -ge 2) 'review-seed-push.json is still in the host folder, or the run did not comment /review'
         $minorReplies = Get-ThreadReply 'minor'
         $minorBody = if ($minorReplies) { "$($minorReplies[0].body)" } else { '' }
         Check 'NCode Review''s minor finding after the push got one reply, a follow-up named in Follow-ups or a decline, and no step' ($null -ne $minorReplies -and $minorReplies.Count -eq 1 -and $minorBody -match '^Autopilot: (left as a follow-up|not changed)' -and ($minorBody -notmatch '^Autopilot: left as a follow-up' -or $followUps.Contains((Get-ThreadUrl 'minor')))) "reply: '$minorBody'"

@@ -11,7 +11,7 @@ closing it, and a GraphQL mutation that resolves a thread, dismisses a review, m
 a branch. `pr view` of a branch with no pull request fails as gh does (logged as NOTFOUND). An optional `forbidden.txt` names more commands to refuse, one `<command> <subcommand>` per line, such as
 `pr edit`. An optional `review-seed.json` holds the review threads, review summaries and top-level comments the first
 pull request gets when it is opened. An optional `review-seed-push.json` holds the review a pull request gets on the first
-GraphQL read after its branch on origin has moved past the head it was opened at, as a review bot's review of a push.
+GraphQL read after a /review comment posted once its branch on origin has moved past the head it was opened at, as NCode Review reviews a push only when a writer asks.
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -145,14 +145,27 @@ function Add-ReviewSeed([int]$Number, [string]$PrUrl, [string]$SeedName = 'revie
     Write-Json 'comments.json' $comments
     Remove-Item -LiteralPath $seedFile
 }
-# Gives a pull request the review in host/review-seed-push.json, as a review bot reviews a push: on the first read after
-# its branch on origin has moved past the head it was opened at. Then deletes that seed.
+# Gives a pull request the review in host/review-seed-push.json, as NCode Review reviews a push when a writer asks: on the first read
+# after a /review comment posted once its branch on origin has moved past the head it was opened at. Then deletes that seed.
 function Add-PushReview($Pr) {
     $originFile = Join-Path $hostDir 'origin.txt'
     if (-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json')) -or -not (Test-Path -LiteralPath $originFile)) { return }
     $oid = git --git-dir=$(([IO.File]::ReadAllText($originFile)).Trim()) rev-parse --verify -q "refs/heads/$($Pr.headRefName)"
     if ($LASTEXITCODE -ne 0 -or "$oid" -eq "$($Pr.headRefOid)") { return }
+    if ("$($Pr.reviewRequestedOid)" -ne "$oid") { return }
     Add-ReviewSeed ([int]$Pr.number) "$($Pr.url)" 'review-seed-push.json'
+}
+# Records the head a /review comment asks a review of: the pull request's branch on origin as it is now.
+function Set-ReviewRequest([int]$Number) {
+    $originFile = Join-Path $hostDir 'origin.txt'
+    if (-not (Test-Path -LiteralPath $originFile)) { return }
+    $prs = @(Read-Json 'prs.json' @())
+    $pr = $prs | Where-Object { "$($_.number)" -eq "$Number" } | Select-Object -First 1
+    if (-not $pr) { return }
+    $oid = git --git-dir=$(([IO.File]::ReadAllText($originFile)).Trim()) rev-parse --verify -q "refs/heads/$($pr.headRefName)"
+    if ($LASTEXITCODE -ne 0) { return }
+    $pr.reviewRequestedOid = "$oid"
+    Write-Json 'prs.json' $prs
 }
 # A comment without an authorAssociation is served without one, never as the owner's.
 function Get-CommentNode($Comment) {
@@ -278,6 +291,7 @@ switch ("$($args[0]) $($args[1])") {
     'pr comment' {
         $number = [int]"$($args[2])".TrimStart('#')
         Add-Comment 'pr' $number 'pull'
+        if ((Get-Body) -match '^\s*/review\s*\z') { Set-ReviewRequest $number }
         exit 0
     }
     'pr edit' {
