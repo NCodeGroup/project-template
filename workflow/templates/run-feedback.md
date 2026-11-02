@@ -38,3 +38,28 @@ A pass follows `address-feedback` from its Start item 1 through its Reply, with 
 5. Reply: as it says. When it leaves the worktree in place, stop the run, as Stop says: `/continue-plan feedback-<number>` shows it.
 
 When the pass stops in `address-feedback`, follow its Stop, then stop the run: go on with Report.
+
+## Wait
+
+Check the pull request every five minutes: run `Start-Sleep -Seconds 300` as a background command, and run the next pass when it finishes. Note the time with `Get-Date` at the first pass, and again at each pass that finds an item.
+
+NCode Review's review of `<pushed>` is awaited after a pass posted `/review`. At each later check, before its pass, run `gh api "repos/{owner}/{repo}/commits/<pushed>/check-runs?check_name=Code%20review" --jq '[.check_runs[] | select(.app.slug == "ncode-review" and .status == "completed")] | length'`: NCode Review completes its `Code review` check run on the commit it reviewed once it has posted the review, or once the review failed. When it prints a number above 0, the review has arrived: the pass reads its findings. When an hour has passed since the time Push noted, stop awaiting it, and say in the report that NCode Review didn't review `<pushed>` within an hour.
+
+With no item and no review awaited, end the run once the wait limit has passed since the time you noted: say that the pull request waited the wait limit with nothing to answer, and go on with Report. The pull request stays open as it is.
+
+## Recommend the Merge
+
+Count the rounds: a round is a pass that pushed commits. Recommend the merge once in this run: after a pass, with no NCode Review awaited, that gave no item a `fix`, once the run has had a round or that pass found items; or after the round that brings the rounds to the `landing` line's `max-review-rounds`. Post a top-level comment on the pull request, starting with `Autopilot:`, that says the pull request is ready to merge as far as this run can tell, why (the rounds so far, and that the items left were declined, answered or put to me, or that the rounds reached `max-review-rounds`), and which NCode Review findings it leaves for me. GitHub: `gh pr comment <number> --body-file <file>`. GitLab: `glab api --method POST "projects/:id/merge_requests/<number>/notes" -F body=@<file>`. Then go on with Wait: the run keeps checking until the pull request merges or closes, or the wait limit passes.
+
+## NCode Review Findings
+
+{{PROMPT:_review-bot}}
+
+## Stop
+
+1. When a pass stopped in `address-feedback`, its Stop has run: post nothing more.
+2. Say in the report what stopped the run and the question for me. The pull request stays open as it is.
+
+## Report
+
+Finish with one table row per item across every pass: its URL and author, its verdict, the step or commit that fixed it, or the reason, whether it got a reply, and the pass it was in. Under it, list the pull request's link; how the run ended (merged, closed, the wait limit, or a stop and its question for me); the rounds and the commits each pushed; each `/review` comment and whether NCode Review answered it; the merge recommendation's link; each NCode Review finding the run listed instead of acting on (nits, protected, for me, and those after the merge recommendation, marking each blocker and should-fix); each `ask` item; each item left out because of the 40-item limit; and each scanner alert that still needs a dismissal or a fix from me.
