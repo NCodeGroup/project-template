@@ -27,8 +27,11 @@
         the ruleset requires and merges only as it allows.
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
-    owner shaped that ruleset. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's required
-    checks in place. Either way the repository still gets the tag ruleset and the security settings, so a second run
+    owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
+    main" ruleset an older version of this script made, when it is off, sending only the ruleset's rules with that one
+    parameter changed, so no pull request merges past an unresolved discussion; -WhatIf shows it, and a refusal is
+    reported without failing the run. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's
+    required checks in place. Either way the repository still gets the tag ruleset and the security settings, so a second run
     brings a repository protected by an older version of this script up to date. A ruleset named "Protect release tags",
     whatever its state, is left alone, and so is an active tag ruleset on v* tags that already refuses both deletion and
     update. An archived repository and a fork are skipped, and so is a repository whose default branch it skips with a
@@ -269,17 +272,24 @@ function Set-BranchRuleset {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Name, [string]$Branch, [object[]]$Rulesets)
     $own = $null
+    $others = @()
     foreach ($full in $Rulesets) {
         if ($full.target -ne 'branch' -or $full.enforcement -ne 'active') { continue }
         $onDefault = $full.conditions.ref_name.include -contains '~DEFAULT_BRANCH' -or $full.conditions.ref_name.include -contains "refs/heads/$Branch"
         if (-not $onDefault) { continue }
         if ($full.name -eq $rulesetName) { $own = $full; continue }
-        if ($full.rules.type -contains 'pull_request') { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; return $true }
+        if ($full.rules.type -contains 'pull_request') { $others += $full }
+    }
+    if ($others.Count) {
+        foreach ($full in $others) { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full }
+        if ($own) { Enable-ThreadResolution $Name $own }
+        return $true
     }
 
     # A ruleset of this name that exists already is changed only when -RequireChecks asks for new checks.
     if ($own -and -not $RequireChecks.Count) {
         Write-Host "${Name}: left alone (already has '$rulesetName')"
+        Enable-ThreadResolution $Name $own
         if ($own.rules.type -contains 'code_scanning') { Write-SuiteNotice $Name }
         return $true
     }
@@ -382,6 +392,25 @@ function Set-BranchRuleset {
     if ($LASTEXITCODE) { throw "Couldn't turn on delete-branch-on-merge for $Name." }
     Write-Host "done: $summary"
     $true
+}
+
+# Turns on "require conversations resolved" in a ruleset that already requires pull requests, and changes nothing else in
+# it: its other rules and their parameters are sent back as they were read. A ruleset without a pull request rule, or
+# with the setting on already, is left as it is. A refusal is reported, not thrown, like a security setting's. A pull
+# request rule that came without parameters is reported and left as it is: writing it would mean inventing its other
+# parameters.
+function Enable-ThreadResolution {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$Name, $Ruleset)
+    $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
+    if (-not $rule -or $rule.parameters.required_review_thread_resolution -eq $true) { return }
+    $label = "'$($Ruleset.name)': require every conversation resolved"
+    if ($null -eq $rule.parameters) { Write-Host "${Name}: ${label}: not set (its pull request rule came without parameters; turn it on in the ruleset's settings on GitHub)"; return }
+    $rule.parameters | Add-Member -NotePropertyName required_review_thread_resolution -NotePropertyValue $true -Force
+    if (-not $PSCmdlet.ShouldProcess($Name, "turn on $label")) { Write-Host "${Name}: ${label}: would set"; return }
+    $result = Invoke-HostWrite PUT "repos/$Owner/$Name/rulesets/$($Ruleset.id)" @{ rules = @($Ruleset.rules) }
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Name}: ${label}: set" }
+    else { Write-Host "${Name}: ${label}: not available ($(Get-FailureReason $result))" }
 }
 
 # The release tags' ruleset: no v* tag is deleted or updated (moved), by anyone, since a release tag names one published

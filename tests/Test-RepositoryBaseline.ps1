@@ -7,8 +7,9 @@
     to change. Checks that -WhatIf changes nothing; that a repository with no ruleset gets "Protect main" on its default
     branch, with no deletion, no force push, a pull request with no approvals, merge-commit and rebase merges only and
     no bypass, and delete-branch-on-merge; that -RequireChecks adds required status checks; that a repository whose
-    default branch already requires pull requests, or already has this ruleset, is left alone, and that -RequireChecks
-    updates the ruleset the script made; that a ruleset that already has a code-scanning rule keeps it and its
+    default branch already requires pull requests, or already has this ruleset, is left alone, but gets conversation
+    resolution turned on, with a PUT of its rules alone, where it is off, shown by -WhatIf and reported when refused,
+    and that -RequireChecks updates the ruleset the script made; that a ruleset that already has a code-scanning rule keeps it and its
     thresholds, its repository's suite is never switched, and a notice, with -WhatIf too, says when the default setup
     runs a suite other than extended and how to switch it by hand, while a setup it can't read is reported without
     failing the run; that -RequireChecks auto requires the GitHub Actions checks that passed on the
@@ -150,10 +151,10 @@ if ($path -match '^repos/[^/]+/([^/]+)$') { ConvertTo-Json -InputObject $data.re
 exit 1
 '@
 
-function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_forward', 'pull_request'), [string]$Include = '~DEFAULT_BRANCH') {
+function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_forward', 'pull_request'), [string]$Include = '~DEFAULT_BRANCH', [bool]$Threads = $true) {
     @{ name = $Name; target = 'branch'; enforcement = 'active'
         conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
-        rules = @($Types | ForEach-Object { @{ type = $_ } }) }
+        rules = @($Types | ForEach-Object { if ($_ -eq 'pull_request') { @{ type = $_; parameters = @{ required_approving_review_count = 0; required_review_thread_resolution = $Threads } } } else { @{ type = $_ } } }) }
 }
 function New-TagRuleset([string]$Name, [string[]]$Types = @('deletion', 'update'), [string]$Include = 'refs/tags/v*', [string]$Enforcement = 'active') {
     @{ name = $Name; target = 'tag'; enforcement = $Enforcement
@@ -220,6 +221,8 @@ $autoWorkflowRuns = @{ sha7 = $prWorkflowRuns; sha9 = $prWorkflowRuns }
 $scanTypes = @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')
 $looseRuleset = New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request')
 $looseRuleset.rules += @{ type = 'code_scanning'; parameters = @{ code_scanning_tools = @(@{ tool = 'CodeQL'; alerts_threshold = 'errors'; security_alerts_threshold = 'high_or_higher' }) } }
+$bareRuleset = New-Ruleset 'owner rules' -Threads $false
+$bareRuleset.rules[2].Remove('parameters')
 $repos = @{
     fresh = New-Repo
     extendedAlready = New-Repo -Suite 'extended'
@@ -242,6 +245,12 @@ $repos = @{
     legacy = New-Repo -Branch master
     owned = New-Repo -Rulesets @((New-Ruleset 'main'))
     ours = New-Repo -Rulesets @((New-Ruleset 'Protect main'))
+    ownedLoose = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false))
+    oursLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false))
+    looseRefused = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false)) -WriteFails @{ 'rulesets/101' = 403 }
+    ownedBare = New-Repo -Rulesets @($bareRuleset)
+    twoOwnedLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $false), (New-Ruleset 'team rules' -Threads $false))
+    ownedThenOursLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $false), (New-Ruleset 'Protect main' -Threads $false))
     tags = New-Repo -Rulesets @((@{ name = 'release-tags'; target = 'tag'; enforcement = 'active'; conditions = @{ ref_name = @{ include = @('refs/tags/v*'); exclude = @() } }; rules = @(@{ type = 'deletion' }) }))
     noPullRequest = New-Repo -Rulesets @((New-Ruleset 'no force push' @('non_fast_forward')))
     old = New-Repo -Archived $true
@@ -396,6 +405,35 @@ try {
     Check 'tags: a tag ruleset that refuses deletion but not update gets Protect release tags beside it' ($r.TagBody -and $r.Output -match "done: tags: create 'Protect release tags'") $r.Output
     $r = Invoke-Baseline @('-Repo', 'noPullRequest')
     Check 'create: a ruleset without a pull request rule does not count' (($r.Changes -join '|') -like '*BODY POST repos/NCodeGroup/noPullRequest/rulesets*') ($r.Changes -join '|')
+
+    # 5b. Conversation resolution: a ruleset that requires pull requests but not resolved conversations gets the setting,
+    # and nothing else in it changes.
+    $r = Invoke-Baseline @('-Repo', 'ownedLoose', '-WhatIf')
+    Check 'threads: -WhatIf changes nothing and says it would set it' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("ownedLoose: 'main': require every conversation resolved: would set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedLoose')
+    $put = $r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/ownedLoose/rulesets/101' } | Select-Object -Last 1
+    Check 'threads: a ruleset of the owner''s that requires pull requests gets only its rules sent, with every conversation required resolved' ($put -and (@($put.body.PSObject.Properties.Name) -join ',') -eq 'rules' -and (@($put.body.rules.type) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and ($put.body.rules | Where-Object type -eq 'pull_request').parameters.required_review_thread_resolution -eq $true -and $r.Output.Contains("ownedLoose: 'main': require every conversation resolved: set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursLoose')
+    $put = $r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursLoose/rulesets/101' } | Select-Object -Last 1
+    Check 'threads: a Protect main ruleset without it gets the setting too' ($put -and (@($put.body.PSObject.Properties.Name) -join ',') -eq 'rules' -and ($put.body.rules | Where-Object type -eq 'pull_request').parameters.required_review_thread_resolution -eq $true -and $r.Output.Contains("oursLoose: 'Protect main': require every conversation resolved: set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'looseRefused')
+    Check 'threads: a refused change is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("looseRefused: 'main': require every conversation resolved: not available (HTTP 403") -and $r.Output -notmatch 'FAILED' -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedBare')
+    Check 'threads: a pull request rule without parameters is reported and not written' ($r.ExitCode -eq 0 -and ($r.Changes -join '|') -notmatch 'rulesets/101' -and $r.TagBody -and $r.Output.Contains("ownedBare: 'owner rules': require every conversation resolved: not set (its pull request rule came without parameters")) "$($r.ExitCode) $($r.Changes -join '|') $($r.Output)"
+    foreach ($name in 'twoOwnedLoose', 'ownedThenOursLoose') {
+        $r = Invoke-Baseline @('-Repo', $name)
+        $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' })
+        $sent = $puts.Count -eq 2 -and $puts[0].path -eq "repos/NCodeGroup/$name/rulesets/101" -and $puts[1].path -eq "repos/NCodeGroup/$name/rulesets/102"
+        foreach ($put in $puts) { $sent = $sent -and (@($put.body.PSObject.Properties.Name) -join ',') -eq 'rules' -and ($put.body.rules | Where-Object type -eq 'pull_request').parameters.required_review_thread_resolution -eq $true }
+        if ($name -eq 'twoOwnedLoose') {
+            Check 'threads: every ruleset of the owner''s that requires pull requests gets the setting, in order' ($sent -and $r.Output.Contains("twoOwnedLoose: left alone ('owner rules' ") -and $r.Output.Contains("twoOwnedLoose: left alone ('team rules' ")) "$($r.Changes -join '|') $($r.Output)"
+        }
+        else {
+            Check 'threads: a Protect main ruleset gets the setting beside one of the owner''s, and no ruleset is created' ($sent -and $r.Output.Contains("ownedThenOursLoose: 'Protect main': require every conversation resolved: set") -and -not $r.Body) "$($r.Changes -join '|') $($r.Output)"
+        }
+    }
+    $r = Invoke-Baseline @('-Repo', 'owned')
+    Check 'threads: a ruleset that has it already is not written' (($r.Changes -join '|') -notmatch 'rulesets/101') ($r.Changes -join '|')
 
     # 6. -RequireChecks updates the ruleset the script made.
     $r = Invoke-Baseline @('-Repo', 'ours', '-RequireChecks', 'test')
