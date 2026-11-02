@@ -11,6 +11,9 @@
     the other one is still turned on, with the run succeeding; that an answer that leaves a setting out is reported and
     not written; that a project that can't be read, answers 200 with no project or with text that isn't JSON, or gives no
     response fails the run without a change, with glab's error for no response; and that an archived project is skipped.
+    For the default branch, it checks that a protection made of roles is removed and made again with no one allowed to
+    push and its other settings kept, that an unprotected branch is protected, that one naming a user is reported and
+    left as it is, that a refused read, removal or protection is reported, and that a branch left unprotected fails the run.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -99,9 +102,30 @@ Out-Answer 200 '{}'
 
 $threads = 'only_allow_merge_if_all_discussions_are_resolved'
 $pipelines = 'only_allow_merge_if_pipeline_succeeds'
+# A project with every merge setting made, GitLab's default protection of main, made of roles with Maintainers allowed
+# to push, and a protection that also lets a user push.
+$merged = @{ archived = $false; $threads = $true; $pipelines = $true; squash_option = 'never'; default_branch = 'main' }
+$openBranch = @{
+    name = 'main'; allow_force_push = $false; code_owner_approval_required = $false
+    push_access_levels = @(@{ id = 1; access_level = 40; user_id = $null; group_id = $null })
+    merge_access_levels = @(@{ id = 2; access_level = 40 })
+    unprotect_access_levels = @(@{ id = 3; access_level = 40 })
+}
+$granularBranch = @{
+    name = 'main'; allow_force_push = $false
+    push_access_levels = @(@{ id = 1; access_level = 40 }, @{ id = 4; access_level = 40; user_id = 5 })
+    merge_access_levels = @(@{ id = 2; access_level = 40 })
+}
 Write-Text (Join-Path $bin 'projects.json') (ConvertTo-Json -Depth 6 -InputObject @{
     'gitlab.com/grp/fresh' = @{ info = @{ archived = $false; $threads = $false; $pipelines = $false } }
     'gitlab.com/grp/complete' = @{ info = @{ archived = $false; $threads = $true; $pipelines = $true } }
+    'gitlab.com/grp/open' = @{ info = $merged; branch = $openBranch }
+    'gitlab.com/grp/unprotected' = @{ info = $merged }
+    'gitlab.com/grp/granular' = @{ info = $merged; branch = $granularBranch }
+    'gitlab.com/grp/branchfail' = @{ info = $merged; branchFails = 500 }
+    'gitlab.com/grp/nodelete' = @{ info = $merged; branch = $openBranch; deleteFails = 403 }
+    'gitlab.com/grp/restored' = @{ info = $merged; branch = $openBranch; postFails = @(422) }
+    'gitlab.com/grp/lost' = @{ info = $merged; branch = $openBranch; postFails = @(422, 500) }
     'gitlab.com/grp/partial' = @{ info = @{ archived = $false; $threads = $false; $pipelines = $true } }
     'gitlab.com/grp/refused' = @{
         info = @{ archived = $false; $threads = $false; $pipelines = $false }
@@ -177,7 +201,38 @@ try {
     $r = Invoke-GitLabBaseline @('-Project', 'grp/offline')
     Check 'offline: a call with no response fails the run with glab''s error and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and ($r.Output -replace '[\s|]+', ' ') -match [regex]::Escape("Couldn't read GitLab project grp/offline on gitlab.com: no response: glab: could not reach gitlab.com.")) "puts=$($r.Puts -join '|') output=$($r.Output)"
 
-    # 8. A project named by a clone's origin remote.
+    # 8. The default branch's push access.
+    $delete = '*--hostname gitlab.com --method DELETE --include projects/grp%2F{0}/protected_branches/main'
+    $protect = '*--hostname gitlab.com --method POST --include projects/grp%2F{0}/protected_branches -F name=main -F push_access_level={1} -F merge_access_level=40 -F unprotect_access_level=40 -F allow_force_push=false'
+
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/open', '-WhatIf')
+    Check 'push whatif: an open default branch is shown as would set and nothing is written' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/open: No one allowed to push to main: would set')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/open')
+    Check 'push: a protection of roles is removed and made again with no one allowed to push and its merge, unprotect and force-push settings' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 2 -and $r.Writes[0] -like ($delete -f 'open') -and $r.Writes[1] -like ($protect -f 'open', 0) -and $r.Output -match [regex]::Escape('grp/open: No one allowed to push to main: set')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/unprotected')
+    Check 'push unprotected: an unprotected default branch is protected with no one allowed to push and Maintainers allowed to merge' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 1 -and $r.Writes[0] -like '*--hostname gitlab.com --method POST --include projects/grp%2Funprotected/protected_branches -F name=main -F push_access_level=0 -F merge_access_level=40' -and $r.Output -match [regex]::Escape('grp/unprotected: No one allowed to push to main: set')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/granular')
+    Check 'push granular: a protection that names a user is reported and left as it is' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/granular: No one allowed to push to main: not available (its protection names users, groups, deploy keys or code owners')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/branchfail')
+    Check 'push unread: a protection that can''t be read is reported with its answer and nothing is written' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/branchfail: No one allowed to push to main: not available (HTTP 500: Stand-in refused read)')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/nodelete')
+    Check 'push no delete: a refused removal is reported and nothing is protected again' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 1 -and $r.Writes[0] -like ($delete -f 'nodelete') -and $r.Output -match [regex]::Escape('grp/nodelete: No one allowed to push to main: not available (HTTP 403: Stand-in refused unprotect)')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/restored')
+    Check 'push restored: a refused protection is reported and the earlier protection is made again' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 3 -and $r.Writes[1] -like ($protect -f 'restored', 0) -and $r.Writes[2] -like ($protect -f 'restored', 40) -and $r.Output -match [regex]::Escape('grp/restored: No one allowed to push to main: not available (HTTP 422: Stand-in refused protect; its earlier protection was made again)')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/lost')
+    Check 'push lost: a branch left unprotected fails the run and says so' ($r.ExitCode -ne 0 -and $r.Writes.Count -eq 3 -and ($r.Output -replace '[\s|]', '').Contains(('main of GitLab project grp/lost is no longer protected' -replace '\s', ''))) "writes=$($r.Writes -join '|') output=$($r.Output)"
+
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/fresh')
+    Check 'push no branch: a project with no default branch is reported and its protection isn''t read' ($r.Output -match [regex]::Escape('grp/fresh: No one allowed to push to the default branch: not available (the project has no default branch yet)') -and -not ((Get-Content -LiteralPath $calls) -like '*protected_branches*')) "output=$($r.Output)"
+
+    # 9. A project named by a clone's origin remote.
     $httpsClone = Join-Path $Work 'clone-https'
     & git init -q $httpsClone
     & git -C $httpsClone remote add origin 'https://gitlab.example.com/grp/sub/fresh.git'
@@ -194,7 +249,7 @@ try {
     $r = Invoke-GitLabBaseline @('-Path', $sshClone)
     Check 'ssh: an scp-style origin remote gives the host and the project' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 2 -and @($r.Puts | Where-Object { $_ -like '*--hostname gitlab.com*projects/grp%2Ffresh *' }).Count -eq 2) "puts=$($r.Puts -join '|') output=$($r.Output)"
 
-    # 9. -Project with -Hostname, and the arguments that can't be used.
+    # 10. -Project with -Hostname, and the arguments that can't be used.
     $r = Invoke-GitLabBaseline @('-Project', 'grp/sub/fresh', '-Hostname', 'gitlab.example.com')
     Check 'hostname: a project on another GitLab is written there' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 2 -and @($r.Puts | Where-Object { $_ -like '*--hostname gitlab.example.com --method PUT --include projects/grp%2Fsub%2Ffresh -F *' }).Count -eq 2) "puts=$($r.Puts -join '|') output=$($r.Output)"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/fresh', '-Path', $httpsClone)
