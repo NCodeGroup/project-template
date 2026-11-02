@@ -19,6 +19,8 @@ id `last-comment-id.txt` keeps it from giving again. An optional `footer.txt` ho
 line and a `---` line, to each top-level comment and thread reply it saves, as a Claude Code cloud session's tooling
 does: a `/review` comment saved with it asks for no review, and an `Autopilot:` comment that names `/review` then
 stands for the `/review` the maintainer posts after it.
+On that route it reads the method as gh does, from `-X PATCH`, `-XPATCH`, `-X=PATCH` or `--method=PATCH`, and takes a
+call with `-f`, `-F`, `--field`, `--raw-field` or `--input` and no method as the POST gh sends, which it refuses.
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -247,8 +249,12 @@ $commentPath = @($args | Select-Object -Skip 1 | Where-Object { "$_" -match '^/?
 if ("$($args[0])" -eq 'api' -and $commentPath) {
     $commentId = "$commentPath".Split('/')[-1]
     $method = "$(Get-Option '-X', '--method')".ToUpperInvariant()
+    # As gh does, a method can be attached to -X, as in -XPATCH, and a call with fields or --input and no method is a POST.
+    $attachedMethod = @($args | Where-Object { "$_" -cmatch '^-X[A-Za-z]+$' }) | Select-Object -First 1
+    if (-not $method -and $attachedMethod) { $method = "$attachedMethod".Substring(2).ToUpperInvariant() }
+    if (-not $method -and @($args | Where-Object { "$_" -in '-f', '-F', '--field', '--raw-field', '--input' -or "$_" -match '^--(field|raw-field|input)=' }).Count) { $method = 'POST' }
     if (-not $method) { $method = 'GET' }
-    $comments = @(Read-Json 'comments.json' @())
+    $comments =@(Read-Json 'comments.json' @())
     $comment = $comments | Where-Object { "$($_.url)".EndsWith("#issuecomment-$commentId") } | Select-Object -First 1
     $newBody = Get-Field 'body'
     if (-not $comment -or $method -notin 'GET', 'PATCH', 'DELETE' -or ($method -eq 'PATCH' -and $null -eq $newBody)) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
