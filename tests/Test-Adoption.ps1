@@ -261,7 +261,7 @@ if (-not $UnitOnly) {
     $status = git -C $plain status --porcelain
     Check 'plain: one commit, nothing left over' ($subject -eq 'Adopt project-template v0.1.0' -and $count -eq '2' -and -not $status) "$subject | $count | $status"
     Check 'plain: leaves core.hooksPath alone when the clone has hooks in .git/hooks, and warns' (-not (git -C $plain config core.hooksPath) -and $out.Contains('has hooks of its own in .git/hooks (pre-commit)')) $out
-    Check 'plain: a GitLab origin gets no command for GitHub settings' (-not $out.Contains('Set-RepositoryBaseline')) $out
+    Check 'plain: a GitLab origin gets the GitLab baseline command, not the GitHub one' (-not $out.Contains('Set-RepositoryBaseline') -and $out -match "Set-GitLabBaseline\.ps1 -Path '[^']*plain'") $out
     Check 'plain: README.md untouched' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'README.md')) -eq "# Plain`n") ''
     Check 'plain: a Keep a Changelog file stays as it is, with no follow-up' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'CHANGELOG.md')) -eq "# Changelog`n`n## [Unreleased]`n`n## [1.0.0] - 2026-01-01`n`n### Added`n`n- First.`n" -and -not $out.Contains('convert CHANGELOG.md') -and -not $out.Contains('backfill CHANGELOG.md')) $out
     Check 'plain: workflow files for claude, copilot only' ((Test-Path -LiteralPath (Join-Path $plain 'CLAUDE.md')) -and (Test-Path -LiteralPath (Join-Path $plain '.github\skills\plan-feature\SKILL.md')) -and -not (Test-Path -LiteralPath (Join-Path $plain '.github\agents\hybrid-planner.agent.md'))) ''
