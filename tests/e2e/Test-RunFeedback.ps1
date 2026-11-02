@@ -234,6 +234,71 @@ if ($SetupOnly) {
     exit 0
 }
 
+if (-not $CheckOnly) {
+    if (-not (Get-Command $Claude -ErrorAction SilentlyContinue)) { throw 'Claude Code CLI not found: install it, or pass -Claude <path>' }
+
+    $claudeArgs = @{ Claude = $Claude; MaxBudgetUsd = $MaxBudgetUsd; App = $app; Work = $Work }
+    $script:cost = 0.0
+    $script:sessionId = ''
+    Use-FixtureEnvironment $Work $bin {
+        $first = Invoke-Claude @claudeArgs -Prompt '/run-feedback #1 wait:0' -Index 1
+        Check 'Claude Code run 1 returned a session' ($first -and $first.session_id) 'no session_id in the output'
+        if ($first -and $first.total_cost_usd) { $script:cost += [double]$first.total_cost_usd }
+        $script:sessionId = if ($first) { "$($first.session_id)" } else { '' }
+        $callsPath = Join-Path $hostDir 'calls.log'
+        $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match '^CALL (pr comment|api graphql .*addPullRequestReviewThreadReply)' }).Count
+        if (-not $replied -and $first -and $first.session_id) {
+            $second = Invoke-Claude @claudeArgs -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $first.session_id -Index 2
+            Check 'Claude Code run 2 returned a session' ($second -and $second.session_id) 'no session_id in the output'
+            if ($second -and $second.total_cost_usd) { $script:cost += [double]$second.total_cost_usd }
+        }
+    }
+    "Cost: $script:cost USD"
+    "Fixture: $app"
+    "Continue the session from $app with: claude --resume $script:sessionId"
+}
+
+Use-FixtureEnvironment $Work $bin {
+    Invoke-Git -C $app fetch -q origin
+    $mainBefore = ([IO.File]::ReadAllText((Join-Path $hostDir 'main.txt'))).Trim()
+    $headBefore = ([IO.File]::ReadAllText((Join-Path $hostDir 'head.txt'))).Trim()
+    $callsPath = Join-Path $hostDir 'calls.log'
+    $calls = if (Test-Path -LiteralPath $callsPath) { @(Get-Content -LiteralPath $callsPath) } else { @() }
+
+    $unsupported = @($calls | Where-Object { $_ -match '^UNSUPPORTED' })
+    Check 'the stand-in saw only supported gh calls' ($unsupported.Count -eq 0) ($unsupported -join '; ')
+    $forbidden = @($calls | Where-Object { $_ -match '^FORBIDDEN' })
+    Check 'no gh call resolved a thread, merged, readied, closed or edited the pull request' ($forbidden.Count -eq 0) ($forbidden -join '; ')
+
+    $prs = @(Read-HostJson $hostDir 'prs.json' | Where-Object { $_ })
+    $pr1 = @($prs | Where-Object { "$($_.number)" -eq '1' })
+    $prOk = $prs.Count -eq 1 -and $pr1.Count -eq 1 -and $pr1[0].state -eq 'OPEN' -and $pr1[0].isDraft -eq $false -and $pr1[0].headRefName -eq $head
+    Check 'pull request #1 is still open and not a draft, and no other was opened' $prOk "pull requests: $($prs.Count)$(if ($pr1.Count) { "; state=$($pr1[0].state) isDraft=$($pr1[0].isDraft)" })"
+
+    $mainNow = "$(git --git-dir=$origin rev-parse main 2>$null)".Trim()
+    Check 'origin main is unchanged' ($mainNow -and $mainNow -eq $mainBefore) "main is '$mainNow', expected '$mainBefore'"
+
+    $headNow = "$(git --git-dir=$origin rev-parse $head 2>$null)".Trim()
+    $null = git --git-dir=$origin merge-base --is-ancestor $headBefore $head 2>$null
+    Check 'add-farewell on origin only moved forward: nothing was force-pushed' ($headNow -and $LASTEXITCODE -eq 0) "add-farewell is '$headNow', which doesn't contain '$headBefore'"
+
+    $files = @(git --git-dir=$origin diff --name-only $headBefore $head 2>$null | Where-Object { $_ })
+    $outside = @($files | Where-Object { $_ -notmatch '^(src|tests)/' })
+    Check 'only the writer''s fix is pushed: new commits change src/ and tests/ and nothing else, such as ci.yml' ($headNow -ne $headBefore -and $files.Count -gt 0 -and $outside.Count -eq 0) "changed files: $($files -join ', ')"
+
+    $null = pwsh -NoProfile -File (Join-Path $app '.template/Test-CommitAttribution.ps1') -Root $app -Base $headBefore -Head "origin/$head" 2>&1
+    Check 'the pushed commits carry no AI attribution' ($LASTEXITCODE -eq 0) "exit code $LASTEXITCODE"
+
+    $clone = Join-Path $Work 'check'
+    if (Test-Path -LiteralPath $clone) { Remove-Item -LiteralPath $clone -Recurse -Force }
+    Invoke-Git clone -q --branch $head $origin $clone
+    $result = Get-FarewellResult $clone
+    Check 'Get-Farewell says "Goodbye, world!" without a name on the pushed branch, and its test passes' ($result.Output -eq 'Goodbye, world!|Goodbye, world!|Goodbye, Ada!' -and $result.TestCode -eq 0) "output='$($result.Output)' test exit code $($result.TestCode)"
+
+    $threads = Read-Threads
+    $comments = @(Read-HostJson $hostDir 'comments.json' | Where-Object { $_ })
+}
+
 ''
 if ($failures.Count) { "Run-feedback end-to-end: FAILED ($($failures.Count))"; exit 1 }
 'Run-feedback end-to-end: PASSED'
