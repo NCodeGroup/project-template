@@ -15,7 +15,7 @@ You coordinate. Each round is one pass of `address-feedback`: read its installed
 
 - `address-feedback`'s Rules apply in every pass. Never merge the pull request, mark it ready for review or draft, turn on auto-merge, resolve a review thread, dismiss a review or an alert, close it, edit its title or description, force-push, or push with `--no-verify`. Every discussion ends remediated and replied to, as ADR-0014 says: fixed in a commit, or answered with why nothing changed, and I resolve it.
 - Ask me once, in the first pass's Start item 6, and never again in this run: my answer covers every later pass. Where a command says to ask me, wait for me or stop to ask, stop the run instead, as Stop says.
-- Write every comment and reply to a temporary file outside the repository with your file-writing tool, pass the file to the command, and delete it afterwards.
+- Write every comment and reply to a temporary file outside the repository with your file-writing tool, pass the file to the command, and delete it afterwards. {{PROMPT:_session-footer}}
 
 ## Start
 
@@ -36,7 +36,7 @@ A pass follows `address-feedback` from its Start item 1 through its Reply, with 
 
    When no item is left, the pass ends there, before `address-feedback`'s Plan: go on with Wait.
 3. Start item 6 runs in the first pass only. Later passes show no summary and go on.
-4. Push: after its item 5 pushes, note `<pushed>`, the commit `git rev-parse HEAD` prints in the worktree. {{PROMPT:_review-request}} Note the time with `Get-Date`: NCode Review's review of `<pushed>` is awaited from then on, as Wait says.
+4. Push: after its item 5 pushes, note `<pushed>`, the commit `git rev-parse HEAD` prints in the worktree. {{PROMPT:_review-request}} When the review is requested, note the time with `Get-Date`: NCode Review's review of `<pushed>` is awaited from then on, as Wait says.
 5. Reply: as it says. When it leaves the worktree in place, stop the run, as Stop says: `/continue-plan feedback-<number>` shows it.
 
 When the pass stops in `address-feedback`, follow its Stop, then stop the run: go on with Report.
@@ -45,7 +45,7 @@ When the pass stops in `address-feedback`, follow its Stop, then stop the run: g
 
 Check the pull request every five minutes: run `Start-Sleep -Seconds 300` as a background command, and run the next pass when it finishes. Note the time with `Get-Date` at the first pass, and again at each pass that finds an item.
 
-NCode Review's review of `<pushed>` is awaited after a pass posted `/review`. At each later check, before its pass, run `gh api "repos/{owner}/{repo}/commits/<pushed>/check-runs?check_name=Code%20review" --jq '[.check_runs[] | select(.app.slug == "ncode-review" and .status == "completed")] | length'`: NCode Review completes its `Code review` check run on the commit it reviewed once it has posted the review, or once the review failed. When it prints a number above 0, the review has arrived: the pass reads its findings. When an hour has passed since the time Push noted, stop awaiting it, and say in the report that NCode Review didn't review `<pushed>` within an hour.
+NCode Review's review of `<pushed>` is awaited after a pass requested it with a `/review` comment that read back as exactly `/review`, as Push says; after a pass that asked me to comment `/review` instead, none is awaited. At each later check, before its pass, run `gh api "repos/{owner}/{repo}/commits/<pushed>/check-runs?check_name=Code%20review" --jq '[.check_runs[] | select(.app.slug == "ncode-review" and .status == "completed")] | length'`: NCode Review completes its `Code review` check run on the commit it reviewed once it has posted the review, or once the review failed. When it prints a number above 0, the review has arrived: the pass reads its findings. When an hour has passed since the time Push noted, stop awaiting it, and say in the report that NCode Review didn't review `<pushed>` within an hour.
 
 With no item and no review awaited, end the run once the wait limit has passed since the time you noted: say that the pull request waited the wait limit with nothing to answer, and go on with Report. The pull request stays open as it is.
 
