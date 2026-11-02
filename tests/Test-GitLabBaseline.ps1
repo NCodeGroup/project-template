@@ -14,6 +14,8 @@
     For the default branch, it checks that a protection made of roles is removed and made again with no one allowed to
     push and its other settings kept, that an unprotected branch is protected, that one naming a user is reported and
     left as it is, that a refused read, removal or protection is reported, and that a branch left unprotected fails the run.
+    It also checks that a project that allows squash commits gets one PUT that sets squash_option to never, and that a
+    project with every setting made is reported as already set and nothing is written.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -118,7 +120,8 @@ $granularBranch = @{
 }
 Write-Text (Join-Path $bin 'projects.json') (ConvertTo-Json -Depth 6 -InputObject @{
     'gitlab.com/grp/fresh' = @{ info = @{ archived = $false; $threads = $false; $pipelines = $false } }
-    'gitlab.com/grp/complete' = @{ info = @{ archived = $false; $threads = $true; $pipelines = $true } }
+    'gitlab.com/grp/complete' = @{ info = @{ archived = $false; $threads = $true; $pipelines = $true; squash_option = 'never'; default_branch = 'main' }; branch = @{ name = 'main'; push_access_levels = @(@{ access_level = 0 }); merge_access_levels = @(@{ access_level = 40 }) } }
+    'gitlab.com/grp/squash' = @{ info = @{ archived = $false; $threads = $true; $pipelines = $true; squash_option = 'default_off' } }
     'gitlab.com/grp/open' = @{ info = $merged; branch = $openBranch }
     'gitlab.com/grp/unprotected' = @{ info = $merged }
     'gitlab.com/grp/granular' = @{ info = $merged; branch = $granularBranch }
@@ -232,7 +235,14 @@ try {
     $r = Invoke-GitLabBaseline @('-Project', 'grp/fresh')
     Check 'push no branch: a project with no default branch is reported and its protection isn''t read' ($r.Output -match [regex]::Escape('grp/fresh: No one allowed to push to the default branch: not available (the project has no default branch yet)') -and -not ((Get-Content -LiteralPath $calls) -like '*protected_branches*')) "output=$($r.Output)"
 
-    # 9. A project named by a clone's origin remote.
+    # 9. Squash commits, and a project with every setting made.
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/squash')
+    Check 'squash: a project that allows squash commits gets one PUT that sets squash_option to never' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 1 -and $r.Puts[0] -like '*--hostname gitlab.com --method PUT --include projects/grp%2Fsquash -F squash_option=never' -and $r.Output -match [regex]::Escape('grp/squash: Do not allow squash commits: set')) "puts=$($r.Puts -join '|') output=$($r.Output)"
+
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/complete')
+    Check 'complete: squash commits already not allowed and no one allowed to push to main are reported and nothing is written' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/complete: Do not allow squash commits: already set') -and $r.Output -match [regex]::Escape('grp/complete: No one allowed to push to main: already set')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+
+    # 10. A project named by a clone's origin remote.
     $httpsClone = Join-Path $Work 'clone-https'
     & git init -q $httpsClone
     & git -C $httpsClone remote add origin 'https://gitlab.example.com/grp/sub/fresh.git'
@@ -249,7 +259,7 @@ try {
     $r = Invoke-GitLabBaseline @('-Path', $sshClone)
     Check 'ssh: an scp-style origin remote gives the host and the project' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 2 -and @($r.Puts | Where-Object { $_ -like '*--hostname gitlab.com*projects/grp%2Ffresh *' }).Count -eq 2) "puts=$($r.Puts -join '|') output=$($r.Output)"
 
-    # 10. -Project with -Hostname, and the arguments that can't be used.
+    # 11. -Project with -Hostname, and the arguments that can't be used.
     $r = Invoke-GitLabBaseline @('-Project', 'grp/sub/fresh', '-Hostname', 'gitlab.example.com')
     Check 'hostname: a project on another GitLab is written there' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 2 -and @($r.Puts | Where-Object { $_ -like '*--hostname gitlab.example.com --method PUT --include projects/grp%2Fsub%2Ffresh -F *' }).Count -eq 2) "puts=$($r.Puts -join '|') output=$($r.Output)"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/fresh', '-Path', $httpsClone)

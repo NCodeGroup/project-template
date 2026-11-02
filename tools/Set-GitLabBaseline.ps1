@@ -88,15 +88,16 @@ else { $why = Get-FailureReason $read }
 if ($why) { throw "Couldn't read GitLab project $Project on ${Hostname}: $why." }
 if ($info.archived) { Write-Host "${Project}: skipped (archived)"; exit 0 }
 
-# Turns one project setting on where the project's answer says it is off, and prints the outcome on one line. A refusal
-# is reported, not thrown: each setting stands on its own, so the next one is still tried.
+# Sets one project setting to $Value (on by default) where the project's answer says otherwise, and prints the outcome on
+# one line. A refusal is reported, not thrown: each setting stands on its own, so the next one is still tried.
 function Set-ProjectSetting {
     [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Label, [string]$Field, $Info)
+    param([string]$Label, [string]$Field, $Info, $Value = $true)
     if ($null -eq $Info.$Field) { Write-Host "${Project}: ${Label}: not available (couldn't read it: the project's answer doesn't include it)"; return }
-    if ($Info.$Field -eq $true) { Write-Host "${Project}: ${Label}: already set"; return }
-    if (-not $PSCmdlet.ShouldProcess($Project, "turn on $Label")) { Write-Host "${Project}: ${Label}: would set"; return }
-    $result = Invoke-Glab PUT $endpoint @("$Field=true")
+    if ($Info.$Field -eq $Value) { Write-Host "${Project}: ${Label}: already set"; return }
+    if (-not $PSCmdlet.ShouldProcess($Project, "set $Label")) { Write-Host "${Project}: ${Label}: would set"; return }
+    $text = if ($Value -is [bool]) { "$Value".ToLowerInvariant() } else { "$Value" }
+    $result = Invoke-Glab PUT $endpoint @("$Field=$text")
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Project}: ${Label}: set" }
     else { Write-Host "${Project}: ${Label}: not available ($(Get-FailureReason $result))" }
 }
@@ -164,4 +165,5 @@ function Set-DefaultBranchPush {
 
 Set-ProjectSetting 'All threads must be resolved' 'only_allow_merge_if_all_discussions_are_resolved' $info
 Set-ProjectSetting 'Pipelines must succeed' 'only_allow_merge_if_pipeline_succeeds' $info
+Set-ProjectSetting 'Do not allow squash commits' 'squash_option' $info 'never'
 Set-DefaultBranchPush $info
