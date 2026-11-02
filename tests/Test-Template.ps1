@@ -864,8 +864,19 @@ $prAttributionMissing = @(
 Check 'workflow: ship-plan and run-issues delete agent attribution lines from a pull request''s title and description before they send them' (-not $prAttributionMissing) ($prAttributionMissing -join ', ')
 # The commands that post to GitHub or GitLab read each post back and remove any agent attribution a session's tooling appends, through {{PROMPT:_session-footer}}.
 $sessionFooterText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_session-footer.md')).Body.Trim()
-$sessionFooterFiles = @('ship-plan', 'run-issues', 'address-feedback', 'run-feedback', 'orchestrate-plan', 'replan-step', 'plan-issue', 'plan-feature', 'plan-template-update' | ForEach-Object { "template\.claude\commands\$_.md"; ".claude\commands\$_.md" }) + 'template\.github\prompts\run-issues.prompt.md', 'template\.github\skills\run-issues\SKILL.md'
+# The files are every generated copy of each workflow template, command or agent, whose expanded text has the rule, directly or through _plan-format.md or another include.
+$footerTargets = @{ Claude = '.claude\commands\{0}.md'; VSCode = '.github\prompts\{0}.prompt.md'; CopilotCli = '.github\skills\{0}\SKILL.md' }
+$footerTemplates = @(Get-HybridTemplateList | Where-Object { (Get-HybridPromptText -Name $_.Name -Placeholder '$ARGUMENTS').Contains($sessionFooterText) })
+$footerAgents = @(Get-ChildItem -LiteralPath (Join-Path $workflow 'templates') -Filter '*.agent.md' -File | Where-Object { (Expand-HybridInclude (Read-HybridTemplateFile $_.FullName).Body).Contains($sessionFooterText) })
+$sessionFooterFiles = @(foreach ($footerTree in 'template\', '') {
+        foreach ($footerTemplate in $footerTemplates) { foreach ($footerTarget in $footerTemplate.Targets) { $footerTree + ($footerTargets[$footerTarget] -f $footerTemplate.Command) } }
+        foreach ($footerAgent in $footerAgents) {
+            $footerCopies = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "$footerTree.github\agents") -Filter "*-$($footerAgent.Name)" -File | ForEach-Object { "$footerTree.github\agents\$($_.Name)" })
+            if ($footerCopies) { $footerCopies } else { "$footerTree.github\agents\<variant>-$($footerAgent.Name)" }
+        }
+    })
 $m = @(Get-MissingText $sessionFooterFiles $sessionFooterText | ForEach-Object { ($_ -split ': ', 2)[0] + ': the session-footer rule is missing' })
+$m += @(foreach ($footerCommand in 'ship-plan', 'run-issues', 'run-issues-copilot', 'address-feedback', 'run-feedback', 'orchestrate-plan', 'replan-step', 'plan-issue', 'plan-feature', 'plan-template-update') { if ($footerCommand -notin $footerTemplates.Name) { "workflow\templates\${footerCommand}.md: does not include the session-footer rule" } })
 $m += @(foreach ($t in 'on GitHub or GitLab', '`update_pull_request`', '`update_issue_comment`', '`issue_write`', '`gh pr edit <number> --body-file <file>`', '#issuecomment-', '`glab mr view <number> --output json`', '`#note_`', '`glab api --method PUT "projects/:id/merge_requests/<number>/notes/<id>" -F body=@<file>`', '`chatgpt.com/codex/tasks/`', 'read it back once more', 'A reply on a review thread is the one exception') { if (-not $sessionFooterText.Contains($t)) { "workflow\templates\_session-footer.md: missing $t" } })
 $m += @(if ($sessionFooterText.Contains('Never remove it through `gh`')) { 'workflow\templates\_session-footer.md: still forbids every edit through gh' })
 # Each decision of the /review read-back stays in _review-request.md and in every generated run-issues and run-feedback copy.
