@@ -9,8 +9,9 @@
     succeed", each with its own field; that a project with both on, or one of them, is reported as already set and only
     the one that is off is written; that a setting the API refuses is reported as not available with its answer, and
     the other one is still turned on, with the run succeeding; that an answer that leaves a setting out is reported and
-    not written; that a project that can't be read fails the run without a change; and that an archived project is
-    skipped. Prints PASS or FAIL per check and exits 1 on any failure.
+    not written; that a project that can't be read, answers 200 with no project or with text that isn't JSON, or gives no
+    response fails the run without a change, with glab's error for no response; and that an archived project is skipped.
+    Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-gitlab-baseline-test-<process ID> in the
@@ -37,7 +38,9 @@ $bin = Join-Path $Work 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 
 # The stand-in for glab. It serves projects.json (host/project path -> the project's answer as info, and writeFails, the
-# field -> status that refuses a change to it) and records every call in calls.log.
+# field -> status that refuses a change to it) and records every call in calls.log. A project with raw answers its GET
+# with that body as it is, and one with offline prints that text to stderr and no status line, as glab does when it gets
+# no response.
 Write-Text (Join-Path $bin 'glab.ps1') @'
 # The script runs this in its own session, so a -WhatIf run would reach it as $WhatIfPreference, and its log would stay
 # empty: it has to record the calls of a -WhatIf run too, to show that they change nothing.
@@ -66,6 +69,8 @@ function Out-Answer([int]$Status, [string]$Body) {
 }
 $project = $data[$key]
 if (-not $project) { Out-Answer 404 '{"message":"404 Project Not Found"}' }
+if ($project.offline) { Write-Error $project.offline -ErrorAction Continue; exit 1 }
+if ($method -eq 'GET' -and $project.ContainsKey('raw')) { Out-Answer 200 $project.raw }
 if ($method -eq 'GET') { Out-Answer 200 (ConvertTo-Json -Compress -Depth 5 -InputObject $project.info) }
 $field = ("$($fields | Select-Object -First 1)" -split '=')[0]
 $refused = if ($project.writeFails) { $project.writeFails[$field] }
@@ -85,6 +90,9 @@ Write-Text (Join-Path $bin 'projects.json') (ConvertTo-Json -Depth 6 -InputObjec
     }
     'gitlab.com/grp/unread' = @{ info = @{ archived = $false; $threads = $false } }
     'gitlab.com/grp/old' = @{ info = @{ archived = $true; $threads = $false; $pipelines = $false } }
+    'gitlab.com/grp/empty' = @{ raw = '' }
+    'gitlab.com/grp/text' = @{ raw = 'not json' }
+    'gitlab.com/grp/offline' = @{ offline = 'glab: could not reach gitlab.com' }
     'gitlab.example.com/grp/sub/fresh' = @{ info = @{ archived = $false; $threads = $false; $pipelines = $false } }
 })
 
@@ -142,6 +150,12 @@ try {
     Check 'missing: a project that can''t be read fails the run, with the reason, and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and $r.Output -match [regex]::Escape("Couldn't read GitLab project grp/missing on gitlab.com: HTTP 404: 404 Project Not Found")) "puts=$($r.Puts -join '|') output=$($r.Output)"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/old')
     Check 'archived: an archived project is skipped and changes nothing' ($r.ExitCode -eq 0 -and $r.Puts.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/old: skipped (archived)')) "puts=$($r.Puts -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/empty')
+    Check 'empty: a read that answers 200 with no project fails the run and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and $r.Output -match [regex]::Escape("Couldn't read GitLab project grp/empty on gitlab.com: an answer that is not a project.")) "puts=$($r.Puts -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/text')
+    Check 'text: a read that answers 200 with text that is not JSON fails the run and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and $r.Output -match [regex]::Escape("Couldn't read GitLab project grp/text on gitlab.com: an answer that is not JSON.")) "puts=$($r.Puts -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/offline')
+    Check 'offline: a call with no response fails the run with glab''s error and changes nothing' ($r.ExitCode -ne 0 -and $r.Puts.Count -eq 0 -and ($r.Output -replace '[\s|]+', ' ') -match [regex]::Escape("Couldn't read GitLab project grp/offline on gitlab.com: no response: glab: could not reach gitlab.com.")) "puts=$($r.Puts -join '|') output=$($r.Output)"
 
     # 8. A project named by a clone's origin remote.
     $httpsClone = Join-Path $Work 'clone-https'

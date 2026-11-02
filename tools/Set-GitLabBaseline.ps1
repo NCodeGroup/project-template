@@ -19,7 +19,7 @@
     Each setting is read first, from the project, and printed as set, already set, would set (-WhatIf) or not available,
     with the reason, one line each: <project>: <setting>: <outcome>. A setting the API refuses to change is reported, and
     the run goes on with the next one. A project the script can't read (no response, not found, or an answer that isn't
-    JSON) fails the run with an error, and an archived project is skipped.
+    a project) fails the run with an error, and an archived project is skipped.
 
     Name the project with -Project <group/subgroup/name>, and -Hostname for a GitLab other than gitlab.com, or point
     -Path at a clone (the current folder by default), whose origin remote gives both. It needs glab, signed in to the
@@ -55,22 +55,24 @@ $endpoint = "projects/$([uri]::EscapeDataString($Project))"
 
 # Calls the GitLab's API through glab and returns the HTTP status and the body. The status comes from the response's own
 # status line (--include), never from the CLI's wording, and stderr stays out of the body, so a warning can't spoil the
-# JSON. A call that got no response at all (no network, no login) has no status. Every call names the host, so it never
+# JSON; its first line is kept as the reason for a call with no status. A call that got no response at all (no network, no login) has no status. Every call names the host, so it never
 # depends on the folder glab runs in.
 function Invoke-Glab([string]$Method, [string]$Endpoint, [string[]]$Fields = @()) {
     $fieldArgs = @(foreach ($f in $Fields) { '-F'; $f })
-    $lines = @(& glab api --hostname $Hostname --method $Method --include $Endpoint @fieldArgs 2>$null)
+    $all = @(& glab api --hostname $Hostname --method $Method --include $Endpoint @fieldArgs 2>&1)
+    $lines = @($all | Where-Object { $_ -isnot [Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+    $errorLine = @($all | Where-Object { $_ -is [Management.Automation.ErrorRecord] } | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) | Select-Object -First 1
     $status = $null
     if ($lines.Count -and $lines[0] -match '^HTTP/\S+\s+(\d{3})\b') { $status = [int]$Matches[1] }
     $blank = -1
     for ($i = 0; $i -lt $lines.Count; $i++) { if (-not $lines[$i].Trim()) { $blank = $i; break } }
     $body = if ($blank -ge 0 -and $blank -lt $lines.Count - 1) { $lines[($blank + 1)..($lines.Count - 1)] -join "`n" } else { '' }
-    [pscustomobject]@{ Status = $status; Body = $body }
+    [pscustomobject]@{ Status = $status; Body = $body; Error = "$errorLine" }
 }
 
 # Why a call failed, for the line that reports it: the status and, when the answer has one, the API's message.
 function Get-FailureReason($Response) {
-    if ($null -eq $Response.Status) { return 'no response' }
+    if ($null -eq $Response.Status) { return $(if ($Response.Error) { "no response: $($Response.Error)" } else { 'no response' }) }
     $message = try { "$(($Response.Body | ConvertFrom-Json -ErrorAction Stop).message)" } catch { '' }
     "HTTP $($Response.Status)$(if ($message) { ": $message" })"
 }
@@ -80,6 +82,7 @@ $info = $null
 $why = ''
 if ($read.Status -eq 200) {
     try { $info = $read.Body | ConvertFrom-Json -ErrorAction Stop } catch { $why = 'an answer that is not JSON' }
+    if (-not $why -and $info -isnot [Management.Automation.PSCustomObject]) { $why = 'an answer that is not a project' }
 }
 else { $why = Get-FailureReason $read }
 if ($why) { throw "Couldn't read GitLab project $Project on ${Hostname}: $why." }
