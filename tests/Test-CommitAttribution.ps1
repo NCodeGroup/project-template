@@ -105,7 +105,7 @@ try {
     Assert-Attribution 'a human commit passes' $baseCommit $head 0 @('1 commit(s) checked') @('title and description')
 
     $head = New-CaseBranch 'agent-author' "Add a feature`n" $agent
-    Assert-Attribution 'an agent-authored commit fails' $baseCommit $head 1 @('is an AI agent account', '--reset-author')
+    Assert-Attribution 'an agent-authored commit fails' $baseCommit $head 1 @('is an AI agent account', 'Re-author these commits before merging: git rebase', '--exec "git commit --amend --no-edit --reset-author", then git push') @('core.hooksPath')
 
     $head = New-CaseBranch 'claude-trailer' "Add a feature`n`nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`n"
     Assert-Attribution 'a Claude co-author trailer fails' $baseCommit $head 1 @('message has agent attribution')
@@ -115,6 +115,9 @@ try {
 
     $head = New-CaseBranch 'session-trailer' "Add a feature`n`nClaude-Session: 0f8fad5b-d9cb-469f-a165-70867728950e`n"
     Assert-Attribution 'a Claude-Session trailer fails' $baseCommit $head 1 @('message has agent attribution')
+
+    $head = New-CaseBranch 'logs-url-trailer' "Add a feature`n`nAgent-Logs-Url: https://github.com/octo/repo/sessions/0f8fad5b`n"
+    Assert-Attribution 'a message finding prints a remedy that runs the commit-msg hook and keeps the author' $baseCommit $head 1 @('message has agent attribution: Agent-Logs-Url:', 'Rewrite these commits before merging: git rebase', '--exec "git -c core.hooksPath=.githooks commit --amend --no-edit", which runs .githooks/commit-msg') @('--reset-author')
 
     $head = New-CaseBranch 'person-trailer' "Add a feature`n`nCo-authored-by: Jane Doe <jane@example.com>`n"
     Assert-Attribution 'a co-author trailer naming a person passes' $baseCommit $head 0 @('1 commit(s) checked')

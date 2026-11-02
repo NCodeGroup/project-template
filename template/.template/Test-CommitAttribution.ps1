@@ -25,10 +25,12 @@
     When Base is empty, is all zeros, or is not a commit in the clone (a new branch, or a force-push), only Head is
     checked, so the check never fails for a reason other than attribution.
 
-    On failure each finding is written as "<short sha> <subject>: <finding>", followed by the remedy: re-author the
+    On failure each finding is written as "<short sha> <subject>: <finding>", followed by the remedy: rewrite the
     commits with git rebase <base> --exec "git commit --amend --no-edit --reset-author", then git push
-    --force-with-lease. When GITHUB_ACTIONS is true each finding is also written as a workflow error annotation, with
-    %, CR and LF escaped.
+    --force-with-lease. For a message with attribution the remedy adds -c core.hooksPath=.githooks after git, so the
+    project's commit-msg hook strips those lines, which --amend --no-edit alone keeps, and leaves out --reset-author
+    when no agent account authored or committed a commit. When GITHUB_ACTIONS is true each finding is also written as
+    a workflow error annotation, with %, CR and LF escaped.
 
     When PullRequestTitle or PullRequestBody is given, the pull request's title and description (on GitLab, when
     GITLAB_CI is true, the merge request's) are checked line by line for the same attribution lines, because a squash
@@ -137,6 +139,8 @@ try {
     }
 
     $findings = [System.Collections.Generic.List[string]]::new()
+    $accountFound = $false
+    $messageFound = $false
     foreach ($commit in $commits) {
         $fields = (@(& git -C $Root log -1 '--format=%h%x00%s%x00%an%x00%ae%x00%cn%x00%ce' $commit) -join "`n") -split "`0"
         if ($LASTEXITCODE -ne 0 -or $fields.Count -ne 6) {
@@ -150,14 +154,17 @@ try {
         $prefix = "$($fields[0]) $($fields[1])"
         if (Test-AgentAccount $fields[2] $fields[3]) {
             $findings.Add("${prefix}: author $($fields[2]) $($fields[3]) is an AI agent account")
+            $accountFound = $true
         }
         if (Test-AgentAccount $fields[4] $fields[5]) {
             $findings.Add("${prefix}: committer $($fields[4]) $($fields[5]) is an AI agent account")
+            $accountFound = $true
         }
         foreach ($line in $message) {
             foreach ($pattern in $attributionLines) {
                 if ($line -match $pattern) {
                     $findings.Add("${prefix}: message has agent attribution: $(($line -replace '[\x00-\x1F\x7F]', ' ').Trim())")
+                    $messageFound = $true
                     break
                 }
             }
@@ -194,7 +201,13 @@ try {
         Write-Output $finding
     }
     if ($findings.Count) {
-        Write-Output "Re-author these commits before merging: git rebase $remedyBase --exec ""git commit --amend --no-edit --reset-author"", then git push --force-with-lease."
+        # --amend --no-edit keeps a message as it is, so for a message with attribution the remedy runs the project's
+        # commit-msg hook on it, which strips those lines, whatever hooks path the clone has.
+        $amend = if ($messageFound) { 'git -c core.hooksPath=.githooks commit --amend --no-edit' } else { 'git commit --amend --no-edit' }
+        if ($accountFound) { $amend += ' --reset-author' }
+        $remedyStart = if ($accountFound) { 'Re-author these commits before merging' } else { 'Rewrite these commits before merging' }
+        $hookNote = if ($messageFound) { ', which runs .githooks/commit-msg to strip the attribution lines from each message' } else { '' }
+        Write-Output "${remedyStart}: git rebase $remedyBase --exec ""$amend""$hookNote, then git push --force-with-lease."
     }
     if ($requestFindings.Count) {
         $requestRemedy = if ($isGitLab) { "Then run the merge request's pipeline again." } else { 'Editing the pull request runs this check again.' }
