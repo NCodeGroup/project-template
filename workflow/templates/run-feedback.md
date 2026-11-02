@@ -36,7 +36,7 @@ A pass follows `address-feedback` from its Start item 1 through its Reply, with 
 
    When no item is left, the pass ends there, before `address-feedback`'s Plan: go on with Wait.
 3. Start item 6 runs in the first pass only. Later passes show no summary and go on.
-4. Push: after its item 5 pushes, note `<pushed>`, the commit `git rev-parse HEAD` prints in the worktree. {{PROMPT:_review-request}} Note the time with `Get-Date`: NCode Review's review of `<pushed>` is awaited from then on, as Wait says.
+4. Push: after its item 5 pushes, note `<pushed>`, the commit `git rev-parse HEAD` prints in the worktree. {{PROMPT:_review-request}} When the project runs NCode Review, note the time with `Get-Date`: NCode Review's review of `<pushed>` is awaited from then on, as Wait says.
 5. Reply: as it says. When it leaves the worktree in place, stop the run, as Stop says: `/continue-plan feedback-<number>` shows it.
 
 When the pass stops in `address-feedback`, follow its Stop, then stop the run: go on with Report.
