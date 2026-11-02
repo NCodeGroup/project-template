@@ -824,6 +824,12 @@ $gitHooksFiles = @($worktreeKinds.create + 'orchestrate-plan', 'run-issues', 'ad
     '.github\prompts\run-issues.prompt.md', '.github\skills\orchestrate-plan\SKILL.md', '.github\skills\run-issues\SKILL.md'
 $gitHooksMissing = @($gitHooksFiles | Where-Object { -not [IO.File]::ReadAllText((Join-Path $repoRoot "template\$_")).Contains($gitHooksText) })
 Check 'workflow: the commands that create or join a plan''s branch check that Git runs .githooks' (-not $gitHooksMissing) ($gitHooksMissing -join ', ')
+# After a push of fix steps, the review loops ask NCode Review for a review with a /review comment, through {{PROMPT:_review-request}}: a push alone starts none.
+$reviewRequestText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_review-request.md')).Body.Trim()
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles) ($reviewRequestText, 'comments `/review` after each push of fix steps', 'again when item 7 asks it to with a `/review` comment'))
+$m += @(foreach ($p in $runFiles + $copilotRunFiles) { if ([IO.File]::ReadAllText((Join-Path $repoRoot $p)).Contains('without my saying so')) { "${p}: still says NCode Review reviews a push without being asked" } })
+$m += @(if (-not ($reviewRequestText.Contains('gh pr comment <number> --body-file <file>') -and $reviewRequestText.Contains('A push alone starts no review'))) { 'workflow\templates\_review-request.md' })
+Check 'workflow: run-issues comments /review after it pushes fix steps, because NCode Review reviews again only when a writer asks' (-not $m) ($m -join '; ')
 # The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
 $prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
 $prAttributionFiles = [ordered]@{
