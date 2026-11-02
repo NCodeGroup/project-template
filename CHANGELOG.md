@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-11-01
+
+### Added
+
+- A new decision record, ADR-0014, "Every pull request discussion is remediated and replied to before it merges": every review thread, and every top-level comment or review summary that asks for something, is fixed in a commit or answered with why nothing changed, and replied to, before the pull request merges; an agent replies starting with `Autopilot:` and never resolves a thread, and the person who merges resolves it. The agent instructions state it for every agent. Projects get it with `.\.template\Update-Project.ps1`.
+
+### Changed
+
+- `tools/Set-RepositoryBaseline.ps1` turns on "require conversation resolution" in a default-branch ruleset that already requires pull requests, its own "Protect main" from an older version or one someone else shaped, where it is off, sending only that ruleset's rules with the one parameter changed; `-WhatIf` shows it, and a refusal is reported without failing the run. Run it again, such as `.\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup -WhatIf` and then without `-WhatIf`, to enforce it in every repository.
+- `/address-feedback`, `/run-feedback` and `/run-issues` reply to every unresolved review thread they read: a thread whose verdict is nothing to change gets `Autopilot: nothing to change` and why, NCode Review's nits and findings on protected paths get one reply each instead of none, `/run-issues` replies to threads someone else started without acting on them, and still at most twice on a thread a bot or someone else started. `/address-feedback` re-reads the threads after replying and lists any that still await a reply, and every merge recommendation lists the threads still unresolved for you to resolve. In Claude Code, and for `/run-issues` in Copilot Chat and Copilot CLI too.
+- `/continue-plan` lists every unresolved thread on a waiting pull request, not only NCode Review's findings, and says whether each awaits a reply or only your resolution.
+
 ## [0.56.0] - 2026-11-01
 
 ### Added
@@ -847,7 +859,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.56.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.57.0...HEAD
+[0.57.0]: https://github.com/NCodeGroup/project-template/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/NCodeGroup/project-template/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/NCodeGroup/project-template/compare/v0.54.1...v0.55.0
 [0.54.1]: https://github.com/NCodeGroup/project-template/compare/v0.54.0...v0.54.1
