@@ -219,8 +219,11 @@ foreach ($case in $cases) {
         $templateIcon = Join-Path $dest 'NCodeGroup.png'
         Check "${name}: the template's icon only for a library that uses it" ((Test-Path -LiteralPath $templateIcon) -eq ($library -and $icon -eq 'NCodeGroup.png'))
         $editorconfig = Get-Content -LiteralPath (Join-Path $dest '.editorconfig') -Raw
-        $header = if ($case.Data.package_license -eq 'Apache-2.0') { 'Licensed under the Apache License, Version 2.0' } elseif ($library) { "SPDX-License-Identifier: $($case.Data.package_license)" } else { "file_header_template = Copyright $([char]0xA9) NCode Group" }
-        Check "${name}: the C# file header for the license answered" ($editorconfig.Contains($header) -and $editorconfig.Contains('dotnet_diagnostic.IDE0073.severity = suggestion')) $editorconfig
+        # Roslyn ends an .editorconfig value at the first ; or #, so the header must hold neither to be read whole.
+        $headerLicense = if ($case.Data.license) { $case.Data.license } elseif ($library) { $case.Data.package_license } else { '' }
+        $header = "file_header_template = Copyright $([char]0xA9) NCode Group" + $(if ($headerLicense) { '\nSPDX-License-Identifier: ' + $headerLicense } else { '' })
+        $headerLines = @($editorconfig -split '\r?\n' | Where-Object { $_.StartsWith('file_header_template') })
+        Check "${name}: the C# file header for the license answered" ($headerLines.Count -eq 1 -and $headerLines[0] -ceq $header -and $headerLines[0] -notmatch '[;#]' -and $editorconfig.Contains('dotnet_diagnostic.IDE0073.severity = suggestion')) $editorconfig
         $publish = Join-Path $dest '.github\workflows\publish.yml'
         $wantsPublish = $library -and $case.Host -eq 'github'
         Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)

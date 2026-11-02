@@ -132,6 +132,23 @@ if (Test-Path -LiteralPath $libraryDest) {
         $assemblyVersion = if (Test-Path -LiteralPath $dll) { "$([Reflection.AssemblyName]::GetAssemblyName($dll).Version)" } else { 'missing' }
         $fileVersion = if (Test-Path -LiteralPath $dll) { [Diagnostics.FileVersionInfo]::GetVersionInfo($dll).FileVersion } else { 'missing' }
         Check 'dotnet-library-apache: AssemblyVersion moves only with the major version, FileVersion keeps the exact one' ($assemblyVersion -eq '2.0.0.0' -and $fileVersion -eq '2.5.0') "AssemblyVersion=$assemblyVersion FileVersion=$fileVersion"
+        # IDE0073, raised to a warning for two probe files only, matches a file that starts with the header .editorconfig sets and fails one without it.
+        $editorconfigPath = Join-Path (Get-Location) '.editorconfig'
+        $editorconfigText = [IO.File]::ReadAllText($editorconfigPath)
+        $headed = Join-Path (Get-Location) 'src/Greetings/Headed.cs'
+        $bare = Join-Path (Get-Location) 'src/Greetings/HeadedBare.cs'
+        try {
+            [IO.File]::WriteAllText($editorconfigPath, $editorconfigText + "`n[Headed*.cs]`ndotnet_diagnostic.IDE0073.severity = warning`n")
+            [IO.File]::WriteAllText($headed, "// Copyright $([char]0xA9) NCode Group`n// SPDX-License-Identifier: Apache-2.0`n`nnamespace Greetings;`n`ninternal static class Headed`n{`n}`n")
+            [IO.File]::WriteAllText($bare, "namespace Greetings;`n`ninternal static class HeadedBare`n{`n}`n")
+            $headerOutput = dotnet build src/Greetings 2>&1 | Out-String
+        }
+        finally {
+            [IO.File]::WriteAllText($editorconfigPath, $editorconfigText)
+            [IO.File]::Delete($headed)
+            [IO.File]::Delete($bare)
+        }
+        Check 'dotnet-library-apache: IDE0073 matches a file that starts with the header .editorconfig sets and fails one without it' ($headerOutput -match 'HeadedBare\.cs\(1,1\): error IDE0073' -and $headerOutput -notmatch '[\\/]Headed\.cs\(\d+,\d+\): error IDE0073') (($headerOutput -split "`n" | Select-String -Pattern 'IDE0073' | Select-Object -First 3) -join ' | ')
     }
     finally { Pop-Location }
 }
