@@ -246,6 +246,8 @@ $repos = @{
     ownedLoose = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false))
     oursLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false))
     looseRefused = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false)) -WriteFails @{ 'rulesets/101' = 403 }
+    twoOwnedLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $false), (New-Ruleset 'team rules' -Threads $false))
+    ownedThenOursLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $false), (New-Ruleset 'Protect main' -Threads $false))
     tags = New-Repo -Rulesets @((@{ name = 'release-tags'; target = 'tag'; enforcement = 'active'; conditions = @{ ref_name = @{ include = @('refs/tags/v*'); exclude = @() } }; rules = @(@{ type = 'deletion' }) }))
     noPullRequest = New-Repo -Rulesets @((New-Ruleset 'no force push' @('non_fast_forward')))
     old = New-Repo -Archived $true
@@ -413,6 +415,18 @@ try {
     Check 'threads: a Protect main ruleset without it gets the setting too' ($put -and (@($put.body.PSObject.Properties.Name) -join ',') -eq 'rules' -and ($put.body.rules | Where-Object type -eq 'pull_request').parameters.required_review_thread_resolution -eq $true -and $r.Output.Contains("oursLoose: 'Protect main': require every conversation resolved: set")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'looseRefused')
     Check 'threads: a refused change is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("looseRefused: 'main': require every conversation resolved: not available (HTTP 403") -and $r.Output -notmatch 'FAILED' -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    foreach ($name in 'twoOwnedLoose', 'ownedThenOursLoose') {
+        $r = Invoke-Baseline @('-Repo', $name)
+        $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' })
+        $sent = $puts.Count -eq 2 -and $puts[0].path -eq "repos/NCodeGroup/$name/rulesets/101" -and $puts[1].path -eq "repos/NCodeGroup/$name/rulesets/102"
+        foreach ($put in $puts) { $sent = $sent -and (@($put.body.PSObject.Properties.Name) -join ',') -eq 'rules' -and ($put.body.rules | Where-Object type -eq 'pull_request').parameters.required_review_thread_resolution -eq $true }
+        if ($name -eq 'twoOwnedLoose') {
+            Check 'threads: every ruleset of the owner''s that requires pull requests gets the setting, in order' ($sent -and $r.Output.Contains("twoOwnedLoose: left alone ('owner rules' ") -and $r.Output.Contains("twoOwnedLoose: left alone ('team rules' ")) "$($r.Changes -join '|') $($r.Output)"
+        }
+        else {
+            Check 'threads: a Protect main ruleset gets the setting beside one of the owner''s, and no ruleset is created' ($sent -and $r.Output.Contains("ownedThenOursLoose: 'Protect main': require every conversation resolved: set") -and -not $r.Body) "$($r.Changes -join '|') $($r.Output)"
+        }
+    }
     $r = Invoke-Baseline @('-Repo', 'owned')
     Check 'threads: a ruleset that has it already is not written' (($r.Changes -join '|') -notmatch 'rulesets/101') ($r.Changes -join '|')
 

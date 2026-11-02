@@ -27,7 +27,7 @@
         the ruleset requires and merges only as it allows.
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
-    owner shaped that ruleset. It still turns on "require conversation resolution" in that ruleset, and in a "Protect
+    owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
     main" ruleset an older version of this script made, when it is off, sending only the ruleset's rules with that one
     parameter changed, so no pull request merges past an unresolved discussion; -WhatIf shows it, and a refusal is
     reported without failing the run. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's
@@ -272,12 +272,18 @@ function Set-BranchRuleset {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Name, [string]$Branch, [object[]]$Rulesets)
     $own = $null
+    $others = @()
     foreach ($full in $Rulesets) {
         if ($full.target -ne 'branch' -or $full.enforcement -ne 'active') { continue }
         $onDefault = $full.conditions.ref_name.include -contains '~DEFAULT_BRANCH' -or $full.conditions.ref_name.include -contains "refs/heads/$Branch"
         if (-not $onDefault) { continue }
         if ($full.name -eq $rulesetName) { $own = $full; continue }
-        if ($full.rules.type -contains 'pull_request') { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full; return $true }
+        if ($full.rules.type -contains 'pull_request') { $others += $full }
+    }
+    if ($others.Count) {
+        foreach ($full in $others) { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full }
+        if ($own) { Enable-ThreadResolution $Name $own }
+        return $true
     }
 
     # A ruleset of this name that exists already is changed only when -RequireChecks asks for new checks.
