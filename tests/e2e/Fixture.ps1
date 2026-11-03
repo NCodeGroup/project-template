@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    The helpers the end-to-end tests dot-source: the fixture project, its local origin and gh stand-in, the fixture
+    The helpers the end-to-end tests dot-source: the fixture project, its local origin and the gh and glab stand-ins, the fixture
     environment, the state script, headless Claude Code and the checks.
 
 .DESCRIPTION
     Dot-source it from a test script that has a $failures list: Check adds the name of each failed check to it.
     New-FixtureProject makes the project every end-to-end test starts from: a project made from a snapshot of the
     working tree, with a greeting function and its test, the landing policy `protect: hook`, a bare origin in a
-    github.com folder that has its main branch, and the gh stand-in (gh.ps1) in a bin folder with an empty host folder. It keeps Copier's mirrors in a copier-cache folder in the work folder.
+    github.com folder that has its main branch, and the gh and glab stand-ins (gh.ps1, glab.ps1) in a bin folder with an empty host folder. It keeps Copier's mirrors in a copier-cache folder in the work folder.
     Its -Data adds or overrides template answers, such as code_review for a fixture that runs NCode Review.
     Its -Landing sets keys of the Landing section in AGENTS.md, such as max-review-rounds.
     Each test then writes its own host state for the stand-in.
@@ -86,19 +86,28 @@ exit 0
 exec pwsh -NoProfile -File "$(dirname "$0")/gh.ps1" "$@"
 '@
     if (-not $IsWindows) { chmod +x (Join-Path $Bin 'gh') }
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'glab.ps1') -Destination (Join-Path $Bin 'glab.ps1')
+    [IO.File]::WriteAllText((Join-Path $Bin 'glab.cmd'), "@pwsh -NoProfile -File `"%~dp0glab.ps1`" %*`r`n")
+    Write-Text (Join-Path $Bin 'glab') @'
+#!/usr/bin/env sh
+exec pwsh -NoProfile -File "$(dirname "$0")/glab.ps1" "$@"
+'@
+    if (-not $IsWindows) { chmod +x (Join-Path $Bin 'glab') }
     [IO.File]::WriteAllText((Join-Path $hostDir 'origin.txt'), $Origin)
     [IO.File]::WriteAllText((Join-Path $hostDir 'main.txt'), (git --git-dir=$Origin rev-parse main))
     New-Item -ItemType Directory -Force (Join-Path $Work 'gh-config') | Out-Null
+    New-Item -ItemType Directory -Force (Join-Path $Work 'glab-config') | Out-Null
 }
 
 function Use-FixtureEnvironment([string]$Work, [string]$Bin, [scriptblock]$Body) {
-    $names = 'PATH', 'GH_CONFIG_DIR', 'GH_TOKEN', 'GITHUB_TOKEN', 'CLAUDECODE'
+    $names = 'PATH', 'GH_CONFIG_DIR', 'GLAB_CONFIG_DIR', 'GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'CLAUDECODE'
     $saved = @{}
     foreach ($n in $names) { $saved[$n] = [Environment]::GetEnvironmentVariable($n) }
     try {
         $env:PATH = $Bin + [IO.Path]::PathSeparator + $env:PATH
         $env:GH_CONFIG_DIR = Join-Path $Work 'gh-config'
-        foreach ($n in 'GH_TOKEN', 'GITHUB_TOKEN', 'CLAUDECODE') { [Environment]::SetEnvironmentVariable($n, $null) }
+        $env:GLAB_CONFIG_DIR = Join-Path $Work 'glab-config'
+        foreach ($n in 'GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'CLAUDECODE') { [Environment]::SetEnvironmentVariable($n, $null) }
         & $Body
     }
     finally {

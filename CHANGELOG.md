@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.61.1] - 2026-11-03
+
+### Changed
+
+- No change for projects made from the template. A `glab` stand-in, `tests/e2e/glab.ps1`, serves merge requests, discussions and notes with the `gh` stand-in's `footer.txt` option, and a new end-to-end test, `tests/e2e/Test-AddressFeedbackGitLab.ps1`, runs `/address-feedback` on a GitLab fixture merge request whose notes come back with a Claude Code cloud session's footer, and checks that its discussion reply and top-level note are read back and edited through `glab api --method PUT`; CI runs its fixture setup ([#241](https://github.com/NCodeGroup/project-template/issues/241)).
+- No change for projects made from the template. `tests/e2e/Test-RunIssues.ps1 -Scenario session-footer` runs `/run-issues` with the footer and two fix rounds, and checks that after the second push the run asks the maintainer for `/review` in an `Autopilot:` comment and posts no `/review` comment; the `gh` stand-in's new `delete-fails.txt` makes the run's `/review` comment stay, and its new `footer-pr-only.txt` keeps the footer off the plan snapshot, so the `/review` comment is the first post that comes back with it, and the test checks the run never answers it; CI runs its fixture setup ([#242](https://github.com/NCodeGroup/project-template/issues/242), [#243](https://github.com/NCodeGroup/project-template/issues/243)).
+
+### Fixed
+
+- `/run-issues`, Copilot's `run-issues`, `/address-feedback` and `/run-feedback` test whether a comment is only a slash command after setting aside the agent attribution at its end, so a `/review` comment whose delete failed after it came back with a session footer stays only a slash command, and a later check no longer answers the run's own comment as the maintainer's. Projects get it with `.\.template\Update-Project.ps1` ([#243](https://github.com/NCodeGroup/project-template/issues/243)).
+
 ## [0.61.0] - 2026-11-03
 
 ### Added
@@ -944,7 +955,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.61.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.61.1...HEAD
+[0.61.1]: https://github.com/NCodeGroup/project-template/compare/v0.61.0...v0.61.1
 [0.61.0]: https://github.com/NCodeGroup/project-template/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/NCodeGroup/project-template/compare/v0.59.2...v0.60.0
 [0.59.2]: https://github.com/NCodeGroup/project-template/compare/v0.59.1...v0.59.2
