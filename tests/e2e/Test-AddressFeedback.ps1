@@ -14,6 +14,8 @@
     answered thread is left alone; and that nothing is resolved, merged or edited, which the stand-in also refuses.
     It then runs /address-feedback #2 on a pull request from farewell;touch${IFS}pwned, a branch name with shell
     characters, resumes it once with a go-ahead, and checks that it stopped on the branch name.
+    With -Scenario rest, the stand-in refuses GraphQL and the gh pr, gh issue, gh release and gh repo commands, as a Claude Code
+    cloud session's proxy does, and the run must read and reply through the REST routes.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
@@ -28,6 +30,13 @@
 .PARAMETER CheckOnly
     Check the fixture of an earlier run again, without building it or calling a model.
 
+.PARAMETER Scenario
+    graphql, the default: the stand-in serves GraphQL, as in a local session. rest: host/graphql-refused.txt makes the
+    stand-in refuse GraphQL and the gh pr, gh issue, gh release and gh repo commands as a Claude Code cloud session's
+    proxy does, so the run must read the pull request and its threads and reply through the REST routes; the test then
+    also checks that every thread's reply went through pulls/<number>/comments/<id>/replies. Run both. Without
+    -Scenario, -CheckOnly checks the scenario the fixture was set up for.
+
 .PARAMETER Claude
     The Claude Code CLI. Defaults to claude.
 
@@ -39,12 +48,16 @@
 
 .EXAMPLE
     .\tests\e2e\Test-AddressFeedback.ps1 -SetupOnly
+
+.EXAMPLE
+    .\tests\e2e\Test-AddressFeedback.ps1 -Scenario rest
 #>
 [CmdletBinding()]
 param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-address-feedback-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
+    [ValidateSet('graphql', 'rest')][string]$Scenario = 'graphql',
     [string]$Claude = 'claude',
     [double]$MaxBudgetUsd = 30
 )
@@ -58,6 +71,8 @@ $app = Join-Path $Work 'app'
 $origin = Join-Path $Work 'github.com/fixture/app.git'
 $bin = Join-Path $Work 'bin'
 $hostDir = Join-Path $bin 'host'
+# Without -Scenario, -CheckOnly checks the scenario the fixture was set up for: graphql-refused.txt in the host folder marks rest.
+if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath (Join-Path $hostDir 'graphql-refused.txt'))) { $Scenario = 'rest' }
 $head = 'add-farewell'
 # Git allows this branch name, /address-feedback must refuse it, and unquoted in a POSIX shell it would run touch pwned.
 $unsafeHead = 'farewell;touch${IFS}pwned'
@@ -194,6 +209,7 @@ exit 0
     Write-Text (Join-Path $hostDir 'reviews.json') '[]'
     Write-Text (Join-Path $hostDir 'forbidden.txt') "pr edit`nissue close`n"
     [IO.File]::WriteAllText((Join-Path $hostDir 'head.txt'), $headOid)
+    if ($Scenario -eq 'rest') { Write-Text (Join-Path $hostDir 'graphql-refused.txt') "yes`n" }
 
     # The self-checks below call the stand-in, which changes its state: they run on a copy that is put back afterwards.
     $saved = @{}
@@ -206,9 +222,11 @@ exit 0
         $login = "$(gh api user --jq .login)".Trim()
         Check 'fixture: gh on PATH is the stand-in, signed in as fixture-owner' ($login -eq 'fixture-owner') "login='$login'"
 
-        $view = gh pr view 1 --json number,url,title,state,isDraft,headRefName,headRefOid,isCrossRepository,baseRefName | Out-String | ConvertFrom-Json
-        $ok = $view.state -eq 'OPEN' -and $view.headRefName -eq $head -and $view.headRefOid -eq $headOid -and $view.isCrossRepository -eq $false -and $view.baseRefName -eq 'main'
-        Check 'fixture: pull request #1 is open, from add-farewell at its head on origin, not from a fork' $ok "state='$($view.state)' head='$($view.headRefName)' oid='$($view.headRefOid)' cross=$($view.isCrossRepository)"
+        if ($Scenario -eq 'graphql') {
+            $view = gh pr view 1 --json number,url,title,state,isDraft,headRefName,headRefOid,isCrossRepository,baseRefName | Out-String | ConvertFrom-Json
+            $ok = $view.state -eq 'OPEN' -and $view.headRefName -eq $head -and $view.headRefOid -eq $headOid -and $view.isCrossRepository -eq $false -and $view.baseRefName -eq 'main'
+            Check 'fixture: pull request #1 is open, from add-farewell at its head on origin, not from a fork' $ok "state='$($view.state)' head='$($view.headRefName)' oid='$($view.headRefOid)' cross=$($view.isCrossRepository)"
+        }
 
         $commandText = if (Test-Path -LiteralPath $commandFile) { [IO.File]::ReadAllText($commandFile) } else { '' }
         $readQuery = if ($commandText -match "gh api graphql -F owner='\{owner\}' -F name='\{repo\}' -F number=<number> -f query='(query[^']+)'") { $Matches[1] } else { '' }
@@ -217,73 +235,155 @@ exit 0
         # The checks on the run's replies match these openings, which the command mandates for a fix, a decline and an ask.
         $missing = @($replyOpenings.Values | Where-Object { -not $commandText.Contains("``$_") })
         Check 'fixture: the installed /address-feedback mandates the reply openings the checks match' ($missing.Count -eq 0) "missing: $($missing -join '; ')"
-        $view2 = gh pr view 2 --json number,headRefName,headRefOid | Out-String | ConvertFrom-Json
-        git check-ref-format --branch $unsafeHead | Out-Null
-        $gitAllows = $LASTEXITCODE -eq 0
-        $branchRule = if ($commandText -match '`<head>` doesn''t match `([^`]+)`') { $Matches[1] } else { '' }
-        Check 'fixture: pull request #2 comes from a branch with shell characters that Git allows and the installed /address-feedback refuses' ($view2.headRefName -eq $unsafeHead -and "$(git --git-dir=$origin rev-parse "refs/heads/$unsafeHead")".Trim() -eq $headOid -and $gitAllows -and $branchRule -and $head -match $branchRule -and $unsafeHead -notmatch $branchRule) "head='$($view2.headRefName)' git allows: $gitAllows rule: '$branchRule'"
-
-        $data = $null
-        if ($readQuery) { $data = (gh api graphql -F 'owner={owner}' -F 'name={repo}' -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json).data.repository.pullRequest }
-        $nodes = @($data.comments.nodes) + @($data.reviewThreads.nodes | ForEach-Object { $_.comments.nodes })
-        $answered = @($data.reviewThreads.nodes | Where-Object { Test-Autopilot (@($_.comments.nodes)[-1].body) })
-        $ok = $data -and @($data.comments.nodes).Count -eq 2 -and @($data.reviewThreads.nodes).Count -eq 3 -and
-            @($data.reviewThreads.nodes | Where-Object { $_.isResolved }).Count -eq 0 -and $answered.Count -eq 1 -and $answered[0].id -eq 'PRRT_answered' -and
-            @($nodes | Where-Object { -not $_.authorAssociation }).Count -eq 0 -and
-            -not ($data.comments.pageInfo.hasNextPage -or $data.reviews.pageInfo.hasNextPage -or $data.reviewThreads.pageInfo.hasNextPage)
-        Check 'fixture: the command''s query reads two comments and three open threads, one already answered, each with its authorAssociation' ([bool]$ok) "comments=$(@($data.comments.nodes).Count) threads=$(@($data.reviewThreads.nodes).Count) answered=$($answered.Count)"
-
-        # The authorAssociation check above can fail only if the stand-in serves a missing association as missing.
-        $commentsFile = Join-Path $hostDir 'comments.json'
-        $commentsText = [IO.File]::ReadAllText($commentsFile)
-        $stray = @{ kind = 'pr'; number = 1; url = "$prUrl#issuecomment-1999"; author = @{ login = 'no-association' }; body = 'A comment with no authorAssociation.' }
-        Write-Text $commentsFile (ConvertTo-Json -InputObject (@(Read-HostJson $hostDir 'comments.json') + @($stray)) -Depth 10)
-        $strayNodes = @()
-        if ($readQuery) { $strayNodes = @((gh api graphql -F 'owner={owner}' -F 'name={repo}' -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json).data.repository.pullRequest.comments.nodes | Where-Object { $_.url -eq $stray.url }) }
-        Check 'fixture: the stand-in serves a comment with no authorAssociation without one, not as the owner''s' ($strayNodes.Count -eq 1 -and -not $strayNodes[0].authorAssociation) "nodes=$($strayNodes.Count) authorAssociation='$($strayNodes[0].authorAssociation)'"
-        Write-Text $commentsFile $commentsText
-
-        if ($replyQuery) {
-            $bodyFile = Join-Path $Work 'reply.md'
-            Write-Text $bodyFile 'Autopilot: a reply from the setup check.'
-            $null = gh api graphql -F threadId=PRRT_writer -F "body=@$bodyFile" -f "query=$replyQuery"
-            Remove-Item -LiteralPath $bodyFile
+        if ($Scenario -eq 'graphql') {
+            $view2 = gh pr view 2 --json number,headRefName,headRefOid | Out-String | ConvertFrom-Json
+            git check-ref-format --branch $unsafeHead | Out-Null
+            $gitAllows = $LASTEXITCODE -eq 0
+            $branchRule = if ($commandText -match '`<head>` doesn''t match `([^`]+)`') { $Matches[1] } else { '' }
+            Check 'fixture: pull request #2 comes from a branch with shell characters that Git allows and the installed /address-feedback refuses' ($view2.headRefName -eq $unsafeHead -and "$(git --git-dir=$origin rev-parse "refs/heads/$unsafeHead")".Trim() -eq $headOid -and $gitAllows -and $branchRule -and $head -match $branchRule -and $unsafeHead -notmatch $branchRule) "head='$($view2.headRefName)' git allows: $gitAllows rule: '$branchRule'"
         }
-        $last = @((Get-Thread (Read-Threads) 'PRRT_writer').comments)[-1]
-        Check 'fixture: the command''s thread reply lands on its thread' ("$($last.body)" -eq 'Autopilot: a reply from the setup check.') "last comment: '$($last.body)'"
 
-        $standIn = Join-Path $bin 'gh.ps1'
-        $callsLog = Join-Path $hostDir 'calls.log'
-        # Every mutation and command the stand-in refuses, so that CI fails when a refusal is dropped.
-        $refusals = [ordered]@{
-            'pr merge' = @('pr', 'merge', '1', '--merge')
-            'pr ready' = @('pr', 'ready', '1')
-            'pr close' = @('pr', 'close', '1')
-            'pr edit, which this test forbids' = @('pr', 'edit', '1', '--title', 'Changed')
-            'issue close, which this test forbids' = @('issue', 'close', '1')
-        }
-        foreach ($mutation in 'resolveReviewThread', 'dismissPullRequestReview', 'mergePullRequest', 'markPullRequestReadyForReview',
-            'convertPullRequestToDraft', 'enablePullRequestAutoMerge', 'closePullRequest', 'updatePullRequest', 'minimizeComment',
-            'updateRef', 'deleteRef') {
-            $refusals["the mutation $mutation"] = @('api', 'graphql', '-F', 'id=PRRT_writer', '-f', "query=mutation(`$id: ID!) { $mutation(input: {id: `$id}) { clientMutationId } }")
-        }
-        foreach ($label in $refusals.Keys) {
-            $call = $refusals[$label]
+        if ($Scenario -eq 'graphql') {
+            $data = $null
+            if ($readQuery) { $data = (gh api graphql -F 'owner={owner}' -F 'name={repo}' -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json).data.repository.pullRequest }
+            $nodes = @($data.comments.nodes) + @($data.reviewThreads.nodes | ForEach-Object { $_.comments.nodes })
+            $answered = @($data.reviewThreads.nodes | Where-Object { Test-Autopilot (@($_.comments.nodes)[-1].body) })
+            $ok = $data -and @($data.comments.nodes).Count -eq 2 -and @($data.reviewThreads.nodes).Count -eq 3 -and
+                @($data.reviewThreads.nodes | Where-Object { $_.isResolved }).Count -eq 0 -and $answered.Count -eq 1 -and $answered[0].id -eq 'PRRT_answered' -and
+                @($nodes | Where-Object { -not $_.authorAssociation }).Count -eq 0 -and
+                -not ($data.comments.pageInfo.hasNextPage -or $data.reviews.pageInfo.hasNextPage -or $data.reviewThreads.pageInfo.hasNextPage)
+            Check 'fixture: the command''s query reads two comments and three open threads, one already answered, each with its authorAssociation' ([bool]$ok) "comments=$(@($data.comments.nodes).Count) threads=$(@($data.reviewThreads.nodes).Count) answered=$($answered.Count)"
+
+            # The authorAssociation check above can fail only if the stand-in serves a missing association as missing.
+            $commentsFile = Join-Path $hostDir 'comments.json'
+            $commentsText = [IO.File]::ReadAllText($commentsFile)
+            $stray = @{ kind = 'pr'; number = 1; url = "$prUrl#issuecomment-1999"; author = @{ login = 'no-association' }; body = 'A comment with no authorAssociation.' }
+            Write-Text $commentsFile (ConvertTo-Json -InputObject (@(Read-HostJson $hostDir 'comments.json') + @($stray)) -Depth 10)
+            $strayNodes = @()
+            if ($readQuery) { $strayNodes = @((gh api graphql -F 'owner={owner}' -F 'name={repo}' -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json).data.repository.pullRequest.comments.nodes | Where-Object { $_.url -eq $stray.url }) }
+            Check 'fixture: the stand-in serves a comment with no authorAssociation without one, not as the owner''s' ($strayNodes.Count -eq 1 -and -not $strayNodes[0].authorAssociation) "nodes=$($strayNodes.Count) authorAssociation='$($strayNodes[0].authorAssociation)'"
+            Write-Text $commentsFile $commentsText
+
+            if ($replyQuery) {
+                $bodyFile = Join-Path $Work 'reply.md'
+                Write-Text $bodyFile 'Autopilot: a reply from the setup check.'
+                $null = gh api graphql -F threadId=PRRT_writer -F "body=@$bodyFile" -f "query=$replyQuery"
+                Remove-Item -LiteralPath $bodyFile
+            }
+            $last = @((Get-Thread (Read-Threads) 'PRRT_writer').comments)[-1]
+            Check 'fixture: the command''s thread reply lands on its thread' ("$($last.body)" -eq 'Autopilot: a reply from the setup check.') "last comment: '$($last.body)'"
+
+            $standIn = Join-Path $bin 'gh.ps1'
+            $callsLog = Join-Path $hostDir 'calls.log'
+            # Every mutation and command the stand-in refuses, so that CI fails when a refusal is dropped.
+            $refusals = [ordered]@{
+                'pr merge' = @('pr', 'merge', '1', '--merge')
+                'pr ready' = @('pr', 'ready', '1')
+                'pr close' = @('pr', 'close', '1')
+                'pr edit, which this test forbids' = @('pr', 'edit', '1', '--title', 'Changed')
+                'issue close, which this test forbids' = @('issue', 'close', '1')
+            }
+            foreach ($mutation in 'resolveReviewThread', 'dismissPullRequestReview', 'mergePullRequest', 'markPullRequestReadyForReview',
+                'convertPullRequestToDraft', 'enablePullRequestAutoMerge', 'closePullRequest', 'updatePullRequest', 'minimizeComment',
+                'updateRef', 'deleteRef') {
+                $refusals["the mutation $mutation"] = @('api', 'graphql', '-F', 'id=PRRT_writer', '-f', "query=mutation(`$id: ID!) { $mutation(input: {id: `$id}) { clientMutationId } }")
+            }
+            foreach ($label in $refusals.Keys) {
+                $call = $refusals[$label]
+                $before = @(Get-Content -LiteralPath $callsLog).Count
+                $null = pwsh -NoProfile -File $standIn @call 2>$null
+                $code = $LASTEXITCODE
+                $logged = @(Get-Content -LiteralPath $callsLog | Select-Object -Skip $before | Where-Object { $_ -like "FORBIDDEN $($call[0]) $($call[1])*" }).Count
+                Check "fixture: the stand-in refuses $label" ($code -ne 0 -and $logged -eq 1) "exit code $code, new FORBIDDEN lines $logged"
+            }
+
+            # Claude Code looks up the current branch's pull request with gh pr view <branch>; the stand-in fails it as gh does, not as unsupported.
             $before = @(Get-Content -LiteralPath $callsLog).Count
-            $null = pwsh -NoProfile -File $standIn @call 2>$null
+            $null = pwsh -NoProfile -File $standIn pr view no-such-branch --json url 2>$null
             $code = $LASTEXITCODE
-            $logged = @(Get-Content -LiteralPath $callsLog | Select-Object -Skip $before | Where-Object { $_ -like "FORBIDDEN $($call[0]) $($call[1])*" }).Count
-            Check "fixture: the stand-in refuses $label" ($code -ne 0 -and $logged -eq 1) "exit code $code, new FORBIDDEN lines $logged"
+            $logged = @(Get-Content -LiteralPath $callsLog | Select-Object -Skip $before | Where-Object { $_ -match '^(NOTFOUND|UNSUPPORTED) ' })
+            Check 'fixture: the stand-in fails pr view of a branch with no pull request as gh does, not as an unsupported call' ($code -ne 0 -and $logged.Count -eq 1 -and $logged[0] -like 'NOTFOUND *') "exit code $code, logged: $($logged -join '; ')"
+            $prByBranch = "$(pwsh -NoProfile -File $standIn pr view $head --json url --jq .url)".Trim()
+            Check 'fixture: the stand-in finds pull request #1 by its branch' ($prByBranch -eq $prUrl) "url: '$prByBranch'"
         }
 
-        # Claude Code looks up the current branch's pull request with gh pr view <branch>; the stand-in fails it as gh does, not as unsupported.
-        $before = @(Get-Content -LiteralPath $callsLog).Count
-        $null = pwsh -NoProfile -File $standIn pr view no-such-branch --json url 2>$null
-        $code = $LASTEXITCODE
-        $logged = @(Get-Content -LiteralPath $callsLog | Select-Object -Skip $before | Where-Object { $_ -match '^(NOTFOUND|UNSUPPORTED) ' })
-        Check 'fixture: the stand-in fails pr view of a branch with no pull request as gh does, not as an unsupported call' ($code -ne 0 -and $logged.Count -eq 1 -and $logged[0] -like 'NOTFOUND *') "exit code $code, logged: $($logged -join '; ')"
-        $prByBranch = "$(pwsh -NoProfile -File $standIn pr view $head --json url --jq .url)".Trim()
-        Check 'fixture: the stand-in finds pull request #1 by its branch' ($prByBranch -eq $prUrl) "url: '$prByBranch'"
+        if ($Scenario -eq 'rest') {
+            $standIn = Join-Path $bin 'gh.ps1'
+            $callsLog = Join-Path $hostDir 'calls.log'
+            $before = @(Get-Content -LiteralPath $callsLog -ErrorAction SilentlyContinue).Count
+            $null = pwsh -NoProfile -File $standIn pr view 1 --json number 2>$null
+            $codePr = $LASTEXITCODE
+            $null = pwsh -NoProfile -File $standIn api graphql -f 'query=query { viewer { login } }' 2>$null
+            $codeGql = $LASTEXITCODE
+            $refused = @(Get-Content -LiteralPath $callsLog | Select-Object -Skip $before | Where-Object { $_ -like 'GRAPHQL *' }).Count
+            Check 'fixture: the stand-in refuses GraphQL and gh pr view as the cloud proxy does' ($codePr -ne 0 -and $codeGql -ne 0 -and $refused -eq 2) "exit codes $codePr and $codeGql, GRAPHQL lines $refused"
+
+            $pr1 = gh api 'repos/{owner}/{repo}/pulls/1' | Out-String | ConvertFrom-Json
+            $pr2 = gh api 'repos/{owner}/{repo}/pulls/2' | Out-String | ConvertFrom-Json
+            $ok = $pr1.number -eq 1 -and $pr1.head.ref -eq $head -and $pr1.head.sha -eq $headOid -and $pr1.state -eq 'open' -and $pr1.head.repo.full_name -eq 'fixture/app' -and $pr2.number -eq 2 -and $pr2.head.ref -eq $unsafeHead
+            Check 'fixture: the REST pull request read gives #1 from add-farewell at its head, and #2 from the branch with shell characters' ([bool]$ok) "#1 head='$($pr1.head.ref)' sha='$($pr1.head.sha)' #2 head='$($pr2.head.ref)'"
+
+            $restThreads = @(gh api 'repos/{owner}/{repo}/pulls/1/ccr/review_threads' | Out-String | ConvertFrom-Json)
+            $restComments = @(gh api 'repos/{owner}/{repo}/pulls/1/comments?per_page=100&page=1' | Out-String | ConvertFrom-Json)
+            $ok = $restThreads.Count -eq 3 -and @($restThreads | Where-Object { $_.resolved }).Count -eq 0 -and $restComments.Count -eq 4 -and
+                @($restComments | Where-Object { -not $_.author_association }).Count -eq 0
+            $restAnswered = @($restThreads | Where-Object { $lastId = @($_.comment_ids)[-1]; Test-Autopilot (@($restComments | Where-Object { $_.id -eq $lastId })[0].body) })
+            $ok = $ok -and $restAnswered.Count -eq 1
+            Check 'fixture: the REST thread reads give three open threads, one already answered, with their comments and associations' ([bool]$ok) "threads=$($restThreads.Count) comments=$($restComments.Count) answered=$($restAnswered.Count)"
+
+            $restTop = @(gh api 'repos/{owner}/{repo}/issues/1/comments?per_page=100&page=1' | Out-String | ConvertFrom-Json)
+            $restReviews = @(gh api 'repos/{owner}/{repo}/pulls/1/reviews?per_page=100&page=1' | Out-String | ConvertFrom-Json)
+            Check 'fixture: the REST top-level comment and review reads give the stranger''s request and the question' ($restTop.Count -eq 2 -and $restReviews.Count -eq 0) "comments=$($restTop.Count) reviews=$($restReviews.Count)"
+
+            $paged = @(gh api -X GET 'repos/{owner}/{repo}/pulls/1/comments' -f per_page=1 -f page=4 | Out-String | ConvertFrom-Json)
+            Check 'fixture: the REST review comment read pages with -X GET and -f fields' ($paged.Count -eq 1 -and [long]$paged[0].in_reply_to_id -eq 2003) "comments=$($paged.Count) in_reply_to_id='$($paged[0].in_reply_to_id)'"
+
+            $pagedTop = @(gh api -XGET 'repos/{owner}/{repo}/issues/1/comments' -f per_page=1 -f page=2 | Out-String | ConvertFrom-Json)
+            $topExit = $LASTEXITCODE
+            $pagedReviews = @(gh api --method=GET 'repos/{owner}/{repo}/pulls/1/reviews' -f per_page=1 -f page=1 | Out-String | ConvertFrom-Json)
+            $reviewsExit = $LASTEXITCODE
+            $ok = $topExit -eq 0 -and $pagedTop.Count -eq 1 -and [long]$pagedTop[0].id -eq [long]$restTop[1].id -and $reviewsExit -eq 0 -and $pagedReviews.Count -eq 0
+            Check 'fixture: the REST top-level comment and review reads page with -XGET, --method=GET and -f fields' ([bool]$ok) "comments=$($pagedTop.Count) (exit $topExit) id='$($pagedTop[0].id)' expected '$($restTop[1].id)' reviews=$($pagedReviews.Count) (exit $reviewsExit)"
+
+            $bodyFile = Join-Path $Work 'reply.md'
+            Write-Text $bodyFile 'Autopilot: a top-level comment from the setup check.'
+            $posted = gh api -XPOST 'repos/{owner}/{repo}/issues/1/comments' -F "body=@$bodyFile" | Out-String | ConvertFrom-Json
+            $stored = @(Read-HostJson $hostDir 'comments.json' | Where-Object { $_ -and $_.kind -eq 'pr' -and $_.number -eq 1 -and "$($_.body)".Trim() -eq 'Autopilot: a top-level comment from the setup check.' })
+            $ok = $posted.id -and "$($posted.html_url)" -match '#issuecomment-(\d+)$' -and [long]$Matches[1] -eq [long]$posted.id -and $stored.Count -eq 1
+            Check 'fixture: a REST top-level comment lands on the pull request' ([bool]$ok) "html_url='$($posted.html_url)' id='$($posted.id)' stored=$($stored.Count)"
+
+            Write-Text $bodyFile 'Autopilot: a first reply from the setup check.'
+            $botBefore = @((Get-Thread (Read-Threads) 'PRRT_bot').comments).Count
+            $null = gh api -X POST 'repos/{owner}/{repo}/pulls/1/comments/2002/replies' -F "body=@$bodyFile"
+            $botAfter = @((Get-Thread (Read-Threads) 'PRRT_bot').comments).Count
+            Check 'fixture: a REST reply sent with -X POST first lands on its thread' ($botAfter -eq $botBefore + 1) "PRRT_bot comments before $botBefore, after $botAfter"
+
+            Write-Text $bodyFile 'Autopilot: a reply from the setup check.'
+            $null = gh api 'repos/{owner}/{repo}/pulls/1/comments/2001/replies' -F "body=@$bodyFile"
+            Remove-Item -LiteralPath $bodyFile
+            $last = @((Get-Thread (Read-Threads) 'PRRT_writer').comments)[-1]
+            Check 'fixture: a REST reply lands on its thread' ("$($last.body)" -eq 'Autopilot: a reply from the setup check.') "last comment: '$($last.body)'"
+
+            # Every REST route the stand-in refuses, so that CI fails when a refusal is dropped.
+            $restRefusals = @(
+                , @('api', '-X', 'POST', 'repos/{owner}/{repo}/pulls/1/ccr/comments/2001/resolve')
+                , @('api', '-X', 'POST', 'repos/{owner}/{repo}/pulls/1/ccr/comments/2001/unresolve')
+                , @('api', '-X', 'PUT', 'repos/{owner}/{repo}/pulls/1/ccr/auto_merge')
+                , @('api', '-X', 'DELETE', 'repos/{owner}/{repo}/pulls/1/ccr/auto_merge')
+                , @('api', '-X', 'POST', 'repos/{owner}/{repo}/pulls/1/ccr/ready_for_review')
+                , @('api', '-X', 'POST', 'repos/{owner}/{repo}/pulls/1/ccr/convert_to_draft')
+                , @('api', '-X', 'PATCH', 'repos/{owner}/{repo}/pulls/1', '-f', 'title=x')
+            )
+            $bad = @()
+            foreach ($call in $restRefusals) {
+                $before = @(Get-Content -LiteralPath $callsLog).Count
+                $null = pwsh -NoProfile -File $standIn @call 2>$null
+                $code = $LASTEXITCODE
+                $logged = @(Get-Content -LiteralPath $callsLog | Select-Object -Skip $before | Where-Object { $_ -like 'FORBIDDEN *' }).Count
+                if ($code -eq 0 -or $logged -ne 1) { $bad += "$($call -join ' ') (exit $code, FORBIDDEN lines $logged)" }
+            }
+            Check 'fixture: the stand-in refuses resolving, auto-merge, draft changes and editing the pull request through REST' ($bad.Count -eq 0) "not refused: $($bad -join '; ')"
+        }
     }
     Remove-Item -LiteralPath $hostDir -Recurse -Force
     New-Item -ItemType Directory -Force $hostDir | Out-Null
@@ -340,7 +440,9 @@ if (-not $CheckOnly) {
         if ($first -and $first.total_cost_usd) { $script:cost += [double]$first.total_cost_usd }
         $script:sessionId = if ($first) { "$($first.session_id)" } else { '' }
         $callsPath = Join-Path $hostDir 'calls.log'
-        $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match '^CALL (pr comment|api graphql .*addPullRequestReviewThreadReply)' }).Count
+        # With the rest scenario a refused gh pr comment or GraphQL reply is also a CALL line, so only a REST post counts.
+        $repliedPattern = if ($Scenario -eq 'rest') { '^CALL api .*(/replies|/issues/\d+/comments)\b.*(-f|-F|--field|--raw-field) ' } else { '^CALL (pr comment|api graphql .*addPullRequestReviewThreadReply|api .*(/replies|/issues/\d+/comments)\b.*(-f|-F|--field|--raw-field) )' }
+        $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match $repliedPattern -and $_ -notmatch '(?i)\s(-X\s*=?\s*|--method[ =])GET\b' }).Count
         if (-not $replied -and $first -and $first.session_id) {
             $second = Invoke-Claude @claudeArgs -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $first.session_id -Index 2
             Check 'Claude Code run 2 returned a session' ($second -and $second.session_id) 'no session_id in the output'
@@ -427,6 +529,29 @@ Use-FixtureEnvironment $Work $bin {
     Check "the stranger's CI request becomes an ask: `"$($replyOpenings.ask)`"" ($askReply.Count -ge 1) "new top-level comments: $($new.Count)"
     $answer = @($new | Where-Object { Test-QuestionAnswer "$($_.body)" })
     Check 'the question gets an answer: only tests/Test-Greeting.ps1 calls Get-Farewell' ($answer.Count -ge 1) "new top-level comments: $($new.Count)"
+
+    if ($Scenario -eq 'rest') {
+        $refusedReads = @($calls | Where-Object { $_ -match '^GRAPHQL ' })
+        $restReads = @($calls | Where-Object { $_ -match '^CALL api .*ccr/review_threads' })
+        Check 'the run met the GraphQL refusal and read through REST' ($refusedReads.Count -ge 1 -and $restReads.Count -ge 1) "GRAPHQL lines: $($refusedReads.Count), review_threads reads: $($restReads.Count)"
+
+        # A refused attempt is logged as a CALL line and a GRAPHQL line, so only a mutation that was not refused counts as a reply through GraphQL.
+        $viaGraphql = @($calls | Where-Object { $_ -match '^CALL .*addPullRequestReviewThreadReply' }).Count - @($calls | Where-Object { $_ -match '^GRAPHQL .*addPullRequestReviewThreadReply' }).Count
+        $viaRest = @()
+        foreach ($id in 'PRRT_writer', 'PRRT_bot') {
+            $thread = Get-Thread $threads $id
+            $first = @($thread.comments)[0]
+            $commentId = if ("$($first.url)" -match '#discussion_r(\d+)$') { $Matches[1] } else { '' }
+            $gotReply = @($thread.comments).Count -gt 1
+            $posted = $commentId -and @($calls | Where-Object { $_ -match "^CALL api .*pulls/1/comments/$commentId/replies\b" }).Count -ge 1
+            if ($gotReply -and $posted) { $viaRest += $id }
+        }
+        Check 'every thread reply went through pulls/<number>/comments/<id>/replies' ($viaRest.Count -eq 2 -and $viaGraphql -le 0) "threads replied through REST: $($viaRest -join ', '); replies through the GraphQL mutation: $viaGraphql"
+
+        $prComments = @($calls | Where-Object { $_ -match '^CALL pr comment\b' }).Count
+        $prCommentsRefused = @($calls | Where-Object { $_ -match '^GRAPHQL pr comment\b' }).Count
+        Check 'no top-level comment went through gh pr comment' ($prComments -eq $prCommentsRefused) "CALL pr comment lines: $prComments, refused: $prCommentsRefused"
+    }
 
     $written = @($new | ForEach-Object { $_.body }) + @($threads | ForEach-Object { @($_.comments) | Select-Object -Skip $(if ($_.id -eq 'PRRT_answered') { 2 } else { 1 }) } | ForEach-Object { $_.body })
     $unmarked = @($written | Where-Object { -not (Test-Autopilot $_) })
