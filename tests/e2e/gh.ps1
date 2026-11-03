@@ -23,6 +23,7 @@ An optional footer-pr-only.txt keeps the footer off issue comments, such as a pl
 On that route it reads the method as gh does, from `-X PATCH`, `-XPATCH`, `-X=PATCH` or `--method=PATCH`, and takes a
 call with `-f`, `-F`, `--field`, `--raw-field` or `--input` and no method as the POST gh sends, which it refuses.
 `api repos/<owner>/<repo>/pulls?head=<owner>:<branch>&state=all`, `api repos/<owner>/<repo>/issues/<number>` and `api repos/<owner>/<repo>/releases/tags/<tag>` answer the state script's REST calls from `prs.json` and `issues.json`, a release always not found (logged as NOTFOUND).
+An optional graphql-refused.txt makes it refuse gh api graphql and the pr, issue, release and repo commands as a Claude Code cloud session's proxy does (logged as GRAPHQL), so a command must use the REST routes below.
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -229,6 +230,10 @@ if (Test-Path -LiteralPath $forbiddenFile) {
     foreach ($line in [IO.File]::ReadAllLines($forbiddenFile)) {
         if ($line.Trim() -and "$($args[0]) $($args[1])" -eq $line.Trim()) { Stop-Call FORBIDDEN "gh stand-in: $($line.Trim()) is not allowed in this test" }
     }
+}
+
+if ((Test-Path -LiteralPath (Join-Path $hostDir 'graphql-refused.txt')) -and ("$($args[0])" -in 'pr', 'issue', 'release', 'repo' -or "$($args[0]) $($args[1])" -eq 'api graphql')) {
+    Stop-Call GRAPHQL 'HTTP 403: GitHub GraphQL is not available from Claude Code sessions; use the REST API (gh api repos/{owner}/{repo}/...).'
 }
 
 if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/commits/([0-9a-fA-F]{7,40})/check-runs(?:\?(.*))?$') {
