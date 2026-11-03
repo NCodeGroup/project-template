@@ -86,19 +86,28 @@ exit 0
 exec pwsh -NoProfile -File "$(dirname "$0")/gh.ps1" "$@"
 '@
     if (-not $IsWindows) { chmod +x (Join-Path $Bin 'gh') }
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'glab.ps1') -Destination (Join-Path $Bin 'glab.ps1')
+    [IO.File]::WriteAllText((Join-Path $Bin 'glab.cmd'), "@pwsh -NoProfile -File `"%~dp0glab.ps1`" %*`r`n")
+    Write-Text (Join-Path $Bin 'glab') @'
+#!/usr/bin/env sh
+exec pwsh -NoProfile -File "$(dirname "$0")/glab.ps1" "$@"
+'@
+    if (-not $IsWindows) { chmod +x (Join-Path $Bin 'glab') }
     [IO.File]::WriteAllText((Join-Path $hostDir 'origin.txt'), $Origin)
     [IO.File]::WriteAllText((Join-Path $hostDir 'main.txt'), (git --git-dir=$Origin rev-parse main))
     New-Item -ItemType Directory -Force (Join-Path $Work 'gh-config') | Out-Null
+    New-Item -ItemType Directory -Force (Join-Path $Work 'glab-config') | Out-Null
 }
 
 function Use-FixtureEnvironment([string]$Work, [string]$Bin, [scriptblock]$Body) {
-    $names = 'PATH', 'GH_CONFIG_DIR', 'GH_TOKEN', 'GITHUB_TOKEN', 'CLAUDECODE'
+    $names = 'PATH', 'GH_CONFIG_DIR', 'GLAB_CONFIG_DIR', 'GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'CLAUDECODE'
     $saved = @{}
     foreach ($n in $names) { $saved[$n] = [Environment]::GetEnvironmentVariable($n) }
     try {
         $env:PATH = $Bin + [IO.Path]::PathSeparator + $env:PATH
         $env:GH_CONFIG_DIR = Join-Path $Work 'gh-config'
-        foreach ($n in 'GH_TOKEN', 'GITHUB_TOKEN', 'CLAUDECODE') { [Environment]::SetEnvironmentVariable($n, $null) }
+        $env:GLAB_CONFIG_DIR = Join-Path $Work 'glab-config'
+        foreach ($n in 'GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'CLAUDECODE') { [Environment]::SetEnvironmentVariable($n, $null) }
         & $Body
     }
     finally {
