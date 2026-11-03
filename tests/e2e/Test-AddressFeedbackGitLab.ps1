@@ -265,7 +265,7 @@ Use-FixtureEnvironment $Work $bin {
         })
     Check 'the question got a top-level Autopilot: note naming it, with no footer' ($answer.Count -ge 1) "top-level Autopilot: notes: $($topNotes.Count); naming the question and Test-Greeting.ps1 without a footer: $($answer.Count)"
 
-    $puts = @($calls | Where-Object { $_ -match '^CALL api\b.*(--method[ =]|-X\s*)PUT\b.*/notes/' })
+    $puts = @($calls | Where-Object { $_ -match '^CALL api\b(?=.*(--method[ =]|-X\s*)PUT\b).*/notes/\d+' })
     Check 'the run read each note back and edited out the footer with PUT' ($puts.Count -ge 1) "PUT calls on notes: $($puts.Count)"
 
     $resolvedNotes = @($discussions | ForEach-Object { $_.notes } | Where-Object { $_.resolved -eq $true })

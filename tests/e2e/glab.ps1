@@ -50,10 +50,6 @@ function Get-Option([string[]]$Names) {
     }
     return $null
 }
-function Test-Flag([string[]]$Names) {
-    foreach ($arg in $script:CallArgs) { if ("$arg" -in $Names) { return $true } }
-    return $false
-}
 function Get-Field([string]$Key) {
     $list = @($script:CallArgs)
     for ($i = 0; $i -lt $list.Count - 1; $i++) {
@@ -105,7 +101,9 @@ function Get-NextNoteId($Discussions) {
 }
 # A new note by the fixture owner with the body the call sent, saved with the footer if there is one.
 function New-Note([long]$Id, [bool]$Resolvable) {
-    return @{ id = $Id; body = (Get-SavedBody (Get-Field 'body')); author = @{ id = 1; username = 'fixture-owner' }; system = $false; resolvable = $Resolvable; resolved = $false }
+    $body = Get-Field 'body'
+    if ($null -eq $body) { Stop-Call UNSUPPORTED 'glab stand-in: a note needs a body field' }
+    return @{ id = $Id; body = (Get-SavedBody $body); author = @{ id = 1; username = 'fixture-owner' }; system = $false; resolvable = $Resolvable; resolved = $false }
 }
 
 # The api routes: a merge request's discussions, notes (a note read back, edited or deleted by its id, as the commands do
