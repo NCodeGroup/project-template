@@ -396,7 +396,7 @@ if (-not $CheckOnly) {
         if ($first -and $first.total_cost_usd) { $script:cost += [double]$first.total_cost_usd }
         $script:sessionId = if ($first) { "$($first.session_id)" } else { '' }
         $callsPath = Join-Path $hostDir 'calls.log'
-        $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match '^CALL (pr comment|api graphql .*addPullRequestReviewThreadReply)' }).Count
+        $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match '^CALL (pr comment|api graphql .*addPullRequestReviewThreadReply|api .*(/replies|/issues/\d+/comments)\b.*(-f|-F|--field|--raw-field) )' }).Count
         if (-not $replied -and $first -and $first.session_id) {
             $second = Invoke-Claude @claudeArgs -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $first.session_id -Index 2
             Check 'Claude Code run 2 returned a session' ($second -and $second.session_id) 'no session_id in the output'
@@ -483,6 +483,29 @@ Use-FixtureEnvironment $Work $bin {
     Check "the stranger's CI request becomes an ask: `"$($replyOpenings.ask)`"" ($askReply.Count -ge 1) "new top-level comments: $($new.Count)"
     $answer = @($new | Where-Object { Test-QuestionAnswer "$($_.body)" })
     Check 'the question gets an answer: only tests/Test-Greeting.ps1 calls Get-Farewell' ($answer.Count -ge 1) "new top-level comments: $($new.Count)"
+
+    if ($Scenario -eq 'rest') {
+        $refusedReads = @($calls | Where-Object { $_ -match '^GRAPHQL ' })
+        $restReads = @($calls | Where-Object { $_ -match '^CALL api .*ccr/review_threads' })
+        Check 'the run met the GraphQL refusal and read through REST' ($refusedReads.Count -ge 1 -and $restReads.Count -ge 1) "GRAPHQL lines: $($refusedReads.Count), review_threads reads: $($restReads.Count)"
+
+        # A refused attempt is logged as a CALL line and a GRAPHQL line, so only a mutation that was not refused counts as a reply through GraphQL.
+        $viaGraphql = @($calls | Where-Object { $_ -match '^CALL .*addPullRequestReviewThreadReply' }).Count - @($calls | Where-Object { $_ -match '^GRAPHQL .*addPullRequestReviewThreadReply' }).Count
+        $viaRest = @()
+        foreach ($id in 'PRRT_writer', 'PRRT_bot') {
+            $thread = Get-Thread $threads $id
+            $first = @($thread.comments)[0]
+            $commentId = if ("$($first.url)" -match '#discussion_r(\d+)$') { $Matches[1] } else { '' }
+            $gotReply = @($thread.comments).Count -gt 1
+            $posted = $commentId -and @($calls | Where-Object { $_ -match "^CALL api .*pulls/1/comments/$commentId/replies\b" }).Count -ge 1
+            if ($gotReply -and $posted) { $viaRest += $id }
+        }
+        Check 'every thread reply went through pulls/<number>/comments/<id>/replies' ($viaRest.Count -eq 2 -and $viaGraphql -le 0) "threads replied through REST: $($viaRest -join ', '); replies through the GraphQL mutation: $viaGraphql"
+
+        $prComments = @($calls | Where-Object { $_ -match '^CALL pr comment\b' }).Count
+        $prCommentsRefused = @($calls | Where-Object { $_ -match '^GRAPHQL pr comment\b' }).Count
+        Check 'no top-level comment went through gh pr comment' ($prComments -eq $prCommentsRefused) "CALL pr comment lines: $prComments, refused: $prCommentsRefused"
+    }
 
     $written = @($new | ForEach-Object { $_.body }) + @($threads | ForEach-Object { @($_.comments) | Select-Object -Skip $(if ($_.id -eq 'PRRT_answered') { 2 } else { 1 }) } | ForEach-Object { $_.body })
     $unmarked = @($written | Where-Object { -not (Test-Autopilot $_) })
