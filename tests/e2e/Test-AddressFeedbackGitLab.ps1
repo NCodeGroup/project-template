@@ -257,10 +257,15 @@ Use-FixtureEnvironment $Work $bin {
     Check 'the writer''s thread got one Autopilot: reply naming the commit, with no footer' ([bool]$ok) "notes after the first: $($writerNotes.Count); last: '$writerBody'"
 
     $topNotes = @($discussions | Where-Object { $_.individual_note -and @($_.notes).Count -eq 1 } | ForEach-Object { $_.notes } | Where-Object { "$($_.body)".TrimStart().StartsWith('Autopilot:') })
-    $answer = @($topNotes | Where-Object { "$($_.body)".Contains('Test-Greeting.ps1') -and (& $noFooter $_.body) })
-    Check 'the question got a top-level Autopilot: note naming it, with no footer' ($answer.Count -ge 1) "top-level Autopilot: notes: $($topNotes.Count); naming Test-Greeting.ps1 without a footer: $($answer.Count)"
+    $questionUrl = "$($mrUrl)#note_4002"
+    $answer = @($topNotes | Where-Object {
+            $body = "$($_.body)"
+            $text = $body.Replace($questionUrl, '') -replace '^\s*Autopilot:', ''
+            $body.Contains($questionUrl) -and $text -match 'Test-Greeting\.ps1' -and $text -match "(?i)\b(no|not|only|nowhere|none)\b|n't\b" -and $text -notmatch '(?i)\byes\b' -and (& $noFooter $body)
+        })
+    Check 'the question got a top-level Autopilot: note naming it, with no footer' ($answer.Count -ge 1) "top-level Autopilot: notes: $($topNotes.Count); naming the question and Test-Greeting.ps1 without a footer: $($answer.Count)"
 
-    $puts = @($calls | Where-Object { $_ -match '^CALL api\b.*(--method|-X)\s+PUT\b.*/notes/' })
+    $puts = @($calls | Where-Object { $_ -match '^CALL api\b.*(--method[ =]|-X\s*)PUT\b.*/notes/' })
     Check 'the run read each note back and edited out the footer with PUT' ($puts.Count -ge 1) "PUT calls on notes: $($puts.Count)"
 
     $resolvedNotes = @($discussions | ForEach-Object { $_.notes } | Where-Object { $_.resolved -eq $true })
