@@ -157,7 +157,7 @@ function Add-ReviewSeed([int]$Number, [string]$PrUrl, [string]$SeedName = 'revie
     foreach ($t in @($seed.threads | Where-Object { $_ })) {
         $id = 2000 + $threads.Count + 1
         $threadComments = @(@{ author = $t.author; authorAssociation = $t.authorAssociation; body = $t.body; url = "$PrUrl#discussion_r$id" })
-        foreach ($reply in $t.replies) { $threadComments += @{ author = $reply.author; authorAssociation = $reply.authorAssociation; body = $reply.body; url = "$PrUrl#discussion_r$id-$($threadComments.Count)" } }
+        foreach ($reply in $t.replies) { $threadComments += @{ author = $reply.author; authorAssociation = $reply.authorAssociation; body = $reply.body; url = "$PrUrl#discussion_r$id$($threadComments.Count)" } }
         $threads += @{
             id = "PRRT_$id"; key = $t.key; number = $Number; isResolved = $false; isOutdated = $false; path = $t.path; line = $t.line
             comments = $threadComments
@@ -208,6 +208,18 @@ function Set-ReviewRequest([int]$Number) {
 # A comment without an authorAssociation is served without one, never as the owner's.
 function Get-CommentNode($Comment) {
     return @{ author = $Comment.author; authorAssociation = $Comment.authorAssociation; body = $Comment.body; url = $Comment.url }
+}
+
+function Get-RestId([string]$Url) {
+    if ($Url -match '#(?:discussion_r|issuecomment-|pullrequestreview-)(\d+)$') { return [long]$Matches[1] }
+    return 0
+}
+
+function Get-RestUser($Author) {
+    $login = "$($Author.login)"
+    $isBot = "$($Author.__typename)" -eq 'Bot' -or $login.EndsWith('[bot]')
+    if ($isBot -and -not $login.EndsWith('[bot]')) { $login = "$login[bot]" }
+    return @{ login = $login; type = $(if ($isBot) { 'Bot' } else { 'User' }) }
 }
 
 if ("$($args[0])" -eq '--version') { 'gh version 2.99.0 (stand-in)'; exit 0 }
