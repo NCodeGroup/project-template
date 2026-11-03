@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    The helpers the end-to-end tests dot-source: the fixture project, its local origin and gh stand-in, the fixture
+    The helpers the end-to-end tests dot-source: the fixture project, its local origin and the gh and glab stand-ins, the fixture
     environment, the state script, headless Claude Code and the checks.
 
 .DESCRIPTION
     Dot-source it from a test script that has a $failures list: Check adds the name of each failed check to it.
     New-FixtureProject makes the project every end-to-end test starts from: a project made from a snapshot of the
     working tree, with a greeting function and its test, the landing policy `protect: hook`, a bare origin in a
-    github.com folder that has its main branch, and the gh stand-in (gh.ps1) in a bin folder with an empty host folder. It keeps Copier's mirrors in a copier-cache folder in the work folder.
+    github.com folder that has its main branch, and the gh and glab stand-ins (gh.ps1, glab.ps1) in a bin folder with an empty host folder. It keeps Copier's mirrors in a copier-cache folder in the work folder.
     Its -Data adds or overrides template answers, such as code_review for a fixture that runs NCode Review.
     Its -Landing sets keys of the Landing section in AGENTS.md, such as max-review-rounds.
     Each test then writes its own host state for the stand-in.

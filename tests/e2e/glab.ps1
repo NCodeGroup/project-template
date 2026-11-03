@@ -17,6 +17,7 @@ each note it saves, as a Claude Code cloud session's tooling does.
 With `--method PUT` it saves the `body` field as given, with no footer, and with `--method DELETE` it deletes the note, and its discussion when no note is left; the id of a note it has given is never given again (`last-note-id.txt`).
 `api projects/<project>/members/all/<id>` answers a project member of `members.json` by user id.
 Any `resolved` field, or a PUT to a discussion, is refused as FORBIDDEN, and any other route under `projects/` as UNSUPPORTED.
+It reads the method as glab does, from --method POST, --method=POST, -X POST or -XPOST, and takes a call with -f, -F, --field, --raw-field or --input and no method as a POST.
 `--paginate`, a `?query` on the path and the other flags of `glab api` are ignored.
 #>
 $ErrorActionPreference = 'Stop'
@@ -69,31 +70,6 @@ function Get-Field([string]$Key) {
     }
     return $null
 }
-function Write-Result($Value) {
-    $fields = Get-Option '--json'
-    if ($fields) {
-        $keys = $fields -split ','
-        $pick = {
-            param($item)
-            $picked = @{}
-            foreach ($key in $keys) { if ($item.ContainsKey($key)) { $picked[$key] = $item[$key] } }
-            $picked
-        }
-        if ($Value -is [hashtable]) { $Value = & $pick $Value }
-        elseif ($Value -is [array]) { $Value = @($Value | ForEach-Object { & $pick $_ }) }
-    }
-    $jq = Get-Option '--jq'
-    if ($jq -and $jq -match '^(\.[A-Za-z_]\w*)+$') {
-        $current = $Value
-        foreach ($key in $jq.Substring(1) -split '\.') {
-            if ($current -is [hashtable] -and $current.ContainsKey($key)) { $current = $current[$key] } else { $current = $null; break }
-        }
-        if ($current -is [string] -or $current -is [ValueType]) { "$current" }
-        else { ConvertTo-Json -InputObject $current -Depth 10 }
-        return
-    }
-    ConvertTo-Json -InputObject $Value -Depth 10
-}
 function Stop-Call([string]$Kind, [string]$Message, $CallArgs = $script:CallArgs) {
     [IO.File]::AppendAllText($callsLog, "$Kind $($CallArgs -join ' ')`n")
     [Console]::Error.WriteLine($Message)
@@ -138,6 +114,10 @@ $path = @($args | Select-Object -Skip 1 | Where-Object { "$_" -match '^(projects
 if ("$($args[0])" -eq 'api' -and $path -and "$path" -ne 'user') {
     $route = "$path".Split('?')[0]
     $method = "$(Get-Option '--method', '-X')".ToUpperInvariant()
+    # As glab does, a method can be attached to -X, as in -XPOST, and a call with fields or --input and no method is a POST.
+    $attachedMethod = @($args | Where-Object { "$_" -cmatch '^-X[A-Za-z]+$' }) | Select-Object -First 1
+    if (-not $method -and $attachedMethod) { $method = "$attachedMethod".Substring(2).ToUpperInvariant() }
+    if (-not $method -and @($args | Where-Object { "$_" -in '-f', '-F', '--field', '--raw-field', '--input' -or "$_" -match '^--(field|raw-field|input)=' }).Count) { $method = 'POST' }
     if (-not $method) { $method = 'GET' }
     if ($null -ne (Get-Field 'resolved')) { Stop-Call FORBIDDEN 'glab stand-in: resolving is not allowed' }
     if ($route -match '^projects/[^/]+/merge_requests/(\d+)/discussions$' -and $method -eq 'GET') {
