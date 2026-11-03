@@ -352,7 +352,10 @@ if ($args[0] -eq 'api') {
     if (-not (Test-Path $file)) { exit 1 }
     $responses = [IO.File]::ReadAllText($file) | ConvertFrom-Json
     $path = @($args[1..($args.Count - 1)] | Where-Object { -not "$_".StartsWith('-') })[0]
-    if ($path -match '^repos/[^/]+/[^/]+/pulls\?') { [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0 }
+    if ($path -match '^repos/[^/]+/[^/]+/pulls\?') {
+        [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'pulls-path.txt'), $path)
+        [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0
+    }
     if ($path -match '^repos/[^/]+/[^/]+/issues/(\d+)$') {
         $number = $Matches[1]
         $file = Join-Path $PSScriptRoot 'issues.json'
@@ -503,6 +506,8 @@ try {
     Set-MergedRequest $gh.Squash $gh.Head -GitHub
     $r = Test-State (Get-State $gh.Repo) @{ host = 'github'; pr = '6 MERGED'; merge = $gh.Squash; landed = 'yes' }
     Check 'local: a merged GitHub pull request that holds HEAD is landed' $r.Ok $r.Detail
+    $pullsPath = [IO.File]::ReadAllText((Join-Path $bin 'pulls-path.txt'))
+    Check 'pr: the GitHub pull request list asks for every state of this branch, with its colon encoded so gh fills no :name placeholder' ($pullsPath -ceq 'repos/{owner}/{repo}/pulls?head={owner}%3Aworktree-merged&state=all&per_page=100') "path: $pullsPath"
 
     Set-MergedRequest $gh.Twin $gh.Head -GitHub
     $r = Test-State (Get-State $gh.Repo) @{ landed = 'no' }
@@ -621,7 +626,7 @@ try {
     Push-Location $gh.Repo
     try {
         Invoke-Git push -q origin :refs/tags/v0.2.0
-        Invoke-Git tag -d v0.2.0
+        Invoke-Git tag -d v0.2.0 | Out-Null
     }
     finally { Pop-Location }
     Remove-Item -LiteralPath (Join-Path $gh.Repo 'AGENTS.md')

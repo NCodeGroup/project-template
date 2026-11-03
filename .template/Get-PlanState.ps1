@@ -388,7 +388,8 @@ try {
     if ($hostName -ne 'none' -and $release -ne '-') { $tagsCall = Start-Concurrent $folder 'Get-OriginTags' -Functions 'Get-OriginTags' }
     $protectedCall = Start-Concurrent $folder 'Get-Protected' @($hostName, $default, $policy['protect']) -Functions 'Get-Protected', 'Invoke-HostApi'
     if ($hasCli -and $branch -ne '-' -and $branch -ne $default) {
-        $requestsCall = if ($hostName -eq 'github') { Start-Concurrent $folder 'gh' @('api', "repos/{owner}/{repo}/pulls?head={owner}:$([uri]::EscapeDataString($branch))&state=all&per_page=100") }
+        # The colon is written %3A: gh api fills :owner, :repo and :branch as well as {owner}, so a branch such as repo-x would lose its name.
+        $requestsCall = if ($hostName -eq 'github') { Start-Concurrent $folder 'gh' @('api', "repos/{owner}/{repo}/pulls?head={owner}%3A$([uri]::EscapeDataString($branch))&state=all&per_page=100") }
         else { Start-Concurrent $folder 'glab' @('mr', 'list', '--source-branch', $branch, '--all', '--output', 'json') }
     }
     $releaseArgs = if ($hostName -eq 'github') { @('api', "repos/{owner}/{repo}/releases/tags/$release") } else { @('release', 'view', $release) }
