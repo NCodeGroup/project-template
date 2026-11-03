@@ -24,6 +24,7 @@ On that route it reads the method as gh does, from `-X PATCH`, `-XPATCH`, `-X=PA
 call with `-f`, `-F`, `--field`, `--raw-field` or `--input` and no method as the POST gh sends, which it refuses.
 `api repos/<owner>/<repo>/pulls?head=<owner>:<branch>&state=all`, `api repos/<owner>/<repo>/issues/<number>` and `api repos/<owner>/<repo>/releases/tags/<tag>` answer the state script's REST calls from `prs.json` and `issues.json`, a release always not found (logged as NOTFOUND).
 An optional graphql-refused.txt makes it refuse gh api graphql and the pr, issue, release and repo commands as a Claude Code cloud session's proxy does (logged as GRAPHQL), so a command must use the REST routes below.
+api repos/<owner>/<repo>/pulls/<number>, its /ccr/review_threads, /comments and /reviews (the last two paged by per_page and page) answer the pull request and its review threads, comments and reviews from prs.json, threads.json and reviews.json.
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -223,6 +224,22 @@ function Get-RestUser($Author) {
     return @{ login = $login; type = $(if ($isBot) { 'Bot' } else { 'User' }) }
 }
 
+# One page of a REST list, from the per_page (30 when absent) and page (1 when absent) of the call's path query.
+function Get-Page($Items) {
+    $perPage = 30
+    $page = 1
+    if ("$($script:CallArgs[1])" -match '\?(.*)$') {
+        foreach ($pair in "$($Matches[1])" -split '&') {
+            if ($pair -match '^per_page=(\d+)$') { $perPage = [int]$Matches[1] }
+            elseif ($pair -match '^page=(\d+)$') { $page = [int]$Matches[1] }
+        }
+    }
+    $all = @($Items)
+    $skip = ($page - 1) * $perPage
+    if ($perPage -lt 1 -or $skip -ge $all.Count) { return @() }
+    return @($all | Select-Object -Skip $skip -First $perPage)
+}
+
 if ("$($args[0])" -eq '--version') { 'gh version 2.99.0 (stand-in)'; exit 0 }
 
 $forbiddenFile = Join-Path $hostDir 'forbidden.txt'
@@ -267,6 +284,61 @@ if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/commit
 # The state script's REST reads: GET only, so a call with a method option or a field is not one of them.
 $restGet = "$($args[0])" -eq 'api' -and -not (Get-Option '-X', '--method') -and
     -not @($args | Where-Object { "$_" -cmatch '^-X[A-Za-z]+$' -or "$_" -in '-f', '-F', '--field', '--raw-field', '--input' -or "$_" -match '^--(method|field|raw-field|input)=' }).Count
+if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)$') {
+    $number = $Matches[1]
+    $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+    if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
+    Write-Result @{
+        number = $pr.number; title = $pr.title; body = $pr.body; html_url = $pr.url
+        state = $(if ($pr.state -eq 'OPEN') { 'open' } else { 'closed' })
+        merged = ($pr.state -eq 'MERGED'); draft = [bool]$pr.isDraft
+        head = @{ ref = $pr.headRefName; sha = $pr.headRefOid; repo = @{ full_name = $(if ($pr.isCrossRepository) { 'someone/app' } else { 'fixture/app' }) } }
+        base = @{ ref = $pr.baseRefName; repo = @{ full_name = 'fixture/app' } }
+    }
+    exit 0
+}
+if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/ccr/review_threads$') {
+    $number = $Matches[1]
+    $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+    if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
+    Add-PushReview $pr
+    $threads = @(@(Read-Json 'threads.json' @()) | Where-Object { "$($_.number)" -eq $number } | ForEach-Object {
+        @{ resolved = [bool]$_.isResolved; outdated = [bool]$_.isOutdated; path = $_.path; line = $_.line; comment_ids = @(@($_.comments) | ForEach-Object { Get-RestId $_.url }) }
+    })
+    Write-Result $threads
+    exit 0
+}
+if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/comments(\?.*)?$') {
+    $number = $Matches[1]
+    $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+    if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
+    Add-PushReview $pr
+    $all = @()
+    foreach ($thread in @(Read-Json 'threads.json' @()) | Where-Object { "$($_.number)" -eq $number }) {
+        $firstId = $null
+        foreach ($c in @($thread.comments)) {
+            $id = Get-RestId $c.url
+            $all += @{
+                id = $id; in_reply_to_id = $firstId; path = $thread.path; line = $thread.line
+                user = (Get-RestUser $c.author); author_association = $c.authorAssociation; body = $c.body; html_url = $c.url
+            }
+            if ($null -eq $firstId) { $firstId = $id }
+        }
+    }
+    Write-Result @(Get-Page $all)
+    exit 0
+}
+if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/reviews(\?.*)?$') {
+    $number = $Matches[1]
+    $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+    if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
+    Add-PushReview $pr
+    $reviews = @(@(Read-Json 'reviews.json' @()) | Where-Object { "$($_.number)" -eq $number } | ForEach-Object {
+        @{ id = (Get-RestId $_.url); user = (Get-RestUser $_.author); author_association = $_.authorAssociation; body = $_.body; html_url = $_.url; state = 'COMMENTED' }
+    })
+    Write-Result @(Get-Page $reviews)
+    exit 0
+}
 if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls\?(.*)$') {
     $head = $null
     $state = 'all'
