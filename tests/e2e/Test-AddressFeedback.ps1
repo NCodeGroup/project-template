@@ -327,18 +327,52 @@ exit 0
             $restComments = @(gh api 'repos/{owner}/{repo}/pulls/1/comments?per_page=100&page=1' | Out-String | ConvertFrom-Json)
             $ok = $restThreads.Count -eq 3 -and @($restThreads | Where-Object { $_.resolved }).Count -eq 0 -and $restComments.Count -eq 4 -and
                 @($restComments | Where-Object { -not $_.author_association }).Count -eq 0
-            Check 'fixture: the REST thread reads give three open threads, one already answered, with their comments and associations' ([bool]$ok) "threads=$($restThreads.Count) comments=$($restComments.Count)"
+            $restAnswered = @($restThreads | Where-Object { $lastId = @($_.comment_ids)[-1]; Test-Autopilot (@($restComments | Where-Object { $_.id -eq $lastId })[0].body) })
+            $ok = $ok -and $restAnswered.Count -eq 1
+            Check 'fixture: the REST thread reads give three open threads, one already answered, with their comments and associations' ([bool]$ok) "threads=$($restThreads.Count) comments=$($restComments.Count) answered=$($restAnswered.Count)"
 
             $restTop = @(gh api 'repos/{owner}/{repo}/issues/1/comments?per_page=100&page=1' | Out-String | ConvertFrom-Json)
             $restReviews = @(gh api 'repos/{owner}/{repo}/pulls/1/reviews?per_page=100&page=1' | Out-String | ConvertFrom-Json)
             Check 'fixture: the REST top-level comment and review reads give the stranger''s request and the question' ($restTop.Count -eq 2 -and $restReviews.Count -eq 0) "comments=$($restTop.Count) reviews=$($restReviews.Count)"
 
             $bodyFile = Join-Path $Work 'reply.md'
+            Write-Text $bodyFile 'Autopilot: a top-level comment from the setup check.'
+            $posted = gh api -X POST 'repos/{owner}/{repo}/issues/1/comments' -F "body=@$bodyFile" | Out-String | ConvertFrom-Json
+            $stored = @(Read-HostJson $hostDir 'comments.json' | Where-Object { $_ -and $_.kind -eq 'pr' -and $_.number -eq 1 -and "$($_.body)".Trim() -eq 'Autopilot: a top-level comment from the setup check.' })
+            $ok = $posted.id -and "$($posted.html_url)" -match '#issuecomment-(\d+)$' -and [long]$Matches[1] -eq [long]$posted.id -and $stored.Count -eq 1
+            Check 'fixture: a REST top-level comment lands on the pull request' ([bool]$ok) "html_url='$($posted.html_url)' id='$($posted.id)' stored=$($stored.Count)"
+
+            Write-Text $bodyFile 'Autopilot: a first reply from the setup check.'
+            $botBefore = @((Get-Thread (Read-Threads) 'PRRT_bot').comments).Count
+            $null = gh api -X POST 'repos/{owner}/{repo}/pulls/1/comments/2002/replies' -F "body=@$bodyFile"
+            $botAfter = @((Get-Thread (Read-Threads) 'PRRT_bot').comments).Count
+            Check 'fixture: a REST reply sent with -X POST first lands on its thread' ($botAfter -eq $botBefore + 1) "PRRT_bot comments before $botBefore, after $botAfter"
+
             Write-Text $bodyFile 'Autopilot: a reply from the setup check.'
             $null = gh api 'repos/{owner}/{repo}/pulls/1/comments/2001/replies' -F "body=@$bodyFile"
             Remove-Item -LiteralPath $bodyFile
             $last = @((Get-Thread (Read-Threads) 'PRRT_writer').comments)[-1]
             Check 'fixture: a REST reply lands on its thread' ("$($last.body)" -eq 'Autopilot: a reply from the setup check.') "last comment: '$($last.body)'"
+
+            # Every REST route the stand-in refuses, so that CI fails when a refusal is dropped.
+            $restRefusals = @(
+                , @('api', '-X', 'POST', 'repos/{owner}/{repo}/pulls/1/ccr/comments/2001/resolve')
+                , @('api', '-X', 'POST', 'repos/{owner}/{repo}/pulls/1/ccr/comments/2001/unresolve')
+                , @('api', '-X', 'PUT', 'repos/{owner}/{repo}/pulls/1/ccr/auto_merge')
+                , @('api', '-X', 'DELETE', 'repos/{owner}/{repo}/pulls/1/ccr/auto_merge')
+                , @('api', '-X', 'POST', 'repos/{owner}/{repo}/pulls/1/ccr/ready_for_review')
+                , @('api', '-X', 'POST', 'repos/{owner}/{repo}/pulls/1/ccr/convert_to_draft')
+                , @('api', '-X', 'PATCH', 'repos/{owner}/{repo}/pulls/1', '-f', 'title=x')
+            )
+            $bad = @()
+            foreach ($call in $restRefusals) {
+                $before = @(Get-Content -LiteralPath $callsLog).Count
+                $null = pwsh -NoProfile -File $standIn @call 2>$null
+                $code = $LASTEXITCODE
+                $logged = @(Get-Content -LiteralPath $callsLog | Select-Object -Skip $before | Where-Object { $_ -like 'FORBIDDEN *' }).Count
+                if ($code -eq 0 -or $logged -ne 1) { $bad += "$($call -join ' ') (exit $code, FORBIDDEN lines $logged)" }
+            }
+            Check 'fixture: the stand-in refuses resolving, auto-merge, draft changes and editing the pull request through REST' ($bad.Count -eq 0) "not refused: $($bad -join '; ')"
         }
     }
     Remove-Item -LiteralPath $hostDir -Recurse -Force
@@ -396,7 +430,9 @@ if (-not $CheckOnly) {
         if ($first -and $first.total_cost_usd) { $script:cost += [double]$first.total_cost_usd }
         $script:sessionId = if ($first) { "$($first.session_id)" } else { '' }
         $callsPath = Join-Path $hostDir 'calls.log'
-        $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match '^CALL (pr comment|api graphql .*addPullRequestReviewThreadReply|api .*(/replies|/issues/\d+/comments)\b.*(-f|-F|--field|--raw-field) )' }).Count
+        # With the rest scenario a refused gh pr comment or GraphQL reply is also a CALL line, so only a REST post counts.
+        $repliedPattern = if ($Scenario -eq 'rest') { '^CALL api .*(/replies|/issues/\d+/comments)\b.*(-f|-F|--field|--raw-field) ' } else { '^CALL (pr comment|api graphql .*addPullRequestReviewThreadReply|api .*(/replies|/issues/\d+/comments)\b.*(-f|-F|--field|--raw-field) )' }
+        $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match $repliedPattern }).Count
         if (-not $replied -and $first -and $first.session_id) {
             $second = Invoke-Claude @claudeArgs -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $first.session_id -Index 2
             Check 'Claude Code run 2 returned a session' ($second -and $second.session_id) 'no session_id in the output'
