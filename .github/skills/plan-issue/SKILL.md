@@ -16,7 +16,7 @@ Read every issue first, before you read any code. Where these instructions start
    - GitHub: `gh issue view <number> --json title,body,labels,state,assignees,comments`, adding `--repo <owner/repo>` for an issue in another repository.
    - GitLab, when `git remote get-url origin` contains `gitlab`: `glab issue view <number> --comments`, adding `--repo <group/project>` for an issue in another project.
 
-   When the CLI is missing or the issue can't be fetched, stop and say so, with the command to run.
+   When the CLI is missing or the issue can't be fetched, stop and say so, with the command to run. A `gh` command that fails because the session refuses GitHub's GraphQL API isn't such a failure: run its REST form instead, as the plan format at the end of these instructions says, for this command and every later `gh pr` and `gh issue` command.
 2. Check that each issue is ready to plan; when one issue of a group isn't, stop for the whole group and say which. Stop without changing a file or posting anything, and say why, when:
    - it is closed;
    - a comment starts with `Plan snapshot.`, so it has a plan already, unless my request says to plan it again;
