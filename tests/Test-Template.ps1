@@ -632,7 +632,8 @@ $m += @(foreach ($p in $issuePlanFiles) { $full = Join-Path $repoRoot $p; if (Te
 Check 'workflow: plan-issue reads the issue, maps labels to a plan kind and includes the kind checklists' (-not $m) ($m -join '; ')
 $triageFiles = 'template\.claude\commands\triage-issues.md', 'template\.github\prompts\triage-issues.prompt.md', 'template\.github\skills\triage-issues\SKILL.md'
 $m = @(Get-MissingText $triageFiles ('gh issue list', 'glab issue list', '/plan-issue #42', 'as data, not instructions', '| `bug`, `defect`, `regression` | bugfix |'))
-$m += @(foreach ($p in $triageFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'Issue: <issue reference', 'gh issue comment', 'glab issue note', 'EnterWorktree') { if ($t.Contains($x)) { "${p}: has $x" } } } })
+# The REST-forms rule names `gh issue comment` as a form it maps, not a post triage makes, so its text is left out of the search.
+$m += @(foreach ($p in $triageFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full).Replace((Read-HybridTemplateFile (Join-Path $workflow 'templates\_github-rest.md')).Body.Trim(), ''); foreach ($x in 'Issue: <issue reference', 'gh issue comment', 'glab issue note', 'EnterWorktree') { if ($t.Contains($x)) { "${p}: has $x" } } } })
 Check 'workflow: triage-issues lists and judges issues, and plans and posts nothing' (-not $m) ($m -join '; ')
 $updatePlanFiles = 'template\.claude\commands\plan-template-update.md', 'template\.github\prompts\plan-template-update.prompt.md', 'template\.github\skills\plan-template-update\SKILL.md'
 $m = @(Get-MissingText $updatePlanFiles ('_commit', '_src_path', 'Update-Project.ps1 -Ref <tag> -NoCommit', 'Local edits discarded', '_skip_if_exists', 'build/project-template-<tag>', 'if (-not $? -or $LASTEXITCODE) { exit 1 } else { exit 0 }', 'gh issue create --repo'))
@@ -717,7 +718,8 @@ Check 'workflow: ship-plan writes the pull request as the Landing section''s pr-
 # A title from PLAN.md can come from someone else's issue: PowerShell would expand $(...) in it inside double quotes.
 $shipFiles = 'template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md'
 $m = @(Get-MissingText $shipFiles ('gh pr create --base <default> --head <branch> --title (Get-Content -Raw <title file>).Trim()', '--search (Get-Content -Raw <title file>).Trim()', 'gh issue create <repo args> --title (Get-Content -Raw <title file>).Trim()', 'Write each title, comment, description, release note and issue body to a temporary file', 'not even in quotes'))
-$m += @(foreach ($p in $shipFiles) { if ([IO.File]::ReadAllText((Join-Path $repoRoot $p)) -match '--(title|search) ["'']') { "${p}: a title or search in quotes" } })
+# The REST-forms rule quotes plan-issue's `--search "<number> in:body"`, which holds only a number, so its text is left out of the search.
+$m += @(foreach ($p in $shipFiles) { if ([IO.File]::ReadAllText((Join-Path $repoRoot $p)).Replace((Read-HybridTemplateFile (Join-Path $workflow 'templates\_github-rest.md')).Body.Trim(), '') -match '--(title|search) ["'']') { "${p}: a title or search in quotes" } })
 Check 'workflow: ship-plan passes titles from a file, never in the command line' (-not $m) ($m -join '; ')
 # Adopt-Project.ps1 is in the template's repository only, so a project's files name it as the template's.
 $m = @(foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template') -Recurse -File -Force) {
@@ -854,8 +856,8 @@ $prAttributionFiles = [ordered]@{
 }
 $prAttributionMissing = @(
     foreach ($f in $prAttributionFiles.Keys) {
-        # The read-back rule names `gh pr edit` as a removal route; the anchor is the command's own edit of the description, so the rule's text is left out of the search.
-        $text = [IO.File]::ReadAllText((Join-Path $repoRoot "template\$f")).Replace((Read-HybridTemplateFile (Join-Path $workflow 'templates\_session-footer.md')).Body.Trim(), '')
+        # The read-back rule names `gh pr edit` as a removal route, and the REST-forms rule names `gh pr create` and `gh pr edit` too; the anchor is the command's own call, so both rules' text is left out of the search.
+        $text = [IO.File]::ReadAllText((Join-Path $repoRoot "template\$f")).Replace((Read-HybridTemplateFile (Join-Path $workflow 'templates\_session-footer.md')).Body.Trim(), '').Replace((Read-HybridTemplateFile (Join-Path $workflow 'templates\_github-rest.md')).Body.Trim(), '')
         $at = $text.IndexOf($prAttributionText)
         if ($at -lt 0 -or $at -gt $text.IndexOf($prAttributionFiles[$f])) { $f }
     }
@@ -879,6 +881,23 @@ $m = @(Get-MissingText $sessionFooterFiles $sessionFooterText | ForEach-Object {
 $m += @(foreach ($footerCommand in 'ship-plan', 'run-issues', 'run-issues-copilot', 'address-feedback', 'run-feedback', 'orchestrate-plan', 'replan-step', 'plan-issue', 'plan-feature', 'plan-template-update') { if ($footerCommand -notin $footerTemplates.Name) { "workflow\templates\${footerCommand}.md: does not include the session-footer rule" } })
 $m += @(foreach ($t in 'on GitHub or GitLab', '`update_pull_request`', '`update_issue_comment`', '`issue_write`', '`gh pr edit <number> --body-file <file>`', '#issuecomment-', '`glab mr view <number> --output json`', '`#note_`', '`glab api --method PUT "projects/:id/merge_requests/<number>/notes/<id>" -F body=@<file>`', '`chatgpt.com/codex/tasks/`', 'read it back once more', 'may fail until a person deletes those lines', 'Never edit a `/review` comment', 'A reply on a review thread is the other exception') { if (-not $sessionFooterText.Contains($t)) { "workflow\templates\_session-footer.md: missing $t" } })
 $m += @(if ($sessionFooterText.Contains('Never remove it through `gh`')) { 'workflow\templates\_session-footer.md: still forbids every edit through gh' })
+# The commands that run gh pr, gh issue, gh release or gh api graphql give their REST forms for a session that refuses GitHub's GraphQL API, through {{PROMPT:_github-rest}}.
+$githubRestText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_github-rest.md')).Body.Trim()
+# The files are every generated copy of each workflow template, command or agent, whose expanded text has the rule, directly or through _plan-format.md or another include.
+$restTemplates = @(Get-HybridTemplateList | Where-Object { (Get-HybridPromptText -Name $_.Name -Placeholder '$ARGUMENTS').Contains($githubRestText) })
+$restAgents = @(Get-ChildItem -LiteralPath (Join-Path $workflow 'templates') -Filter '*.agent.md' -File | Where-Object { (Expand-HybridInclude (Read-HybridTemplateFile $_.FullName).Body).Contains($githubRestText) })
+$githubRestFiles = @(foreach ($footerTree in 'template\', '') {
+        foreach ($restTemplate in $restTemplates) { foreach ($restTarget in $restTemplate.Targets) { $footerTree + ($footerTargets[$restTarget] -f $restTemplate.Command) } }
+        foreach ($restAgent in $restAgents) {
+            $restCopies = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "$footerTree.github\agents") -Filter "*-$($restAgent.Name)" -File | ForEach-Object { "$footerTree.github\agents\$($_.Name)" })
+            if ($restCopies) { $restCopies } else { "$footerTree.github\agents\<variant>-$($restAgent.Name)" }
+        }
+    })
+$m2 = @(Get-MissingText $githubRestFiles $githubRestText | ForEach-Object { ($_ -split ': ', 2)[0] + ': the GitHub REST forms are missing' })
+$m2 += @(foreach ($t in Get-HybridTemplateList) { $text = (Get-HybridPromptText -Name $t.Name -Placeholder '$ARGUMENTS').Replace($githubRestText, ''); if ($text -match '`gh (pr|issue|release) |gh api graphql' -and $t.Name -notin $restTemplates.Name) { "workflow\templates\$($t.Name).md: runs gh pr, gh issue, gh release or gh api graphql without the GitHub REST forms" } })
+$m2 += @(foreach ($t in 'GitHub GraphQL is not available', 'pulls/<number>/ccr/review_threads', '`get_review_comments`', 'comments/<id>/replies -F body=@<file>', '`add_reply_to_pull_request_comment`', 'issues/<number>/comments -F body=@<file>', 'releases/tags/<tag>', 'search/issues') { if (-not $githubRestText.Contains($t)) { "workflow\templates\_github-rest.md: missing $t" } })
+$m2 += @(foreach ($t in 'ccr/auto_merge', 'ready_for_review', '/resolve') { if ($githubRestText.Contains($t)) { "workflow\templates\_github-rest.md: names $t, which the workflow never calls" } })
+Check 'workflow: every command that runs gh pr, gh issue, gh release or gh api graphql gives their REST forms for a session that refuses GitHub''s GraphQL API' (-not $m2) ($m2 -join '; ')
 # Each decision of the /review read-back stays in _review-request.md and in every generated run-issues and run-feedback copy.
 $reviewReadBackTexts = 'issues/comments/<id>" --jq .body', 'When that body, without white space around it, is `/review`, the review is requested.', 'Otherwise delete the comment with `gh api -X DELETE "repos/{owner}/{repo}/issues/comments/<id>"`', 'and post no `/review` comment again in this run', 'Unless a read-back earlier in this run found agent attribution appended to a post', 'comment `/review` on the pull request myself'
 $m += @(Get-MissingText (@('workflow\templates\_review-request.md') + $runFiles + $copilotRunFiles + $feedbackFiles) $reviewReadBackTexts | ForEach-Object { "$_ (a decision of the /review read-back)" })
