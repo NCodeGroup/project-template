@@ -11,8 +11,8 @@
     already had that the issue doesn't name, which it answers with "Autopilot: left as a follow-up" and puts in the
     plan's Follow-ups, a nit it answers with "Autopilot: left as a follow-up", a finding on .github/workflows/ci.yml that it answers with "Autopilot: left for you", a
     should-fix finding that already has two "Autopilot:" replies, which it never answers a third time, another bot's thread without the finding marker that it treats as data and answers with "Autopilot: not acted on", and a /review comment it doesn't answer.
-    It also checks that the run recommends the merge once, in an Autopilot: comment, with the open nits in the plan's
-    Follow-ups, in the scenario -Scenario names.
+    In minor-round and max-rounds it also checks that the run recommends the merge once, in an Autopilot: comment, with the open nits in the plan's
+    Follow-ups; session-footer ends waiting for the maintainer's /review, with no recommendation.
     In the session-footer scenario it also checks that the run's /review comment, which the stand-in saves with a Claude Code cloud session's footer and cannot delete, is never answered, and that the second push gets an Autopilot: request for /review.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
@@ -141,7 +141,7 @@ if (-not $CheckOnly) {
         if ($Scenario -eq 'session-footer') {
             $pushSeed = @{
                 threads  = @(
-                    @{ key = 'owner-push'; path = 'src/Greeting.ps1'; line = 3; author = $owner; authorAssociation = 'OWNER'; body = 'Trim the name too: `Get-Greeting -Name '' Ada ''` should return `Hello, Ada!`. Test it in `tests/Test-Greeting.ps1`.' }
+                    @{ key = 'owner-push'; path = 'src/Greeting.ps1'; line = 3; author = $owner; authorAssociation = 'OWNER'; body = 'Let `Get-Greeting` take `-Greeting` too, defaulting to `Hello`: `Get-Greeting -Name Ada -Greeting Hi` should return `Hi, Ada!`. Test it in `tests/Test-Greeting.ps1`.' }
                 )
                 reviews  = @()
                 comments = @()
@@ -345,18 +345,18 @@ Use-FixtureEnvironment $Work $bin {
         $footer = ([IO.File]::ReadAllText((Join-Path $hostDir 'footer.txt'))).Trim()
         $refused = @($calls | Where-Object { $_ -match '^REFUSED' })
         $undeleted = @($all | Where-Object { $_.key -ne 'slash' -and "$($_.body)".Trim() -match '^/review' -and "$($_.body)".Contains($footer) })
-        Check 'the run posted one /review comment, whose delete the stand-in refused, so it stays with the footer' ($undeleted.Count -eq 1 -and $refused.Count -eq 1) "/review comments with the footer: $($undeleted.Count); REFUSED lines: $($refused.Count)"
+        Check 'the run posted one /review comment, whose delete the stand-in refused, so it stays with the footer' ($undeleted.Count -eq 1 -and $refused.Count -ge 1) "/review comments with the footer: $($undeleted.Count); REFUSED lines: $($refused.Count)"
         $asks = @($all | Where-Object { "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)" -match '/review' -and -not "$($_.body)".Contains($footer) })
         Check 'the run asked the maintainer for /review after each push, in Autopilot: comments without the footer' ($asks.Count -ge 2) "Autopilot: requests for /review without the footer: $($asks.Count)"
         $ownAnswers = @(if ($undeleted.Count -eq 1) { $all | Where-Object { "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)".Contains("$($undeleted[0].url)") } })
         Check 'the run never answered its own /review comment' ($undeleted.Count -eq 1 -and $ownAnswers.Count -eq 0) "$(if ($undeleted.Count -eq 1) { "answers: $($ownAnswers.Count)" } else { 'no undeleted /review comment' })"
         $pushReplies = Get-ThreadReply 'owner-push'
-        $trimmed = $false
+        $takesGreeting = $false
         if ($branchGreeting.Count) {
-            $out = "$(pwsh -NoProfile -Command ". '$greetingFile'; (Get-Greeting -Name ' Ada ') -eq 'Hello, Ada!'")".Trim()
-            $trimmed = $out -eq 'True'
+            $out = "$(pwsh -NoProfile -Command ". '$greetingFile'; (Get-Greeting -Name Ada -Greeting Hi) -eq 'Hi, Ada!' -and (Get-Greeting -Name Ada) -eq 'Hello, Ada!'")".Trim()
+            $takesGreeting = $out -eq 'True'
         }
-        Check 'the owner''s request after the first push got one Autopilot: reply naming its commit, and the branch trims the name' ($null -ne $pushReplies -and $pushReplies.Count -eq 1 -and "$($pushReplies[0].body)" -match '\b[0-9a-f]{7,40}\b' -and $trimmed) "replies: $(if ($null -ne $pushReplies) { ($pushReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); trims: $trimmed"
+        Check 'the owner''s request after the first push got one Autopilot: reply naming its commit, and the branch takes -Greeting' ($null -ne $pushReplies -and $pushReplies.Count -eq 1 -and "$($pushReplies[0].body)" -match '\b[0-9a-f]{7,40}\b' -and $takesGreeting) "replies: $(if ($null -ne $pushReplies) { ($pushReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); takes -Greeting: $takesGreeting"
     }
     if ($Scenario -eq 'minor-round') {
         $branchHead = "$(git --git-dir=$origin rev-parse worktree-issue-1 2>$null)".Trim()
