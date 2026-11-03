@@ -25,6 +25,7 @@ call with `-f`, `-F`, `--field`, `--raw-field` or `--input` and no method as the
 `api repos/<owner>/<repo>/pulls?head=<owner>:<branch>&state=all`, `api repos/<owner>/<repo>/issues/<number>` and `api repos/<owner>/<repo>/releases/tags/<tag>` answer the state script's REST calls from `prs.json` and `issues.json`, a release always not found (logged as NOTFOUND).
 An optional graphql-refused.txt makes it refuse gh api graphql and the pr, issue, release and repo commands as a Claude Code cloud session's proxy does (logged as GRAPHQL), so a command must use the REST routes below.
 api repos/<owner>/<repo>/pulls/<number>, its /ccr/review_threads, /comments and /reviews (the last two paged by per_page and page) answer the pull request and its review threads, comments and reviews from prs.json, threads.json and reviews.json.
+api repos/<owner>/<repo>/issues/<number>/comments (GET paged, POST a body), pulls/<number>/comments/<id>/replies (POST, to a thread's first comment) save and answer comments and thread replies as the pr comment command and the GraphQL reply do; /ccr resolve, auto-merge and draft routes, and a PATCH of pulls/<number> under forbidden.txt's pr edit, are refused (FORBIDDEN).
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -138,11 +139,11 @@ function Get-NextNumber {
     foreach ($pr in @(Read-Json 'prs.json' @())) { if ([int]$pr.number -gt $max) { $max = [int]$pr.number } }
     return $max + 1
 }
-function Add-Comment([string]$Kind, [int]$Number, [string]$Path) {
+function Add-Comment([string]$Kind, [int]$Number, [string]$Path, [string]$Body) {
     $comments = @(Read-Json 'comments.json' @())
     $id = Get-NextCommentId $comments
     $url = "https://github.com/fixture/app/$Path/$Number#issuecomment-$id"
-    $body = Get-Body
+    $body = $Body
     if (-not ($Kind -eq 'issue' -and (Test-Path -LiteralPath (Join-Path $hostDir 'footer-pr-only.txt')))) { $body = Get-SavedBody $body }
     $comments += @{ kind = $Kind; number = $Number; body = $body; url = $url; author = @{ login = 'fixture-owner' }; authorAssociation = 'OWNER' }
     Write-Json 'comments.json' $comments
@@ -238,6 +239,17 @@ function Get-Page($Items) {
     $skip = ($page - 1) * $perPage
     if ($perPage -lt 1 -or $skip -ge $all.Count) { return @() }
     return @($all | Select-Object -Skip $skip -First $perPage)
+}
+
+# The method an api call uses, as gh reads it: -X or --method (also as -X=PATCH), a method attached to -X as in -XPATCH, or POST
+# when fields or --input are given without one, else GET.
+function Get-ApiMethod {
+    $method = "$(Get-Option '-X', '--method')".ToUpperInvariant()
+    $attachedMethod = @($script:CallArgs | Where-Object { "$_" -cmatch '^-X[A-Za-z]+$' }) | Select-Object -First 1
+    if (-not $method -and $attachedMethod) { $method = "$attachedMethod".Substring(2).ToUpperInvariant() }
+    if (-not $method -and @($script:CallArgs | Where-Object { "$_" -in '-f', '-F', '--field', '--raw-field', '--input' -or "$_" -match '^--(field|raw-field|input)=' }).Count) { $method = 'POST' }
+    if (-not $method) { $method = 'GET' }
+    return $method
 }
 
 if ("$($args[0])" -eq '--version') { 'gh version 2.99.0 (stand-in)'; exit 0 }
@@ -374,17 +386,62 @@ if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/releases/tags/[^/]+$'
     Stop-Call NOTFOUND 'gh stand-in: no release'
 }
 
+# The REST routes for top-level comments, thread replies and refusals.
+if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/issues/(\d+)/comments(\?.*)?$') {
+    $number = $Matches[1]
+    $method = Get-ApiMethod
+    if ($method -eq 'GET') {
+        $list = @(@(Read-Json 'comments.json' @()) | Where-Object { "$($_.number)" -eq $number } | ForEach-Object {
+            @{ id = (Get-RestId $_.url); user = (Get-RestUser $_.author); author_association = $_.authorAssociation; body = $_.body; html_url = $_.url }
+        })
+        Write-Result @(Get-Page $list)
+        exit 0
+    }
+    $sent = Get-Field 'body'
+    if ($method -ne 'POST' -or $null -eq $sent) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+    $isPr = [bool](@(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1)
+    $kind = $(if ($isPr) { 'pr' } else { 'issue' })
+    $url = Add-Comment $kind ([int]$number) $(if ($isPr) { 'pull' } else { 'issues' }) $sent
+    $saved = @(Read-Json 'comments.json' @()) | Where-Object { $_.url -eq $url } | Select-Object -First 1
+    if ($isPr) {
+        # As the pr comment route does: only a comment exactly /review as saved asks for a review, and with footer.txt an Autopilot: comment naming /review stands for it.
+        if ("$($saved.body)".Trim() -eq '/review') { Set-ReviewRequest ([int]$number) }
+        elseif ((Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt')) -and $sent -match '^\s*Autopilot:' -and $sent.Contains('/review')) { Set-ReviewRequest ([int]$number) }
+    }
+    Write-Result @{ id = (Get-RestId $url); html_url = $url; body = $saved.body; user = @{ login = 'fixture-owner'; type = 'User' } }
+    exit 0
+}
+if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/comments/(\d+)/replies$') {
+    $number = $Matches[1]
+    $replyTo = [long]$Matches[2]
+    if ((Get-ApiMethod) -ne 'POST') { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+    $threads = @(Read-Json 'threads.json' @())
+    $thread = $threads | Where-Object { "$($_.number)" -eq $number -and @($_.comments).Count -and (Get-RestId @($_.comments)[0].url) -eq $replyTo } | Select-Object -First 1
+    if (-not $thread) { Stop-Call NOTFOUND "gh stand-in: no review comment $replyTo to reply to" }
+    $count = 0
+    foreach ($t in $threads) { $count += @($t.comments).Count }
+    $url = "https://github.com/fixture/app/pull/$($thread.number)#discussion_r$(2000 + $count + 1)"
+    $savedBody = Get-SavedBody "$(Get-Field 'body')"
+    $thread.comments = @($thread.comments) + @(@{ author = @{ __typename = 'User'; login = 'fixture-owner' }; authorAssociation = 'OWNER'; body = $savedBody; url = $url })
+    Write-Json 'threads.json' $threads
+    Write-Result @{ id = (Get-RestId $url); html_url = $url; body = $savedBody; in_reply_to_id = $replyTo }
+    exit 0
+}
+if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/ccr/(comments/\d+/(resolve|unresolve)|auto_merge|ready_for_review|convert_to_draft)$') {
+    Stop-Call FORBIDDEN 'gh stand-in: resolving, auto-merge and draft changes are not allowed'
+}
+if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)$' -and (Get-ApiMethod) -eq 'PATCH') {
+    $forbiddenEdit = (Test-Path -LiteralPath $forbiddenFile) -and @([IO.File]::ReadAllLines($forbiddenFile) | Where-Object { $_.Trim() -eq 'pr edit' }).Count
+    if ($forbiddenEdit) { Stop-Call FORBIDDEN 'gh stand-in: pr edit is not allowed in this test' }
+    Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')"
+}
+
 # A comment read back, edited or deleted by its id, as the commands do after posting one: a GET answers it, -X PATCH saves
 # its body field as given, with no footer, and -X DELETE deletes it. Any other method, or an id it doesn't hold, is unsupported.
 $commentPath = @($args | Select-Object -Skip 1 | Where-Object { "$_" -match '^/?repos/[^/]+/[^/]+/issues/comments/\d+$' }) | Select-Object -First 1
 if ("$($args[0])" -eq 'api' -and $commentPath) {
     $commentId = "$commentPath".Split('/')[-1]
-    $method = "$(Get-Option '-X', '--method')".ToUpperInvariant()
-    # As gh does, a method can be attached to -X, as in -XPATCH, and a call with fields or --input and no method is a POST.
-    $attachedMethod = @($args | Where-Object { "$_" -cmatch '^-X[A-Za-z]+$' }) | Select-Object -First 1
-    if (-not $method -and $attachedMethod) { $method = "$attachedMethod".Substring(2).ToUpperInvariant() }
-    if (-not $method -and @($args | Where-Object { "$_" -in '-f', '-F', '--field', '--raw-field', '--input' -or "$_" -match '^--(field|raw-field|input)=' }).Count) { $method = 'POST' }
-    if (-not $method) { $method = 'GET' }
+    $method = Get-ApiMethod
     $comments =@(Read-Json 'comments.json' @())
     $comment = $comments | Where-Object { "$($_.url)".EndsWith("#issuecomment-$commentId") } | Select-Object -First 1
     $newBody = Get-Field 'body'
@@ -432,7 +489,7 @@ switch ("$($args[0]) $($args[1])") {
     }
     'issue comment' {
         $number = [int]"$($args[2])".TrimStart('#')
-        Add-Comment 'issue' $number 'issues'
+        Add-Comment 'issue' $number 'issues' (Get-Body)
         exit 0
     }
     'issue create' {
@@ -511,7 +568,7 @@ switch ("$($args[0]) $($args[1])") {
     }
     'pr comment' {
         $number = [int]"$($args[2])".TrimStart('#')
-        Add-Comment 'pr' $number 'pull'
+        Add-Comment 'pr' $number 'pull' (Get-Body)
         # NCode Review acts only on a comment that is exactly /review as it is saved, so one saved with a footer asks for no review.
         if ((Get-SavedBody (Get-Body)) -match '^\s*/review\s*\z') { Set-ReviewRequest $number }
         # With host/footer.txt, an Autopilot: comment that names /review stands for the /review the maintainer posts after it.
