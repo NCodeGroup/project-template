@@ -359,6 +359,7 @@ if ($args[0] -eq 'api') {
     }
     if ($path -match '^repos/[^/]+/[^/]+/issues/(\d+)$') {
         $number = $Matches[1]
+        [IO.File]::AppendAllText((Join-Path $PSScriptRoot 'issue-paths.txt'), "$path`n")
         $file = Join-Path $PSScriptRoot 'issues.json'
         if (-not (Test-Path $file)) { exit 1 }
         $issues = [IO.File]::ReadAllText($file) | ConvertFrom-Json
@@ -515,6 +516,16 @@ try {
     Check 'pr: a GitHub pull request list that gh api fails to read is unknown, not none' $r.Ok $r.Detail
     Set-MergedRequest $gh.Squash $gh.Head -GitHub
 
+    Push-Location $gh.Repo
+    try { Invoke-Git branch -m worktree-merged feature/x-y }
+    finally { Pop-Location }
+    $null = Get-State $gh.Repo
+    $escaped = [IO.File]::ReadAllText((Join-Path $bin 'pulls-path.txt'))
+    Check 'pr: a branch name with a slash is escaped in the head filter' ($escaped -ceq 'repos/{owner}/{repo}/pulls?head={owner}%3Afeature%2Fx-y&state=all&per_page=100') "path: $escaped"
+    Push-Location $gh.Repo
+    try { Invoke-Git branch -m feature/x-y worktree-merged }
+    finally { Pop-Location }
+
     Set-MergedRequest $gh.Twin $gh.Head -GitHub
     $r = Test-State (Get-State $gh.Repo) @{ landed = 'no' }
     Check 'local: a GitHub merge commit missing from the default branch is not landed' $r.Ok $r.Detail
@@ -581,8 +592,11 @@ try {
 
     Write-Text (Join-Path $gh.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gh.Repo) '#7 #8 owner/other#9')
     Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'OPEN'; '9' = 'CLOSED' }
+    if (Test-Path -LiteralPath (Join-Path $bin 'issue-paths.txt')) { Remove-Item -LiteralPath (Join-Path $bin 'issue-paths.txt') }
     $r = Test-State (Get-State $gh.Repo) @{ issue = '#7 #8 owner/other#9'; 'issue-state' = 'OPEN'; 'issue-states' = '#7=CLOSED #8=OPEN owner/other#9=CLOSED'; next = 'ship-plan' }
     Check 'issues: a group plan on GitHub is open while one issue is open' $r.Ok $r.Detail
+    $issuePaths = @(Get-Content -LiteralPath (Join-Path $bin 'issue-paths.txt'))
+    Check 'issues: each issue is read from its own repository' (($issuePaths -ccontains 'repos/owner/other/issues/9') -and ($issuePaths -ccontains 'repos/{owner}/{repo}/issues/8') -and ($issuePaths -ccontains 'repos/{owner}/{repo}/issues/7')) "paths: $($issuePaths -join ', ')"
 
     Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'CLOSED'; '9' = 'CLOSED' }
     $r = Test-State (Get-State $gh.Repo) @{ 'issue-state' = 'CLOSED'; next = 'finish-plan' }
