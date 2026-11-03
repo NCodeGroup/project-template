@@ -98,10 +98,13 @@ Release: v0.2.0
 $bin = Join-Path $Work 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 Write-Text (Join-Path $bin 'gh.ps1') @'
-# With a throw file next to it, the stand-in marks each call but the protection check as started, and fails that check
-# once another call has started, so Get-PlanState.ps1 meets the error while calls it never received are still running.
+# It answers the REST paths the state script calls through gh api. With a throw file next to it, it marks each call but
+# the protection check as started, and fails only that check once another call has started, so Get-PlanState.ps1 meets
+# the error while calls it never received are still running.
+$joined = "$args"
+$protection = $args[0] -eq 'api' -and $joined -match '/(rules/branches/|branches/[^/ ]+/protection/)'
 $throw = Test-Path -LiteralPath (Join-Path $PSScriptRoot 'throw')
-if ($throw -and $args[0] -eq 'api') {
+if ($throw -and $protection) {
     $wait = [Diagnostics.Stopwatch]::StartNew()
     while (-not (Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'started-*') -and $wait.ElapsedMilliseconds -lt 30000) { Start-Sleep -Milliseconds 100 }
     throw 'stand-in gh: the protection check failed'
@@ -109,10 +112,10 @@ if ($throw -and $args[0] -eq 'api') {
 if ($throw) { [IO.File]::WriteAllText((Join-Path $PSScriptRoot "started-$([guid]::NewGuid().ToString('N'))"), "$args") }
 $delay = Join-Path $PSScriptRoot 'delay'
 if (Test-Path -LiteralPath $delay) { Start-Sleep -Milliseconds ([int][IO.File]::ReadAllText($delay)) }
-if ($args[0] -eq 'pr' -and $args[1] -eq 'list') { '[]'; exit 0 }
-if ($args[0] -eq 'issue' -and $args[1] -eq 'view') { if ($args[2] -eq '7') { 'OPEN' } else { 'CLOSED' }; exit 0 }
-if ($args[0] -eq 'api') { 'HTTP/2.0 200 OK'; 'Content-Type: application/json'; ''; '[{"type":"pull_request"}]'; exit 0 }
-if ($args[0] -eq 'release' -and $args[1] -eq 'view') { '{"tagName":"v0.2.0"}'; exit 0 }
+if ($args[0] -eq 'api' -and $joined -match '/pulls\?') { '[]'; exit 0 }
+if ($args[0] -eq 'api' -and $joined -match '/issues/(\d+)') { if ($Matches[1] -eq '7') { '{"state":"open"}' } else { '{"state":"closed"}' }; exit 0 }
+if ($args[0] -eq 'api' -and $joined -match '/releases/tags/') { '{"tag_name":"v0.2.0"}'; exit 0 }
+if ($protection) { 'HTTP/2.0 200 OK'; 'Content-Type: application/json'; ''; '[{"type":"pull_request"}]'; exit 0 }
 exit 1
 '@
 
