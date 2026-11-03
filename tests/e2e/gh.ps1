@@ -18,7 +18,7 @@ after making it; with `-X PATCH` it saves the `body` field as given, and with `-
 id `last-comment-id.txt` keeps it from giving again. An optional `footer.txt` holds a footer it appends, after a blank
 line and a `---` line, to each top-level comment and thread reply it saves, as a Claude Code cloud session's tooling
 does: a `/review` comment saved with it asks for no review, and an `Autopilot:` comment that names `/review` then
-stands for the `/review` the maintainer posts after it.
+stands for the `/review` the maintainer posts after it. An optional delete-fails.txt makes a comment's delete fail (logged as REFUSED), so the comment stays.
 On that route it reads the method as gh does, from `-X PATCH`, `-XPATCH`, `-X=PATCH` or `--method=PATCH`, and takes a
 call with `-f`, `-F`, `--field`, `--raw-field` or `--input` and no method as the POST gh sends, which it refuses.
 #>
@@ -259,6 +259,7 @@ if ("$($args[0])" -eq 'api' -and $commentPath) {
     $newBody = Get-Field 'body'
     if (-not $comment -or $method -notin 'GET', 'PATCH', 'DELETE' -or ($method -eq 'PATCH' -and $null -eq $newBody)) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
     if ($method -eq 'DELETE') {
+        if (Test-Path -LiteralPath (Join-Path $hostDir 'delete-fails.txt')) { Stop-Call REFUSED "gh stand-in: the delete of comment $commentId failed" }
         Write-Json 'comments.json' @($comments | Where-Object { -not "$($_.url)".EndsWith("#issuecomment-$commentId") })
         exit 0
     }
