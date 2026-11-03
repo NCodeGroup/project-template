@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md and its prelude, valid or not, a push to the default
-    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
+    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, with a gh that refuses GitHub's GraphQL API, as a Claude Code cloud session's does, and answers only the REST paths, then a published release and one gh api doesn't find, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
     Get-PlanState.ps1, in a runspace of its own in this process that a check compares once with a pwsh of its own, and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -331,22 +331,20 @@ Write-Text (Join-Path $repo 'scratch.txt') "scratch`n"
 $state = Get-State $repo
 Check 'next: uncommitted changes stop everything' (($state['dirty'] -eq 'yes') -and ($state['next'] -like 'none *')) "dirty='$($state['dirty'])' next='$($state['next'])' expected dirty 'yes' and next 'none *'"
 
-# Stand-ins for gh and glab: both print the contents of pr.json for a 'pr list' or 'mr list' call and fail otherwise.
+# Stand-ins for gh and glab. glab prints pr.json for 'mr list'; gh refuses pr, issue and release as a Claude Code cloud session's proxy does, and answers the REST paths the state script calls.
 $bin = Join-Path $Work 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 foreach ($cli in 'gh', 'glab') {
     Write-Text (Join-Path $bin "$cli.ps1") @'
-if ($args[1] -eq 'list' -and $args[0] -in 'pr', 'mr') { [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0 }
-if ($args[0] -eq 'issue' -and $args[1] -eq 'view') {
+if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1' -and $args[1] -eq 'list' -and $args[0] -eq 'mr') { [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0 }
+if ((Split-Path -Leaf $PSCommandPath) -eq 'gh.ps1' -and ($args[0] -in 'pr', 'issue', 'release' -or ($args[0] -eq 'api' -and $args[1] -eq 'graphql'))) { [Console]::Error.WriteLine('HTTP 403: GitHub GraphQL is not available from Claude Code sessions'); exit 1 }
+if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1' -and $args[0] -eq 'issue' -and $args[1] -eq 'view') {
     $file = Join-Path $PSScriptRoot 'issues.json'
     if (-not (Test-Path $file)) { exit 1 }
     $issues = [IO.File]::ReadAllText($file) | ConvertFrom-Json
     $property = $issues.PSObject.Properties["$($args[2])"]
     if (-not $property) { exit 1 }
-    if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1') {
-        ConvertTo-Json @{ state = $(if ($property.Value -eq 'OPEN') { 'opened' } else { 'closed' }) }
-    }
-    else { $property.Value }
+    ConvertTo-Json @{ state = $(if ($property.Value -eq 'OPEN') { 'opened' } else { 'closed' }) }
     exit 0
 }
 if ($args[0] -eq 'api') {
@@ -354,6 +352,22 @@ if ($args[0] -eq 'api') {
     if (-not (Test-Path $file)) { exit 1 }
     $responses = [IO.File]::ReadAllText($file) | ConvertFrom-Json
     $path = @($args[1..($args.Count - 1)] | Where-Object { -not "$_".StartsWith('-') })[0]
+    if ($path -match '^repos/[^/]+/[^/]+/pulls\?') {
+        [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'pulls-path.txt'), $path)
+        if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'pr.json'))) { exit 1 }
+        [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0
+    }
+    if ($path -match '^repos/[^/]+/[^/]+/issues/(\d+)$') {
+        $number = $Matches[1]
+        [IO.File]::AppendAllText((Join-Path $PSScriptRoot 'issue-paths.txt'), "$path`n")
+        $file = Join-Path $PSScriptRoot 'issues.json'
+        if (-not (Test-Path $file)) { exit 1 }
+        $issues = [IO.File]::ReadAllText($file) | ConvertFrom-Json
+        $property = $issues.PSObject.Properties[$number]
+        if (-not $property) { exit 1 }
+        ConvertTo-Json @{ state = "$($property.Value)".ToLowerInvariant() }
+        exit 0
+    }
     $include = $args -contains '--include'
     $property = $responses.PSObject.Properties["$path"]
     # A missing entry is not found (404); fail:<code> answers with that status, such as 502, and fail:none gets no response
@@ -375,7 +389,7 @@ exit 1
 }
 function Set-MergedRequest([string]$Merge, [string]$Head, [switch]$GitHub, [string]$Newer = '', [string]$Base = 'main') {
     $item = if ($GitHub) {
-        @{ number = 6; state = 'MERGED'; mergeCommit = @{ oid = $Merge }; headRefOid = $Head; baseRefName = $Base }
+        @{ number = 6; state = 'closed'; merged_at = '2026-01-01T00:00:00Z'; merge_commit_sha = $Merge; head = @{ sha = $Head; ref = 'worktree-merged' }; base = @{ ref = $Base } }
     }
     else {
         @{ iid = 5; state = 'merged'; merge_commit_sha = $null; squash_commit_sha = $Merge; sha = $Head; target_branch = $Base }
@@ -383,7 +397,7 @@ function Set-MergedRequest([string]$Merge, [string]$Head, [switch]$GitHub, [stri
     $items = @($item)
     if ($Newer) {
         $newerItem = if ($GitHub) {
-            @{ number = 8; state = $Newer; mergeCommit = $null; headRefOid = $Head }
+            @{ number = 8; state = $Newer.ToLowerInvariant(); merged_at = $null; merge_commit_sha = $null; head = @{ sha = $Head; ref = 'worktree-merged' }; base = @{ ref = 'main' } }
         }
         else {
             @{ iid = 8; state = $Newer; merge_commit_sha = $null; squash_commit_sha = $null; sha = $Head }
@@ -494,6 +508,23 @@ try {
     Set-MergedRequest $gh.Squash $gh.Head -GitHub
     $r = Test-State (Get-State $gh.Repo) @{ host = 'github'; pr = '6 MERGED'; merge = $gh.Squash; landed = 'yes' }
     Check 'local: a merged GitHub pull request that holds HEAD is landed' $r.Ok $r.Detail
+    $pullsPath = [IO.File]::ReadAllText((Join-Path $bin 'pulls-path.txt'))
+    Check 'pr: the GitHub pull request list asks for every state of this branch, with its colon encoded so gh fills no :name placeholder' ($pullsPath -ceq 'repos/{owner}/{repo}/pulls?head={owner}%3Aworktree-merged&state=all&per_page=100') "path: $pullsPath"
+
+    Remove-Item -LiteralPath (Join-Path $bin 'pr.json')
+    $r = Test-State (Get-State $gh.Repo) @{ pr = 'unknown'; merge = '-' }
+    Check 'pr: a GitHub pull request list that gh api fails to read is unknown, not none' $r.Ok $r.Detail
+    Set-MergedRequest $gh.Squash $gh.Head -GitHub
+
+    Push-Location $gh.Repo
+    try { Invoke-Git branch -m worktree-merged feature/x-y }
+    finally { Pop-Location }
+    $null = Get-State $gh.Repo
+    $escaped = [IO.File]::ReadAllText((Join-Path $bin 'pulls-path.txt'))
+    Check 'pr: a branch name with a slash is escaped in the head filter' ($escaped -ceq 'repos/{owner}/{repo}/pulls?head={owner}%3Afeature%2Fx-y&state=all&per_page=100') "path: $escaped"
+    Push-Location $gh.Repo
+    try { Invoke-Git branch -m feature/x-y worktree-merged }
+    finally { Pop-Location }
 
     Set-MergedRequest $gh.Twin $gh.Head -GitHub
     $r = Test-State (Get-State $gh.Repo) @{ landed = 'no' }
@@ -561,8 +592,11 @@ try {
 
     Write-Text (Join-Path $gh.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gh.Repo) '#7 #8 owner/other#9')
     Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'OPEN'; '9' = 'CLOSED' }
+    if (Test-Path -LiteralPath (Join-Path $bin 'issue-paths.txt')) { Remove-Item -LiteralPath (Join-Path $bin 'issue-paths.txt') }
     $r = Test-State (Get-State $gh.Repo) @{ issue = '#7 #8 owner/other#9'; 'issue-state' = 'OPEN'; 'issue-states' = '#7=CLOSED #8=OPEN owner/other#9=CLOSED'; next = 'ship-plan' }
     Check 'issues: a group plan on GitHub is open while one issue is open' $r.Ok $r.Detail
+    $issuePaths = @(Get-Content -LiteralPath (Join-Path $bin 'issue-paths.txt'))
+    Check 'issues: each issue is read from its own repository' (($issuePaths -ccontains 'repos/owner/other/issues/9') -and ($issuePaths -ccontains 'repos/{owner}/{repo}/issues/8') -and ($issuePaths -ccontains 'repos/{owner}/{repo}/issues/7')) "paths: $($issuePaths -join ', ')"
 
     Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'CLOSED'; '9' = 'CLOSED' }
     $r = Test-State (Get-State $gh.Repo) @{ 'issue-state' = 'CLOSED'; next = 'finish-plan' }
@@ -572,6 +606,11 @@ try {
     Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'OPEN' }
     $r = Test-State (Get-State $gh.Repo) @{ issue = '#7'; refs = '#8'; 'issue-state' = 'CLOSED'; 'issue-states' = '#7=CLOSED'; next = 'finish-plan' }
     Check 'issues: an open issue on the Refs: line keeps no plan open' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $gh.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gh.Repo) '#7')
+    Set-IssueStates @{ '8' = 'OPEN' }
+    $r = Test-State (Get-State $gh.Repo) @{ 'issue-state' = 'unknown'; 'issue-states' = '#7=unknown' }
+    Check 'issues: a GitHub issue gh api cannot read is unknown' $r.Ok $r.Detail
 
     # 16b. The follow-ups of a merged plan.
     $dash = [char]0x2014
@@ -591,6 +630,35 @@ try {
     Write-Text (Join-Path $gh.Repo 'PLAN.md') ($base + $open)
     $r = Test-State (Get-State $gh.Repo) @{ unfiled = '1'; next = 'finish-plan' }
     Check 'follow-ups: with follow-ups none, an unfiled follow-up keeps no plan open' $r.Ok $r.Detail
+    Remove-Item -LiteralPath (Join-Path $gh.Repo 'AGENTS.md')
+
+    # 16c. A published release, read through gh api.
+    Set-IssueStates @{ '7' = 'CLOSED' }
+    Write-Text (Join-Path $gh.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gh.Repo) '#7')
+    Write-Text (Join-Path $gh.Repo 'AGENTS.md') "# Demo`n`n## Landing`n`n- release: tag+release`n"
+    Push-Location $gh.Repo
+    try {
+        Invoke-Git tag v0.2.0
+        Invoke-Git push -q origin v0.2.0
+    }
+    finally { Pop-Location }
+    Set-HostApi @{ 'repos/{owner}/{repo}/releases/tags/v0.2.0' = @{ tag_name = 'v0.2.0' } }
+    $r = Test-State (Get-State $gh.Repo) @{ tag = 'present'; published = 'yes' }
+    Check 'release: a GitHub release read through gh api is published' $r.Ok $r.Detail
+    Set-HostApi @{}
+    $r = Test-State (Get-State $gh.Repo) @{ tag = 'present'; published = 'no'; next = 'ship-plan' }
+    Check 'release: a GitHub release gh api does not find is not published' $r.Ok $r.Detail
+    # Any failed release read counts as not published, as gh release view's did: ship-plan then tries again and says what failed, where finish-plan would drop the release.
+    Set-HostApi @{ 'repos/{owner}/{repo}/releases/tags/v0.2.0' = 'fail:502' }
+    $r = Test-State (Get-State $gh.Repo) @{ tag = 'present'; published = 'no'; next = 'ship-plan' }
+    Check 'release: a GitHub release read that fails with anything but not found is not published, so ship-plan runs again rather than finish-plan' $r.Ok $r.Detail
+    Set-HostApi @{}
+    Push-Location $gh.Repo
+    try {
+        Invoke-Git push -q origin :refs/tags/v0.2.0
+        Invoke-Git tag -d v0.2.0 | Out-Null
+    }
+    finally { Pop-Location }
     Remove-Item -LiteralPath (Join-Path $gh.Repo 'AGENTS.md')
 
     Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo) '#7 #8')
