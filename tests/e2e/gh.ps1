@@ -21,6 +21,7 @@ does: a `/review` comment saved with it asks for no review, and an `Autopilot:` 
 stands for the `/review` the maintainer posts after it.
 On that route it reads the method as gh does, from `-X PATCH`, `-XPATCH`, `-X=PATCH` or `--method=PATCH`, and takes a
 call with `-f`, `-F`, `--field`, `--raw-field` or `--input` and no method as the POST gh sends, which it refuses.
+`api repos/<owner>/<repo>/pulls?head=<owner>:<branch>&state=all`, `api repos/<owner>/<repo>/issues/<number>` and `api repos/<owner>/<repo>/releases/tags/<tag>` answer the state script's REST calls from `prs.json` and `issues.json`, a release always not found (logged as NOTFOUND).
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -241,6 +242,44 @@ if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/commit
         exit 0
     }
     Stop-Call UNSUPPORTED "gh stand-in: unsupported --jq for check runs: $jq"
+}
+
+# The state script's REST reads: GET only, so a call with a method option or a field is not one of them.
+$restGet = "$($args[0])" -eq 'api' -and -not (Get-Option '-X', '--method') -and
+    -not @($args | Where-Object { "$_" -cmatch '^-X[A-Za-z]+$' -or "$_" -in '-f', '-F', '--field', '--raw-field', '--input' -or "$_" -match '^--(method|field|raw-field|input)=' }).Count
+if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls\?(.*)$') {
+    $head = $null
+    $state = 'all'
+    foreach ($pair in "$($Matches[1])" -split '&') {
+        if ($pair -match '^head=(.*)$') { $head = [uri]::UnescapeDataString($Matches[1]); $head = $head.Substring($head.IndexOf(':') + 1) }
+        elseif ($pair -match '^state=(.+)$') { $state = [uri]::UnescapeDataString($Matches[1]) }
+    }
+    $found = @(@(Read-Json 'prs.json' @()) | Where-Object {
+        (-not $head -or $_.headRefName -eq $head) -and
+        ($state -eq 'all' -or ($state -eq 'open' -and $_.state -eq 'OPEN') -or ($state -eq 'closed' -and $_.state -in 'CLOSED', 'MERGED'))
+    } | Sort-Object { [int]$_.number } -Descending | ForEach-Object {
+        @{
+            number = $_.number; title = $_.title; body = $_.body
+            state = $(if ($_.state -eq 'OPEN') { 'open' } else { 'closed' })
+            merged_at = $(if ($_.state -eq 'MERGED') { '2026-01-01T00:00:00Z' } else { $null })
+            merge_commit_sha = $(if ($_.mergeCommit) { "$($_.mergeCommit.oid)" } else { $null })
+            draft = [bool]$_.isDraft; html_url = $_.url
+            head = @{ ref = $_.headRefName; sha = $_.headRefOid }; base = @{ ref = $_.baseRefName }
+        }
+    })
+    Write-Result $found
+    exit 0
+}
+if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/issues/(\d+)$') {
+    $number = $Matches[1]
+    $issues = Read-Json 'issues.json' @{}
+    if (-not $issues.ContainsKey($number)) { Stop-Call NOTFOUND "gh stand-in: no issue $number" }
+    $issue = $issues[$number]
+    Write-Result @{ number = [int]$number; title = $issue.title; body = $issue.body; state = "$($issue.state)".ToLowerInvariant(); labels = $issue.labels }
+    exit 0
+}
+if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/releases/tags/[^/]+$') {
+    Stop-Call NOTFOUND 'gh stand-in: no release'
 }
 
 # A comment read back, edited or deleted by its id, as the commands do after posting one: a GET answers it, -X PATCH saves
