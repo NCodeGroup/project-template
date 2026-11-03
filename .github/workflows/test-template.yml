@@ -61,6 +61,8 @@ jobs:
             run: ./tests/Test-UpdateExitCode.ps1
           - name: Set up the address-feedback end-to-end fixture
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly
+          - name: Set up the GitLab address-feedback end-to-end fixture
+            run: ./tests/e2e/Test-AddressFeedbackGitLab.ps1 -SetupOnly
           - name: Set up the run-feedback end-to-end fixture
             run: ./tests/e2e/Test-RunFeedback.ps1 -SetupOnly
           - name: Test the Git hooks
