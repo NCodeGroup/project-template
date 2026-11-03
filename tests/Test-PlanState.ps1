@@ -354,6 +354,7 @@ if ($args[0] -eq 'api') {
     $path = @($args[1..($args.Count - 1)] | Where-Object { -not "$_".StartsWith('-') })[0]
     if ($path -match '^repos/[^/]+/[^/]+/pulls\?') {
         [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'pulls-path.txt'), $path)
+        if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'pr.json'))) { exit 1 }
         [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0
     }
     if ($path -match '^repos/[^/]+/[^/]+/issues/(\d+)$') {
@@ -509,6 +510,11 @@ try {
     $pullsPath = [IO.File]::ReadAllText((Join-Path $bin 'pulls-path.txt'))
     Check 'pr: the GitHub pull request list asks for every state of this branch, with its colon encoded so gh fills no :name placeholder' ($pullsPath -ceq 'repos/{owner}/{repo}/pulls?head={owner}%3Aworktree-merged&state=all&per_page=100') "path: $pullsPath"
 
+    Remove-Item -LiteralPath (Join-Path $bin 'pr.json')
+    $r = Test-State (Get-State $gh.Repo) @{ pr = 'unknown'; merge = '-' }
+    Check 'pr: a GitHub pull request list that gh api fails to read is unknown, not none' $r.Ok $r.Detail
+    Set-MergedRequest $gh.Squash $gh.Head -GitHub
+
     Set-MergedRequest $gh.Twin $gh.Head -GitHub
     $r = Test-State (Get-State $gh.Repo) @{ landed = 'no' }
     Check 'local: a GitHub merge commit missing from the default branch is not landed' $r.Ok $r.Detail
@@ -586,6 +592,11 @@ try {
     Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'OPEN' }
     $r = Test-State (Get-State $gh.Repo) @{ issue = '#7'; refs = '#8'; 'issue-state' = 'CLOSED'; 'issue-states' = '#7=CLOSED'; next = 'finish-plan' }
     Check 'issues: an open issue on the Refs: line keeps no plan open' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $gh.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gh.Repo) '#7')
+    Set-IssueStates @{ '8' = 'OPEN' }
+    $r = Test-State (Get-State $gh.Repo) @{ 'issue-state' = 'unknown'; 'issue-states' = '#7=unknown' }
+    Check 'issues: a GitHub issue gh api cannot read is unknown' $r.Ok $r.Detail
 
     # 16b. The follow-ups of a merged plan.
     $dash = [char]0x2014
