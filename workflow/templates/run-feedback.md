@@ -15,7 +15,7 @@ You coordinate. Each round is one pass of `address-feedback`: read its installed
 
 - `address-feedback`'s Rules apply in every pass. Never merge the pull request, mark it ready for review or draft, turn on auto-merge, resolve a review thread, dismiss a review or an alert, close it, edit its title or description, force-push, or push with `--no-verify`. Every discussion ends remediated and replied to, as ADR-0014 says: fixed in a commit, or answered with why nothing changed, and I resolve it.
 - Ask me once, in the first pass's Start item 6, and never again in this run: my answer covers every later pass. Where a command says to ask me, wait for me or stop to ask, stop the run instead, as Stop says.
-- Write every comment and reply to a temporary file outside the repository with your file-writing tool, pass the file to the command, and delete it afterwards. {{PROMPT:_session-footer}}
+- Write every comment and reply to a temporary file outside the repository with your file-writing tool, pass the file to the command, and delete it afterwards. {{PROMPT:_session-footer}} {{PROMPT:_github-rest}}
 
 ## Start
 
