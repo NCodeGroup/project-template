@@ -331,10 +331,32 @@ Use-FixtureEnvironment $Work $bin {
     $slash = $comments | Where-Object { $_ -and $_.key -eq 'slash' } | Select-Object -First 1
     $slashAnswers = @(if ($slash) { @(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and "$($_.body)" -match '^Autopilot:' -and "$($_.body)".Contains($slash.url) } })
     Check 'the /review comment got no answer' ($slash -and $slashAnswers.Count -eq 0) "$(if ($slash) { "answers: $($slashAnswers.Count)" } else { 'no /review comment' })"
-    $recommendations = @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)" -match '(?i)\bmerg' })
-    Check 'the run recommended the merge once, in a top-level Autopilot: comment' ($recommendations.Count -eq 1) "recommendations: $($recommendations.Count)"
-    $nitUrl = Get-ThreadUrl 'nit'
-    Check 'the plan''s Follow-ups name NCode Review''s open nit, as the merge recommendation leaves it' ($nitUrl -and $followUps.Contains($nitUrl)) "nit: '$nitUrl'; Follow-ups: $(if ($followUps) { 'present' } else { 'missing' })"
+    # session-footer ends waiting, with no review left to come, so the run recommends no merge there.
+    if ($Scenario -ne 'session-footer') {
+        $recommendations = @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)" -match '(?i)\bmerg' })
+        Check 'the run recommended the merge once, in a top-level Autopilot: comment' ($recommendations.Count -eq 1) "recommendations: $($recommendations.Count)"
+        $nitUrl = Get-ThreadUrl 'nit'
+        Check 'the plan''s Follow-ups name NCode Review''s open nit, as the merge recommendation leaves it' ($nitUrl -and $followUps.Contains($nitUrl)) "nit: '$nitUrl'; Follow-ups: $(if ($followUps) { 'present' } else { 'missing' })"
+    }
+    if ($Scenario -eq 'session-footer') {
+        # A REFUSED line is expected here: the stand-in refuses the delete of the run's /review comment.
+        $all = @(Read-HostJson $hostDir 'comments.json' | Where-Object { $_ -and $_.kind -eq 'pr' })
+        $footer = ([IO.File]::ReadAllText((Join-Path $hostDir 'footer.txt'))).Trim()
+        $refused = @($calls | Where-Object { $_ -match '^REFUSED' })
+        $undeleted = @($all | Where-Object { $_.key -ne 'slash' -and "$($_.body)".Trim() -match '^/review' -and "$($_.body)".Contains($footer) })
+        Check 'the run posted one /review comment, whose delete the stand-in refused, so it stays with the footer' ($undeleted.Count -eq 1 -and $refused.Count -eq 1) "/review comments with the footer: $($undeleted.Count); REFUSED lines: $($refused.Count)"
+        $asks = @($all | Where-Object { "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)" -match '/review' -and -not "$($_.body)".Contains($footer) })
+        Check 'the run asked the maintainer for /review after each push, in Autopilot: comments without the footer' ($asks.Count -ge 2) "Autopilot: requests for /review without the footer: $($asks.Count)"
+        $ownAnswers = @(if ($undeleted.Count -eq 1) { $all | Where-Object { "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)".Contains("$($undeleted[0].url)") } })
+        Check 'the run never answered its own /review comment' ($undeleted.Count -eq 1 -and $ownAnswers.Count -eq 0) "$(if ($undeleted.Count -eq 1) { "answers: $($ownAnswers.Count)" } else { 'no undeleted /review comment' })"
+        $pushReplies = Get-ThreadReply 'owner-push'
+        $trimmed = $false
+        if ($branchGreeting.Count) {
+            $out = "$(pwsh -NoProfile -Command ". '$greetingFile'; (Get-Greeting -Name ' Ada ') -eq 'Hello, Ada!'")".Trim()
+            $trimmed = $out -eq 'True'
+        }
+        Check 'the owner''s request after the first push got one Autopilot: reply naming its commit, and the branch trims the name' ($null -ne $pushReplies -and $pushReplies.Count -eq 1 -and "$($pushReplies[0].body)" -match '\b[0-9a-f]{7,40}\b' -and $trimmed) "replies: $(if ($null -ne $pushReplies) { ($pushReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); trims: $trimmed"
+    }
     if ($Scenario -eq 'minor-round') {
         $branchHead = "$(git --git-dir=$origin rev-parse worktree-issue-1 2>$null)".Trim()
         Check 'NCode Review''s review of the run''s push arrived, after the run commented /review' ((-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) -and @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".Trim() -eq '/review' }).Count -ge 2 -and $pr -and $branchHead -and "$($pr.reviewRequestedOid)" -eq $branchHead) "review-seed-push.json is still in the host folder, the run did not comment /review, or its last /review asked for a review of '$(if ($pr) { $pr.reviewRequestedOid })', not the branch head '$branchHead'"
