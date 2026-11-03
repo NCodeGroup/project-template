@@ -234,8 +234,13 @@ function Get-RestId([string]$Url) {
 function Get-RestUser($Author) {
     $login = "$($Author.login)"
     $isBot = "$($Author.__typename)" -eq 'Bot' -or $login.EndsWith('[bot]')
-    if ($isBot -and -not $login.EndsWith('[bot]')) { $login = "$login[bot]" }
+    if ($isBot -and -not $login.EndsWith('[bot]')) { $login = "${login}[bot]" }
     return @{ login = $login; type = $(if ($isBot) { 'Bot' } else { 'User' }) }
+}
+
+# The stored pull request with this number, or nothing.
+function Get-PullRequestRecord($Number) {
+    return @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq "$Number" } | Select-Object -First 1
 }
 
 # The repos/ path of an api call as gh takes it: the first argument after api that names a repository's resource, with a leading /
@@ -329,7 +334,7 @@ $apiPath = Get-ApiPath
 $restGet = "$($args[0])" -eq 'api' -and $apiPath -and (Get-ApiMethod) -eq 'GET'
 if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)$') {
     $number = $Matches[1]
-    $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+    $pr = Get-PullRequestRecord $number
     if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
     Write-Result @{
         number = $pr.number; title = $pr.title; body = $pr.body; html_url = $pr.url
@@ -342,7 +347,7 @@ if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)$') {
 }
 if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)/ccr/review_threads$') {
     $number = $Matches[1]
-    $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+    $pr = Get-PullRequestRecord $number
     if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
     Add-PushReview $pr
     $threads = @(@(Read-Json 'threads.json' @()) | Where-Object { "$($_.number)" -eq $number } | ForEach-Object {
@@ -353,7 +358,7 @@ if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)/ccr/review_thr
 }
 if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)/comments(\?.*)?$') {
     $number = $Matches[1]
-    $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+    $pr = Get-PullRequestRecord $number
     if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
     Add-PushReview $pr
     $all = @()
@@ -373,7 +378,7 @@ if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)/comments(\?.*)
 }
 if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)/reviews(\?.*)?$') {
     $number = $Matches[1]
-    $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+    $pr = Get-PullRequestRecord $number
     if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
     Add-PushReview $pr
     $reviews = @(@(Read-Json 'reviews.json' @()) | Where-Object { "$($_.number)" -eq $number } | ForEach-Object {
@@ -422,7 +427,7 @@ if ("$($args[0])" -eq 'api' -and $apiPath -match '^repos/[^/]+/[^/]+/issues/(\d+
     $number = $Matches[1]
     $method = Get-ApiMethod
     if ($method -eq 'GET') {
-        $listedPr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+        $listedPr = Get-PullRequestRecord $number
         if ($listedPr) { Add-PushReview $listedPr }
         $list = @(@(Read-Json 'comments.json' @()) | Where-Object { "$($_.number)" -eq $number } | ForEach-Object {
             @{ id = (Get-RestId $_.url); user = (Get-RestUser $_.author); author_association = $_.authorAssociation; body = $_.body; html_url = $_.url }
@@ -432,7 +437,7 @@ if ("$($args[0])" -eq 'api' -and $apiPath -match '^repos/[^/]+/[^/]+/issues/(\d+
     }
     $sent = Get-Field 'body'
     if ($method -ne 'POST' -or $null -eq $sent) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
-    $isPr = [bool](@(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1)
+    $isPr = [bool](Get-PullRequestRecord $number)
     $kind = $(if ($isPr) { 'pr' } else { 'issue' })
     $url = Add-Comment $kind ([int]$number) $(if ($isPr) { 'pull' } else { 'issues' }) $sent
     $saved = @(Read-Json 'comments.json' @()) | Where-Object { $_.url -eq $url } | Select-Object -First 1
@@ -637,7 +642,7 @@ switch ("$($args[0]) $($args[1])") {
             exit 0
         }
         $number = Get-Field 'number'
-        $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq "$number" } | Select-Object -First 1
+        $pr = Get-PullRequestRecord $number
         if (-not $pr) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
         Add-PushReview $pr
         $none = @{ hasNextPage = $false }

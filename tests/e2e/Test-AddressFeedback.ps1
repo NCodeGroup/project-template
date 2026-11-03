@@ -338,9 +338,16 @@ exit 0
             $paged = @(gh api -X GET 'repos/{owner}/{repo}/pulls/1/comments' -f per_page=1 -f page=4 | Out-String | ConvertFrom-Json)
             Check 'fixture: the REST review comment read pages with -X GET and -f fields' ($paged.Count -eq 1 -and [long]$paged[0].in_reply_to_id -eq 2003) "comments=$($paged.Count) in_reply_to_id='$($paged[0].in_reply_to_id)'"
 
+            $pagedTop = @(gh api -XGET 'repos/{owner}/{repo}/issues/1/comments' -f per_page=1 -f page=2 | Out-String | ConvertFrom-Json)
+            $topExit = $LASTEXITCODE
+            $pagedReviews = @(gh api --method=GET 'repos/{owner}/{repo}/pulls/1/reviews' -f per_page=1 -f page=1 | Out-String | ConvertFrom-Json)
+            $reviewsExit = $LASTEXITCODE
+            $ok = $topExit -eq 0 -and $pagedTop.Count -eq 1 -and [long]$pagedTop[0].id -eq [long]$restTop[1].id -and $reviewsExit -eq 0 -and $pagedReviews.Count -eq 0
+            Check 'fixture: the REST top-level comment and review reads page with -XGET, --method=GET and -f fields' ([bool]$ok) "comments=$($pagedTop.Count) (exit $topExit) id='$($pagedTop[0].id)' expected '$($restTop[1].id)' reviews=$($pagedReviews.Count) (exit $reviewsExit)"
+
             $bodyFile = Join-Path $Work 'reply.md'
             Write-Text $bodyFile 'Autopilot: a top-level comment from the setup check.'
-            $posted = gh api -X POST 'repos/{owner}/{repo}/issues/1/comments' -F "body=@$bodyFile" | Out-String | ConvertFrom-Json
+            $posted = gh api -XPOST 'repos/{owner}/{repo}/issues/1/comments' -F "body=@$bodyFile" | Out-String | ConvertFrom-Json
             $stored = @(Read-HostJson $hostDir 'comments.json' | Where-Object { $_ -and $_.kind -eq 'pr' -and $_.number -eq 1 -and "$($_.body)".Trim() -eq 'Autopilot: a top-level comment from the setup check.' })
             $ok = $posted.id -and "$($posted.html_url)" -match '#issuecomment-(\d+)$' -and [long]$Matches[1] -eq [long]$posted.id -and $stored.Count -eq 1
             Check 'fixture: a REST top-level comment lands on the pull request' ([bool]$ok) "html_url='$($posted.html_url)' id='$($posted.id)' stored=$($stored.Count)"
