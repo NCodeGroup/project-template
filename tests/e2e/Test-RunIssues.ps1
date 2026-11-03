@@ -31,7 +31,7 @@
     minor-round, the default: NCode Review reviews the run's first push, once the run comments /review after it, with a should-fix finding that asks only for
     another test of what tests/Test-Greeting.ps1 tests, and a nit; the run must leave both without a step and recommend
     the merge. max-rounds: max-review-rounds is 1 and there is no second review; the run must recommend the merge after
-    its first round. session-footer: the stand-in saves each comment and reply with a Claude Code cloud session's footer, so the run's /review comment starts no review and the run asks the maintainer for one instead; it also refuses the comment's delete, so the /review comment stays with the footer; NCode Review's review of the first push carries a request of the owner's, so the run pushes a second round, after which it must post an Autopilot: request for /review and no /review comment, and must never answer its own /review comment. Run all three.
+    its first round. session-footer: the stand-in saves each pull request comment and thread reply, but no issue comment, with a Claude Code cloud session's footer, so the run's /review comment starts no review and the run asks the maintainer for one instead; it also refuses the comment's delete, so the /review comment stays with the footer; NCode Review's review of the first push carries a request of the owner's, so the run pushes a second round, after which it must post an Autopilot: request for /review and no /review comment, and must never answer its own /review comment. Run all three.
 
 .PARAMETER Claude
     The Claude Code CLI. Defaults to claude.
