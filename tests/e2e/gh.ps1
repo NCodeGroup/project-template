@@ -225,19 +225,34 @@ function Get-RestUser($Author) {
     return @{ login = $login; type = $(if ($isBot) { 'Bot' } else { 'User' }) }
 }
 
-# One page of a REST list, from the per_page (30 when absent) and page (1 when absent) of the call's path query.
+# The repos/ path of an api call as gh takes it: the first argument after api that names a repository's resource, with a leading /
+# removed, wherever -X, --method or -H put it; $null when there is none.
+function Get-ApiPath {
+    $found = @($script:CallArgs | Select-Object -Skip 1 | Where-Object { "$_" -match '^/?repos/[^/]+/[^/]+/' }) | Select-Object -First 1
+    if ($null -eq $found) { return $null }
+    return "$found".TrimStart('/')
+}
+
+# One page of a REST list, from the per_page (30 when absent) and page (1 when absent) of the call's path query, else of its
+# -f/-F fields, which gh sends as query parameters on a GET. page is at least 1 and per_page 1 to 100, as GitHub clamps them.
 function Get-Page($Items) {
-    $perPage = 30
-    $page = 1
-    if ("$($script:CallArgs[1])" -match '\?(.*)$') {
+    $perPage = $null
+    $page = $null
+    if ("$(Get-ApiPath)" -match '\?(.*)$') {
         foreach ($pair in "$($Matches[1])" -split '&') {
             if ($pair -match '^per_page=(\d+)$') { $perPage = [int]$Matches[1] }
             elseif ($pair -match '^page=(\d+)$') { $page = [int]$Matches[1] }
         }
     }
+    if ($null -eq $perPage -and "$(Get-Field 'per_page')" -match '^\d+$') { $perPage = [int]"$(Get-Field 'per_page')" }
+    if ($null -eq $page -and "$(Get-Field 'page')" -match '^\d+$') { $page = [int]"$(Get-Field 'page')" }
+    if ($null -eq $perPage) { $perPage = 30 }
+    if ($null -eq $page) { $page = 1 }
+    $page = [Math]::Max($page, 1)
+    $perPage = [Math]::Min([Math]::Max($perPage, 1), 100)
     $all = @($Items)
     $skip = ($page - 1) * $perPage
-    if ($perPage -lt 1 -or $skip -ge $all.Count) { return @() }
+    if ($skip -ge $all.Count) { return @() }
     return @($all | Select-Object -Skip $skip -First $perPage)
 }
 
@@ -261,8 +276,8 @@ if (Test-Path -LiteralPath $forbiddenFile) {
     }
 }
 
-if ((Test-Path -LiteralPath (Join-Path $hostDir 'graphql-refused.txt')) -and ("$($args[0])" -in 'pr', 'issue', 'release', 'repo' -or "$($args[0]) $($args[1])" -eq 'api graphql')) {
-    Stop-Call GRAPHQL 'HTTP 403: GitHub GraphQL is not available from Claude Code sessions; use the REST API (gh api repos/{owner}/{repo}/...).'
+if ((Test-Path -LiteralPath (Join-Path $hostDir 'graphql-refused.txt')) -and ("$($args[0])" -in 'pr', 'issue', 'release', 'repo' -or ("$($args[0])" -eq 'api' -and @($args | Select-Object -Skip 1 | Where-Object { "$_" -in 'graphql', '/graphql' }).Count))) {
+    Stop-Call GRAPHQL 'HTTP 403: GitHub GraphQL is not available from Claude Code sessions; use the REST API (gh api repos/{owner}/{repo}/...). For review threads, auto-merge, and draft/ready-for-review use the CCR routes on api.github.com: GET /repos/{owner}/{repo}/pulls/{n}/ccr/review_threads, POST /repos/{owner}/{repo}/pulls/{n}/ccr/comments/{comment_id}/resolve (or /unresolve), PUT or DELETE /repos/{owner}/{repo}/pulls/{n}/ccr/auto_merge, POST /repos/{owner}/{repo}/pulls/{n}/ccr/ready_for_review, POST /repos/{owner}/{repo}/pulls/{n}/ccr/convert_to_draft. (https://api.github.com/graphql)'
 }
 
 if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/commits/([0-9a-fA-F]{7,40})/check-runs(?:\?(.*))?$') {
@@ -293,10 +308,10 @@ if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/commit
     Stop-Call UNSUPPORTED "gh stand-in: unsupported --jq for check runs: $jq"
 }
 
-# The state script's REST reads: GET only, so a call with a method option or a field is not one of them.
-$restGet = "$($args[0])" -eq 'api' -and -not (Get-Option '-X', '--method') -and
-    -not @($args | Where-Object { "$_" -cmatch '^-X[A-Za-z]+$' -or "$_" -in '-f', '-F', '--field', '--raw-field', '--input' -or "$_" -match '^--(method|field|raw-field|input)=' }).Count
-if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)$') {
+# The REST reads: a GET (no method option, or -X GET) of a repository path.
+$apiPath = Get-ApiPath
+$restGet = "$($args[0])" -eq 'api' -and $apiPath -and (Get-ApiMethod) -eq 'GET'
+if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)$') {
     $number = $Matches[1]
     $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
     if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
@@ -309,7 +324,7 @@ if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)$') {
     }
     exit 0
 }
-if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/ccr/review_threads$') {
+if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)/ccr/review_threads$') {
     $number = $Matches[1]
     $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
     if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
@@ -320,7 +335,7 @@ if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/ccr/revie
     Write-Result $threads
     exit 0
 }
-if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/comments(\?.*)?$') {
+if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)/comments(\?.*)?$') {
     $number = $Matches[1]
     $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
     if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
@@ -340,7 +355,7 @@ if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/comments(
     Write-Result @(Get-Page $all)
     exit 0
 }
-if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/reviews(\?.*)?$') {
+if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)/reviews(\?.*)?$') {
     $number = $Matches[1]
     $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
     if (-not $pr) { Stop-Call NOTFOUND "gh stand-in: no pull request $number" }
@@ -351,7 +366,7 @@ if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/reviews(\
     Write-Result @(Get-Page $reviews)
     exit 0
 }
-if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls\?(.*)$') {
+if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/pulls\?(.*)$') {
     $head = $null
     $state = 'all'
     foreach ($pair in "$($Matches[1])" -split '&') {
@@ -374,7 +389,7 @@ if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls\?(.*)$') {
     Write-Result $found
     exit 0
 }
-if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/issues/(\d+)$') {
+if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/issues/(\d+)$') {
     $number = $Matches[1]
     $issues = Read-Json 'issues.json' @{}
     if (-not $issues.ContainsKey($number)) { Stop-Call NOTFOUND "gh stand-in: no issue $number" }
@@ -382,12 +397,12 @@ if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/issues/(\d+)$') {
     Write-Result @{ number = [int]$number; title = $issue.title; body = $issue.body; state = "$($issue.state)".ToLowerInvariant(); labels = $issue.labels }
     exit 0
 }
-if ($restGet -and "$($args[1])" -match '^repos/[^/]+/[^/]+/releases/tags/[^/]+$') {
+if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/releases/tags/[^/]+$') {
     Stop-Call NOTFOUND 'gh stand-in: no release'
 }
 
 # The REST routes for top-level comments, thread replies and refusals.
-if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/issues/(\d+)/comments(\?.*)?$') {
+if ("$($args[0])" -eq 'api' -and $apiPath -match '^repos/[^/]+/[^/]+/issues/(\d+)/comments(\?.*)?$') {
     $number = $Matches[1]
     $method = Get-ApiMethod
     if ($method -eq 'GET') {
@@ -411,7 +426,7 @@ if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/issues
     Write-Result @{ id = (Get-RestId $url); html_url = $url; body = $saved.body; user = @{ login = 'fixture-owner'; type = 'User' } }
     exit 0
 }
-if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/comments/(\d+)/replies$') {
+if ("$($args[0])" -eq 'api' -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)/comments/(\d+)/replies$') {
     $number = $Matches[1]
     $replyTo = [long]$Matches[2]
     if ((Get-ApiMethod) -ne 'POST') { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
@@ -427,10 +442,10 @@ if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/
     Write-Result @{ id = (Get-RestId $url); html_url = $url; body = $savedBody; in_reply_to_id = $replyTo }
     exit 0
 }
-if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)/ccr/(comments/\d+/(resolve|unresolve)|auto_merge|ready_for_review|convert_to_draft)$') {
+if ("$($args[0])" -eq 'api' -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)/ccr/(comments/\d+/(resolve|unresolve)|auto_merge|ready_for_review|convert_to_draft)$') {
     Stop-Call FORBIDDEN 'gh stand-in: resolving, auto-merge and draft changes are not allowed'
 }
-if ("$($args[0])" -eq 'api' -and "$($args[1])" -match '^repos/[^/]+/[^/]+/pulls/(\d+)$' -and (Get-ApiMethod) -eq 'PATCH') {
+if ("$($args[0])" -eq 'api' -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)$' -and (Get-ApiMethod) -eq 'PATCH') {
     $forbiddenEdit = (Test-Path -LiteralPath $forbiddenFile) -and @([IO.File]::ReadAllLines($forbiddenFile) | Where-Object { $_.Trim() -eq 'pr edit' }).Count
     if ($forbiddenEdit) { Stop-Call FORBIDDEN 'gh stand-in: pr edit is not allowed in this test' }
     Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')"
