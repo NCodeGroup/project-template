@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-11-03
+
+### Added
+
+- The workflow commands that run `gh` (`/run-issues`, `/address-feedback`, `/run-feedback`, `/continue-plan`, `/ship-plan`, `/orchestrate-plan`, `/replan-step`, `/triage-issues`, the planning commands and Copilot's `run-issues`) now work in a session that refuses GitHub's GraphQL API, as a Claude Code cloud session's proxy does, where `gh api graphql` and every `gh pr`, `gh issue` and `gh release` command fail. Once a `gh` command fails that way, the command runs each of them in its REST form through `gh api` for the rest of the run: a pull request's review threads come from the proxy's `pulls/<number>/ccr/review_threads` route, or the GitHub MCP `pull_request_read` tool, and a thread reply goes through `pulls/<number>/comments/<id>/replies`; without a route that says whether a thread is resolved, the command stops and says why. A local session's commands don't change. The forms are in one new rule, `workflow/templates/_github-rest.md`. Projects get it with `.\.template\Update-Project.ps1` ([#240](https://github.com/NCodeGroup/project-template/issues/240)).
+
+### Changed
+
+- `.template/Get-PlanState.ps1` reads a plan's pull requests, issues and release through `gh api` REST paths instead of `gh pr list`, `gh issue view` and `gh release view`, so its `pr`, `merge`, `landed`, `issue-state` and `published` lines are right in a Claude Code cloud session too. Projects get it with `.\.template\Update-Project.ps1` ([#240](https://github.com/NCodeGroup/project-template/issues/240)).
+- No change for projects made from the template. `tests/Test-PlanState.ps1` runs the state script with a `gh` stand-in that refuses GitHub's GraphQL API as the cloud proxy does, and checks a published release; the end-to-end `gh` stand-in, `tests/e2e/gh.ps1`, answers the state script's REST calls; and `tests/Test-Template.ps1` checks that every generated command that runs `gh pr`, `gh issue`, `gh release` or `gh api graphql` has the REST forms ([#240](https://github.com/NCodeGroup/project-template/issues/240)).
+
 ## [0.60.0] - 2026-11-02
 
 ### Changed
@@ -933,7 +944,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.60.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.61.0...HEAD
+[0.61.0]: https://github.com/NCodeGroup/project-template/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/NCodeGroup/project-template/compare/v0.59.2...v0.60.0
 [0.59.2]: https://github.com/NCodeGroup/project-template/compare/v0.59.1...v0.59.2
 [0.59.1]: https://github.com/NCodeGroup/project-template/compare/v0.59.0...v0.59.1
