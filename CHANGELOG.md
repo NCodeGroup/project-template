@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.61.2] - 2026-11-03
+
+### Changed
+
+- No change for projects made from the template. The end-to-end `gh` stand-in, `tests/e2e/gh.ps1`, serves the REST routes `workflow/templates/_github-rest.md` maps `gh` commands to (a pull request, its `ccr/review_threads`, review comments, top-level comments and reviews, a thread reply and a comment post), and with a new `graphql-refused.txt` it refuses `gh api graphql` and the `gh pr`, `gh issue`, `gh release` and `gh repo` commands as a Claude Code cloud session's proxy does. `tests/e2e/Test-AddressFeedback.ps1 -Scenario rest` runs `/address-feedback` that way and checks that every thread gets its `Autopilot:` reply through `pulls/<number>/comments/<id>/replies`; CI runs its fixture setup ([#245](https://github.com/NCodeGroup/project-template/issues/245)).
+
 ## [0.61.1] - 2026-11-03
 
 ### Changed
@@ -955,7 +961,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.61.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.61.2...HEAD
+[0.61.2]: https://github.com/NCodeGroup/project-template/compare/v0.61.1...v0.61.2
 [0.61.1]: https://github.com/NCodeGroup/project-template/compare/v0.61.0...v0.61.1
 [0.61.0]: https://github.com/NCodeGroup/project-template/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/NCodeGroup/project-template/compare/v0.59.2...v0.60.0
