@@ -253,20 +253,21 @@ function Get-Page($Items) {
     $page = $null
     if ("$(Get-ApiPath)" -match '\?(.*)$') {
         foreach ($pair in "$($Matches[1])" -split '&') {
-            if ($pair -match '^per_page=(\d+)$') { $perPage = [int]$Matches[1] }
-            elseif ($pair -match '^page=(\d+)$') { $page = [int]$Matches[1] }
+            if ($pair -match '^per_page=(\d+)$') { $perPage = [long]$Matches[1] }
+            elseif ($pair -match '^page=(\d+)$') { $page = [long]$Matches[1] }
         }
     }
-    if ($null -eq $perPage -and "$(Get-Field 'per_page')" -match '^\d+$') { $perPage = [int]"$(Get-Field 'per_page')" }
-    if ($null -eq $page -and "$(Get-Field 'page')" -match '^\d+$') { $page = [int]"$(Get-Field 'page')" }
+    if ($null -eq $perPage -and "$(Get-Field 'per_page')" -match '^\d+$') { $perPage = [long]"$(Get-Field 'per_page')" }
+    if ($null -eq $page -and "$(Get-Field 'page')" -match '^\d+$') { $page = [long]"$(Get-Field 'page')" }
     if ($null -eq $perPage) { $perPage = 30 }
     if ($null -eq $page) { $page = 1 }
     $page = [Math]::Max($page, 1)
     $perPage = [Math]::Min([Math]::Max($perPage, 1), 100)
     $all = @($Items)
-    $skip = ($page - 1) * $perPage
+    if (($page - 1) -ge $all.Count) { return @() }
+    $skip = [int](($page - 1) * $perPage)
     if ($skip -ge $all.Count) { return @() }
-    return @($all | Select-Object -Skip $skip -First $perPage)
+    return @($all | Select-Object -Skip $skip -First ([int]$perPage))
 }
 
 # The method an api call uses, as gh reads it: -X or --method (also as -X=PATCH), a method attached to -X as in -XPATCH, or POST
@@ -288,6 +289,8 @@ if (Test-Path -LiteralPath $forbiddenFile) {
         if ($line.Trim() -and "$($args[0]) $($args[1])" -eq $line.Trim()) { Stop-Call FORBIDDEN "gh stand-in: $($line.Trim()) is not allowed in this test" }
     }
 }
+
+if ("$($args[0]) $($args[1])" -in 'pr merge', 'pr ready', 'pr close') { Stop-Call FORBIDDEN "gh stand-in: $($args[0]) $($args[1]) is not allowed" }
 
 if ((Test-Path -LiteralPath (Join-Path $hostDir 'graphql-refused.txt')) -and ("$($args[0])" -in 'pr', 'issue', 'release', 'repo' -or ("$($args[0])" -eq 'api' -and @($args | Select-Object -Skip 1 | Where-Object { "$_" -in 'graphql', '/graphql' }).Count))) {
     Stop-Call GRAPHQL 'HTTP 403: GitHub GraphQL is not available from Claude Code sessions; use the REST API (gh api repos/{owner}/{repo}/...). For review threads, auto-merge, and draft/ready-for-review use the CCR routes on api.github.com: GET /repos/{owner}/{repo}/pulls/{n}/ccr/review_threads, POST /repos/{owner}/{repo}/pulls/{n}/ccr/comments/{comment_id}/resolve (or /unresolve), PUT or DELETE /repos/{owner}/{repo}/pulls/{n}/ccr/auto_merge, POST /repos/{owner}/{repo}/pulls/{n}/ccr/ready_for_review, POST /repos/{owner}/{repo}/pulls/{n}/ccr/convert_to_draft. (https://api.github.com/graphql)'
@@ -654,8 +657,5 @@ switch ("$($args[0]) $($args[1])") {
         } } } }
         exit 0
     }
-    'pr merge' { Stop-Call FORBIDDEN 'gh stand-in: pr merge is not allowed' }
-    'pr ready' { Stop-Call FORBIDDEN 'gh stand-in: pr ready is not allowed' }
-    'pr close' { Stop-Call FORBIDDEN 'gh stand-in: pr close is not allowed' }
     default { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
 }

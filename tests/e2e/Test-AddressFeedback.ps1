@@ -335,6 +335,9 @@ exit 0
             $restReviews = @(gh api 'repos/{owner}/{repo}/pulls/1/reviews?per_page=100&page=1' | Out-String | ConvertFrom-Json)
             Check 'fixture: the REST top-level comment and review reads give the stranger''s request and the question' ($restTop.Count -eq 2 -and $restReviews.Count -eq 0) "comments=$($restTop.Count) reviews=$($restReviews.Count)"
 
+            $paged = @(gh api -X GET 'repos/{owner}/{repo}/pulls/1/comments' -f per_page=1 -f page=4 | Out-String | ConvertFrom-Json)
+            Check 'fixture: the REST review comment read pages with -X GET and -f fields' ($paged.Count -eq 1 -and [long]$paged[0].in_reply_to_id -eq 2003) "comments=$($paged.Count) in_reply_to_id='$($paged[0].in_reply_to_id)'"
+
             $bodyFile = Join-Path $Work 'reply.md'
             Write-Text $bodyFile 'Autopilot: a top-level comment from the setup check.'
             $posted = gh api -X POST 'repos/{owner}/{repo}/issues/1/comments' -F "body=@$bodyFile" | Out-String | ConvertFrom-Json
@@ -432,7 +435,7 @@ if (-not $CheckOnly) {
         $callsPath = Join-Path $hostDir 'calls.log'
         # With the rest scenario a refused gh pr comment or GraphQL reply is also a CALL line, so only a REST post counts.
         $repliedPattern = if ($Scenario -eq 'rest') { '^CALL api .*(/replies|/issues/\d+/comments)\b.*(-f|-F|--field|--raw-field) ' } else { '^CALL (pr comment|api graphql .*addPullRequestReviewThreadReply|api .*(/replies|/issues/\d+/comments)\b.*(-f|-F|--field|--raw-field) )' }
-        $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match $repliedPattern }).Count
+        $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match $repliedPattern -and $_ -notmatch '(?i)\s(-X\s*=?\s*|--method[ =])GET\b' }).Count
         if (-not $replied -and $first -and $first.session_id) {
             $second = Invoke-Claude @claudeArgs -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $first.session_id -Index 2
             Check 'Claude Code run 2 returned a session' ($second -and $second.session_id) 'no session_id in the output'
