@@ -389,6 +389,7 @@ try {
     $protectedCall = Start-Concurrent $folder 'Get-Protected' @($hostName, $default, $policy['protect']) -Functions 'Get-Protected', 'Invoke-HostApi'
     if ($hasCli -and $branch -ne '-' -and $branch -ne $default) {
         # The colon is written %3A: gh api fills :owner, :repo and :branch as well as {owner}, so a branch such as repo-x would lose its name.
+        # One page of 100, as gh pr list --limit 100 read before: a branch's own pull requests are far fewer.
         $requestsCall = if ($hostName -eq 'github') { Start-Concurrent $folder 'gh' @('api', "repos/{owner}/{repo}/pulls?head={owner}%3A$([uri]::EscapeDataString($branch))&state=all&per_page=100") }
         else { Start-Concurrent $folder 'glab' @('mr', 'list', '--source-branch', $branch, '--all', '--output', 'json') }
     }
