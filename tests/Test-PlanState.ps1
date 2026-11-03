@@ -648,6 +648,11 @@ try {
     Set-HostApi @{}
     $r = Test-State (Get-State $gh.Repo) @{ tag = 'present'; published = 'no'; next = 'ship-plan' }
     Check 'release: a GitHub release gh api does not find is not published' $r.Ok $r.Detail
+    # Any failed release read counts as not published, as gh release view's did: ship-plan then tries again and says what failed, where finish-plan would drop the release.
+    Set-HostApi @{ 'repos/{owner}/{repo}/releases/tags/v0.2.0' = 'fail:502' }
+    $r = Test-State (Get-State $gh.Repo) @{ tag = 'present'; published = 'no'; next = 'ship-plan' }
+    Check 'release: a GitHub release read that fails with anything but not found is not published, so ship-plan runs again rather than finish-plan' $r.Ok $r.Detail
+    Set-HostApi @{}
     Push-Location $gh.Repo
     try {
         Invoke-Git push -q origin :refs/tags/v0.2.0
