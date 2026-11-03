@@ -11,7 +11,7 @@ closing it, and a GraphQL mutation that resolves a thread, dismisses a review, m
 a branch. `pr view` of a branch with no pull request fails as gh does (logged as NOTFOUND). An optional `forbidden.txt` names more commands to refuse, one `<command> <subcommand>` per line, such as
 `pr edit`. An optional `review-seed.json` holds the review threads, review summaries and top-level comments the first
 pull request gets when it is opened. An optional `review-seed-push.json` holds the review a pull request gets on the first
-GraphQL read after a /review comment posted once its branch on origin has moved past the head it was opened at, as NCode Review reviews a push only when a writer asks.
+read of its threads, comments or reviews, GraphQL or REST, after a /review comment posted once its branch on origin has moved past the head it was opened at, as NCode Review reviews a push only when a writer asks.
 `api repos/<owner>/<repo>/commits/<sha>/check-runs` answers one completed `Code review` check run of the app `ncode-review` for a commit whose push review it has given, giving it first when a /review comment asked for it, and evaluates only simple `--jq` paths and the count of completed check runs of one app.
 `api repos/<owner>/<repo>/issues/comments/<id>` answers a comment it holds by its id, as the commands read a post back
 after making it; with `-X PATCH` it saves the `body` field as given, and with `-X DELETE` it deletes the comment, whose
@@ -133,6 +133,19 @@ function Get-NextCommentId($Comments) {
     [IO.File]::WriteAllText($idFile, "$id")
     return $id
 }
+# The id a new review comment gets: one more than the largest #discussion_r number in threads.json and the one
+# host/last-review-comment-id.txt keeps, so ids never collide and a given id is never given again.
+function Get-NextReviewCommentId {
+    $idFile = Join-Path $hostDir 'last-review-comment-id.txt'
+    $id = 2000
+    if (Test-Path -LiteralPath $idFile) { $id = [long]([IO.File]::ReadAllText($idFile)).Trim() }
+    foreach ($t in @(Read-Json 'threads.json' @())) {
+        foreach ($c in @($t.comments)) { if ("$($c.url)" -match '#discussion_r(\d+)$' -and [long]$Matches[1] -gt $id) { $id = [long]$Matches[1] } }
+    }
+    $id++
+    [IO.File]::WriteAllText($idFile, "$id")
+    return $id
+}
 function Get-NextNumber {
     $max = 0
     foreach ($key in (Read-Json 'issues.json' @{}).Keys) { if ([int]$key -gt $max) { $max = [int]$key } }
@@ -158,7 +171,7 @@ function Add-ReviewSeed([int]$Number, [string]$PrUrl, [string]$SeedName = 'revie
     $seed = Read-Json $SeedName @{}
     $threads = @(Read-Json 'threads.json' @())
     foreach ($t in @($seed.threads | Where-Object { $_ })) {
-        $id = 2000 + $threads.Count + 1
+        $id = Get-NextReviewCommentId
         $threadComments = @(@{ author = $t.author; authorAssociation = $t.authorAssociation; body = $t.body; url = "$PrUrl#discussion_r$id" })
         foreach ($reply in $t.replies) { $threadComments += @{ author = $reply.author; authorAssociation = $reply.authorAssociation; body = $reply.body; url = "$PrUrl#discussion_r$id$($threadComments.Count)" } }
         $threads += @{
@@ -406,6 +419,8 @@ if ("$($args[0])" -eq 'api' -and $apiPath -match '^repos/[^/]+/[^/]+/issues/(\d+
     $number = $Matches[1]
     $method = Get-ApiMethod
     if ($method -eq 'GET') {
+        $listedPr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+        if ($listedPr) { Add-PushReview $listedPr }
         $list = @(@(Read-Json 'comments.json' @()) | Where-Object { "$($_.number)" -eq $number } | ForEach-Object {
             @{ id = (Get-RestId $_.url); user = (Get-RestUser $_.author); author_association = $_.authorAssociation; body = $_.body; html_url = $_.url }
         })
@@ -433,10 +448,10 @@ if ("$($args[0])" -eq 'api' -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)
     $threads = @(Read-Json 'threads.json' @())
     $thread = $threads | Where-Object { "$($_.number)" -eq $number -and @($_.comments).Count -and (Get-RestId @($_.comments)[0].url) -eq $replyTo } | Select-Object -First 1
     if (-not $thread) { Stop-Call NOTFOUND "gh stand-in: no review comment $replyTo to reply to" }
-    $count = 0
-    foreach ($t in $threads) { $count += @($t.comments).Count }
-    $url = "https://github.com/fixture/app/pull/$($thread.number)#discussion_r$(2000 + $count + 1)"
-    $savedBody = Get-SavedBody "$(Get-Field 'body')"
+    $sentBody = Get-Field 'body'
+    if ($null -eq $sentBody) { Stop-Call UNSUPPORTED 'gh stand-in: a reply needs a body field' }
+    $url = "https://github.com/fixture/app/pull/$($thread.number)#discussion_r$(Get-NextReviewCommentId)"
+    $savedBody = Get-SavedBody "$sentBody"
     $thread.comments = @($thread.comments) + @(@{ author = @{ __typename = 'User'; login = 'fixture-owner' }; authorAssociation = 'OWNER'; body = $savedBody; url = $url })
     Write-Json 'threads.json' $threads
     Write-Result @{ id = (Get-RestId $url); html_url = $url; body = $savedBody; in_reply_to_id = $replyTo }
@@ -612,9 +627,7 @@ switch ("$($args[0]) $($args[1])") {
             $threads = @(Read-Json 'threads.json' @())
             $thread = $threads | Where-Object { "$($_.id)" -eq "$threadId" } | Select-Object -First 1
             if (-not $thread) { Stop-Call UNSUPPORTED "gh stand-in: no review thread $threadId" }
-            $count = 0
-            foreach ($t in $threads) { $count += @($t.comments).Count }
-            $url = "https://github.com/fixture/app/pull/$($thread.number)#discussion_r$(2000 + $count + 1)"
+            $url = "https://github.com/fixture/app/pull/$($thread.number)#discussion_r$(Get-NextReviewCommentId)"
             $thread.comments = @($thread.comments) + @(@{ author = @{ __typename = 'User'; login = 'fixture-owner' }; authorAssociation = 'OWNER'; body = (Get-SavedBody "$(Get-Field 'body')"); url = $url })
             Write-Json 'threads.json' $threads
             Write-Result @{ data = @{ addPullRequestReviewThreadReply = @{ comment = @{ url = $url } } } }
