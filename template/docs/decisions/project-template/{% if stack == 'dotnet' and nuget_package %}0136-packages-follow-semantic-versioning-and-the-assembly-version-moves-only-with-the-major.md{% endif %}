@@ -31,10 +31,13 @@ A library's packages follow Semantic Versioning 2.0, and their assembly version 
 - A release tag is never moved or deleted: one tag, one published set of packages. A published version is never
   replaced; a bad release is fixed by the next version.
 - A release candidate gates a major version. Minor and patch versions ship directly.
-- Before 1.0.0, a breaking change may land in a minor version, as Semantic Versioning allows for `0.y.z`, but the
-  changelog still calls it out.
-- The changelog is `CHANGELOG.md`, in the Keep a Changelog format. Every plan's last step writes its section, and
-  `/ship-plan`, with `release: tag+release` in `AGENTS.md`'s Landing section, tags the merged commit with the plan's
+- Before 1.0.0, a breaking change may land in a minor version, as Semantic Versioning allows for `0.y.z`. A project
+  that tracks its changes from the first release (`pre-release: tracked`) marks it in the changelog with
+  `**Breaking:**`; a pre-release project ([ADR-0015](0015-a-pre-release-project-describes-the-product-as-it-is.md))
+  describes the product as it is instead, keeps no deprecation step, and its 1.0.0 section lists everything 1.0.0
+  ships.
+- The changelog is `CHANGELOG.md`, in the Keep a Changelog format. Every plan's last step writes its section, or, in a
+  pre-release project, edits the catalog in `## [Unreleased]`, and `/ship-plan`, with `release: tag+release` in `AGENTS.md`'s Landing section, tags the merged commit with the plan's
   version and publishes the release from that section.
 
 ### The assembly version
@@ -107,4 +110,6 @@ A pull request that touches the public API is reviewed against this checklist:
 - [.NET library guidance: breaking changes](https://learn.microsoft.com/dotnet/standard/library-guidance/breaking-changes)
 - [ADR-0131](0131-public-api-is-tracked-and-evolves-compatibly.md): the public API surface is tracked and evolves
   backward-compatibly.
+- [ADR-0015](0015-a-pre-release-project-describes-the-product-as-it-is.md): a pre-release project describes the product
+  as it is and keeps no compatibility.
 - [ADR-0134](0134-evolving-optional-parameters-are-a-dto.md): a growing set of optional criteria is an init-only DTO.
