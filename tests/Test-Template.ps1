@@ -129,8 +129,9 @@ $cases = @(
     @{ Name = 'node-bun-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'bun' } }
     @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
     @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
-    @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'MIT'; package_icon = 'icon.png' } }
-    @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'Apache-2.0' } }
+    @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
+    @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'Apache-2.0' } }
+    @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true' }; Refused = 'Required for a NuGet package' }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
     @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT' } }
     @{ Name = 'python-claude'; Stack = 'python'; Host = 'github'; Tools = @('claude') }
@@ -166,11 +167,17 @@ $renders = @($cases | ForEach-Object -ThrottleLimit ([Environment]::ProcessorCou
     $process.WaitForExit()
     [pscustomobject]@{ Name = $case.Name; ExitCode = $process.ExitCode; Output = ($stdout.Result + $stderr).Trim() }
 })
-$failedRenders = @($renders | Where-Object ExitCode -NE 0)
+$refusedNames = @($cases | Where-Object Refused | ForEach-Object Name)
+$failedRenders = @($renders | Where-Object { $_.ExitCode -ne 0 -and $_.Name -notin $refusedNames })
 if ($failedRenders) { throw (($failedRenders | ForEach-Object { "copier copy for $($_.Name) exited with code $($_.ExitCode): $($_.Output)" }) -join "`n") }
 
 foreach ($case in $cases) {
     $name = $case.Name
+    if ($case.Refused) {
+        $render = $renders | Where-Object Name -EQ $name
+        Check "${name}: Copier refuses it: $($case.Refused)" ($render.ExitCode -ne 0 -and $render.Output.Contains($case.Refused)) $render.Output
+        continue
+    }
     $dest = Join-Path $Work $name
     $tools = if ($case.Tools) { @($case.Tools) } else { $allTools }
 
@@ -184,7 +191,7 @@ foreach ($case in $cases) {
         $library = [bool]$case.Data.nuget_package
         # Without an answer, an NCode Group library takes the template's own icon.
         $icon = if ($case.Data.package_icon) { $case.Data.package_icon } else { 'NCodeGroup.png' }
-        $nugetOk = if ($library) { $buildProps.Contains("<PackageLicenseExpression>$($case.Data.package_license)</PackageLicenseExpression>") -and $buildProps.Contains("<PackageIcon>$icon</PackageIcon>") -and $buildProps.Contains("../$icon") -and -not $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
+        $nugetOk = if ($library) { $buildProps.Contains("<PackageLicenseExpression>$($case.Data.license)</PackageLicenseExpression>") -and $buildProps.Contains("<PackageIcon>$icon</PackageIcon>") -and $buildProps.Contains("../$icon") -and -not $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
             else { -not $buildProps.Contains('PackageLicenseExpression') -and $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
         Check "${name}: NuGet package settings" $nugetOk
         Check "${name}: analyzers, banned APIs and test-project suppressions in the build settings" ($buildProps.Contains('<AnalysisLevel>latest-recommended</AnalysisLevel>') -and $buildProps.Contains('<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>') -and $buildProps.Contains('ProjectTemplate.globalconfig') -and $buildProps.Contains('BannedSymbols.txt') -and $buildProps.Contains('ProjectTemplate.Tests.globalconfig')) $buildProps
@@ -211,19 +218,19 @@ foreach ($case in $cases) {
         $libraryWrong = @($libraryOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -ErrorAction SilentlyContinue) -ne $library })
         Check "${name}: library decisions only for a library" (-not $libraryWrong) ($libraryWrong -join ', ')
         $license = Join-Path $dest 'LICENSE.txt'
-        $licenseOk = switch ($case.Data.package_license) {
+        $licenseOk = switch ($case.Data.license) {
             'MIT' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).StartsWith("MIT License`n`nCopyright (c) NCode Group`n") }
             'Apache-2.0' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).Contains('Apache License') }
             default { -not (Test-Path -LiteralPath $license) }
         }
         Check "${name}: LICENSE.txt for the license answered" $licenseOk
-        Check "${name}: COPYRIGHT.txt only for an Apache-2.0 library" ((Test-Path -LiteralPath (Join-Path $dest 'COPYRIGHT.txt')) -eq ($case.Data.package_license -eq 'Apache-2.0'))
+        Check "${name}: COPYRIGHT.txt only for an Apache-2.0 library" ((Test-Path -LiteralPath (Join-Path $dest 'COPYRIGHT.txt')) -eq ($case.Data.license -eq 'Apache-2.0'))
         $templateIcon = Join-Path $dest 'NCodeGroup.png'
         Check "${name}: the template's icon only for a library that uses it" ((Test-Path -LiteralPath $templateIcon) -eq ($library -and $icon -eq 'NCodeGroup.png'))
         $editorconfig = Get-Content -LiteralPath (Join-Path $dest '.editorconfig') -Raw
         # Roslyn ends an .editorconfig value at the first ; or #, so the header must hold neither to be read whole: an author_name holding either gets no header.
         $author = if ($case.Data.author_name) { $case.Data.author_name } else { 'NCode Group' }
-        $headerLicense = if ($case.Data.license) { $case.Data.license } elseif ($library) { $case.Data.package_license } else { '' }
+        $headerLicense = if ($case.Data.license) { $case.Data.license } else { '' }
         $header = "file_header_template = Copyright $([char]0xA9) $author" + $(if ($headerLicense) { '\nSPDX-License-Identifier: ' + $headerLicense } else { '' })
         $headerLines = @($editorconfig -split '\r?\n' | Where-Object { $_.StartsWith('file_header_template') })
         $headerOk = if ($author -match '[;#]') { $headerLines.Count -eq 0 -and $editorconfig.Contains('# No file_header_template: author_name holds a ; or #, where Roslyn would cut the header short.') }
@@ -248,8 +255,8 @@ foreach ($case in $cases) {
     Check "${name}: CI checks the decision index" ($ciForIndex.Contains('.template/Test-AdrIndex.ps1')) $ciForIndex
     $indexHistory = if ($case.Host -eq 'github') { $ciForIndex -match '(?s)  build-and-test:.*?fetch-depth: 0.*?- name: Check the decision index' } else { $ciForIndex.Contains('- pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"') -and $ciForIndex.Contains('GIT_DEPTH: "0"') }
     Check "${name}: CI checks the decision index with the history to tell a new record" $indexHistory $ciForIndex
-    # The repository's license: the license answer, or a library's package license from before that answer existed.
-    $licenseAnswer = if ($case.Data.license) { $case.Data.license } elseif ($case.Data.nuget_package) { $case.Data.package_license } else { '' }
+    # The repository's license: the license answer.
+    $licenseAnswer = if ($case.Data.license) { $case.Data.license } else { '' }
     $licensePath = Join-Path $dest 'LICENSE.txt'
     $licenseText = if (Test-Path -LiteralPath $licensePath) { Get-Content -LiteralPath $licensePath -Raw } else { '' }
     $licenseRight = switch ($licenseAnswer) { 'MIT' { $licenseText.StartsWith("MIT License`n`nCopyright (c) NCode Group`n") } 'Apache-2.0' { $licenseText.Contains('Apache License') } default { -not $licenseText } }

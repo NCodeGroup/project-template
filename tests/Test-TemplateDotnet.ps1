@@ -43,7 +43,7 @@ if (-not $copierCache) { $env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache' 
 try {
     $output = & $exe @prefix copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test dotnet" --data 'stack=dotnet' --data 'git_host=github' --data "workflow_tools=[claude, copilot, local]" $tplUrl (Join-Path $Work 'dotnet') 2>&1 | Out-String
     if ($LASTEXITCODE) { throw "copier copy for dotnet exited with code ${LASTEXITCODE}: $($output.Trim())" }
-    $output = & $exe @prefix copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test dotnet-library-apache" --data 'stack=dotnet' --data 'git_host=github' --data "workflow_tools=[claude, copilot]" --data 'nuget_package=true' --data 'package_license=Apache-2.0' $tplUrl (Join-Path $Work 'dotnet-library-apache') 2>&1 | Out-String
+    $output = & $exe @prefix copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test dotnet-library-apache" --data 'stack=dotnet' --data 'git_host=github' --data "workflow_tools=[claude, copilot]" --data 'nuget_package=true' --data 'license=Apache-2.0' $tplUrl (Join-Path $Work 'dotnet-library-apache') 2>&1 | Out-String
     if ($LASTEXITCODE) { throw "copier copy for dotnet-library-apache exited with code ${LASTEXITCODE}: $($output.Trim())" }
 }
 finally { $env:COPIER_CACHE_DIR = $copierCache }
