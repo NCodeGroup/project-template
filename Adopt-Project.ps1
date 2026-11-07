@@ -130,6 +130,11 @@ try {
         if ($originals.ContainsKey('AGENTS.md')) {
             [IO.File]::WriteAllText((Join-Path $project 'AGENTS.md'), (Add-TemplateIndexEntry $originals['AGENTS.md']), $utf8)
         }
+        elseif (Test-Path -LiteralPath AGENTS.md) {
+            # The AGENTS.md the template wrote: a repository with a history tracks its changes (pre-release: tracked, ADR-0015).
+            $agentsPath = Join-Path $project 'AGENTS.md'
+            [IO.File]::WriteAllText($agentsPath, ([IO.File]::ReadAllText($agentsPath) -replace '(?m)^- pre-release: untracked\b', '- pre-release: tracked'), $utf8)
+        }
         if ($originals.ContainsKey('Directory.Build.props') -and (Test-Path -LiteralPath build\ProjectTemplate.props)) {
             [IO.File]::WriteAllText((Join-Path $project 'Directory.Build.props'), (Add-ProjectTemplateImport $originals['Directory.Build.props']), $utf8)
         }
