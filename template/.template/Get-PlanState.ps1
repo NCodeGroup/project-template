@@ -99,11 +99,10 @@ function Get-ChangelogFormat([string[]]$Lines) {
     'other'
 }
 
-# The version tags merged into HEAD that have no release heading in a changelog: <oldest>..<newest>, the tag alone, or -. With -Untracked, a tag below 1.0.0 needs no section.
-function Get-ChangelogBackfill([string[]]$Lines, [switch]$Untracked) {
+# The tags in -Tags, each a Tag and its Version, that have no release heading in a changelog: <oldest>..<newest>, the tag alone, or -. With -Untracked, a tag below 1.0.0 needs no section.
+function Get-ChangelogBackfill([string[]]$Lines, [object[]]$Tags, [switch]$Untracked) {
     $listed = @(foreach ($line in $Lines) { if ("$line" -match '^## \[?(v?\d+\.\d+\.\d+)\]?(?: - \d{4}-\d{2}-\d{2})?(?: \[YANKED\])?\s*$') { ConvertTo-PlanVersion $Matches[1] } })
-    $missing = @(foreach ($t in @(& git tag --list --merged HEAD 2>$null)) { $v = ConvertTo-PlanVersion "$t"; if ($null -ne $v -and $v -notin $listed -and -not ($Untracked -and $v.Major -lt 1)) { [pscustomobject]@{ Tag = "$t"; Version = $v } } })
-    $missing = @($missing | Sort-Object Version)
+    $missing = @($Tags | Where-Object { $_.Version -notin $listed -and -not ($Untracked -and $_.Version.Major -lt 1) } | Sort-Object Version)
     if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0].Tag } else { "$($missing[0].Tag)..$($missing[-1].Tag)" }
 }
 
@@ -493,12 +492,14 @@ try {
             $changelogVersion = "$prefix$($v.Major).$($v.Minor).$($v.Build)"
         }
     }
-    $changelogBackfill = Get-ChangelogBackfill $changelogLines -Untracked:($policy['pre-release'] -eq 'untracked')
+    # The version tags merged into HEAD, read once for the backfill and the pre-release check.
+    $mergedTags = @(foreach ($t in @(& git tag --list --merged HEAD 2>$null)) { $tv = ConvertTo-PlanVersion "$t"; if ($null -ne $tv) { [pscustomobject]@{ Tag = "$t"; Version = $tv } } })
+    $changelogBackfill = Get-ChangelogBackfill $changelogLines $mergedTags -Untracked:($policy['pre-release'] -eq 'untracked')
     $changelogDuplicates = Get-ChangelogDuplicate $changelogLines
     # Pre-release: the Landing section says untracked, no stable version (1.0.0 or later) is tagged in HEAD's history, and the plan's Release: version isn't stable.
     $preRelease = 'no'
     if ($policy['pre-release'] -eq 'untracked') {
-        $stableTags = @(foreach ($t in @(& git tag --list --merged HEAD 2>$null)) { $v = ConvertTo-PlanVersion "$t"; if ($null -ne $v -and $v.Major -ge 1) { $t } })
+        $stableTags = @($mergedTags | Where-Object { $_.Version.Major -ge 1 })
         $releaseVersion = ConvertTo-PlanVersion $release
         if ($stableTags.Count -eq 0 -and ($null -eq $releaseVersion -or $releaseVersion.Major -lt 1)) { $preRelease = 'yes' }
     }
