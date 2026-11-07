@@ -59,7 +59,7 @@ never brings a number the project already uses
 | [0140](0140-replicas-converge-through-reconciliation.md) | Caches expire absolutely, change notices are hints, and derived state is reconciled under a lease |
 | [0141](0141-side-effects-after-a-commit-go-through-an-outbox.md) | An effect that must follow a commit is written to an outbox with it and delivered at least once |
 | [0142](0142-data-that-grows-with-use-is-pruned-in-bounded-batches.md) | Data that grows with use has a retention period and is pruned in bounded batches |
-| [0143](0143-migrations-run-before-the-rollout-and-only-expand.md) | Migrations run in a step before the rollout, never at startup, and only expand until a later release contracts |
+| [0143](0143-migrations-run-before-the-rollout-and-only-expand.md) | Migrations run in a step before the rollout, never at startup, and only expand until a later release contracts; a pre-release project keeps one initial migration per context |
 | [0144](0144-correctness-guards-fail-closed-capacity-guards-fail-open.md) | A correctness guard fails closed with `503`; a capacity guard fails open behind a timeout and a breaker |
 | [0145](0145-outbound-calls-are-bounded-and-caller-supplied-urls-are-guarded.md) | Outbound calls are bounded; caller-supplied URLs go through a client that refuses private addresses |
 | [0146](0146-secrets-are-never-logged-compared-in-constant-time-and-shown-once.md) | Secrets never reach diagnostics, are compared in constant time, and are shown once and stored hashed |
