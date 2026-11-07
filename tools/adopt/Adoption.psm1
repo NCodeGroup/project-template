@@ -114,6 +114,24 @@ function Get-AdoptionAnswers([string]$Path) {
         # npm init writes a test script that only fails.
         $answers.test_command = if ($scripts['test'] -and $scripts['test'] -notmatch 'no test specified') { "$manager run test" } else { '' }
     }
+    # The license: a .NET repository's PackageLicenseExpression, else the root license file's text when it is Apache-2.0 or MIT.
+    $license = $null
+    if ($stack -eq 'dotnet') {
+        $props = Join-Path $Path 'Directory.Build.props'
+        if (Test-Path -LiteralPath $props) {
+            $text = Get-Content -LiteralPath $props -Raw
+            if ($text -match '<PackageLicenseExpression>\s*([^<\s]+)\s*</PackageLicenseExpression>') { $license = $Matches[1] }
+        }
+    }
+    if (-not $license) {
+        $licenseFile = Get-ChildItem -LiteralPath $Path -File | Where-Object Name -Match '^(LICEN[CS]E|COPYING)(\.(txt|md))?$' | Select-Object -First 1
+        if ($licenseFile) {
+            $text = Get-Content -LiteralPath $licenseFile.FullName -Raw
+            if ($text -match 'Apache License\s+Version 2\.0') { $license = 'Apache-2.0' }
+            elseif ($text -match '(?m)^\s*MIT License' -or $text -match 'Permission is hereby granted, free of charge') { $license = 'MIT' }
+        }
+    }
+    if ($license) { $answers.license = $license }
     $answers
 }
 
