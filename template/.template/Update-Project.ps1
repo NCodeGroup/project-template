@@ -56,6 +56,11 @@
     When the project has version tags merged into HEAD that the changelog (AGENTS.md's Landing changelog key,
     CHANGELOG.md by default) has no section for, it ends with a /plan-migration request to backfill them.
 
+    For a .NET library, it names the AssemblyVersion to set in Directory.Build.props when a release of the current
+    major was built with a higher one than build/ProjectTemplate.props pins (ADR-0136). It leaves
+    .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
+    publish.
+
     Every version of this script accepts -Path, -Ref, -Data, -NoCommit, -TemplateClone and -HandedOff, so any
     version can hand over to any later one.
 
@@ -458,6 +463,10 @@ try {
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
         foreach ($file in $deleted) { $copierArgs += '--exclude', "/$file" }
+        # A library whose own workflow already pushes NuGet packages gets no publish.yml, which would push them a second time.
+        $publishers = @(if ((Get-Answer 'nuget_package') -eq 'true') { Get-NuGetPublisher })
+        $publishLeftOut = $publishers.Count -gt 0 -and -not (Test-Path -LiteralPath .github/workflows/publish.yml) -and '.github/workflows/publish.yml' -notin @($deleted)
+        if ($publishLeftOut) { $copierArgs += '--exclude', '/.github/workflows/publish.yml' }
         # A file the project owns, merged or template-owned, stays as it is; its template change is shown below.
         foreach ($file in $ownedFiles) { $copierArgs += '--exclude', "/$file" }
         # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes
@@ -596,6 +605,23 @@ try {
         $ownedConflicts | ForEach-Object { "  $_" }
         "To keep the project's versions, make them project-owned$(if ($rewritten) { ', with the merged files above,' }) so updates leave them alone and show the template's changes instead. Abandon this update with git reset --hard; git clean -fd, then run:"
         $ownedCommand
+    }
+
+    # A library release built with a higher AssemblyVersion than build/ProjectTemplate.props pins (Get-AssemblyVersionFloor).
+    $floor = Get-AssemblyVersionFloor
+    if ($floor) {
+        ''
+        "$($floor.Tag) was released with AssemblyVersion $($floor.AssemblyVersion), and build/ProjectTemplate.props gives every $($floor.Major).x release $($floor.Major).0.0.0, which an application compiled against $($floor.AssemblyVersion) can't load. Until the next major version, set it in Directory.Build.props, after the import of build/ProjectTemplate.props (ADR-0136):"
+        "  <PropertyGroup><AssemblyVersion>$($floor.AssemblyVersion)</AssemblyVersion></PropertyGroup>"
+    }
+    # A library with its own NuGet publishing workflow (Get-NuGetPublisher).
+    if ($publishLeftOut) {
+        ''
+        "Left out .github/workflows/publish.yml: $($publishers -join ', ') already push NuGet packages, and a published release would run both. To publish through publish.yml instead, with nuget.org trusted publishing, delete $($publishers -join ', ') and run the update again."
+    }
+    elseif ($publishers.Count -gt 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml)) {
+        ''
+        "Both .github/workflows/publish.yml and $($publishers -join ', ') push NuGet packages, so a published release runs both. Keep one: delete publish.yml, or move the publishing into it and delete the others."
     }
 
     # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).
