@@ -150,6 +150,12 @@ try {
                 }
             }
         }
+        # A repository whose own workflow already pushes NuGet packages keeps it alone, without the template's publish.yml beside it.
+        $publishers = @(Get-NuGetPublisher)
+        if ($publishers.Count -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and '.github/workflows/publish.yml' -notin @(git ls-tree -r --name-only $head -- .github/workflows)) {
+            Remove-Item -LiteralPath .github/workflows/publish.yml
+            $report.Add("  Skipped .github/workflows/publish.yml $([char]0x2014) $($publishers -join ', ') already push NuGet packages")
+        }
 
         $followUps = [Collections.Generic.List[string]]::new()
         if (Test-Path -LiteralPath .github/copilot-instructions.md) { $followUps.Add('fold .github/copilot-instructions.md into AGENTS.md or a file it lists') }
@@ -181,6 +187,8 @@ try {
                 $buildLists = @(Get-BuildFileList $project)
                 if ($buildLists.Count) { $followUps.Add("re-admit Directory.Build.props and build/ProjectTemplate.props, which it imports, in each list of the build's files: $($buildLists -join ', ')") }
             }
+            $floor = Get-AssemblyVersionFloor
+            if ($floor) { $followUps.Add("set <AssemblyVersion>$($floor.AssemblyVersion)</AssemblyVersion> in Directory.Build.props until the next major version, because $($floor.Tag) was released with that assembly version (ADR-0136)") }
             # A library's build fails on a public symbol its PublicAPI.*.txt files don't list; the verification below records the API as it is.
             if ($NoVerify -and (Test-Path -LiteralPath build/Update-PublicApi.ps1)) { $followUps.Add('record each packable project''s public API with ./build/Update-PublicApi.ps1, which the build now checks') }
         }

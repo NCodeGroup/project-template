@@ -318,9 +318,13 @@ if (-not $UnitOnly) {
         'src/Lib/Lib.csproj' = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n</Project>`n"
         'README.md'          = "# Lib`n"
         'LICENSE'            = "Own license.`n"
+        '.github/workflows/release.yml' = "name: release`non: release`njobs:`n  push:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push out/*.nupkg`n"
     } 'https://github.com/example/lib.git'
+    Invoke-Git -C $ownLicense tag v2.3.0
     $licenseOut = & $adopt -Path $ownLicense -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; nuget_package = $true; package_license = 'Apache-2.0'; test_command = '' } -NoVerify | Out-String
     Check 'own-license: keeps its own license, without LICENSE.txt or COPYRIGHT.txt, and says so' ((Get-Content -Raw -LiteralPath (Join-Path $ownLicense 'LICENSE')) -eq "Own license.`n" -and -not (Test-Path -LiteralPath (Join-Path $ownLicense 'LICENSE.txt')) -and -not (Test-Path -LiteralPath (Join-Path $ownLicense 'COPYRIGHT.txt')) -and $licenseOut.Contains('Skipped LICENSE.txt') -and $licenseOut.Contains('Skipped COPYRIGHT.txt') -and -not (git -C $ownLicense status --porcelain)) $licenseOut
+    Check 'own-license: leaves publish.yml out beside its own publishing workflow, and says so' (-not (Test-Path -LiteralPath (Join-Path $ownLicense '.github/workflows/publish.yml')) -and (Test-Path -LiteralPath (Join-Path $ownLicense '.github/workflows/release.yml')) -and $licenseOut.Contains('Skipped .github/workflows/publish.yml')) $licenseOut
+    Check 'own-license: names the AssemblyVersion its release of the current major shipped' ($licenseOut.Contains('set <AssemblyVersion>2.3.0.0</AssemblyVersion> in Directory.Build.props')) $licenseOut
 
     if (-not $SkipDotnetBuild) {
         $subject = git -C $scaffoldRepo log -1 --format=%s
