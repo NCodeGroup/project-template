@@ -94,6 +94,7 @@ $coLocal = @('.github\agents\hybrid-planner.agent.md', '.github\agents\local-imp
 Check 'copilot-only: works out workflow_tools without local' ($coAnswers -match '(?m)^workflow_tools:\r?\n- claude\r?\n- copilot\r?\n(?!- )' -and -not $coLocal -and -not $coSettings.Contains('ollama') -and (Test-Path -LiteralPath (Join-Path $copilotOnly '.github\skills\plan-feature\SKILL.md')) -and -not $coOut.Contains("the template's default")) "$coAnswers | $($coLocal -join ', ') | $coOut"
 $coAgents = Get-Content -Raw -LiteralPath (Join-Path $copilotOnly 'AGENTS.md')
 Check 'copilot-only: the AGENTS.md the template writes for an adopted repository says pre-release: tracked' (($coAgents -match '(?m)^- pre-release: tracked\b') -and ($coAgents -notmatch '(?m)^- pre-release: untracked')) $coAgents
+Check 'copilot-only: pre_release reaches only the render, and .copier-answers.yml records none' ($coAnswers -notmatch '(?m)^pre_release:') $coAnswers
 
 $failing = New-Fixture 'failing' @{ 'README.md' = "# Failing`n" } 'https://github.com/example/failing.git'
 $failOut = & $adopt -Path $failing -Template $tpl -Ref v0.1.0 -Data @{ stack = 'other'; build_command = 'exit 3'; test_command = '' } | Out-String

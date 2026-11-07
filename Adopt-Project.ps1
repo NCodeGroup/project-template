@@ -7,7 +7,7 @@
     Works out the template's answers from what the repository already has (stack, project name, git host, workflow tools, authors,
     build and test commands), applies -Data over them, and runs `copier copy --overwrite --defaults` into the
     repository (Copier from PATH, or through uvx). The answers are recorded in .copier-answers.yml, so the project
-    can update itself with .\.template\Update-Project.ps1 afterwards. A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
+    can update itself with .\.template\Update-Project.ps1 afterwards. The answers include pre_release = tracked, so an AGENTS.md the template writes, for a repository that has none, says pre-release: tracked, since the repository has a history (ADR-0015); Copier records that answer nowhere. A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
 
     The repository must be the root of a Git repository with no uncommitted changes and no .copier-answers.yml.
     The result is one commit, "Adopt project-template <version>"; -NoCommit stages it instead. Before committing, the
@@ -129,11 +129,6 @@ try {
         foreach ($p in $ownedFiles | Where-Object { $_ -notin $merged -and (Test-Path -LiteralPath $_ -PathType Leaf) }) { $report.Add("  Owned $p $([char]0x2014) kept as the repository had it (project_owned_files)") }
         if ($originals.ContainsKey('AGENTS.md')) {
             [IO.File]::WriteAllText((Join-Path $project 'AGENTS.md'), (Add-TemplateIndexEntry $originals['AGENTS.md']), $utf8)
-        }
-        elseif (Test-Path -LiteralPath AGENTS.md) {
-            # The AGENTS.md the template wrote: a repository with a history tracks its changes (pre-release: tracked, ADR-0015).
-            $agentsPath = Join-Path $project 'AGENTS.md'
-            [IO.File]::WriteAllText($agentsPath, ([IO.File]::ReadAllText($agentsPath) -replace '(?m)^- pre-release: untracked\b', '- pre-release: tracked'), $utf8)
         }
         if ($originals.ContainsKey('Directory.Build.props') -and (Test-Path -LiteralPath build\ProjectTemplate.props)) {
             [IO.File]::WriteAllText((Join-Path $project 'Directory.Build.props'), (Add-ProjectTemplateImport $originals['Directory.Build.props']), $utf8)

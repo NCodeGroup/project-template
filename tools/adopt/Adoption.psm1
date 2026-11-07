@@ -87,6 +87,8 @@ function Get-AdoptionAnswers([string]$Path) {
         stack        = $stack
         project_name = if ($solutions.Count -eq 1) { $solutions[0].BaseName } else { Get-RepositoryName $Path $remote }
         git_host     = if ($remote -match 'gitlab') { 'gitlab' } else { 'github' }
+        # A repository with a history tracks its changes (ADR-0015): an AGENTS.md the template writes for it says pre-release: tracked.
+        pre_release  = 'tracked'
     }
     $tools = @(Get-WorkflowTools $Path)
     if ($tools.Count) { $answers.workflow_tools = $tools }
