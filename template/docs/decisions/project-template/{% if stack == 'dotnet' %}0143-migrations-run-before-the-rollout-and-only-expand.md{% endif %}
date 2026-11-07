@@ -3,9 +3,9 @@
 - **Status:** Accepted
 - **Date:** 2026-10-31
 
-This decision applies to projects that keep a relational schema through Entity Framework Core migrations.
-
 ## Context
+
+This decision applies to projects that keep a relational schema through Entity Framework Core migrations.
 
 Calling `Database.Migrate()` when the host starts is the shortest path from a model change to a working database, and
 it is fine on a developer's machine. Outside Development it goes wrong:
