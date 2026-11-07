@@ -292,6 +292,41 @@ function Get-ChangelogBackfill {
     [pscustomobject]@{ File = $file; Range = $range }
 }
 
+# Deliberate copies of tools/adopt/Adoption.psm1's functions, as for Get-ChangelogBackfill: change both, or tests\Test-LibraryRelease.ps1 fails.
+function Get-NuGetPublisher {
+    if (-not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
+    $found = foreach ($file in Get-ChildItem -LiteralPath .github/workflows -File) {
+        if ($file.Extension -in '.yml', '.yaml' -and $file.Name -ne 'publish.yml' -and (Get-Content -LiteralPath $file.FullName -Raw) -match '(?i)\bnuget(?:\.exe)?\s+push\b') { ".github/workflows/$($file.Name)" }
+    }
+    @($found) | Sort-Object
+}
+
+function Get-AssemblyVersionFloor {
+    if (-not (Test-Path -LiteralPath build/ProjectTemplate.props -PathType Leaf)) { return }
+    if ((Get-Content -LiteralPath build/ProjectTemplate.props -Raw) -notmatch 'Name="ProjectTemplatePinAssemblyVersion"') { return }
+    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion[\s>]') { return }
+    $tags = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$' } |
+        Sort-Object { [version]($_ -replace '^v' -replace '-.*$') })
+    if ($tags.Count -eq 0) { return }
+    $major = ([version]($tags[-1] -replace '^v' -replace '-.*$')).Major
+    $best = $null
+    $bestTag = $null
+    foreach ($tag in $tags) {
+        $number = [version]($tag -replace '^v' -replace '-.*$')
+        if ($number.Major -ne $major) { continue }
+        $shipped = $null
+        $props = git show "${tag}:Directory.Build.props" 2>$null
+        if ($LASTEXITCODE -eq 0 -and ($props -join "`n") -match '<AssemblyVersion>\s*(\d+(?:\.\d+){1,3})\s*</AssemblyVersion>') { $shipped = [version]$Matches[1] }
+        if (-not $shipped) {
+            $template = git show "${tag}:build/ProjectTemplate.props" 2>$null
+            $shipped = if ($LASTEXITCODE -eq 0 -and ($template -join "`n") -match 'Name="ProjectTemplatePinAssemblyVersion"') { [version]::new($major, 0, 0, 0) } else { $number }
+        }
+        $shipped = [version]::new($shipped.Major, $shipped.Minor, [Math]::Max($shipped.Build, 0), [Math]::Max($shipped.Revision, 0))
+        if (-not $best -or $shipped -gt $best) { $best = $shipped; $bestTag = $tag }
+    }
+    if ($best -gt [version]::new($major, 0, 0, 0)) { [pscustomobject]@{ Tag = $bestTag; AssemblyVersion = $best.ToString(); Major = $major } }
+}
+
 $project = (Resolve-Path -LiteralPath $Path).Path
 $ownClone = -not $TemplateClone
 $scratch = Join-Path ([IO.Path]::GetTempPath()) "project-template-update-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
