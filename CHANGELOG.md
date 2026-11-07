@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.61.3] - 2026-11-07
+
+### Changed
+
+- ADR-0014, "Every pull request discussion is remediated and replied to before it merges", states its context and consequences in the present tense: an agent that replies only to the threads it acts on leaves the person who resolves them to read the code again, every nit thread gets a reply, and `tools/Set-RepositoryBaseline.ps1` turns on conversation resolution in a ruleset an owner shaped and changes nothing else in it. Projects get it with `.\.template\Update-Project.ps1` ([#256](https://github.com/NCodeGroup/project-template/issues/256)).
+- No change for projects made from the template. The `gh` stand-in in `tests/Test-PlanState.ps1` and the end-to-end stand-ins `tests/e2e/gh.ps1` and `tests/e2e/glab.ps1` append to their logs one call at a time, through a named mutex, so the calls `workflow/Get-PlanState.ps1` makes at the same time are each logged and answered, and `tests/Test-PlanState.ps1` passes on a loaded machine ([#257](https://github.com/NCodeGroup/project-template/issues/257)).
+
 ## [0.61.2] - 2026-11-03
 
 ### Changed
@@ -961,7 +968,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.61.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.61.3...HEAD
+[0.61.3]: https://github.com/NCodeGroup/project-template/compare/v0.61.2...v0.61.3
 [0.61.2]: https://github.com/NCodeGroup/project-template/compare/v0.61.1...v0.61.2
 [0.61.1]: https://github.com/NCodeGroup/project-template/compare/v0.61.0...v0.61.1
 [0.61.0]: https://github.com/NCodeGroup/project-template/compare/v0.60.0...v0.61.0
