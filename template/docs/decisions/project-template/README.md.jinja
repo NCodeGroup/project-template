@@ -44,7 +44,7 @@ never brings a number the project already uses
 | [0105](0105-the-canonical-implementation-is-named-defaultfoo.md) | The one canonical implementation of `IFoo` is the internal `DefaultFoo` |
 | [0106](0106-configuration-binds-strictly-and-is-validated-at-startup.md) | An unknown configuration key or an invalid value stops the host at startup |
 | [0107](0107-filtered-reads-push-filtering-to-the-database.md) | A filtered read runs its filter in the database, through an intent-named query |
-| [0108](0108-persisted-documents-are-versioned-and-additive.md) | Persisted JSON documents carry a schema version, change additively and are upcast step by step |
+| [0108](0108-persisted-documents-are-versioned-and-additive.md) | Persisted JSON documents are versioned envelopes that refuse any other document, change in place before a pre-release project's first stable release and additively after it, and are upcast step by step |
 | [0109](0109-a-lost-concurrency-race-is-a-store-neutral-exception.md) | A lost optimistic-concurrency race surfaces as one store-neutral exception |
 | [0110](0110-shared-state-is-changed-by-read-modify-write.md) | Shared stored state changes through one read-modify-write operation that retries a lost race |
 | [0111](0111-failures-carry-a-machine-readable-code.md) | A failure that callers act on carries a stable machine-readable code |
