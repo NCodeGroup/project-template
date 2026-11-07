@@ -106,7 +106,7 @@ $toolFiles = @{
     local = '.github\agents\local-implementer.agent.md', '.github\agents\hybrid-planner.agent.md',
         '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-local.prompt.md'
 }
-$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
+$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'build\Get-TestRuntimes.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
     '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
