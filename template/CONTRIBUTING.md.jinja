@@ -1,6 +1,5 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
-{#- The repository's license, as copier.yml computes repository_license; the fallback serves a render before it exists. #}
-{%- set spdx = repository_license | default(license | default('') or (package_license | default('') if nuget_package | default(false) else '')) or '' %}
+{%- set spdx = license %}
 {%- set pm = package_manager | default('npm') %}
 {%- set pr = 'merge request' if git_host == 'gitlab' else 'pull request' -%}
 # Contributing to {{ project_name }}
