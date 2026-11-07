@@ -839,6 +839,14 @@ Check 'pre-release: a stable tag merged into HEAD ends it, and the backfill coun
 Push-Location $lateRepo
 try { Invoke-Git tag -d v1.0.0 | Out-Null }
 finally { Pop-Location }
+Push-Location $lateRepo
+try { Invoke-Git tag 1.0.0 }
+finally { Pop-Location }
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'pre-release' = 'no'; 'changelog-backfill' = '1.0.0' }
+Check 'pre-release: a stable tag without a leading v ends it too' $r.Ok $r.Detail
+Push-Location $lateRepo
+try { Invoke-Git tag -d 1.0.0 | Out-Null }
+finally { Pop-Location }
 
 Write-Text $latePlan $latePlanText.Replace('Release: v0.3.1', 'Release: v1.0.0')
 $r = Test-State (Get-State $lateRepo -NoFetch) @{ 'pre-release' = 'no' }
