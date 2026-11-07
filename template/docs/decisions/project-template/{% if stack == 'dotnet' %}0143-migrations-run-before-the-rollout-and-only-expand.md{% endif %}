@@ -85,6 +85,7 @@ expands the schema unless it is marked as a contract step, which ships in a late
 - A rename or a tightening takes two releases, and the second one's marker says why it is safe.
 - A deployment pipeline gains a migration step, and its timeout covers the migrations.
 - A pre-release project's schema history is one migration per context until its first stable release.
+
 ## References
 
 - [Applying migrations](https://learn.microsoft.com/ef/core/managing-schemas/migrations/applying)
