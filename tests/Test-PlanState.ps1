@@ -359,7 +359,12 @@ if ($args[0] -eq 'api') {
     }
     if ($path -match '^repos/[^/]+/[^/]+/issues/(\d+)$') {
         $number = $Matches[1]
-        [IO.File]::AppendAllText((Join-Path $PSScriptRoot 'issue-paths.txt'), "$path`n")
+        # The state script reads a group plan's issues from parallel runspaces of one process, and an append to the file
+        # while another is open fails with a sharing violation, so the appends take turns.
+        $mutex = [Threading.Mutex]::new($false, "project-template-plan-state-test-$PID")
+        $null = $mutex.WaitOne()
+        try { [IO.File]::AppendAllText((Join-Path $PSScriptRoot 'issue-paths.txt'), "$path`n") }
+        finally { $mutex.ReleaseMutex(); $mutex.Dispose() }
         $file = Join-Path $PSScriptRoot 'issues.json'
         if (-not (Test-Path $file)) { exit 1 }
         $issues = [IO.File]::ReadAllText($file) | ConvertFrom-Json
