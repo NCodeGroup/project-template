@@ -31,9 +31,11 @@ stable release.
    the default when the line is missing. A new project starts with `untracked`; the template's `Adopt-Project.ps1`
    writes `tracked` into an `AGENTS.md` it writes, since an existing repository has a history. Choose `tracked` when
    anything the project released or stored has a reader that must keep working, such as a published `0.y.z` package
-   with consumers or a deployment whose data must survive. With `untracked`, the project is pre-release until a version
-   tag of 1.0.0 or later, shaped like `v1.2.3` or `1.2.3`, is merged into its branch; `.template/Get-PlanState.ps1`
-   prints `pre-release: yes` while it is.
+   with consumers or a deployment whose data must survive. The posture is the project's choice, not the version's: with
+   `untracked`, a consumer of a published `0.y.z` release gets no compatibility promise, so a library whose `0.y.z`
+   packages have consumers it keeps working sets `tracked`, and its changelog marks each breaking change with
+   `**Breaking:**`. With `untracked`, the project is pre-release until a version tag of 1.0.0 or later, shaped like
+   `v1.2.3` or `1.2.3`, is merged into its branch; `.template/Get-PlanState.ps1` prints `pre-release: yes` while it is.
 2. Every text describes the product as it is: a changelog entry, a document, a code comment, an XML doc, a decision
    record, a test name, a commit message and a pull request's title and description carry no `**Breaking:**` label; no
    "now", "new", "no longer", "previously", "used to", "replaces", "renamed", "moved" or "migrated" set against an
