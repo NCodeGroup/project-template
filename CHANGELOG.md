@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-11-07
+
+### Added
+
+- A pre-release posture for a project that has shipped nothing: `- pre-release: untracked` in `AGENTS.md`'s Landing section, which a new project starts with, keeps the project pre-release until a version tag of 1.0.0 or later. Every text then describes the product as it is, the changelog's `## [Unreleased]` is a catalog of what the product does under `### Added` and `### Security` that each plan's last step edits in place, a release's notes are that catalog, and a breaking change needs no deprecation, compatibility shim, migration path or `**Breaking:**` label. The plan that releases the first stable version moves the catalog into that version's section. `- pre-release: tracked`, the default for a missing line and the value an adopted repository's `AGENTS.md` gets, tracks every change from the first release. ADR-0015 records the decision ([#249](https://github.com/NCodeGroup/project-template/issues/249)).
+- `.template/Get-PlanState.ps1` prints `pre-release: yes` or `no`, and the Landing key on its `landing` line; its `changelog-backfill`, `Update-Project.ps1` and `Adopt-Project.ps1` need no changelog section for a pre-release project's tags below 1.0.0 ([#249](https://github.com/NCodeGroup/project-template/issues/249)).
+
+### Changed
+
+- In a pre-release project, `/ship-plan` publishes a release from `## [Unreleased]`, moves a plan whose version another plan took by its `Release:` line alone, and hands a plan back to `/replan-step` when the first stable release lands before it; `/review-plan-diff` checks that the plan's texts describe the product as it is; planners keep the version below 1.0.0 until a request asks for the first stable release ([#249](https://github.com/NCodeGroup/project-template/issues/249)).
+- ADR-0108: a .NET project's serializer refuses a stored document that isn't an envelope with a descriptive `JsonException`, and only a project that adopts the envelope over documents it already stored reads a document without `$ver` as version 1. Before a pre-release project's first stable release, a payload changes in place at version 1, with no upcaster. In a pre-release project, ADR-0143 keeps one `Initial` migration per database context, regenerated on each model change, and ADR-0131, ADR-0136 and `csharp.instructions.md` let the public API change in place ([#250](https://github.com/NCodeGroup/project-template/issues/250)).
+
 ## [0.61.2] - 2026-11-03
 
 ### Changed
@@ -961,7 +973,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.61.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.62.0...HEAD
+[0.62.0]: https://github.com/NCodeGroup/project-template/compare/v0.61.2...v0.62.0
 [0.61.2]: https://github.com/NCodeGroup/project-template/compare/v0.61.1...v0.61.2
 [0.61.1]: https://github.com/NCodeGroup/project-template/compare/v0.61.0...v0.61.1
 [0.61.0]: https://github.com/NCodeGroup/project-template/compare/v0.60.0...v0.61.0
