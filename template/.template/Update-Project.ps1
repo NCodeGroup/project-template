@@ -274,20 +274,23 @@ function Get-GitHooksSetup {
 
 # The changelog AGENTS.md's Landing section names (CHANGELOG.md by default) as File, and as Range the version tags merged into HEAD
 # that have no release heading in it: <oldest>..<newest>, the tag alone, or -. .template/Get-PlanState.ps1 prints Range as changelog-backfill.
+# With pre-release: untracked in the Landing section, a tag below 1.0.0 needs no section.
 # This is a deliberate copy of that logic, not shared code: Update-Project.ps1 runs on its own, from an older template's copy, before any workflow script exists to dot-source.
 # Change the release-heading pattern and the merged-tag filter in both places, or the request printed here can disagree with changelog-backfill.
 function Get-ChangelogBackfill {
     $file = 'CHANGELOG.md'
+    $untracked = $false
     if (Test-Path -LiteralPath AGENTS.md) {
         $inLanding = $false
         foreach ($line in Get-Content -LiteralPath AGENTS.md) {
             if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
             if ($inLanding -and $line -match '^## ') { break }
-            if ($inLanding -and $line -match '^- changelog:\s*`?([^`\s]+)') { $file = $Matches[1]; break }
+            if ($inLanding -and $line -match '^- changelog:\s*`?([^`\s]+)') { $file = $Matches[1] }
+            if ($inLanding -and $line -match '^- pre-release:\s*`?untracked`?\s*$') { $untracked = $true }
         }
     }
     $listed = @(if (Test-Path -LiteralPath $file -PathType Leaf) { foreach ($line in Get-Content -LiteralPath $file) { if ($line -match '^## \[?v?(\d+\.\d+\.\d+)\]?(?: - \d{4}-\d{2}-\d{2})?(?: \[YANKED\])?\s*$') { [version]$Matches[1] } } })
-    $missing = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -notin $listed } | Sort-Object { [version]($_ -replace '^v') })
+    $missing = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -notin $listed -and -not ($untracked -and ([version]$Matches[1]).Major -lt 1) } | Sort-Object { [version]($_ -replace '^v') })
     $range = if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0] } else { "$($missing[0])..$($missing[-1])" }
     [pscustomobject]@{ File = $file; Range = $range }
 }
