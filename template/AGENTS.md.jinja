@@ -33,7 +33,7 @@ How `/ship-plan` lands a reviewed plan. `integrate`: `pull-request` pushes the p
 - integrate: pull-request
 - release: {% if nuget_package | default(false) and git_host == 'github' %}tag+release{% else %}none{% endif %}
 - changelog: CHANGELOG.md
-- pre-release: untracked
+- pre-release: {{ pre_release }}
 - draft: no
 - follow-ups: issues
 - follow-up-label: follow-up

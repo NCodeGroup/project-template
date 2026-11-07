@@ -454,6 +454,7 @@ foreach ($case in $cases) {
     $ignore = Get-Content -LiteralPath (Join-Path $dest '.gitignore') -Raw
     $claude = 'claude' -in $tools
     Check "${name}: AGENTS.md and .gitignore for the chosen tools" (($agents.Contains('CLAUDE.md') -eq $claude) -and ($ignore.Contains('CLAUDE.local.md') -eq $claude))
+    Check "${name}: AGENTS.md starts the project pre-release, and the answers record no pre_release" (($agents -match '(?m)^- pre-release: untracked\r?$') -and ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -notmatch '(?m)^pre_release:')) $agents
     Check "${name}: .gitignore ignores the plan" ($ignore -match '(?m)^PLAN\.md\r?$')
     $rules = Get-Content -LiteralPath (Join-Path $dest '.github\instructions\project-template.instructions.md') -Raw
     Check "${name}: template rules for the chosen tools" (($rules.Contains('.claude/') -eq $claude) -and ($rules.Contains('.github/skills/') -eq ('copilot' -in $tools)))
@@ -742,7 +743,7 @@ $m = @(Get-MissingText ($shipFiles + $planCopies) ('Until the first stable relea
 $m += @(Get-MissingText $planCopies ('a raise keeps the major version at 0', 'except in a pre-release project, which has none'))
 $m += @(Get-MissingText $shipFiles ('Stop when `pre-release` is `invalid`', 'the state script''s `pre-release` is `no` and its `changelog-version` isn''t `<version>`', 'Write the <renumber> changelog section', 'that section is `## [Unreleased]`', 'In a pre-release changelog, keep the catalog entries of both sides'))
 $m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('as ADR-0015 says'))
-$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- pre-release: untracked', '`pre-release`: `untracked` keeps the project pre-release'))
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- pre-release: {{ pre_release }}', '`pre-release`: `untracked` keeps the project pre-release'))
 $m += @(Get-MissingText 'template\.github\instructions\project-template.instructions.md.jinja' ('says `pre-release: untracked`', 'In a pre-release project, the changelog describes the product as it is instead'))
 $m += @(Get-MissingText 'template\docs\decisions\project-template\0015-a-pre-release-project-describes-the-product-as-it-is.md' ('pre-release: untracked'))
 Check 'workflow: a pre-release project keeps its changelog as a catalog of the product and releases from it, and AGENTS.md documents the pre-release key' (-not $m) ($m -join '; ')

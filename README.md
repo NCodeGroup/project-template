@@ -152,6 +152,7 @@ An instruction override is the project's word against the template's, so say it 
 | `package_icon` | `NCodeGroup.png` for the author NCode Group, otherwise blank | A PNG at the repository root, packed as the icon; the template writes `NCodeGroup.png` itself |
 | `package_manager` (Node.js only) | npm | How CI installs dependencies — `npm ci`; pnpm and Yarn through Corepack, which runs the version `package.json`'s `packageManager` field names; Bun through `oven-sh/setup-bun` on GitHub and the `oven/bun` image on GitLab — Dependabot's ecosystem (`bun` for Bun, else `npm`), and the default build and test commands |
 | `build_command`, `test_command` | By stack, below | `AGENTS.md`, `README.md`, and through them every plan's Context for the executor |
+| `pre_release` | `untracked`; never asked or recorded: `Adopt-Project.ps1` answers `tracked`, and `-Data` sets it | The `pre-release` line of the `## Landing` section in the `AGENTS.md` the template writes, once: `untracked` keeps a new project pre-release until its first stable release, and `tracked` tracks every change from the first release (ADR-0015) |
 | `project_owned_files` | None; not asked, set with `Update-Project.ps1 -Data` | Files the project owns, merged or template-owned: updates leave them alone and show the template's changes to them ([Project-Owned Files](#project-owned-files)) |
 
 | Stack | Build | Test |
