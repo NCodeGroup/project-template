@@ -11,7 +11,7 @@ Take these issues from plan to landing, one queue entry at a time, in this sessi
 
 An entry is one issue, or a group of up to three related issues that triage-issues printed on one `/plan-issue` line, which gets one plan, worktree, pull request and release. Below, `<number>` is the number of an entry's first issue, which names its worktree `issue-<number>` and branch `worktree-issue-<number>`, and `<issues>` is the entry's references, such as `#25 #24 #26`.
 
-You coordinate. Each stage runs as the workflow's own command does: read that command's installed file, `.claude/commands/<name>.md` in the repository, or `~/.claude/commands/<name>.md` when the repository has none, and follow its body after the front matter, using the arguments named below wherever the body refers to its request or extra instructions. Delegate a stage to a subagent with the Agent tool, `subagent_type: general-purpose` and the `model` named below. A subagent doesn't see this conversation: give it the worktree's absolute path, the command file to follow, its arguments and the rules below, and tell it to work only in that folder.
+{{PROMPT:_claude-stages}}
 
 ## Rules
 

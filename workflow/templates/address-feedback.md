@@ -9,7 +9,7 @@ Address the open comments and discussions on this pull request, in this session:
 
 {{INPUT}}
 
-You coordinate. Each stage runs as the workflow's own command does: read that command's installed file, `.claude/commands/<name>.md` in the repository, or `~/.claude/commands/<name>.md` when the repository has none, and follow its body after the front matter, using the arguments named below wherever the body refers to its request or extra instructions. Delegate a stage to a subagent with the Agent tool, `subagent_type: general-purpose` and the `model` named below. A subagent doesn't see this conversation: give it the worktree's absolute path, the command file to follow, its arguments and the rules below, and tell it to work only in that folder.
+{{PROMPT:_claude-stages}}
 
 An item is one open review thread, one top-level comment or one review summary on the pull request. `<number>` is the pull request's number, `<head>` the name of its branch, and `<default>` the repository's default branch.
 
