@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Test tools\Publish-Release.ps1, which .github\workflows\release.yml runs to tag and publish a release when it merges.
+    Test template\.template\Publish-Release.ps1, which .github\workflows\release.yml runs to tag and publish a release when it merges.
 
 .DESCRIPTION
     Runs the script in a clone of a temporary bare repository, with a stand-in for gh that keeps each release it publishes
@@ -20,7 +20,7 @@
 param()
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$script = Join-Path $repoRoot 'tools/Publish-Release.ps1'
+$script = Join-Path $repoRoot 'template/.template/Publish-Release.ps1'
 $failures = [Collections.Generic.List[string]]::new()
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
@@ -29,8 +29,8 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
 
 $workflow = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github/workflows/release.yml')
 Check 'release.yml runs on a push to main that changes CHANGELOG.md' ($workflow -match '(?m)^  push:\r?\n    branches: \[main\]\r?\n    paths: \[CHANGELOG\.md\]')
-Check 'release.yml gives its job contents: write' ($workflow -match '(?m)^    permissions:\r?\n      contents: write')
-Check 'release.yml runs the script on the merged commit' ($workflow -match [regex]::Escape('run: ./tools/Publish-Release.ps1 -Commit $env:GITHUB_SHA'))
+Check 'release.yml gives its job contents: write and pull-requests: read' ($workflow -match '(?m)^    permissions:\r?\n      contents: write\r?\n(?:      #.*\r?\n)?      pull-requests: read')
+Check 'release.yml runs the script on the merged commit' ($workflow -match [regex]::Escape('run: ./template/.template/Publish-Release.ps1 -Commit $env:GITHUB_SHA'))
 
 $temp = Join-Path ([IO.Path]::GetTempPath()) "publish-release-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $temp | Out-Null
