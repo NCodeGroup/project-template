@@ -87,6 +87,35 @@ $globalJson = Join-Path $stubRoot 'sha.json'
 $sdkUrl = 'https://stub.invalid/dotnet-sdk'
 $r = Invoke-StubInstaller @{ '8.0/releases.json' = New-StubChannel '8.0.11' @(New-StubSdk '8.0.404' @(@{ name = "dotnet-sdk-$suffix"; url = $sdkUrl; hash = ('0' * 128) })) } @{ $sdkUrl = [Text.Encoding]::UTF8.GetBytes('not the archive the metadata describes') } @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' }
 Check 'installer: build/Install-Dotnet.ps1 refuses an archive whose SHA-512 differs from the release metadata''s, installs nothing and leaves no scratch folder' ($r.Error.Contains("doesn't match the SHA-512") -and $r.Calls -contains $sdkUrl -and -not (Test-Path -LiteralPath (Join-Path $dir 'sdk')) -and -not @(Get-ChildItem -LiteralPath $dir -Force -Filter '.install-dotnet-*')) "$($r.Error) | $($r.Printed)"
+
+$selectMetadata = @{
+    'releases-index.json' = @{ 'releases-index' = @(@{ 'channel-version' = '8.0'; 'latest-sdk' = '8.0.404' }, @{ 'channel-version' = '10.0'; 'latest-sdk' = '10.0.100' }, @{ 'channel-version' = '11.0'; 'latest-sdk' = '11.0.100-preview.1.25000.1' }) } | ConvertTo-Json -Depth 5
+    '8.0/releases.json' = New-StubChannel '8.0.11' @((New-StubSdk '8.0.100'), (New-StubSdk '8.0.110'), (New-StubSdk '8.0.300'), (New-StubSdk '8.0.404'))
+    '10.0/releases.json' = New-StubChannel '10.0.0' @((New-StubSdk '10.0.100-rc.1.25451.107'), (New-StubSdk '10.0.100'))
+    '11.0/releases.json' = New-StubChannel '11.0.0-preview.1' @(New-StubSdk '11.0.100-preview.1.25000.1')
+}
+$selectInstalled = '8.0.100', '8.0.110', '8.0.300', '8.0.404', '10.0.100-rc.1.25451.107', '10.0.100', '11.0.100-preview.1.25000.1'
+$selectCases = @(
+    @('8.0.100', '', '8.0.100'),
+    @('8.0.100', 'disable', '8.0.100'),
+    @('8.0.100', 'latestPatch', '8.0.110'),
+    @('8.0.100', 'latestFeature', '8.0.404'),
+    @('8.0.100', 'latestMinor', '8.0.404'),
+    @('8.0.100', 'latestMajor', '10.0.100'),
+    @('10.0.100-rc.1.25451.107', 'latestFeature', '10.0.100-rc.1.25451.107')
+)
+$misses = [Collections.Generic.List[string]]::new()
+for ($i = 0; $i -lt $selectCases.Count; $i++) {
+    $version, $rollForward, $expected = $selectCases[$i]
+    $dir = New-StubInstallDir "select$i" $selectInstalled
+    $sdkSetting = @{ version = $version }
+    if ($rollForward) { $sdkSetting.rollForward = $rollForward }
+    $globalJson = Join-Path $stubRoot "select$i.json"
+    [IO.File]::WriteAllText($globalJson, (@{ sdk = $sdkSetting } | ConvertTo-Json))
+    $r = Invoke-StubInstaller $selectMetadata @{} @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' }
+    if ($r.Error -or -not $r.Printed.Contains(".NET SDK $expected is already in")) { $misses.Add("$version ${rollForward}: $($r.Error)$($r.Printed)") }
+}
+Check 'installer: build/Install-Dotnet.ps1 selects the SDK global.json names, or the newest its rollForward policy allows' (-not $misses) ($misses -join ' | ')
 if ($InstallerOnly) { Complete-Run }
 
 $tpl = Join-Path $Work 'template-repo'
