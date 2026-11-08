@@ -27,20 +27,8 @@ jobs:
         with:
           persist-credentials: false
 {%- if stack == 'dotnet' %}
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          global-json-file: global.json
-      # A test project that targets an older .NET runs on that version's runtime, which build/Get-TestRuntimes.ps1 names.
-      - name: Find the .NET runtimes the tests target
-        id: runtimes
-        shell: pwsh
-        run: |
-          $channels = @(./build/Get-TestRuntimes.ps1)
-          if ($channels) { "channels<<EOF`n$($channels -join "`n")`nEOF" >> $env:GITHUB_OUTPUT }
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: steps.runtimes.outputs.channels != ''
-        with:
-{% raw %}          dotnet-version: ${{ steps.runtimes.outputs.channels }}{% endraw %}
+      # The SDK global.json selects and the runtime of each older .NET a test project targets.
+      - uses: ./.github/actions/install-dotnet
       # The same key as CI's, so a session reuses the packages CI restored.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
