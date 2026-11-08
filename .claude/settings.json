@@ -14,8 +14,8 @@
     "ask": [
       "Bash(*.env*)",
       "PowerShell(*.env*)",
-      "Bash(*secrets/*)",
-      "PowerShell(*secrets/*)"
+      "Bash(*secrets*)",
+      "PowerShell(*secrets*)"
     ]
   }
 }
