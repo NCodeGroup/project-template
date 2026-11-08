@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.73.0] - 2026-11-08
+
+### Added
+
+- `/ship-plan` offers a third answer for a plan's follow-ups, act on them next, beside filing them for later and dropping them: each follow-up you name, or all of them, is still filed as an issue and marked ` — next` in `PLAN.md`, and `/finish-plan` then ends with `/plan-issue #<number>` for each, and `/run-issues` with all of them when the project lands through pull requests, so the work starts while the plan's context is fresh. It is offered with `follow-ups: issues`; the Landing section gains no new value ([#295](https://github.com/NCodeGroup/project-template/issues/295)).
+
 ## [0.72.0] - 2026-11-08
 
 ### Added
@@ -1160,7 +1166,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.72.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.73.0...HEAD
+[0.73.0]: https://github.com/NCodeGroup/project-template/compare/v0.72.0...v0.73.0
 [0.72.0]: https://github.com/NCodeGroup/project-template/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/NCodeGroup/project-template/compare/v0.70.0...v0.71.0
 [0.70.0]: https://github.com/NCodeGroup/project-template/compare/v0.69.0...v0.70.0
