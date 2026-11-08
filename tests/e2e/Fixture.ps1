@@ -145,6 +145,15 @@ function Get-State([string]$App, [string]$Path) {
     $state
 }
 
+# Whether a comment's body asks NCode Review for a review, as NCode Review v1.1.2 reads a command: the body without white
+# space around it, cut at its first thematic-break line (such as the `---` an agent's footer starts with), has a first
+# line that is `/review`, in any letter case, with nothing else on it.
+function Test-ReviewCommand([string]$Body) {
+    $text = "$Body".Trim()
+    $rule = [regex]::Match($text, '(?m)^[ \t]{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*\r?$')
+    if ($rule.Success) { $text = $text.Substring(0, $rule.Index).Trim() }
+    return ($text -split '\r?\n', 2)[0].Trim() -match '^/review$'
+}
 function Read-HostJson([string]$HostDir, [string]$Name) {
     $path = Join-Path $HostDir $Name
     if (-not (Test-Path -LiteralPath $path)) { return $null }
