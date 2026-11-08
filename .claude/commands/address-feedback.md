@@ -79,11 +79,13 @@ When a stage leaves `next` as it was, stop: the stage made no progress.
 
 ## Push
 
-1. When `git rev-list "origin/<head>..HEAD"` prints nothing, there is nothing to push: go on with Reply.
-2. Run `git diff --no-renames --name-only "origin/<head>" HEAD`. Stop, naming the files, when it lists a protected file, as Plan item 4 defines it, that no `fix` item from an author who may ask for a fix and isn't a bot names: the check before each step relies on the plan, and this one on what the commits changed.
-3. When the `landing` line's `gate` isn't `none`, run the gate as `ship-plan` item 6 says, before the push, and stop when it fails or changes a file.
-4. Run `git fetch origin "refs/heads/<head>"`. When `origin/<head>` isn't an ancestor of `HEAD` (`git merge-base --is-ancestor "origin/<head>" HEAD` exits non-zero), someone pushed to the branch since the run began: stop and say so, leaving the commits in the run's checkout. Never rebase, merge or force.
-5. Run `git push origin "HEAD:refs/heads/<head>"`.
+1. Run `git fetch origin "refs/heads/<head>"`, so the items below compare the run's commits with the branch as it is on `origin`.
+2. When `git rev-list "origin/<head>..HEAD"` prints nothing, there is nothing to push: go on with Reply.
+3. When `origin/<head>` isn't an ancestor of `HEAD` (`git merge-base --is-ancestor "origin/<head>" HEAD` exits non-zero), someone pushed to the branch after the run's checkout was made from it: stop and say so, leaving the commits in the run's checkout. The run never rebases, merges or forces by itself. Say how to go on: merge `origin/<head>` into the run's checkout, with `git merge "origin/<head>"` there, never by a rebase or a force-push, then run `/address-feedback <number>` again, which finishes the run.
+4. Run `git diff --no-renames --name-only "origin/<head>" HEAD`. Stop, naming the files, when it lists a protected file, as Plan item 4 defines it, that no `fix` item from an author who may ask for a fix and isn't a bot names: the check before each step relies on the plan, and this one on what the commits changed.
+5. When the `landing` line's `gate` isn't `none`, run the gate as `ship-plan` item 6 says, before the push, and stop when it fails or changes a file.
+6. Run `git fetch origin "refs/heads/<head>"` again, because someone can push while the gate runs, and stop as item 3 says when `origin/<head>` isn't an ancestor of `HEAD`.
+7. Run `git push origin "HEAD:refs/heads/<head>"`.
 
 ## Reply
 
