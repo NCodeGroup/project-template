@@ -992,6 +992,14 @@ try {
     $listed = Test-Path -LiteralPath (Join-Path $bin 'pulls-path.txt')
     Check 'feedback: a plan with a Pull request: line reads that pull request by its number, not the branch''s list' ($r.Ok -and -not $listed) "$($r.Detail) branch list read: $listed"
 
+    Write-Text $fPlan ((New-FeedbackPlanText ' ').Replace('Pull request: #42', 'Pull request: !42'))
+    $r = Test-State (Get-State $fRepo) @{ feedback = '-' }
+    Check 'feedback: on GitHub a Pull request: line takes only #<number>' $r.Ok $r.Detail
+
+    Write-Text $fPlan ((New-FeedbackPlanText ' ').Replace('Pull request: #42', "Pull request: #$([char]0x0664)$([char]0x0662)"))
+    $r = Test-State (Get-State $fRepo) @{ feedback = '-' }
+    Check 'feedback: a Pull request: line takes ASCII digits only' $r.Ok $r.Detail
+
     Write-Text $fPlan (New-FeedbackPlanText '?')
     $r = Test-State (Get-State $fRepo) @{ feedback = '42'; next = 'replan-step 2' }
     Check 'feedback: an escalated step in a feedback plan is re-planned first' $r.Ok $r.Detail
