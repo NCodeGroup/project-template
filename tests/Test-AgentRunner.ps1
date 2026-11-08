@@ -116,6 +116,32 @@ try {
 
     $summary = @(Write-AgentSummary $agent) -join ' '
     Check 'copilot: the runner keeps the last credits of the session, not the sum of both runs, and prints the command that continues it' ($summary.Contains('Cost: 0.04 USD (4 AI credits)') -and $summary.Contains('copilot --resume copilot-session-1') -and (Get-RunTool $Work 'claude') -eq 'copilot') $summary
+
+    # The failing cases run in their own scope, so their FAIL lines don't fail the suite.
+    $out3 = @(& { Set-Variable failures ([Collections.Generic.List[string]]::new()); Invoke-Agent $agent -Prompt 'no-session' -Index 3 })
+    Check 'copilot: a run that prints no result fails its session check and clears the session' (@($out3 | Where-Object { $_ -like 'FAIL  Copilot run 3 returned a session*' }).Count -gt 0 -and $agent.SessionId -eq '') ($out3 -join '; ')
+
+    $out4 = @(& { Set-Variable failures ([Collections.Generic.List[string]]::new()); Invoke-Agent $agent -Prompt '/address-feedback mcp-connected' -Index 4 })
+    Check 'copilot: a run that loads an MCP server fails its MCP check' (@($out4 | Where-Object { $_ -like 'FAIL  Copilot run 4 loaded no MCP server*' }).Count -gt 0) ($out4 -join '; ')
+
+    $out5 = @(& { Set-Variable failures ([Collections.Generic.List[string]]::new()); Invoke-Agent $agent -Prompt '/address-feedback no-skill' -Index 5 })
+    Check 'copilot: a run that runs no skill for its slash command fails its skill check' (@($out5 | Where-Object { $_ -like 'FAIL  Copilot run 5 ran the project''s /address-feedback skill*' }).Count -gt 0) ($out5 -join '; ')
+
+    $thrown = try { New-Agent -Tool copilot -Copilot (Join-Path $bin 'no-such-cli') -App $app -Work $Work | Out-Null; '' } catch { "$_" }
+    Check 'copilot: New-Agent refuses a missing CLI' ($thrown -like 'Copilot CLI not found*') $thrown
+
+    [Environment]::SetEnvironmentVariable('COPILOT_GITHUB_TOKEN', $null)
+    [Environment]::SetEnvironmentVariable('GH_TOKEN', 'gh-env-token')
+    $ghAgent = New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -App $app -Work $Work
+    Check 'copilot: New-Agent takes GH_TOKEN when COPILOT_GITHUB_TOKEN is unset' ($ghAgent.Token -eq 'gh-env-token') "$($ghAgent.Token)"
+
+    $emptyWork = Join-Path $Work 'empty-run'
+    New-Item -ItemType Directory -Force $emptyWork | Out-Null
+    Check 'Get-RunTool reads the tool tool.txt names, and falls back without it' ((Get-RunTool $Work 'claude') -eq 'copilot' -and (Get-RunTool $emptyWork 'claude') -eq 'claude') "$(Get-RunTool $Work 'claude') $(Get-RunTool $emptyWork 'claude')"
+
+    $r = Get-RunCheckout copilot $app feedback-1
+    $c = Get-RunCheckout claude $app issue-1
+    Check 'Get-RunCheckout and Get-CommandFile name each tool''s run checkout and installed command' ($r.Folder -eq $app -and $r.Branch -eq 'feedback-1' -and $c.Branch -eq 'worktree-issue-1' -and $c.Folder -eq (Join-Path $app '.claude/worktrees/issue-1') -and (Get-CommandFile $app copilot run-issues) -eq (Join-Path $app '.github/skills/run-issues/SKILL.md') -and (Get-CommandFile $app claude run-issues) -eq (Join-Path $app '.claude/commands/run-issues.md')) "$($r | ConvertTo-Json -Compress) $($c | ConvertTo-Json -Compress)"
 }
 finally {
     foreach ($n in $envNames) { [Environment]::SetEnvironmentVariable($n, $savedEnv[$n]) }
