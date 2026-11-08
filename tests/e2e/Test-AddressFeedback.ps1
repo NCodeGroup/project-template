@@ -218,6 +218,25 @@ exit 0
         $st = Get-State $app $app
         $ok = $st['host'] -eq 'github' -and $st['default'] -eq 'main' -and $st['protected'] -eq 'hook' -and $st['landing'] -like '*integrate=pull-request*' -and $st['next'] -eq 'none no plan in this folder'
         Check 'fixture: the state script sees a GitHub origin whose main takes only pull requests' $ok "host='$($st['host'])' default='$($st['default'])' protected='$($st['protected'])' landing='$($st['landing'])' next='$($st['next'])'"
+        # A run that stopped once its plan was reviewed leaves its worktree: the state script sends it back to /address-feedback, never to /ship-plan.
+        $stopped = Join-Path $app '.claude/worktrees/feedback-1'
+        Invoke-Git -C $app worktree add -q --no-track $stopped -b worktree-feedback-1 "origin/$head"
+        try {
+            $start = "$(git -C $stopped rev-parse HEAD)".Trim()
+            Write-Text (Join-Path $stopped 'stopped.txt') "stopped`n"
+            Invoke-Git -C $stopped add stopped.txt
+            Invoke-Git -C $stopped commit -q -m 'Plan step 1: Add stopped.txt'
+            $done = "$(git -C $stopped rev-parse HEAD)".Trim()
+            Write-Text (Join-Path $stopped 'PLAN.md') "# Plan: Address the feedback on pull request 1`nPull request: #1`nStart: $start`nReviewed: $done`n`n## Steps`n`n### [x] 1. Add stopped.txt`n- Done when: exit 0`n"
+            $fb = Get-State $app $stopped
+            $ok = $fb['feedback'] -eq '1' -and $fb['pr'] -eq '1 OPEN' -and $fb['conflicts'] -eq '-' -and $fb['next'] -eq 'address-feedback 1'
+            Check 'fixture: the state script sends a stopped run''s reviewed plan back to /address-feedback 1, with pull request #1 open' $ok "feedback='$($fb['feedback'])' pr='$($fb['pr'])' conflicts='$($fb['conflicts'])' next='$($fb['next'])'"
+        }
+        finally {
+            Invoke-Git -C $app worktree remove --force $stopped
+            Invoke-Git -C $app branch -q -D worktree-feedback-1
+        }
+        Check 'fixture: the stopped run''s worktree is removed before the run' (-not (Test-Path -LiteralPath $stopped)) "still there: $stopped"
 
         $login = "$(gh api user --jq .login)".Trim()
         Check 'fixture: gh on PATH is the stand-in, signed in as fixture-owner' ($login -eq 'fixture-owner') "login='$login'"
