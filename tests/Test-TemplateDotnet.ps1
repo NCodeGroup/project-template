@@ -108,8 +108,8 @@ try {
     # The runtimes script names the older framework a test project targets, and nothing for the SDK's own.
     $runtimesNone = @(pwsh -NoProfile -File build/Get-TestRuntimes.ps1 2>&1)
     $runtimesNoneCode = $LASTEXITCODE
-    $runtimeRoot = Join-Path $Work 'test-runtimes'
-    $installNone = @(pwsh -NoProfile -File build/Install-TestRuntimes.ps1 -InstallDir $runtimeRoot 2>&1)
+    $dotnetRoot = Join-Path $Work 'dotnet-install'
+    $installNone = @(pwsh -NoProfile -File build/Install-Dotnet.ps1 -SkipSdk -InstallDir $dotnetRoot 2>&1)
     $installNoneCode = $LASTEXITCODE
     New-Item -ItemType Directory -Force tests/Legacy.Tests | Out-Null
     [IO.File]::WriteAllText((Join-Path (Get-Location) 'tests/Legacy.Tests/Legacy.Tests.csproj'), '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFrameworks>net8.0;net10.0</TargetFrameworks></PropertyGroup></Project>')
@@ -117,11 +117,14 @@ try {
     $runtimesLegacy = @(pwsh -NoProfile -File build/Get-TestRuntimes.ps1 2>&1)
     $runtimesLegacyCode = $LASTEXITCODE
     Check 'dotnet: build/Get-TestRuntimes.ps1 names the runtime of an older framework a test project targets, and none for the SDK''s own' ($runtimesNoneCode -eq 0 -and $runtimesNone.Count -eq 0 -and $runtimesLegacyCode -eq 0 -and $runtimesLegacy.Count -eq 1 -and $runtimesLegacy[0] -eq '8.0.x') "$($runtimesNone -join ',') | $($runtimesLegacy -join ',')"
-    $install = @(pwsh -NoProfile -File build/Install-TestRuntimes.ps1 -InstallDir $runtimeRoot 2>&1)
+    $install = @(pwsh -NoProfile -File build/Install-Dotnet.ps1 -InstallDir $dotnetRoot 2>&1)
     $installCode = $LASTEXITCODE
-    $installAgain = @(pwsh -NoProfile -File build/Install-TestRuntimes.ps1 -InstallDir $runtimeRoot 2>&1)
+    $installAgain = @(pwsh -NoProfile -File build/Install-Dotnet.ps1 -InstallDir $dotnetRoot 2>&1)
     $installAgainCode = $LASTEXITCODE
-    Check 'dotnet: build/Install-TestRuntimes.ps1 installs nothing without an older framework, then installs the runtimes build/Get-TestRuntimes.ps1 names and skips them once they are there' ($installNoneCode -eq 0 -and $installNone.Count -eq 0 -and -not (Test-Path -LiteralPath $runtimeRoot) -and $installCode -eq 0 -and (Test-Path (Join-Path $runtimeRoot 'shared/Microsoft.NETCore.App/8.0.*')) -and (Test-Path (Join-Path $runtimeRoot 'shared/Microsoft.AspNetCore.App/8.0.*')) -and $installAgainCode -eq 0 -and ($installAgain -join ' ').Contains('already in')) "$($installNone -join ',') | $($install -join ',') | $($installAgain -join ',')"
+    # Run in the project, the installation's dotnet picks the SDK global.json selects from what the script put there.
+    $installedSdk = "$(& (Join-Path $dotnetRoot $(if ($IsWindows) { 'dotnet.exe' } else { 'dotnet' })) --version 2>&1)"
+    $pinnedSdk = (Get-Content -Raw -LiteralPath global.json | ConvertFrom-Json).sdk.version
+    Check 'dotnet: build/Install-Dotnet.ps1 -SkipSdk installs nothing without an older framework; build/Install-Dotnet.ps1 installs the SDK global.json selects, which dotnet runs from there, and the runtimes build/Get-TestRuntimes.ps1 names, and skips them once they are there' ($installNoneCode -eq 0 -and $installNone.Count -eq 0 -and -not (Test-Path -LiteralPath $dotnetRoot) -and $installCode -eq 0 -and $installedSdk -match '^\d+\.\d+\.\d+$' -and [version]$installedSdk -ge [version]$pinnedSdk -and ($install -join ' ').Contains("Installed .NET SDK $installedSdk in") -and (Test-Path (Join-Path $dotnetRoot 'shared/Microsoft.NETCore.App/8.0.*')) -and (Test-Path (Join-Path $dotnetRoot 'shared/Microsoft.AspNetCore.App/8.0.*')) -and $installAgainCode -eq 0 -and ($installAgain -join ' ').Contains(".NET SDK $installedSdk is already in") -and ($installAgain -join ' ').Contains('are already in')) "$installedSdk | $($installNone -join ',') | $($install -join ',') | $($installAgain -join ',')"
 }
 finally { Pop-Location }
 

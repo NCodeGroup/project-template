@@ -106,7 +106,7 @@ $toolFiles = @{
     local = '.github\agents\local-implementer.agent.md', '.github\agents\hybrid-planner.agent.md',
         '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-local.prompt.md'
 }
-$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'build\Get-TestRuntimes.ps1', 'build\Install-TestRuntimes.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
+$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'build\Get-TestRuntimes.ps1', 'build\Install-Dotnet.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
     '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
@@ -213,7 +213,7 @@ foreach ($case in $cases) {
         }
         else {
             Check "${name}: CI caches NuGet packages in the project folder, keyed on the package versions and the SDK" ($ciText.Contains('NUGET_PACKAGES: $CI_PROJECT_DIR/.nuget/packages') -and $ciText.Contains('files: [Directory.Packages.props, global.json]') -and $ciText.Contains('paths: [.nuget/packages/]')) $ciText
-            Check "${name}: CI installs the runtimes the tests target before it builds" ($ciText -match '(?m)^  before_script:\r?\n    - pwsh -NoProfile -File build/Install-TestRuntimes\.ps1\r?$' -and $ciText.IndexOf('build/Install-TestRuntimes.ps1') -lt $ciText.IndexOf('build/dod.ps1')) $ciText
+            Check "${name}: CI installs the SDK global.json selects and the runtimes the tests target before it builds" ($ciText -match '(?m)^  before_script:\r?\n    - pwsh -NoProfile -File build/Install-Dotnet\.ps1\r?$' -and $ciText.IndexOf('build/Install-Dotnet.ps1') -lt $ciText.IndexOf('build/dod.ps1')) $ciText
             Check "${name}: CI keeps the test results and packages, after a failure too" ($ciText -match '(?m)^  artifacts:\r?\n    when: always\r?\n    paths: \[artifacts/test-results/, artifacts/packages/\]\r?\n    expire_in: 14 days\r?$') $ciText
         }
         $libraryWrong = @($libraryOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -ErrorAction SilentlyContinue) -ne $library })
