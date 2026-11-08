@@ -148,6 +148,9 @@ $cases = @(
     @{ Name = 'dotnet-node'; Stack = 'dotnet'; Host = 'github'; Data = @{ uses_node = 'true' } }
     @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
     @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
+    @{ Name = 'dotnet-node-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
+    @{ Name = 'python-node-gitlab'; Stack = 'python'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
+    @{ Name = 'powershell-node-gitlab'; Stack = 'powershell'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
     @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'Apache-2.0' } }
     @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true' }; Refused = 'Required for a NuGet package' }
@@ -497,6 +500,15 @@ foreach ($case in $cases) {
             Check "${name}: GitLab CI selects the .node-version Node.js through the pinned nvs before it installs anything" ($ci.Contains('--branch v1.7.1 https://github.com/jasongin/nvs') -and $ci.Contains('= b87ae9593cd20e7b667e9099240c9befeb50659f') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf($install) -and ($pm -notin 'pnpm', 'yarn' -or $useNode -lt $ci.IndexOf('corepack'))) $ci
         }
         else { Check "${name}: GitLab CI runs Bun without nvs" (-not $ci.Contains('jasongin/nvs')) $ci }
+    }
+    if ($case.Host -eq 'gitlab' -and $case.Stack -in 'dotnet', 'python', 'powershell') {
+        $useNode = $ci.IndexOf('. ./.template/use-node.sh')
+        if ($usesNode) { Check "${name}: GitLab CI selects the .node-version Node.js through the pinned nvs before the build" ($ci.Contains('--branch v1.7.1 https://github.com/jasongin/nvs') -and $ci.Contains('= b87ae9593cd20e7b667e9099240c9befeb50659f') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf("`n  script:")) $ci }
+        else { Check "${name}: GitLab CI installs no nvs without uses_node" (-not $ci.Contains('jasongin/nvs')) $ci }
+        if ($case.Stack -eq 'powershell') {
+            $apt = $ci.IndexOf('apt-get install -qq -y --no-install-recommends git curl')
+            Check "${name}: GitLab CI installs Git and curl in the PowerShell image exactly when nvs needs them" ((($apt -ge 0) -eq $usesNode) -and (-not $usesNode -or $apt -lt $ci.IndexOf('git clone --quiet --depth 1 --branch v1.7.1'))) $ci
+        }
     }
     $wanted = @($tools | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique)
     $unwanted = @($allTools | Where-Object { $_ -notin $tools } | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique | Where-Object { $_ -notin $wanted })
