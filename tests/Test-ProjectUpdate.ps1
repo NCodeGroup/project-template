@@ -61,7 +61,8 @@ $preRelease = & {
     }
     $recorded = [Collections.Generic.List[string]]::new()
     function Invoke-Copier { $recorded.Clear(); foreach ($a in $args) { $recorded.Add("$a") } }
-    $TemplateClone = $tpl
+    # Set-Variable: only the loaded functions read TemplateClone and Data, which the script analyzer can't see.
+    Set-Variable -Name TemplateClone -Value $tpl
     $untrackedText = "## Landing`n`n- pre-release: untracked`n"
     $cases = [ordered]@{
         'untracked'       = @{ Agents = $untrackedText; Data = @{}; Want = 'untracked' }
@@ -75,7 +76,7 @@ $preRelease = & {
         $project = Join-Path $Work "pre-release-$name"
         $null = New-Item -ItemType Directory -Path $project -Force
         if ($null -ne $cases[$name].Agents) { [IO.File]::WriteAllText((Join-Path $project 'AGENTS.md'), $cases[$name].Agents) }
-        $Data = $cases[$name].Data
+        Set-Variable -Name Data -Value $cases[$name].Data
         $null = Invoke-TemplateRender v0.1.0 (Join-Path $project 'out')
         $got = @($recorded | Where-Object { $_ -like 'pre_release=*' })
         if ($got.Count -ne 1 -or $got[0] -ne "pre_release=$($cases[$name].Want)") { "${name}: $($got -join ',')" }
