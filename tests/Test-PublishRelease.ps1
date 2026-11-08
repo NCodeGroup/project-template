@@ -9,7 +9,11 @@
     release; that it tags nothing when the remote has a newer version tag, publishes no release with release: tag, and
     does nothing with release: none or pre-release: untracked; that it drops the v when the remote's version tags have
     none; that a release lookup failing other than with a 404 stops it with gh's message; and that -WhatIf pushes and
-    publishes nothing. Also checks that release.yml runs the script on a push to main
+    publishes nothing. Also checks that the version comes from the merged pull request's Release: line: with pre-release:
+    untracked and no release heading it tags the merged commit with that version and publishes the [Unreleased] section,
+    it does nothing for another commit's pull request or a description without the line, it accepts a line that agrees
+    with the changelog and fails on one that disagrees, and it stops with gh's message when the pull request lookup
+    fails. The stand-in also accepts the call that starts publish.yml. Also checks that release.yml runs the script on a push to main
     that changes CHANGELOG.md, with contents: write and the merged commit. Prints PASS or FAIL per check and exits 1 on
     any failure.
 
@@ -39,7 +43,9 @@ New-Item -ItemType Directory -Path $releases | Out-Null
 $standIn = Join-Path $temp 'gh.ps1'
 # A stand-in for gh: `api repos/{owner}/{repo}/releases/tags/<tag>` succeeds when the release's file exists and else fails
 # printing gh's 404 message, or a 401 one when PUBLISH_RELEASE_TEST_LOOKUP_ERROR is set; `api
-# repos/{owner}/{repo}/releases -f tag_name=<tag> ... -F body=@<file>` copies the notes to it, and every call is logged.
+# repos/{owner}/{repo}/releases -f tag_name=<tag> ... -F body=@<file>` copies the notes to it, `api
+# repos/{owner}/{repo}/commits/<sha>/pulls` prints pulls.json (or [], or a 500 when PUBLISH_RELEASE_TEST_PULLS_ERROR is set),
+# the publish.yml dispatch succeeds, and every call is logged.
 Set-Content -LiteralPath $standIn -Encoding utf8NoBOM -Value @'
 $releases = $env:PUBLISH_RELEASE_TEST_RELEASES
 Add-Content -LiteralPath (Join-Path $releases 'calls.log') -Value ($args -join ' ')
@@ -54,6 +60,13 @@ if ($args[0] -eq 'api' -and $args[1] -eq 'repos/{owner}/{repo}/releases') {
     Copy-Item -LiteralPath $notes -Destination (Join-Path $releases $tag)
     exit 0
 }
+if ($args[0] -eq 'api' -and $args[1] -match '^repos/\{owner\}/\{repo\}/commits/[0-9a-f]+/pulls$') {
+    if ($env:PUBLISH_RELEASE_TEST_PULLS_ERROR) { 'gh: Server Error (HTTP 500)'; exit 1 }
+    $pulls = Join-Path $releases 'pulls.json'
+    if (Test-Path -LiteralPath $pulls) { Get-Content -Raw -LiteralPath $pulls } else { '[]' }
+    exit 0
+}
+if ($args[0] -eq 'api' -and $args[1] -eq 'repos/{owner}/{repo}/actions/workflows/publish.yml/dispatches') { exit 0 }
 exit 2
 '@
 $env:PUBLISH_RELEASE_TEST_RELEASES = $releases
@@ -78,7 +91,7 @@ $changelog = @'
 [0.2.0]: https://example.com/compare/v0.1.0...v0.2.0
 '@
 
-function New-Clone([string]$Name, [string]$Landing, [string]$Changelog = $changelog) {
+function New-Clone([string]$Name, [string]$Landing, [string]$Changelog = $changelog, [hashtable]$Files = @{}) {
     $origin = Join-Path $temp "$Name.git"
     $work = Join-Path $temp $Name
     & git -c init.defaultBranch=main init -q --bare $origin
@@ -89,7 +102,12 @@ function New-Clone([string]$Name, [string]$Landing, [string]$Changelog = $change
     & git -C $work remote add origin $origin
     Set-Content -LiteralPath (Join-Path $work 'AGENTS.md') -Encoding utf8NoBOM -Value "# Test`n`n## Landing`n`n$Landing`n`n## Other`n`n- release: tag+release"
     Set-Content -LiteralPath (Join-Path $work 'CHANGELOG.md') -Encoding utf8NoBOM -Value $Changelog
-    & git -C $work add AGENTS.md CHANGELOG.md
+    foreach ($path in $Files.Keys) {
+        $target = Join-Path $work $path
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+        Set-Content -LiteralPath $target -Encoding utf8NoBOM -Value $Files[$path]
+    }
+    & git -C $work add .
     & git -C $work commit -q -m 'Start'
     & git -C $work push -q origin HEAD:refs/heads/main 2>$null
     $work
@@ -102,6 +120,10 @@ function Invoke-Publish([string]$Work, [string[]]$Extra = @()) {
         $output = & pwsh -NoProfile -File $script -Gh $standIn @Extra 2>&1
         [pscustomobject]@{ Code = $LASTEXITCODE; Output = (($output | ForEach-Object { "$_" }) -join "`n") }
     } finally { Pop-Location }
+}
+
+function Set-Pulls([string]$Sha, [string]$Body) {
+    Set-Content -LiteralPath (Join-Path $releases 'pulls.json') -Encoding utf8NoBOM -Value (ConvertTo-Json -InputObject @(@{ number = 7; merge_commit_sha = $Sha; body = $Body }) -Compress)
 }
 
 function Get-OriginTag([string]$Work) { @(& git -C $Work ls-remote --tags --refs origin | ForEach-Object { ($_ -split "`t")[1] -replace '^refs/tags/' }) }
@@ -165,6 +187,53 @@ try {
     $work = New-Clone 'bad-policy' '- release: always'
     $run = Invoke-Publish $work
     Check 'an unknown release value: it fails and names it' ($run.Code -ne 0 -and $run.Output -match 'release: always') $run.Output
+
+    $untrackedLanding = "- release: tag+release`n- pre-release: untracked"
+    $untrackedChangelog = "# Changelog`n`n## [Unreleased]`n`n### Added`n`n- The product does a thing.`n"
+    $body030 = "Summary.`n`nRelease: v0.3.0`nCloses #5"
+
+    $work = New-Clone 'untracked-release' $untrackedLanding $untrackedChangelog
+    $head = (& git -C $work rev-parse HEAD)
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.3.0') -ErrorAction SilentlyContinue
+    Set-Pulls $head $body030
+    $run = Invoke-Publish $work
+    Check 'pre-release: untracked with a Release: line: it tags the merged commit with v0.3.0' ($run.Code -eq 0 -and (Get-OriginTag $work) -ccontains 'v0.3.0' -and (& git -C $work cat-file -t 'refs/tags/v0.3.0') -eq 'tag' -and (& git -C $work rev-parse 'v0.3.0^{commit}') -eq $head) $run.Output
+    $notesPath = Join-Path $releases 'v0.3.0'
+    $notes = if (Test-Path -LiteralPath $notesPath) { (Get-Content -Raw -LiteralPath $notesPath).Trim() } else { '' }
+    Check 'pre-release: untracked with a Release: line: the release notes are the [Unreleased] section' ($notes -eq "### Added`n`n- The product does a thing.") $notes
+
+    $work = New-Clone 'untracked-other-pull' $untrackedLanding $untrackedChangelog
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.3.0') -ErrorAction SilentlyContinue
+    Set-Pulls ('0' * 40) $body030
+    $run = Invoke-Publish $work
+    Check 'pre-release: untracked, another commit''s pull request: it tags and publishes nothing' ($run.Code -eq 0 -and -not (Get-OriginTag $work).Count -and -not (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases -f')) $run.Output
+
+    $work = New-Clone 'untracked-no-line' $untrackedLanding $untrackedChangelog
+    $head = (& git -C $work rev-parse HEAD)
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.3.0') -ErrorAction SilentlyContinue
+    Set-Pulls $head "Summary.`n`nCloses #5"
+    $run = Invoke-Publish $work
+    Check 'pre-release: untracked, no Release: line: it tags and publishes nothing' ($run.Code -eq 0 -and -not (Get-OriginTag $work).Count -and -not (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases -f')) $run.Output
+
+    $work = New-Clone 'line-agrees' '- release: tag+release'
+    $head = (& git -C $work rev-parse HEAD)
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    Set-Pulls $head "Summary.`n`nRelease: v0.2.0`nCloses #5"
+    $run = Invoke-Publish $work
+    Check 'a Release: line that agrees with the changelog: it tags v0.2.0' ($run.Code -eq 0 -and (Get-OriginTag $work) -ccontains 'v0.2.0') $run.Output
+
+    $work = New-Clone 'line-disagrees' '- release: tag+release'
+    $head = (& git -C $work rev-parse HEAD)
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    Set-Pulls $head $body030
+    $run = Invoke-Publish $work
+    Check 'a Release: line that disagrees with the changelog: it fails, names both versions and tags nothing' ($run.Code -ne 0 -and $run.Output -match 'v0\.3\.0' -and $run.Output -match '0\.2\.0' -and -not (Get-OriginTag $work).Count) $run.Output
+
+    $work = New-Clone 'pulls-error' '- release: tag+release'
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $env:PUBLISH_RELEASE_TEST_PULLS_ERROR = '1'
+    try { $run = Invoke-Publish $work } finally { Remove-Item Env:PUBLISH_RELEASE_TEST_PULLS_ERROR }
+    Check 'a pull request lookup that fails: it fails with gh''s message and tags nothing' ($run.Code -ne 0 -and $run.Output -match 'HTTP 500' -and -not (Get-OriginTag $work).Count) $run.Output
 } finally {
     Remove-Item Env:PUBLISH_RELEASE_TEST_RELEASES -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
