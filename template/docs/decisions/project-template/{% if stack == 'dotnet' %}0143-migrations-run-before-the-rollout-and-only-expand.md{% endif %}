@@ -65,10 +65,14 @@ expands the schema unless it is marked as a contract step, which ships in a late
 8. Before the first stable release. In a pre-release project
    ([ADR-0015](0015-a-pre-release-project-describes-the-product-as-it-is.md)), no previous release serves against the
    schema and no database holds data a release must keep, so each context has one initial migration, named
-   `InitialCreate` as in EF Core's documentation, in a folder of its own, `Migrations/<Context>`, where `<Context>` is
-   the context's class name. The migration only creates tables and so only expands. A model change regenerates it:
-   delete the context's folder, model snapshot included, and run
-   `dotnet ef migrations add InitialCreate --context <Context> --output-dir Migrations/<Context>`, which works the same
+   `InitialCreate` as in EF Core's documentation, in a folder of its own, `Migrations/<Name>`, where `<Name>` is the
+   context's class name, `<Context>`, without its `DbContext` or `Context` suffix: `Migrations/OpenId` for
+   `OpenIdDbContext`, `Migrations/Blogging` for `BloggingContext`. The folder is never named `<Context>` itself: the
+   scaffolder derives the migration's namespace from its folder, and inside `<RootNamespace>.Migrations.<Context>` the
+   simple name `<Context>` binds to that namespace before any `using` directive, so the scaffolded
+   `[DbContext(typeof(<Context>))]` fails to compile with CS0118. The migration only creates tables and so only
+   expands. A model change regenerates it: delete the context's folder, model snapshot included, and run
+   `dotnet ef migrations add InitialCreate --context <Context> --output-dir Migrations/<Name>`, which works the same
    with one context or several and keeps each context's migrations in their own namespace. Items 1, 2, 3 and 7 hold;
    items 4 to 6 bind from the first stable release, which ships that migration.
 
