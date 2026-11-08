@@ -23,8 +23,11 @@ Every external input is pinned exactly, and on GitHub Dependabot moves the pins 
    with `==` versions in `requirements.txt`.
 2. CI actions are pinned to a full commit SHA, with the tag in a comment beside it (`uses: owner/action@<sha> # v7.0.1`),
    so the reference cannot move and a reader and Dependabot both know which release it is.
-3. An SDK the stack pins is pinned in its own file, such as the .NET SDK in `global.json`, and CI installs exactly what
-   it names.
+3. An SDK the stack pins is pinned in its own file, such as the .NET SDK in `global.json`, and CI installs the SDK that
+   file selects: the version it names, or, under the `rollForward` policy `latestPatch`, `latestFeature`,
+   `latestMinor` or `latestMajor`, the newest release that policy allows. On GitHub `actions/setup-dotnet` reads
+   `global.json`; on GitLab `build/Install-Dotnet.ps1` reads it the same way and installs the SDK only once its
+   download matches the SHA-512 in Microsoft's release metadata.
 4. A container base image, when the project adds a Dockerfile, names its tag and the digest of its multi-architecture
    index (`image:tag@sha256:...`). No `ARG` builds a `FROM` line, because Dependabot cannot update one, and the tag
    beside a digest must be the digest's own, since the digest wins. The project adds a `docker` entry for the
@@ -55,6 +58,16 @@ Every external input is pinned exactly, and on GitHub Dependabot moves the pins 
 - Some inputs of the template's CI float: the Node.js and Python runtimes follow a release line (`lts/*`, `3.x`), the
   PowerShell job installs the newest Pester and PSScriptAnalyzer, and GitLab CI images use tags such as `python:3`. A
   project that needs one of them fixed pins it in its CI file.
+- The .NET SDK follows `global.json`'s `rollForward` policy: the template's `latestFeature` gives CI the newest SDK of
+  the pinned major and minor version once Microsoft releases it, and Dependabot moves the pinned version on GitHub. A
+  project that needs one exact SDK in CI removes `rollForward` or sets it to `disable`.
+- The runtime of each older .NET a test project targets follows its channel's newest patch, as
+  `build/Get-TestRuntimes.ps1` names it (`8.0.x`): `actions/setup-dotnet` installs it on GitHub, and
+  `build/Install-Dotnet.ps1` on GitLab.
+- On GitLab the .NET job runs in `mcr.microsoft.com/dotnet/sdk:10.0` for its git and PowerShell, and its tag floats
+  with the other GitLab images. `build/Install-Dotnet.ps1` adds the SDK `global.json` selects and the test runtimes
+  beside the image's own SDK, taking each from Microsoft's release metadata and only once its download matches the
+  SHA-512 that metadata gives, so no installer script or image digest is pinned there for a person to move by hand.
 - On GitLab there is no built-in Dependabot, so pins move by hand, and the template-update issue is not opened; a
   project there checks for template updates itself.
 
