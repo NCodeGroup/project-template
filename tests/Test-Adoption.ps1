@@ -141,6 +141,7 @@ $nodeUse = [ordered]@{
     'use-python-nvmrc'   = @{ Files = @('pyproject.toml', '.nvmrc'); Stack = 'python'; UsesNode = $true }
     'use-dotnet-modules' = @{ Files = @('src/A/A.csproj', 'node_modules/x/package.json'); Stack = 'dotnet'; UsesNode = $false }
     'use-python'         = @{ Files = @('pyproject.toml'); Stack = 'python'; UsesNode = $false }
+    'use-python-deep'    = @{ Files = @('pyproject.toml', 'a/b/c/package.json'); Stack = 'python'; UsesNode = $false }
     'use-node'           = @{ Files = @('package.json'); Stack = 'node'; UsesNode = $false }
 }
 $bad = foreach ($name in $nodeUse.Keys) {
