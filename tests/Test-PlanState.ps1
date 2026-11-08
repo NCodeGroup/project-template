@@ -153,7 +153,7 @@ Check 'next: finished steps without a review run review-plan-diff' $r.Ok $r.Deta
 
 # 5. Reviewed at the current HEAD, with no AGENTS.md.
 Write-Text $planFile (New-PlanText 'x' (Get-Head $repo))
-$r = Test-State (Get-State $repo) @{ landing = 'integrate=pull-request release=none changelog=CHANGELOG.md draft=no follow-ups=issues follow-up-label=follow-up gate=none protect=none pr-format=none review-bots=ncode-review max-review-rounds=3 prelude=none' }
+$r = Test-State (Get-State $repo) @{ landing = 'integrate=pull-request release=none changelog=CHANGELOG.md pre-release=tracked draft=no follow-ups=issues follow-up-label=follow-up gate=none protect=none pr-format=none review-bots=ncode-review max-review-rounds=3 prelude=none' }
 Check 'local: the default landing policy applies without AGENTS.md' $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ reviewed = 'current'; pr = '-'; merge = '-'; next = 'ship-plan' }
 Check 'next: a reviewed plan is shipped' $r.Ok $r.Detail
@@ -189,13 +189,13 @@ Write-Text $planFile (New-PlanText 'x' (Get-Head $repo))
 Push-Location $repo
 try { Invoke-Git commit -q --allow-empty -m 'Re-plan step 2: B' }
 finally { Pop-Location }
-$r = Test-State (Get-State $repo) @{ landing = 'integrate=direct release=tag+release changelog=docs/CHANGES.md draft=yes follow-ups=owner/backlog follow-up-label="tech debt" gate="./build/dod.ps1 -Fast -Affected" protect=hook pr-format="AGENTS.md#Pull requests" review-bots=ncode-review,coderabbitai max-review-rounds=5 prelude="nvs use 26"' }
+$r = Test-State (Get-State $repo) @{ landing = 'integrate=direct release=tag+release changelog=docs/CHANGES.md pre-release=tracked draft=yes follow-ups=owner/backlog follow-up-label="tech debt" gate="./build/dod.ps1 -Fast -Affected" protect=hook pr-format="AGENTS.md#Pull requests" review-bots=ncode-review,coderabbitai max-review-rounds=5 prelude="nvs use 26"' }
 Check 'local: reads the Landing section of AGENTS.md' $r.Ok $r.Detail
 $agentsText = [IO.File]::ReadAllText((Join-Path $repo 'AGENTS.md'))
 Write-Text (Join-Path $repo 'AGENTS.md') $agentsText.Replace('- review-bots: ncode-review[bot], coderabbitai', '- review-bots: none').Replace('- max-review-rounds: `5`', '- max-review-rounds: many')
-$r = Test-State (Get-State $repo -NoFetch) @{ landing = 'integrate=direct release=tag+release changelog=docs/CHANGES.md draft=yes follow-ups=owner/backlog follow-up-label="tech debt" gate="./build/dod.ps1 -Fast -Affected" protect=hook pr-format="AGENTS.md#Pull requests" review-bots=none max-review-rounds=3 prelude="nvs use 26"' }
+$r = Test-State (Get-State $repo -NoFetch) @{ landing = 'integrate=direct release=tag+release changelog=docs/CHANGES.md pre-release=tracked draft=yes follow-ups=owner/backlog follow-up-label="tech debt" gate="./build/dod.ps1 -Fast -Affected" protect=hook pr-format="AGENTS.md#Pull requests" review-bots=none max-review-rounds=3 prelude="nvs use 26"' }
 Check 'local: review-bots none names no bot, and a max-review-rounds that is not a whole number reads as 3' $r.Ok $r.Detail
-$landingBase = 'integrate=direct release=tag+release changelog=docs/CHANGES.md draft=yes follow-ups=owner/backlog follow-up-label="tech debt" gate="./build/dod.ps1 -Fast -Affected" protect=hook pr-format="AGENTS.md#Pull requests"'
+$landingBase = 'integrate=direct release=tag+release changelog=docs/CHANGES.md pre-release=tracked draft=yes follow-ups=owner/backlog follow-up-label="tech debt" gate="./build/dod.ps1 -Fast -Affected" protect=hook pr-format="AGENTS.md#Pull requests"'
 $cases = @(
     @{ Bots = '- review-bots:'; Rounds = '0'; Want = 'review-bots=ncode-review max-review-rounds=3' }
     @{ Bots = '- review-bots: ,'; Rounds = '1'; Want = 'review-bots=none max-review-rounds=1' }
@@ -819,6 +819,47 @@ Check 'backfill: a changelog started mid-history names the older tags' $r.Ok $r.
 Write-Text $lateLog "# Changelog`n`n## [Unreleased]`n`n## [0.1.2] - 2026-10-28`n`n## v0.1.1`n`n## [0.1.0] - 2026-10-01 [YANKED]`n"
 $r = Test-State (Get-State $lateRepo -NoFetch) @{ 'changelog-backfill' = '-' }
 Check 'backfill: every tag merged into HEAD has a section' $r.Ok $r.Detail
+
+# 20b. A pre-release project.
+$lateAgentsText = [IO.File]::ReadAllText((Join-Path $lateRepo 'AGENTS.md'))
+$lateLogText = [IO.File]::ReadAllText($lateLog)
+$latePlanText = [IO.File]::ReadAllText($latePlan)
+
+Write-Text (Join-Path $lateRepo 'AGENTS.md') ($lateAgentsText + "- pre-release: untracked`n")
+Remove-Item -LiteralPath $lateLog
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'pre-release' = 'yes'; 'changelog-backfill' = '-' }
+$landing = (Get-State $lateRepo -NoFetch)['landing']
+Check 'pre-release: untracked without a stable tag is pre-release, and its tags below 1.0.0 need no changelog section' ($r.Ok -and $landing -like '* pre-release=untracked *') "$($r.Detail) landing='$landing'"
+
+Push-Location $lateRepo
+try { Invoke-Git tag v1.0.0 }
+finally { Pop-Location }
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'pre-release' = 'no'; 'changelog-backfill' = 'v1.0.0' }
+Check 'pre-release: a stable tag merged into HEAD ends it, and the backfill counts the stable tag' $r.Ok $r.Detail
+Push-Location $lateRepo
+try { Invoke-Git tag -d v1.0.0 | Out-Null }
+finally { Pop-Location }
+Push-Location $lateRepo
+try { Invoke-Git tag 1.0.0 }
+finally { Pop-Location }
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'pre-release' = 'no'; 'changelog-backfill' = '1.0.0' }
+Check 'pre-release: a stable tag without a leading v ends it too' $r.Ok $r.Detail
+Push-Location $lateRepo
+try { Invoke-Git tag -d 1.0.0 | Out-Null }
+finally { Pop-Location }
+
+Write-Text $latePlan $latePlanText.Replace('Release: v0.3.1', 'Release: v1.0.0')
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'pre-release' = 'no' }
+Check 'pre-release: a plan that releases the first stable version is not pre-release' $r.Ok $r.Detail
+Write-Text $latePlan $latePlanText
+
+Write-Text (Join-Path $lateRepo 'AGENTS.md') ($lateAgentsText + "- pre-release: maybe`n")
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'pre-release' = 'no' }
+$landing = (Get-State $lateRepo -NoFetch)['landing']
+Check 'pre-release: another value prints as invalid and is not pre-release' ($r.Ok -and $landing -like '* pre-release=invalid *') "$($r.Detail) landing='$landing'"
+
+Write-Text (Join-Path $lateRepo 'AGENTS.md') $lateAgentsText
+Write-Text $lateLog $lateLogText
 
 # 21. Files that conflict with the default branch.
 $cOrigin = Join-Path $Work 'conflict/github.com/origin.git'

@@ -84,6 +84,7 @@ finally { Pop-Location }
 $a = Get-AdoptionAnswers $demo
 $detail = ($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; '
 Check 'unit: Get-AdoptionAnswers works out a .NET repository' (($a.stack -eq 'dotnet') -and ($a.project_name -eq 'NCode.Demo') -and ($a.git_host -eq 'gitlab') -and ($a.author_name -eq 'NCode Group') -and ($a.build_command -eq 'dotnet build src/NCode.Demo.slnx') -and ($a.test_command -eq 'dotnet test src/NCode.Demo.slnx')) $detail
+Check 'unit: Get-AdoptionAnswers answers pre_release tracked, since a repository has a history' ($a.pre_release -eq 'tracked') $detail
 $apacheText = "                                 Apache License`n                           Version 2.0, January 2004`n"
 $licenseFolders = [ordered]@{
     'license-props' = @{ Files = @{ 'src/A/A.csproj' = "<Project />`n"; 'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <PackageLicenseExpression>MIT</PackageLicenseExpression>`n  </PropertyGroup>`n</Project>`n"; 'LICENSE' = $apacheText }; License = 'MIT' }
@@ -98,6 +99,7 @@ $badLicense = foreach ($name in $licenseFolders.Keys) {
     elseif ($a.Contains('license')) { "${name}: license=$($a.license)" }
 }
 Check 'unit: Get-AdoptionAnswers works out the license' (-not $badLicense) ($badLicense -join ' | ')
+
 $others = [ordered]@{
     'only-python' = @{ Files = @('pyproject.toml'); Stack = 'python' }
     'only-ps'     = @{ Files = @('tool.ps1'); Stack = 'powershell' }

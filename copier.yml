@@ -160,6 +160,14 @@ test_command:
     {%- elif stack == 'powershell' -%}Invoke-Pester -CI
     {%- endif -%}
 
+# Never asked or recorded: the pre-release line of the AGENTS.md the template writes (ADR-0015). A new project starts
+# untracked; Adopt-Project.ps1 answers tracked, since an adopted repository has a history.
+pre_release:
+  type: str
+  when: false
+  default: untracked
+  validator: "{% if pre_release not in ['tracked', 'untracked'] %}Either tracked or untracked{% endif %}"
+
 project_owned_files:
   type: yaml
   help: "Files the project owns, merged or template-owned, such as [.github/workflows/ci.yml, build/dod.ps1]: updates leave them alone and show the template's changes to them"

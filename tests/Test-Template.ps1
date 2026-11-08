@@ -465,6 +465,7 @@ foreach ($case in $cases) {
     $ignore = Get-Content -LiteralPath (Join-Path $dest '.gitignore') -Raw
     $claude = 'claude' -in $tools
     Check "${name}: AGENTS.md and .gitignore for the chosen tools" (($agents.Contains('CLAUDE.md') -eq $claude) -and ($ignore.Contains('CLAUDE.local.md') -eq $claude))
+    Check "${name}: AGENTS.md starts the project pre-release, and the answers record no pre_release" (($agents -match '(?m)^- pre-release: untracked\r?$') -and ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -notmatch '(?m)^pre_release:')) $agents
     Check "${name}: .gitignore ignores the plan" ($ignore -match '(?m)^PLAN\.md\r?$')
     $rules = Get-Content -LiteralPath (Join-Path $dest '.github\instructions\project-template.instructions.md') -Raw
     Check "${name}: template rules for the chosen tools" (($rules.Contains('.claude/') -eq $claude) -and ($rules.Contains('.github/skills/') -eq ('copilot' -in $tools)))
@@ -748,6 +749,15 @@ Check 'workflow: ship-plan adds a merge step instead of pushing a branch that co
 $m = @(Get-MissingText ($shipFiles + ('template\.claude\commands\plan-feature.md', 'template\.github\prompts\plan-bugfix.prompt.md', 'template\.github\skills\plan-tests\SKILL.md')) ('is never put under a second heading of the same name, also when two sides'' changes to the changelog are combined', 'as `changelog-duplicates: <section> <heading>`', 'When `changelog-duplicates` names a heading of `[Unreleased]`, the step also merges that heading''s groups into one, at the first one''s place, keeping every entry in order.'))
 $m += @(Get-MissingText $shipFiles ('never under two headings of the same name'))
 Check 'workflow: the changelog step merges a heading changelog-duplicates names in [Unreleased] at the first one''s place, and a merge step never writes a heading twice' (-not $m) ($m -join '; ')
+$planCopies = 'template\.claude\commands\plan-feature.md', 'template\.github\prompts\plan-bugfix.prompt.md', 'template\.github\skills\plan-tests\SKILL.md'
+$m = @(Get-MissingText ($shipFiles + $planCopies) ('Until the first stable release, the [Unreleased] section describes the product as it is, not its changes.', 'The state script prints `pre-release: yes` for it', 'a tag below the first stable version never counts', 'ends the pre-release'))
+$m += @(Get-MissingText $planCopies ('a raise keeps the major version at 0', 'except in a pre-release project, which has none'))
+$m += @(Get-MissingText $shipFiles ('Stop when `pre-release` is `invalid`', 'the state script''s `pre-release` is `no` and its `changelog-version` isn''t `<version>`', 'Write the <renumber> changelog section', 'that section is `## [Unreleased]`', 'In a pre-release changelog, keep the catalog entries of both sides'))
+$m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('as ADR-0015 says'))
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- pre-release: {{ pre_release }}', '`pre-release`: `untracked` keeps the project pre-release'))
+$m += @(Get-MissingText 'template\.github\instructions\project-template.instructions.md.jinja' ('says `pre-release: untracked`', 'In a pre-release project, the changelog describes the product as it is instead'))
+$m += @(Get-MissingText 'template\docs\decisions\project-template\0015-a-pre-release-project-describes-the-product-as-it-is.md' ('pre-release: untracked'))
+Check 'workflow: a pre-release project keeps its changelog as a catalog of the product and releases from it, and AGENTS.md documents the pre-release key' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('<other-conflicts> Commit note:', 'stage only `<changelog>` and the files this step resolved', 'a renumber or merge step''s merge', 'the merge a renumber or merge step made'))
 Check 'workflow: the renumber step resolves the other files that conflict, and a merge step''s merge keeps the empty commits' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $shipFiles ('`git ls-remote --exit-code --heads origin <branch>` shows by exiting 2', 'Ask `origin`, not the branch''s upstream'))
@@ -773,6 +783,9 @@ $m = @(Get-MissingText $runFiles ('planned, executed and reviewed ahead of it', 
 Check 'workflow: run-issues announces, waits with and stops around the entry running ahead' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $runFiles ('When its `next` is `ship-plan` while the pull request is open', 'pushes the renumber step to the draft pull request', 'Review the Pull Request item 3 renumbers that entry the same way', 'must now merge with a merge commit, not by rebasing'))
 Check 'workflow: run-issues renumbers an entry whose open draft pull request lost its release' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('In a pre-release project, `ship-plan` moves a plan whose `renumber` version has a major version of 0 by the `Release:` line alone', 'so `next` is `replan-step`: stop this entry as Stop an Issue says', 'Only when the state script''s `next` then starts with `wait`'))
+$m += @(Get-MissingText $runFiles ('adds no step for it and opens the pull request, unless `conflicts` also names files'))
+Check 'workflow: run-issues follows the pre-release renumber, which adds no step below 1.0.0 and hands a stable version to replan-step' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('its `conflicts` line names them, so the pull request can''t merge', 'or appends the merge step', 'or that the default branch was merged in'))
 $m += @(Get-MissingText $runFiles ('`ship-plan` adds the merge step and stops the same way'))
 $m += @(Get-MissingText 'template\.claude\commands\continue-plan.md' ('`landed`, `conflicts` and `next`', 'adds a step that merges the default branch in'))

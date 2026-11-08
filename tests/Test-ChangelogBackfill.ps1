@@ -6,7 +6,8 @@
     Builds a fixture repository with the tags v0.1.0, v0.2.0 and v0.3.0 on main, a prerelease tag v0.4.0-rc.1, and a tag v0.9.0 on a
     side branch that main doesn't contain. Then, for the copy of Get-ChangelogBackfill in .template\Update-Project.ps1 and the one in
     tools\adopt\Adoption.psm1, writes changelogs of different shapes and checks the changelog file and the range of version tags
-    without a section that the function returns. Prints PASS or FAIL per check and exits 1 on any failure.
+    without a section that the function returns, including a project whose Landing section says pre-release: untracked, which needs no
+    section for a tag below 1.0.0. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-changelog-backfill-test-<process ID> in the
@@ -76,6 +77,9 @@ $cases = [ordered]@{
     'a changelog started mid-history names the older tags'  = @{ Folder = $repo; Files = @{ 'CHANGELOG.md' = "## [0.3.0] - 2026-01-03`n" }; File = 'CHANGELOG.md'; Range = 'v0.1.0..v0.2.0' }
     'one tag without a section is named alone'              = @{ Folder = $repo; Files = @{ 'CHANGELOG.md' = "## [0.3.0] - 2026-01-03`n`n## [0.2.0] - 2026-01-02`n" }; File = 'CHANGELOG.md'; Range = 'v0.1.0' }
     'the Landing section names the changelog'               = @{ Folder = $repo; Files = @{ 'AGENTS.md' = "# Fixture`n`n## Landing`n`n- changelog: ``docs/CHANGES.md```n"; 'docs/CHANGES.md' = "# Changes`n`n## 0.3.0`n`n## 0.2.0`n`n## 0.1.0`n" }; File = 'docs/CHANGES.md'; Range = '-' }
+    'a pre-release project needs no section for a tag below 1.0.0' = @{ Folder = $repo; Files = @{ 'AGENTS.md' = "# Fixture`n`n## Landing`n`n- pre-release: untracked`n" }; File = 'CHANGELOG.md'; Range = '-' }
+    'a tracked project names its tags below 1.0.0'          = @{ Folder = $repo; Files = @{ 'AGENTS.md' = "# Fixture`n`n## Landing`n`n- pre-release: tracked`n" }; File = 'CHANGELOG.md'; Range = 'v0.1.0..v0.3.0' }
+    'the Landing section names the changelog and pre-release' = @{ Folder = $repo; Files = @{ 'AGENTS.md' = "# Fixture`n`n## Landing`n`n- changelog: ``docs/CHANGES.md```n- pre-release: ``untracked```n" }; File = 'docs/CHANGES.md'; Range = '-' }
 }
 foreach ($source in $sources.Keys) {
     foreach ($name in $cases.Keys) {
