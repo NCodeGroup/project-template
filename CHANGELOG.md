@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-11-07
+
+### Added
+
+- `build/Install-Dotnet.ps1` (.NET) installs the SDK `global.json` selects, honouring its `rollForward` policy as `actions/setup-dotnet` does, then the runtimes `build/Get-TestRuntimes.ps1` names, taking each from Microsoft's release metadata and only once its download matches the SHA-512 that metadata gives. `.gitlab-ci.yml` runs it before the build, so a GitLab project builds with the SDK a GitHub one does, and a test project that targets an older .NET runs there too ([#255](https://github.com/NCodeGroup/project-template/issues/255), [#260](https://github.com/NCodeGroup/project-template/issues/260)).
+
+### Changed
+
+- ADR-0008 says CI installs the SDK `global.json` selects under its `rollForward` policy, with `actions/setup-dotnet` on GitHub and `build/Install-Dotnet.ps1` on GitLab, and that the SDK under `latestFeature`, the test runtimes and GitLab's `mcr.microsoft.com/dotnet/sdk:10.0` image, which supplies git and PowerShell, follow their newest release. `CONTRIBUTING.md` points at `build/Install-Dotnet.ps1` to install the SDK and runtimes locally ([#255](https://github.com/NCodeGroup/project-template/issues/255), [#260](https://github.com/NCodeGroup/project-template/issues/260)).
+
 ## [0.63.0] - 2026-11-07
 
 ### Added
@@ -999,7 +1009,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.63.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.64.0...HEAD
+[0.64.0]: https://github.com/NCodeGroup/project-template/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/NCodeGroup/project-template/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/NCodeGroup/project-template/compare/v0.61.2...v0.62.0
 [0.61.2]: https://github.com/NCodeGroup/project-template/compare/v0.61.1...v0.61.2
