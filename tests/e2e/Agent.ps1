@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Fixture.ps1 dot-sources it. Everything that differs between the two tools lives here, so a scenario is written once and runs under both.
-    New-Agent makes the runner for one tool: its CLI, model, budget, fixture project and work folder, and, for Copilot, its own home folder and the token it runs with; it also writes tool.txt in the work folder.
+    New-Agent makes the runner for one tool: its CLI, model, budget, fixture project and work folder, and, for Copilot, its own home folder and the token it runs with, with a warning when that is a general GitHub token rather than COPILOT_GITHUB_TOKEN; it also writes tool.txt in the work folder.
     Get-RunTool gives the tool a run used, from tool.txt, for -CheckOnly without -Tool.
     Get-RunCheckout gives the folder and branch a run works in: a Claude Code worktree, or a branch in the main checkout for Copilot.
     Get-CommandFile gives the path of a command's installed copy in the fixture: a .claude command, or a .github skill.
@@ -28,17 +28,21 @@ function New-Agent(
         throw 'Claude Code CLI not found: install it, or pass -Claude <path>'
     }
     $token = ''
+    $source = ''
     $copilotHome = ''
     if ($Tool -eq 'copilot') {
         # Read before Use-FixtureEnvironment: it puts the gh stand-in first on PATH and clears the token variables,
         # and Copilot has no other way to find the user's login, so this runner hands it the token for the call only.
         foreach ($n in 'COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN') {
             $value = [Environment]::GetEnvironmentVariable($n)
-            if ($value) { $token = $value; break }
+            if ($value) { $token = $value; $source = $n; break }
         }
         if (-not $token -and (Get-Command gh -ErrorAction SilentlyContinue)) {
             $printed = "$(gh auth token 2>$null)".Trim()
-            if ($LASTEXITCODE -eq 0) { $token = $printed }
+            if ($LASTEXITCODE -eq 0) { $token = $printed; $source = 'gh auth token' }
+        }
+        if ($token -and $source -ne 'COPILOT_GITHUB_TOKEN') {
+            Write-Warning "Copilot runs with the general GitHub token from $source, in a session with --allow-all that reads the fixture's text. Set COPILOT_GITHUB_TOKEN to a fine-grained personal access token with only the Copilot Requests permission, so the session holds no token that can change your repositories."
         }
         $copilotHome = Join-Path $Work 'copilot-home'
         New-Item -ItemType Directory -Force $copilotHome | Out-Null

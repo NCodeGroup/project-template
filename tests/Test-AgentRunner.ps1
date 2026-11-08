@@ -9,8 +9,9 @@
     --resume with the first run's session; that the runner adds up the cost and prints the command that continues the
     session; that a Copilot run passes its flags, runs with its own home, allow-all and the token for the call only and puts
     them back, and checks the project's skill ran and no MCP server loaded; that a resumed Copilot run passes --resume,
-    and that the cost is the last credits of the one session, not the sum of both runs. Prints PASS or FAIL per check and
-    exits 1 on any failure.
+    and that the cost is the last credits of the one session, not the sum of both runs. Also checks that New-Agent warns
+    when Copilot's token is a general one, from GH_TOKEN, and not when it is COPILOT_GITHUB_TOKEN. Prints PASS or FAIL
+    per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-agent-runner-<process ID> in the
@@ -92,7 +93,10 @@ try {
     Check 'claude: the runner adds up the cost and prints the command that continues the session' ($agent.CostUsd -eq 0.5 -and $summary.Contains('Cost: 0.5 USD') -and $summary.Contains('claude --resume claude-session-1') -and (Test-Path -LiteralPath (Join-Path $Work 'claude-1.json'))) "$($agent.CostUsd) $summary"
 
     [Environment]::SetEnvironmentVariable('COPILOT_GITHUB_TOKEN', 'fixture-token')
-    $agent = New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -Model fixture-model -MaxBudgetUsd 30 -App $app -Work $Work
+    $captured = @(New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -Model fixture-model -MaxBudgetUsd 30 -App $app -Work $Work 3>&1)
+    $agent = $captured | Where-Object { $_ -isnot [Management.Automation.WarningRecord] } | Select-Object -First 1
+    $warned = @($captured | Where-Object { $_ -is [Management.Automation.WarningRecord] })
+    Check 'copilot: New-Agent takes COPILOT_GITHUB_TOKEN with no warning' ($agent.Token -eq 'fixture-token' -and $warned.Count -eq 0) "warnings: $($warned -join '; ')"
     [Environment]::SetEnvironmentVariable('COPILOT_GITHUB_TOKEN', $null)
     [Environment]::SetEnvironmentVariable('COPILOT_HOME', 'outer-home')
     [Environment]::SetEnvironmentVariable('COPILOT_ALLOW_ALL', $null)
@@ -132,8 +136,13 @@ try {
 
     [Environment]::SetEnvironmentVariable('COPILOT_GITHUB_TOKEN', $null)
     [Environment]::SetEnvironmentVariable('GH_TOKEN', 'gh-env-token')
-    $ghAgent = New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -App $app -Work $Work
-    Check 'copilot: New-Agent takes GH_TOKEN when COPILOT_GITHUB_TOKEN is unset' ($ghAgent.Token -eq 'gh-env-token') "$($ghAgent.Token)"
+    $captured = @(New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -App $app -Work $Work 3>&1)
+    $ghAgent = $captured | Where-Object { $_ -isnot [Management.Automation.WarningRecord] } | Select-Object -First 1
+    $warned = @($captured | Where-Object { $_ -is [Management.Automation.WarningRecord] } | ForEach-Object { $_.Message })
+    Check 'copilot: New-Agent takes GH_TOKEN when COPILOT_GITHUB_TOKEN is unset, and warns that a general token is in use' ($ghAgent.Token -eq 'gh-env-token' -and $warned.Count -eq 1 -and $warned[0].Contains('GH_TOKEN') -and $warned[0].Contains('COPILOT_GITHUB_TOKEN') -and $warned[0].Contains('Copilot Requests')) "$($ghAgent.Token); warnings: $($warned -join '; ')"
+    # The runs below take the fixture token, with no warning, and never the token the real gh auth token prints.
+    [Environment]::SetEnvironmentVariable('GH_TOKEN', $null)
+    [Environment]::SetEnvironmentVariable('COPILOT_GITHUB_TOKEN', 'fixture-token')
 
     $emptyWork = Join-Path $Work 'empty-run'
     New-Item -ItemType Directory -Force $emptyWork | Out-Null
