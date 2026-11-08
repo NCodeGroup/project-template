@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.66.0] - 2026-11-07
+
+### Added
+
+- `/address-feedback <number>` finishes a run on that pull request that stopped, such as on a question for you or a step that needs re-planning: it resumes the run's worktree in Claude Code, or its `feedback-<number>` branch in Copilot, with its commits and `PLAN.md`, carries on from the stage where the run stopped, pushes to the pull request's branch and replies to the items the plan's `## Feedback` section names. Once the pull request is merged or closed, it offers to discard the run instead. `/run-feedback <number>` resumes it the same way in its first pass. Each tool finishes its own runs. Projects get it with `.\.template\Update-Project.ps1` ([#259](https://github.com/NCodeGroup/project-template/issues/259)).
+
+### Changed
+
+- No change for projects made from the template. `tests/Test-PlanState.ps1` checks a feedback plan's state on GitHub and GitLab, `tests/Test-Template.ps1` checks the resume and the redirects in every copy, and the end-to-end setups `tests/e2e/Test-AddressFeedback.ps1 -SetupOnly` and `tests/e2e/Test-AddressFeedbackGitLab.ps1 -SetupOnly` check that the state script sends a stopped run's reviewed plan back to `/address-feedback` ([#259](https://github.com/NCodeGroup/project-template/issues/259)).
+
+### Fixed
+
+- A plan that `/address-feedback` writes names its pull request on a `Pull request:` line and the commit the run started from on a `Start:` line. `.template/Get-PlanState.ps1` prints that number as `feedback`, reads that pull request's state by its number on the `pr` line, prints `conflicts: -` for it, and names `address-feedback <number>` as `next` once its steps are done and reviewed, never `ship-plan`, or a `none` that says `address-feedback <number>` discards the run once the pull request is merged or closed. `/continue-plan` names `/address-feedback <number>` for such a plan, and `/ship-plan`, `/finish-plan` and `/review-plan-diff` send it there, so a stopped run's fixes reach the reviewed pull request's branch with a reply on each item, never a pull request of their own. Projects get it with `.\.template\Update-Project.ps1` ([#259](https://github.com/NCodeGroup/project-template/issues/259)).
+
+- `/address-feedback` fetches the pull request's branch before it compares the run's commits with it, so its protected-file check and its check for someone else's push see the branch as it is on `origin`, and it fetches again right before the push. When someone pushed to that branch during the run, it stops and says how to go on: merge `origin/<head>` into the run's checkout, never by a rebase or a force-push, then run `/address-feedback <number>` again. A resumed run whose `next` is one the run stops on, such as `none the plan has no steps`, stops before it asks to go ahead. Projects get it with `.\.template\Update-Project.ps1` ([#259](https://github.com/NCodeGroup/project-template/issues/259)).
+
 ## [0.65.0] - 2026-11-07
 
 ### Added
@@ -1034,7 +1050,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.65.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.66.0...HEAD
+[0.66.0]: https://github.com/NCodeGroup/project-template/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/NCodeGroup/project-template/compare/v0.64.1...v0.65.0
 [0.64.1]: https://github.com/NCodeGroup/project-template/compare/v0.64.0...v0.64.1
 [0.64.0]: https://github.com/NCodeGroup/project-template/compare/v0.63.1...v0.64.0
