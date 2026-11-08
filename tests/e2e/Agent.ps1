@@ -13,6 +13,10 @@
     Write-AgentSummary prints the cost and how to continue the session by hand.
 #>
 
+# Copilot bills in AI credits, 100 to the dollar, and its --max-ai-credits takes no fewer than 30.
+$CopilotCreditsPerUsd = 100
+$CopilotMinCredits = 30
+
 function New-Agent(
     [ValidateSet('claude', 'copilot')][string]$Tool,
     [string]$Claude = 'claude',
@@ -105,7 +109,7 @@ function Invoke-CopilotCli($Agent, [string]$Prompt, [string]$SessionId, [int]$In
     $arguments += '--allow-all', '--no-ask-user', '--disable-builtin-mcps', '--secret-env-vars=COPILOT_GITHUB_TOKEN'
     $arguments += '--output-format', 'json', '--usage-output-file', $usageFile, '--log-dir', (Join-Path $Agent.Work 'copilot-logs'), '--no-auto-update'
     if ($Agent.Model) { $arguments += '--model', $Agent.Model }
-    if ($Agent.MaxBudgetUsd -gt 0) { $arguments += '--max-ai-credits', "$([Math]::Max(30, [Math]::Ceiling($Agent.MaxBudgetUsd * 100)))" }
+    if ($Agent.MaxBudgetUsd -gt 0) { $arguments += '--max-ai-credits', "$([Math]::Max($CopilotMinCredits, [Math]::Ceiling($Agent.MaxBudgetUsd * $CopilotCreditsPerUsd)))" }
     $names = 'COPILOT_HOME', 'COPILOT_ALLOW_ALL', 'COPILOT_GITHUB_TOKEN'
     $saved = @{}
     foreach ($n in $names) { $saved[$n] = [Environment]::GetEnvironmentVariable($n) }
@@ -166,7 +170,7 @@ function Write-AgentSummary($Agent) {
     if ($Agent.Tool -eq 'copilot') {
         $credits = 0.0
         foreach ($value in $Agent.Credits.Values) { $credits += [double]$value }
-        "Cost: $([Math]::Round($credits / 100, 2)) USD ($([Math]::Round($credits, 2)) AI credits)"
+        "Cost: $([Math]::Round($credits / $CopilotCreditsPerUsd, 2)) USD ($([Math]::Round($credits, 2)) AI credits)"
         "Fixture: $($Agent.App)"
         "Continue the session from $($Agent.App) with: `$env:COPILOT_HOME = '$($Agent.CopilotHome)'; copilot --resume $($Agent.SessionId)"
     }

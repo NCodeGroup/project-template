@@ -10,8 +10,9 @@
     session; that a Copilot run passes its flags, runs with its own home, allow-all and the token for the call only and puts
     them back, and checks the project's skill ran and no MCP server loaded; that a resumed Copilot run passes --resume,
     and that the cost is the last credits of the one session, not the sum of both runs. Also checks that New-Agent warns
-    when Copilot's token is a general one, from GH_TOKEN, and not when it is COPILOT_GITHUB_TOKEN. Prints PASS or FAIL
-    per check and exits 1 on any failure.
+    when Copilot's token is a general one, from GH_TOKEN, and not when it is COPILOT_GITHUB_TOKEN. Also checks that
+    -MaxBudgetUsd 0.1 gives Copilot --max-ai-credits 30, its least, and that 0 passes no cap to either tool. Prints PASS or
+    FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-agent-runner-<process ID> in the
@@ -151,6 +152,17 @@ try {
     $r = Get-RunCheckout copilot $app feedback-1
     $c = Get-RunCheckout claude $app issue-1
     Check 'Get-RunCheckout and Get-CommandFile name each tool''s run checkout and installed command' ($r.Folder -eq $app -and $r.Branch -eq 'feedback-1' -and $c.Branch -eq 'worktree-issue-1' -and $c.Folder -eq (Join-Path $app '.claude/worktrees/issue-1') -and (Get-CommandFile $app copilot run-issues) -eq (Join-Path $app '.github/skills/run-issues/SKILL.md') -and (Get-CommandFile $app claude run-issues) -eq (Join-Path $app '.claude/commands/run-issues.md')) "$($r | ConvertTo-Json -Compress) $($c | ConvertTo-Json -Compress)"
+
+    $budgetWork = Join-Path $Work 'budget'
+    $low = New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -MaxBudgetUsd 0.1 -App $app -Work $budgetWork
+    Invoke-Agent $low -Prompt 'budget' -Index 1
+    $none = New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -MaxBudgetUsd 0 -App $app -Work $budgetWork
+    Invoke-Agent $none -Prompt 'budget' -Index 2
+    $noClaude = New-Agent -Tool claude -Claude (Join-Path $bin 'claude.ps1') -MaxBudgetUsd 0 -App $app -Work $budgetWork
+    Invoke-Agent $noClaude -Prompt 'budget' -Index 1
+    $copilotCalls = Read-Calls (Join-Path $bin 'copilot-calls.jsonl')
+    $claudeCalls = Read-Calls (Join-Path $bin 'claude-calls.jsonl')
+    Check 'budget: -MaxBudgetUsd 0.1 gives Copilot --max-ai-credits 30, its least, and 0 passes neither --max-ai-credits nor --max-budget-usd' ((Get-FlagValue $copilotCalls[-2].args '--max-ai-credits') -eq '30' -and $copilotCalls[-1].args -notcontains '--max-ai-credits' -and $claudeCalls[-1].args -notcontains '--max-budget-usd') "$($copilotCalls[-2] | ConvertTo-Json -Compress) $($copilotCalls[-1] | ConvertTo-Json -Compress) $($claudeCalls[-1] | ConvertTo-Json -Compress)"
 }
 finally {
     foreach ($n in $envNames) { [Environment]::SetEnvironmentVariable($n, $savedEnv[$n]) }
