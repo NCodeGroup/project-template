@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-11-07
+
+### Added
+
+- `/address-feedback <number>` finishes a run on that pull request that the other tool stopped. Claude Code moves a Copilot run's `feedback-<number>` branch, with its `PLAN.md`, into the worktree `.claude/worktrees/feedback-<number>` and switches the folder it was checked out in to the default branch; Copilot moves a Claude Code run's `worktree-feedback-<number>` branch, with its `PLAN.md`, into the open folder as `feedback-<number>` and removes the worktree, never by force. Each stops when the run's checkout has uncommitted changes or holds another pull request's plan, and the move changes none of the run's commits and no line of its plan, so switching tools in the middle of a run strands nothing. `/run-feedback <number>` does the same in its first pass. Projects get it with `.\.template\Update-Project.ps1` ([#267](https://github.com/NCodeGroup/project-template/issues/267)).
+
+### Changed
+
+- No change for projects made from the template. `tests/e2e/Test-AddressFeedback.ps1 -Scenario resume` runs `/address-feedback #1` on a run that stopped once its plan was reviewed, and `-Scenario resume-copilot` on the same run left on Copilot's `feedback-1` branch in the main checkout; each checks that the run pushes the stopped run's step as it was, names that commit in the writer's reply, answers the plan's other items and leaves no checkout behind. CI sets up both fixtures, and every setup checks that the state script still sends a stopped run to `/address-feedback 1` once each tool's resume has moved it ([#266](https://github.com/NCodeGroup/project-template/issues/266), [#267](https://github.com/NCodeGroup/project-template/issues/267)).
+
 ## [0.67.0] - 2026-11-07
 
 ### Added
@@ -1062,7 +1072,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.67.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.68.0...HEAD
+[0.68.0]: https://github.com/NCodeGroup/project-template/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/NCodeGroup/project-template/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/NCodeGroup/project-template/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/NCodeGroup/project-template/compare/v0.64.1...v0.65.0

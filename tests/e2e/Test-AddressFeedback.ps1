@@ -15,7 +15,7 @@
     It then runs /address-feedback #2 on a pull request from farewell;touch${IFS}pwned, a branch name with shell
     characters, resumes it once with a go-ahead, and checks that it stopped on the branch name.
     With -Scenario rest, the stand-in refuses GraphQL and the gh pr, gh issue, gh release and gh repo commands, as a Claude Code
-    cloud session's proxy does, and the run must read and reply through the REST routes.
+    cloud session's proxy does, and the run must read and reply through the REST routes. With -Scenario resume, the setup leaves a run of /address-feedback #1 that stopped once its plan was reviewed, and the test runs only /address-feedback #1, which must finish it: push the stopped run's step as it was, name its commit in the writer's reply, reply to the plan's other items and leave no checkout behind. With -Scenario resume-copilot the stopped run is on Copilot's branch feedback-1 in the main checkout instead, and Claude Code must move it into a worktree first.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
@@ -34,7 +34,7 @@
     graphql, the default: the stand-in serves GraphQL, as in a local session. rest: host/graphql-refused.txt makes the
     stand-in refuse GraphQL and the gh pr, gh issue, gh release and gh repo commands as a Claude Code cloud session's
     proxy does, so the run must read the pull request and its threads and reply through the REST routes; the test then
-    also checks that every thread's reply went through pulls/<number>/comments/<id>/replies. Run both. Without
+    also checks that every thread's reply went through pulls/<number>/comments/<id>/replies. resume: the stand-in serves GraphQL, and the setup leaves a stopped run of /address-feedback #1 in .claude/worktrees/feedback-1, as Claude Code leaves one, with its one step committed and its plan reviewed; the test runs only /address-feedback #1. resume-copilot: the same, with the stopped run on the branch feedback-1 in the main checkout and PLAN.md at its root, as Copilot leaves one. Run each. Without
     -Scenario, -CheckOnly checks the scenario the fixture was set up for.
 
 .PARAMETER Claude
@@ -57,7 +57,7 @@ param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-address-feedback-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
-    [ValidateSet('graphql', 'rest')][string]$Scenario = 'graphql',
+    [ValidateSet('graphql', 'rest', 'resume', 'resume-copilot')][string]$Scenario = 'graphql',
     [string]$Claude = 'claude',
     [double]$MaxBudgetUsd = 30
 )
@@ -71,8 +71,11 @@ $app = Join-Path $Work 'app'
 $origin = Join-Path $Work 'github.com/fixture/app.git'
 $bin = Join-Path $Work 'bin'
 $hostDir = Join-Path $bin 'host'
-# Without -Scenario, -CheckOnly checks the scenario the fixture was set up for: graphql-refused.txt in the host folder marks rest.
-if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath (Join-Path $hostDir 'graphql-refused.txt'))) { $Scenario = 'rest' }
+# Without -Scenario, -CheckOnly checks the scenario the fixture was set up for, which the setup writes to scenario.txt.
+$scenarioFile = Join-Path $Work 'scenario.txt'
+if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath $scenarioFile)) { $Scenario = ([IO.File]::ReadAllText($scenarioFile)).Trim() }
+# A resume scenario's stopped run: the commit of its one step, which the setup writes to stopped-run.txt.
+$stoppedRunFile = Join-Path $Work 'stopped-run.txt'
 $head = 'add-farewell'
 # Git allows this branch name, /address-feedback must refuse it, and unquoted in a POSIX shell it would run touch pwned.
 $unsafeHead = 'farewell;touch${IFS}pwned'
@@ -116,8 +119,73 @@ function Get-FarewellResult([string]$Folder) {
     finally { Pop-Location }
 }
 
+# Leaves a run of /address-feedback #1 that stopped once its plan was reviewed, in the worktree
+# .claude/worktrees/feedback-1 on worktree-feedback-1, as Claude Code leaves one. Its one step makes Get-Farewell say
+# "Goodbye, world!" without a name, as the writer asks, and its plan gives each item its verdict. Returns the run's
+# folder and the step's commit.
+# With -Copilot it leaves the run on the branch feedback-1 in the main checkout, with PLAN.md at its root, as Copilot leaves one.
+function New-StoppedRun([switch]$Copilot) {
+    if ($Copilot) {
+        $folder = $app
+        Invoke-Git -C $app switch -q --no-track -c feedback-1 "origin/$head"
+    }
+    else {
+        $folder = Join-Path $app '.claude/worktrees/feedback-1'
+        Invoke-Git -C $app worktree add -q --no-track $folder -b worktree-feedback-1 "origin/$head"
+    }
+    $start = "$(git -C $folder rev-parse HEAD)".Trim()
+    Write-Text (Join-Path $folder 'src/Farewell.ps1') @'
+function Get-Farewell {
+    param([string]$Name)
+    if (-not $Name) { $Name = 'world' }
+    "Goodbye, $Name!"
+}
+'@
+    Write-Text (Join-Path $folder 'tests/Test-Greeting.ps1') @'
+. "$PSScriptRoot/../src/Greeting.ps1"
+. "$PSScriptRoot/../src/Farewell.ps1"
+if ((Get-Greeting -Name Ada) -ne 'Hello, Ada!') { 'FAIL  Get-Greeting -Name Ada'; exit 1 }
+'PASS  Get-Greeting -Name Ada'
+if ((Get-Farewell -Name Ada) -ne 'Goodbye, Ada!') { 'FAIL  Get-Farewell -Name Ada'; exit 1 }
+'PASS  Get-Farewell -Name Ada'
+if ((Get-Farewell) -ne 'Goodbye, world!') { 'FAIL  Get-Farewell'; exit 1 }
+'PASS  Get-Farewell'
+if ((Get-Farewell -Name '') -ne 'Goodbye, world!') { 'FAIL  Get-Farewell -Name empty'; exit 1 }
+'PASS  Get-Farewell -Name empty'
+exit 0
+'@
+    Invoke-Git -C $folder add src/Farewell.ps1 tests/Test-Greeting.ps1
+    Invoke-Git -C $folder commit -q -m 'Plan step 1: Say "Goodbye, world!" without a name'
+    $commit = "$(git -C $folder rev-parse HEAD)".Trim()
+    $plan = @(
+        '# Plan: Address the feedback on pull request 1'
+        'Pull request: #1'
+        "Start: $start"
+        "Reviewed: $commit"
+        ''
+        '## Goal'
+        'Answer every open item on pull request #1, and make `Get-Farewell` say `Goodbye, world!` without a name, as the writer asks.'
+        ''
+        '## Feedback'
+        '- https://github.com/fixture/app/pull/1#discussion_r2001: fix, step 1.'
+        '- https://github.com/fixture/app/pull/1#discussion_r2002: decline: the finding is wrong, because `Get-Farewell` uses its `Name` parameter in its greeting, `"Goodbye, $Name!"`, in `src/Farewell.ps1`.'
+        '- https://github.com/fixture/app/pull/1#issuecomment-1001: ask: its author cannot ask for a change, and `.github/workflows/ci.yml` is a protected path: lower `timeout-minutes` of the `build-and-test` job from 30 to 10, or keep 30.'
+        '- https://github.com/fixture/app/pull/1#issuecomment-1002: answer: no, only `tests/Test-Greeting.ps1` calls `Get-Farewell` so far; nothing in `src/` does.'
+        ''
+        '## Steps'
+        ''
+        '### [x] 1. Say "Goodbye, world!" without a name'
+        '- Files: `src/Farewell.ps1` (edit), `tests/Test-Greeting.ps1` (edit)'
+        '- Change: in `Get-Farewell`, set `$Name` to `world` when it is empty, and check `Get-Farewell` with no name and with an empty one in `tests/Test-Greeting.ps1`.'
+        '- Done when: `pwsh -NoProfile -File tests/Test-Greeting.ps1`'
+    ) -join "`n"
+    Write-Text (Join-Path $folder 'PLAN.md') "$plan`n"
+    @{ Folder = $folder; Commit = $commit }
+}
+
 if (-not $CheckOnly) {
     New-FixtureProject -RepoRoot $repoRoot -Work $Work -App $app -Origin $origin -Bin $bin
+    Write-Text $scenarioFile "$Scenario`n"
 
     Invoke-Git -C $app switch -q -c $head
     Write-Text (Join-Path $app 'src/Farewell.ps1') @'
@@ -218,25 +286,45 @@ exit 0
         $st = Get-State $app $app
         $ok = $st['host'] -eq 'github' -and $st['default'] -eq 'main' -and $st['protected'] -eq 'hook' -and $st['landing'] -like '*integrate=pull-request*' -and $st['next'] -eq 'none no plan in this folder'
         Check 'fixture: the state script sees a GitHub origin whose main takes only pull requests' $ok "host='$($st['host'])' default='$($st['default'])' protected='$($st['protected'])' landing='$($st['landing'])' next='$($st['next'])'"
-        # A run that stopped once its plan was reviewed leaves its worktree: the state script sends it back to /address-feedback, never to /ship-plan.
-        $stopped = Join-Path $app '.claude/worktrees/feedback-1'
-        Invoke-Git -C $app worktree add -q --no-track $stopped -b worktree-feedback-1 "origin/$head"
+        # A run that stopped once its plan was reviewed: the state script sends it back to /address-feedback, never to
+        # /ship-plan, and still does once each tool's Resume has moved it into that tool's checkout (Checkout item 5).
+        $run = New-StoppedRun
         try {
-            $start = "$(git -C $stopped rev-parse HEAD)".Trim()
-            Write-Text (Join-Path $stopped 'stopped.txt') "stopped`n"
-            Invoke-Git -C $stopped add stopped.txt
-            Invoke-Git -C $stopped commit -q -m 'Plan step 1: Add stopped.txt'
-            $done = "$(git -C $stopped rev-parse HEAD)".Trim()
-            Write-Text (Join-Path $stopped 'PLAN.md') "# Plan: Address the feedback on pull request 1`nPull request: #1`nStart: $start`nReviewed: $done`n`n## Steps`n`n### [x] 1. Add stopped.txt`n- Done when: exit 0`n"
-            $fb = Get-State $app $stopped
+            $fb = Get-State $app $run.Folder
             $ok = $fb['feedback'] -eq '1' -and $fb['pr'] -eq '1 OPEN' -and $fb['conflicts'] -eq '-' -and $fb['next'] -eq 'address-feedback 1'
             Check 'fixture: the state script sends a stopped run''s reviewed plan back to /address-feedback 1, with pull request #1 open' $ok "feedback='$($fb['feedback'])' pr='$($fb['pr'])' conflicts='$($fb['conflicts'])' next='$($fb['next'])'"
+
+            # Copilot's Resume: PLAN.md is copied out, the worktree removed without --force, and its branch checked out here as feedback-1.
+            Copy-Item -LiteralPath (Join-Path $run.Folder 'PLAN.md') -Destination (Join-Path $app 'PLAN.md')
+            Invoke-Git -C $app worktree remove $run.Folder
+            Invoke-Git -C $app branch -q -m worktree-feedback-1 feedback-1
+            Invoke-Git -C $app switch -q feedback-1
+            $fb = Get-State $app $app
+            $ok = $fb['worktree'] -eq '-' -and $fb['branch'] -eq 'feedback-1' -and $fb['feedback'] -eq '1' -and $fb['reviewed'] -eq 'current' -and $fb['dirty'] -eq 'no' -and $fb['next'] -eq 'address-feedback 1' -and -not (Test-Path -LiteralPath $run.Folder)
+            Check 'fixture: Copilot''s Resume moves a Claude Code run onto feedback-1 in the main checkout, still reviewed and sent back to /address-feedback 1' $ok "worktree='$($fb['worktree'])' branch='$($fb['branch'])' feedback='$($fb['feedback'])' reviewed='$($fb['reviewed'])' dirty='$($fb['dirty'])' next='$($fb['next'])'"
+
+            # Claude Code's Resume: the main checkout goes back to main, carrying PLAN.md, then the branch and PLAN.md move into the worktree.
+            Invoke-Git -C $app switch -q main
+            Invoke-Git -C $app branch -q -m feedback-1 worktree-feedback-1
+            Invoke-Git -C $app worktree add -q $run.Folder worktree-feedback-1
+            Move-Item -LiteralPath (Join-Path $app 'PLAN.md') -Destination (Join-Path $run.Folder 'PLAN.md')
+            $fb = Get-State $app $run.Folder
+            $main = Get-State $app $app
+            $ok = $fb['worktree'] -eq 'feedback-1' -and $fb['branch'] -eq 'worktree-feedback-1' -and $fb['feedback'] -eq '1' -and $fb['reviewed'] -eq 'current' -and $fb['dirty'] -eq 'no' -and $fb['next'] -eq 'address-feedback 1' -and $main['branch'] -eq 'main' -and $main['plan'] -eq '-'
+            Check 'fixture: Claude Code''s Resume moves a Copilot run into .claude/worktrees/feedback-1, still reviewed and sent back to /address-feedback 1, and leaves the main checkout on main with no plan' $ok "worktree='$($fb['worktree'])' branch='$($fb['branch'])' feedback='$($fb['feedback'])' reviewed='$($fb['reviewed'])' next='$($fb['next'])' main checkout on '$($main['branch'])' with plan '$($main['plan'])'"
         }
         finally {
-            Invoke-Git -C $app worktree remove --force $stopped
-            Invoke-Git -C $app branch -q -D worktree-feedback-1
+            if ("$(git -C $app branch --show-current)".Trim() -ne 'main') { Invoke-Git -C $app switch -q main }
+            Remove-Item -LiteralPath (Join-Path $app 'PLAN.md') -ErrorAction Ignore
+            if (Test-Path -LiteralPath $run.Folder) { Invoke-Git -C $app worktree remove --force $run.Folder }
+            foreach ($runBranch in 'worktree-feedback-1', 'feedback-1') {
+                $null = git -C $app rev-parse --verify --quiet "refs/heads/$runBranch"
+                if (-not $LASTEXITCODE) { Invoke-Git -C $app branch -q -D $runBranch }
+            }
         }
-        Check 'fixture: the stopped run''s worktree is removed before the run' (-not (Test-Path -LiteralPath $stopped)) "still there: $stopped"
+        $runBranches = @(git -C $app branch --list feedback-1 worktree-feedback-1)
+        $ok = -not (Test-Path -LiteralPath $run.Folder) -and $runBranches.Count -eq 0 -and -not (Test-Path -LiteralPath (Join-Path $app 'PLAN.md'))
+        Check 'fixture: the stopped run is removed before the run: no worktree, no feedback-1 or worktree-feedback-1 branch, and no PLAN.md in the main checkout' $ok "worktree: $(Test-Path -LiteralPath $run.Folder); branches: $($runBranches -join ', ')"
 
         $login = "$(gh api user --jq .login)".Trim()
         Check 'fixture: gh on PATH is the stand-in, signed in as fixture-owner' ($login -eq 'fixture-owner') "login='$login'"
@@ -403,6 +491,25 @@ exit 0
             }
             Check 'fixture: the stand-in refuses resolving, auto-merge, draft changes and editing the pull request through REST' ($bad.Count -eq 0) "not refused: $($bad -join '; ')"
         }
+
+        if ($Scenario -like 'resume*') {
+            # The run /address-feedback #1 resumes, which stopped once its plan was reviewed.
+            $run = New-StoppedRun -Copilot:($Scenario -eq 'resume-copilot')
+            Write-Text $stoppedRunFile "$($run.Commit)`n"
+            $st = Get-State $app $run.Folder
+            $ok = $st['feedback'] -eq '1' -and $st['pr'] -eq '1 OPEN' -and $st['reviewed'] -eq 'current' -and $st['dirty'] -eq 'no' -and $st['next'] -eq 'address-feedback 1'
+            Check 'fixture: the stopped run''s plan is reviewed, and the state script sends it back to /address-feedback 1 with pull request #1 open' $ok "feedback='$($st['feedback'])' pr='$($st['pr'])' reviewed='$($st['reviewed'])' dirty='$($st['dirty'])' next='$($st['next'])'"
+            if ($Scenario -eq 'resume-copilot') {
+                $ok = $st['worktree'] -eq '-' -and $st['branch'] -eq 'feedback-1'
+                Check 'fixture: the stopped run is on feedback-1 in the main checkout, with PLAN.md at its root, as Copilot leaves one' $ok "worktree='$($st['worktree'])' branch='$($st['branch'])'"
+            }
+            else {
+                $ok = $st['worktree'] -eq 'feedback-1' -and $st['branch'] -eq 'worktree-feedback-1'
+                Check 'fixture: the stopped run is in .claude/worktrees/feedback-1 on worktree-feedback-1, as Claude Code leaves one' $ok "worktree='$($st['worktree'])' branch='$($st['branch'])'"
+            }
+            $result = Get-FarewellResult $run.Folder
+            Check 'fixture: the stopped run''s step makes Get-Farewell say "Goodbye, world!" without a name, and its test passes' ($result.Output -eq 'Goodbye, world!|Goodbye, world!|Goodbye, Ada!' -and $result.TestCode -eq 0) "output='$($result.Output)' test exit code $($result.TestCode)"
+        }
     }
     Remove-Item -LiteralPath $hostDir -Recurse -Force
     New-Item -ItemType Directory -Force $hostDir | Out-Null
@@ -467,16 +574,19 @@ if (-not $CheckOnly) {
             Check 'Claude Code run 2 returned a session' ($second -and $second.session_id) 'no session_id in the output'
             if ($second -and $second.total_cost_usd) { $script:cost += [double]$second.total_cost_usd }
         }
+        # The resume scenarios run only /address-feedback #1, so they skip runs 3 and 4.
         # Run 3 always runs, and run 4 gives its session the go-ahead whatever run 3 did (unlike run 2, which runs only
         # when run 1 didn't reply), so a run on #2 that asked instead of stopping acts on the go-ahead and fails the
         # checks below.
-        $third = Invoke-Claude @claudeArgs -Prompt '/address-feedback #2' -Index 3
-        Check 'Claude Code run 3 returned a session' ($third -and $third.session_id) 'no session_id in the output'
-        if ($third -and $third.total_cost_usd) { $script:cost += [double]$third.total_cost_usd }
-        if ($third -and $third.session_id) {
-            $fourth = Invoke-Claude @claudeArgs -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $third.session_id -Index 4
-            Check 'Claude Code run 4 returned a session' ($fourth -and $fourth.session_id) 'no session_id in the output'
-            if ($fourth -and $fourth.total_cost_usd) { $script:cost += [double]$fourth.total_cost_usd }
+        if ($Scenario -notlike 'resume*') {
+            $third = Invoke-Claude @claudeArgs -Prompt '/address-feedback #2' -Index 3
+            Check 'Claude Code run 3 returned a session' ($third -and $third.session_id) 'no session_id in the output'
+            if ($third -and $third.total_cost_usd) { $script:cost += [double]$third.total_cost_usd }
+            if ($third -and $third.session_id) {
+                $fourth = Invoke-Claude @claudeArgs -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $third.session_id -Index 4
+                Check 'Claude Code run 4 returned a session' ($fourth -and $fourth.session_id) 'no session_id in the output'
+                if ($fourth -and $fourth.total_cost_usd) { $script:cost += [double]$fourth.total_cost_usd }
+            }
         }
     }
     "Cost: $script:cost USD"
@@ -536,13 +646,26 @@ Use-FixtureEnvironment $Work $bin {
 
     $resolved = @($threads | Where-Object { $_.isResolved })
     Check 'no thread is resolved' ($threads.Count -eq 3 -and $resolved.Count -eq 0) "threads: $($threads.Count), resolved: $($resolved.Count)"
+    if ($Scenario -like 'resume*') {
+        $stoppedCommit = if (Test-Path -LiteralPath $stoppedRunFile) { ([IO.File]::ReadAllText($stoppedRunFile)).Trim() } else { '' }
+        Check 'the resumed run pushed the stopped run''s step as it was, with no commit of its own: add-farewell is that step''s commit' ($stoppedCommit -and $headNow -eq $stoppedCommit) "add-farewell is '$headNow', the stopped run's step is '$stoppedCommit'"
+        $named = if ($writerReply -match '^Autopilot: fixed in ([0-9a-f]{7,})') { $Matches[1] } else { '' }
+        Check 'the writer''s reply names the stopped run''s step commit' ($named -and $stoppedCommit.StartsWith($named)) "named '$named', the step is '$stoppedCommit'"
+        $worktrees = @(git -C $app worktree list --porcelain | Where-Object { $_ -match '^worktree ' })
+        $runBranches = @(git -C $app branch --list feedback-1 worktree-feedback-1)
+        $current = "$(git -C $app branch --show-current)".Trim()
+        $planLeft = Test-Path -LiteralPath (Join-Path $app 'PLAN.md')
+        Check 'the resumed run left no checkout: no worktree, no feedback-1 or worktree-feedback-1 branch, and the main checkout on main with no PLAN.md' ($worktrees.Count -eq 1 -and $runBranches.Count -eq 0 -and $current -eq 'main' -and -not $planLeft) "worktrees: $($worktrees.Count); branches: $($runBranches -join ', '); main checkout on '$current'; PLAN.md: $planLeft"
+    }
 
     $comments = @(Read-HostJson $hostDir 'comments.json' | Where-Object { $_ })
-    $unsafeNow = "$(git --git-dir=$origin rev-parse "refs/heads/$unsafeHead" 2>$null)".Trim()
-    $pwned = @(Get-ChildItem -LiteralPath $Work -Recurse -Force -Filter 'pwned' -ErrorAction SilentlyContinue)
-    $onTwo = @($comments | Where-Object { "$($_.number)" -eq '2' -and $_.url -ne $unsafeCommentUrl })
-    $tree2 = Test-Path -LiteralPath (Join-Path $app '.claude/worktrees/feedback-2')
-    Check '/address-feedback #2 stopped on its branch name with shell characters: no worktree, push, comment or file the name could create' ($unsafeNow -eq $headBefore -and $pwned.Count -eq 0 -and $onTwo.Count -eq 0 -and -not $tree2) "branch: '$unsafeNow'; pwned files: $($pwned.Count); comments on #2: $($onTwo.Count); worktree: $tree2"
+    if ($Scenario -notlike 'resume*') {
+        $unsafeNow = "$(git --git-dir=$origin rev-parse "refs/heads/$unsafeHead" 2>$null)".Trim()
+        $pwned = @(Get-ChildItem -LiteralPath $Work -Recurse -Force -Filter 'pwned' -ErrorAction SilentlyContinue)
+        $onTwo = @($comments | Where-Object { "$($_.number)" -eq '2' -and $_.url -ne $unsafeCommentUrl })
+        $tree2 = Test-Path -LiteralPath (Join-Path $app '.claude/worktrees/feedback-2')
+        Check '/address-feedback #2 stopped on its branch name with shell characters: no worktree, push, comment or file the name could create' ($unsafeNow -eq $headBefore -and $pwned.Count -eq 0 -and $onTwo.Count -eq 0 -and -not $tree2) "branch: '$unsafeNow'; pwned files: $($pwned.Count); comments on #2: $($onTwo.Count); worktree: $tree2"
+    }
     $new = @($comments | Where-Object { $_.url -notin $strangerUrl, $questionUrl, $unsafeCommentUrl })
     $askReply = @($new | Where-Object { "$($_.body)".Contains($strangerUrl) -and "$($_.body)".Contains($replyOpenings.ask) })
     Check "the stranger's CI request becomes an ask: `"$($replyOpenings.ask)`"" ($askReply.Count -ge 1) "new top-level comments: $($new.Count)"

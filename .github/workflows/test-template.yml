@@ -65,6 +65,10 @@ jobs:
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly
           - name: Set up the address-feedback end-to-end fixture for a session that refuses GraphQL
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly -Scenario rest
+          - name: Set up the address-feedback end-to-end fixture for a resumed run
+            run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly -Scenario resume
+          - name: Set up the address-feedback end-to-end fixture for a run Copilot stopped
+            run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly -Scenario resume-copilot
           - name: Set up the GitLab address-feedback end-to-end fixture
             run: ./tests/e2e/Test-AddressFeedbackGitLab.ps1 -SetupOnly
           - name: Set up the run-feedback end-to-end fixture
