@@ -16,6 +16,7 @@ _answers_file: .copier-answers.yml
 _skip_if_exists:
   - /AGENTS.md
   - /README.md
+  - /.node-version
   - /Directory.Build.props
   - /.github/workflows/code-review.yml
   - /.github/workflows/publish.yml
@@ -130,6 +131,11 @@ package_icon:
   default: "{% if author_name == 'NCode Group' %}NCodeGroup.png{% endif %}"
   when: "{{ stack == 'dotnet' and nuget_package }}"
   validator: '{% if "/" in package_icon or "\\" in package_icon %}A file name at the repository root, without a folder{% endif %}'
+
+uses_node:
+  type: bool
+  help: "Does the repository need Node.js (a Node.js project, or a frontend or tooling in another stack)? Adds .node-version, nvs setup scripts for bash and PowerShell, and the rules for using them"
+  default: "{{ stack == 'node' }}"
 
 package_manager:
   type: str

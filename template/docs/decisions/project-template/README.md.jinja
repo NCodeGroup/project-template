@@ -95,3 +95,11 @@ never brings a number the project already uses
 {%- endif %}
 | [0136](0136-packages-follow-semantic-versioning-and-the-assembly-version-moves-only-with-the-major.md) | Versions follow Semantic Versioning from the release tag; `AssemblyVersion` moves only with the major |
 {%- endif %}
+{%- if uses_node %}
+
+## Node.js
+
+| ADR | Decision |
+| --- | --- |
+| [0200](0200-nodejs-comes-from-nvs-and-a-node-version-file.md) | A project that needs Node.js selects it with nvs and a `.node-version` file; scripts put it on `PATH` for agents |
+{%- endif %}

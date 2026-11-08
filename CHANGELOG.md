@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-11-08
+
+### Added
+
+- A new `uses_node` answer, asked for every stack and yes by default for Node.js, decides the Node.js setup on the PC and in the repository, so a .NET or Python project with a frontend gets the same `.node-version`, scripts, agent rules and prelude as a Node.js project. CI sets up Node.js only for Node.js projects so far.
+
+- `.node-version`, a project-owned file holding the Node.js major version, `26`, which nvs, `actions/setup-node` and the scripts below read, so one file names the version everywhere.
+
+- `.template/Initialize-Nvs.ps1` sets nvs up once per PC in `~/.bashrc` and the PowerShell profile, is safe to run again, and installs the `.node-version` release.
+
+- `.template/Use-Node.ps1` and `.template/use-node.sh` put the `.node-version` Node.js on `PATH` in a shell that loads no profile, which is why agents no longer find `node` missing.
+
+- The Node.js rules in `.github/instructions/project-template.instructions.md` tell an agent how to get `node` on `PATH` and which scripts to run.
+
+- ADR-0200 records the standard: nvs, `.node-version` and the scripts.
+
+- A new project's `AGENTS.md` sets `prelude: ./.template/Use-Node.ps1`, so Node.js is on `PATH` before every gate and Done-when command.
+
+### Changed
+
+- GitHub CI and `copilot-setup-steps.yml` of a Node.js project read `.node-version` instead of `lts/*`, and the setup workflow's path filters list it.
+
+- No change for projects made from the template. `tests/Test-NodeSetup.ps1` checks the Node.js scripts against stand-ins for nvs, and `tests/Test-Template.ps1` has new checks for the `uses_node` answer and the files it adds.
+
+- `.claude/settings.json`, a merged file, allows every Bash and PowerShell command without asking, so a session no longer stops on each command. The existing `ask` rules for `git push` and `deny` rules for `.env` and `secrets/` still apply, because they take precedence over an allow rule. Note that `deny` covers the Read tool only, so a Bash command such as `cat .env` is now allowed; a project that wants it asked for adds its own `ask` rule for it.
+
+- An existing project is asked `uses_node` on update, yes by default for a Node.js project. `AGENTS.md` and `.node-version` are project-owned, so add `.node-version` (one line, the Node.js major version, such as `26`) and set `prelude: ./.template/Use-Node.ps1` in the Landing section of `AGENTS.md` yourself, then run `./.template/Initialize-Nvs.ps1` once per PC.
+
 ## [0.68.4] - 2026-11-08
 
 ### Changed
