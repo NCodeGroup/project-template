@@ -4,14 +4,14 @@
 
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
-    folder, worktree, branch, default, host, plan, issue, refs, release, steps, reviewed, landing, pre-release, protected, ahead, behind, landed,
+    folder, worktree, branch, default, host, plan, issue, refs, feedback, release, steps, reviewed, landing, pre-release, protected, ahead, behind, landed,
     pr, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, changelog-duplicates, published, issue-state, issue-states, unfiled, dirty, plans and next. A fact that does not apply prints
     "-". With an origin remote, the script fetches it, ignoring a failure, unless -NoFetch is given. The calls that wait on the network start together, each in a runspace of its own: the fetch, git ls-remote for origin's tags, and, through gh's REST API (gh api, which works where GitHub's GraphQL API is refused, as in a Claude Code cloud session) or glab, the pull request or merge request list, the branch protection, each issue's state and the release. The release check starts with them only when the clone already has the Release: tag, and otherwise once the fetch shows origin has it. The script waits for the fetch before it reads origin's refs, and for each other call where it uses the answer. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
     merge is the commit that request merged as, when it merged. issue is the plan's Issue: line, which names one
     issue or up to three separated by spaces; issue-states gives each one's state as <reference>=<state>, and
-    issue-state is OPEN while any of them is open, CLOSED when all are closed, and unknown otherwise. refs is the plan's Refs: line, the issues it relates to without resolving them; the script reads no state for them.
+    issue-state is OPEN while any of them is open, CLOSED when all are closed, and unknown otherwise. refs is the plan's Refs: line, the issues it relates to without resolving them; the script reads no state for them. feedback is the number on the plan's Pull request: line above its first ## heading, written #<number> or !<number>: the pull request whose feedback an /address-feedback run's plan answers, or -. For such a plan, pr names that pull request and its state, read by its number (gh api repos/{owner}/{repo}/pulls/<number>, or glab mr view <number>) in place of the branch's own, and conflicts is -. Its next names the stage to run, then address-feedback <number> once its steps are done and reviewed, which pushes the fixes to that pull request's branch and replies, never ship-plan, wait or finish-plan; once that pull request is merged or closed, next is none pull request #<number> is merged (or closed): address-feedback <number> discards this run.
     landing gives each key of AGENTS.md's Landing section that the workflow reads as key=value, with its default when
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
     The Landing section's pre-release is tracked, the default, or untracked; any other value prints as invalid. pre-release is yes while it is untracked, no tag merged into HEAD is a stable version (shaped like v1.2.3 or 1.2.3, with a major version of 1 or more) and the plan's Release: version, when it has one, isn't stable; else no.
@@ -317,7 +317,7 @@ try {
     }
 
     # PLAN.md
-    $plan = '-'; $issue = '-'; $related = '-'; $release = '-'; $steps = '-'; $reviewed = '-'; $unfiled = '-'
+    $plan = '-'; $issue = '-'; $related = '-'; $feedback = '-'; $release = '-'; $steps = '-'; $reviewed = '-'; $unfiled = '-'
     $done = 0; $total = 0; $open = 0; $escalated = @(); $failed = @()
     $planFile = Join-Path $folder 'PLAN.md'
     if (Test-Path -LiteralPath $planFile) {
@@ -325,6 +325,7 @@ try {
         foreach ($line in $lines) { if ($line -match '^# Plan:\s*(.+)$') { $plan = $Matches[1].Trim(); break } }
         foreach ($line in $lines) { if ($line -match '^Issue:\s*(\S.*)$') { $issue = $Matches[1].Trim(); break } }
         foreach ($line in $lines) { if ($line -match '^Refs:\s*(\S.*)$') { $related = $Matches[1].Trim(); break } }
+        foreach ($line in $lines) { if ($line -match '^## ') { break }; if ($line -match '^Pull request:\s*[#!]?(\d+)\s*$') { $feedback = $Matches[1]; break } }
         foreach ($line in $lines) { if ($line -match '^Release:\s*(\S+)') { $release = $Matches[1]; break } }
         $unfiled = Get-UnfiledFollowUps $lines
 
@@ -388,7 +389,12 @@ try {
     if ($hostName -ne 'none' -and -not $NoFetch) { $fetchCall = Start-Concurrent $folder 'git' @('fetch', 'origin', '--prune', '--tags', '--quiet') }
     if ($hostName -ne 'none' -and $release -ne '-') { $tagsCall = Start-Concurrent $folder 'Get-OriginTags' -Functions 'Get-OriginTags' }
     $protectedCall = Start-Concurrent $folder 'Get-Protected' @($hostName, $default, $policy['protect']) -Functions 'Get-Protected', 'Invoke-HostApi'
-    if ($hasCli -and $branch -ne '-' -and $branch -ne $default) {
+    if ($hasCli -and $feedback -ne '-') {
+        # A feedback plan's commits go to the pull request it names: read that one by its number, not the branch's own.
+        $requestsCall = if ($hostName -eq 'github') { Start-Concurrent $folder 'gh' @('api', "repos/{owner}/{repo}/pulls/$feedback") }
+        else { Start-Concurrent $folder 'glab' @('mr', 'view', $feedback, '--output', 'json') }
+    }
+    elseif ($hasCli -and $branch -ne '-' -and $branch -ne $default) {
         # The colon is written %3A: gh api fills :owner, :repo and :branch as well as {owner}, so a branch such as repo-x would lose its name.
         # One page of 100, as gh pr list --limit 100 read before: a branch's own pull requests are far fewer.
         $requestsCall = if ($hostName -eq 'github') { Start-Concurrent $folder 'gh' @('api', "repos/{owner}/{repo}/pulls?head={owner}%3A$([uri]::EscapeDataString($branch))&state=all&per_page=100") }
@@ -436,7 +442,7 @@ try {
 
     # Pull request or merge request
     $pr = '-'; $prNumber = ''; $prState = ''; $prMerge = ''; $prBase = ''
-    if ($hostName -in 'github', 'gitlab' -and $branch -ne '-' -and $branch -ne $default) {
+    if ($hostName -in 'github', 'gitlab' -and ($feedback -ne '-' -or ($branch -ne '-' -and $branch -ne $default))) {
         $pr = 'unknown'
         if ($requestsCall) {
             $requestsResult = Receive-Concurrent $requestsCall
@@ -533,7 +539,7 @@ try {
 
     # Files that conflict with the default branch
     $conflicts = '-'
-    if ($default -ne '-' -and $branch -ne $default -and $landed -eq 'no') { $conflicts = if ($behind -eq '0') { 'none' } else { Get-Conflicts $default } }
+    if ($default -ne '-' -and $branch -ne $default -and $landed -eq 'no' -and $feedback -eq '-') { $conflicts = if ($behind -eq '0') { 'none' } else { Get-Conflicts $default } }
 
     # Release published on the host
     $published = '-'
@@ -580,13 +586,15 @@ try {
     $next = $null
     if ($dirty -eq 'yes') { $next = 'none uncommitted changes: commit or discard them first' }
     elseif ($plan -ne '-') {
-        if ($escalated.Count -or $failed.Count) {
+        if ($feedback -ne '-' -and $prState -in 'MERGED', 'CLOSED') { $next = "none pull request #$feedback is $($prState.ToLowerInvariant()): address-feedback $feedback discards this run" }
+        elseif ($escalated.Count -or $failed.Count) {
             $lowest = ($escalated + $failed | ForEach-Object { [int]$_ } | Sort-Object | Select-Object -First 1)
             $next = "replan-step $lowest"
         }
         elseif ($open -gt 0) { $next = 'orchestrate-plan' }
         elseif ($total -eq 0) { $next = 'none the plan has no steps' }
         elseif ($reviewed -ne 'current') { $next = 'review-plan-diff' }
+        elseif ($feedback -ne '-') { $next = "address-feedback $feedback" }
         elseif ($landed -ne 'yes') {
             if ($hostName -eq 'none') { $next = 'none no origin remote to land on' }
             elseif ($prState -eq 'OPEN' -and ($renumber -ne '-' -or $conflicts -notin '-', 'none', 'unknown')) { $next = 'ship-plan' }
@@ -616,6 +624,7 @@ try {
     Write-Output "plan: $plan"
     Write-Output "issue: $issue"
     Write-Output "refs: $related"
+    Write-Output "feedback: $feedback"
     Write-Output "release: $release"
     Write-Output "steps: $steps"
     Write-Output "reviewed: $reviewed"
