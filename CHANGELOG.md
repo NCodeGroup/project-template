@@ -6,11 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.73.0] - 2026-11-08
+## [0.74.0] - 2026-11-08
 
 ### Added
 
 - `/ship-plan` offers a third answer for a plan's follow-ups, act on them next, beside filing them for later and dropping them: each follow-up you name, or all of them, is still filed as an issue and marked ` — next` in `PLAN.md`, and `/finish-plan` then ends with `/plan-issue #<number>` for each, and `/run-issues` with all of them when the project lands through pull requests, so the work starts while the plan's context is fresh. It is offered with `follow-ups: issues`; the Landing section gains no new value ([#295](https://github.com/NCodeGroup/project-template/issues/295)).
+
+## [0.73.0] - 2026-11-08
+
+### Added
+
+- `Adopt-Project.ps1` warns, word for word as `Update-Project.ps1` does, when the repository keeps its own `.github/workflows/publish.yml` without a `workflow_dispatch` trigger: the Release workflow, `tag-release.yml`, starts `publish.yml` through that trigger, so until it has one, a release ships no packages ([#294](https://github.com/NCodeGroup/project-template/issues/294)).
+
+### Changed
+
+- GitLab CI for a .NET, Python or PowerShell project that answers `uses_node` installs nvs v1.7.1, pinned to its commit, and selects the Node.js `.node-version` names before the build, as for a Node.js project; in the PowerShell image, which has neither, it installs Git and curl first ([#290](https://github.com/NCodeGroup/project-template/issues/290), [ADR-0200](template/docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md)).
 
 ## [0.72.0] - 2026-11-08
 
@@ -1166,7 +1176,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.73.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.74.0...HEAD
+[0.74.0]: https://github.com/NCodeGroup/project-template/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/NCodeGroup/project-template/compare/v0.72.0...v0.73.0
 [0.72.0]: https://github.com/NCodeGroup/project-template/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/NCodeGroup/project-template/compare/v0.70.0...v0.71.0

@@ -19,6 +19,10 @@
     attribution from commit messages, unless the repository already has a hooks path, hooks in .git/hooks, or uses
     pre-commit; then it leaves them as they are and warns, naming the command that runs the template's hooks.
 
+    When the repository keeps its own .github/workflows/publish.yml without a workflow_dispatch trigger and gets
+    .github/workflows/tag-release.yml, it prints the warning .\.template\Update-Project.ps1 prints: the Release
+    workflow starts publish.yml through that trigger, so until it has one, a release ships no packages.
+
 .EXAMPLE
     .\Adopt-Project.ps1 -Path C:\src\buffers
     .\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot' }
@@ -229,6 +233,13 @@ try {
     git status --porcelain | ForEach-Object { "  $_" }
     if ($report.Count) { ''; "Merged with the repository's own files:"; $report }
     if ($hooksNote) { ''; Write-Warning $hooksNote }
+    # A publish.yml the repository kept, without the trigger tag-release.yml starts it with: a release that workflow
+    # publishes would ship no packages. The warning is .template/Update-Project.ps1's, word for word;
+    # tests/Test-AdoptEdgeCases.ps1 keeps the two equal.
+    if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
+        ''
+        '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the template''s publish.yml does (the 0.72.0 section of the project template''s CHANGELOG.md).'
+    }
 
     # A GitHub repository's default branch should take changes only through pull requests. The baseline script changes the
     # repository's settings on GitHub, which an adoption that only commits locally shouldn't do on its own, so print it.

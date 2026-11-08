@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
     Test adopting repositories with edge cases: a rollback, CI and a hooks path of their own, catch-all attributes,
-    Copilot-only agents, a failing build, and Node.js without build or test scripts.
+    Copilot-only agents, a failing build, Node.js without build or test scripts, and a publish.yml of
+    their own without a workflow_dispatch trigger.
 
 .DESCRIPTION
     Adopts six small fixture repositories from a tagged snapshot of the working tree, which
@@ -51,6 +52,7 @@ $ciExisting = New-Fixture 'ci-existing' @{
     'README.md'                   = "# Ci Existing`n"
     '.github/workflows/ci.yml'    = "name: CI`n"
     '.github/workflows/frontend.yml' = "name: Frontend`n"
+    '.github/workflows/publish.yml' = "name: Publish`non:`n  release:`n    types: [published]`n  workflow_dispatch:`n    inputs:`n      tag:`n        required: true`n        type: string`njobs: {}`n"
 } 'https://github.com/example/ci-existing.git'
 Invoke-Git -C $ciExisting config core.hooksPath .husky
 $ciOut = & $adopt -Path $ciExisting -Template $tpl -Ref v0.1.0 -NoVerify 3>&1 | Out-String
@@ -59,11 +61,12 @@ Check 'ci-existing: no reconcile follow-up when the repository already had ci.ym
 Check 'ci-existing: asks to add the commit attribution job to the kept ci.yml' ($ciOut.Contains("add the template's commit-attribution job to .github/workflows/ci.yml")) $ciOut
 Check 'ci-existing: the baseline command suggests -RequireChecks auto for its own CI' ($ciOut.Contains('-Repo ci-existing -Owner example') -and $ciOut.Contains('keeps its own CI: add -RequireChecks auto')) $ciOut
 Check 'ci-existing: says it left local out and how to add it' ($ciOut.Contains("workflow_tools: [claude, copilot], the template's default") -and $ciOut.Contains("-Data @{ workflow_tools = 'claude', 'copilot', 'local' }")) $ciOut
+Check 'ci-existing: a kept publish.yml with workflow_dispatch gets no warning' (-not $ciOut.Contains('has no workflow_dispatch trigger')) $ciOut
 
-# A .NET repository with catch-all .gitattributes rules, a global.json with a partial SDK version, an image and its own
-# workflow: three gaps found by adopting NCodeGroup's libraries. It answers the code review question
-# (code_review = 'true' in -Data), so the template adds its own code-review.yml beside the repository's main.yml, and
-# the report must ask to reconcile only main.yml with ci.yml.
+# A .NET repository with catch-all .gitattributes rules, a global.json with a partial SDK version, an image, its own
+# workflow and a publish.yml of its own without a workflow_dispatch trigger: four gaps found by adopting NCodeGroup's
+# libraries. It answers the code review question (code_review = 'true' in -Data), so the template adds its own
+# code-review.yml beside the repository's main.yml, and the report must ask to reconcile only main.yml with ci.yml.
 $gaps = New-Fixture 'gaps' @{
     'README.md'                = "# Gaps`n"
     'Gaps.csproj'              = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n</Project>`n"
@@ -71,6 +74,7 @@ $gaps = New-Fixture 'gaps' @{
     'global.json'              = "{`n  ""sdk"": {`n    ""version"": ""10.0.0"",`n    ""rollForward"": ""latestMinor""`n  }`n}`n"
     'logo.png'                 = $png
     '.github/workflows/main.yml' = "name: main`non: [push]`njobs:`n  build:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo hi`n"
+    '.github/workflows/publish.yml' = "name: Publish`non:`n  release:`n    types: [published]`njobs:`n  publish:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo publish`n"
 } 'https://github.com/example/gaps.git'
 $gapsOut = & $adopt -Path $gaps -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; code_review = 'true' } -NoVerify | Out-String
 $gapsAttributes = Get-Content -Raw -LiteralPath (Join-Path $gaps '.gitattributes')
@@ -80,6 +84,10 @@ Check 'gaps: the repository''s other attribute lines are kept, and the report sa
 $gapsGlobal = Get-Content -Raw -LiteralPath (Join-Path $gaps 'global.json')
 Check 'gaps: a partial SDK version in global.json is replaced by the template''s, which setup-dotnet accepts' ($gapsGlobal -match '"version":\s*"\d+\.\d+\.\d{3}"' -and -not $gapsGlobal.Contains('"10.0.0"') -and $gapsOut.Contains('isn''t a full version')) "$gapsGlobal | $gapsOut"
 Check 'gaps: the code review and release workflows are not asked to be reconciled with ci.yml, but the repository''s own workflow is' ($gapsOut.Contains('reconcile .github/workflows/main.yml with ci.yml') -and -not $gapsOut.Contains('code-review.yml with ci.yml') -and -not $gapsOut.Contains('code-review-auto-merge.yml with ci.yml') -and -not $gapsOut.Contains('tag-release.yml with ci.yml')) $gapsOut
+# Update-Project.ps1's warning for a publish.yml without workflow_dispatch, which adoption prints word for word.
+$updateScript = [IO.File]::ReadAllText((Join-Path $repoRoot 'template/.template/Update-Project.ps1'))
+$dispatchWarning = [regex]::Match($updateScript, "(?m)^\s*'(\.github/workflows/publish\.yml has no workflow_dispatch trigger\.(?:[^']|'')*)'\s*$").Groups[1].Value.Replace("''", "'")
+Check 'gaps: warns, word for word as the update does, that the kept publish.yml has no workflow_dispatch trigger' ($dispatchWarning.Length -gt 100 -and $gapsOut.Contains($dispatchWarning)) $gapsOut
 
 # Copilot agents and no Hybrid ones, like a public repository: the adoption leaves out the local model's files.
 $copilotOnly = New-Fixture 'copilot-only' @{

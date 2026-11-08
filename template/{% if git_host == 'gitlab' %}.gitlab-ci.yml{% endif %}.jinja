@@ -66,6 +66,18 @@ build-and-test:
 {%- else %}
   image: alpine:3
 {%- endif %}
+{%- if uses_node and stack in ['dotnet', 'python', 'powershell'] %}
+{#- The Node.js stack's before_script above clones the same nvs commit: change both together. #}
+{%- if stack == 'powershell' %}
+    # The PowerShell image has neither Git nor curl, which nvs needs to clone itself and download Node.js.
+    - apt-get update -qq && apt-get install -qq -y --no-install-recommends git curl
+{%- endif %}
+    # nvs, pinned to the v1.7.1 tag's commit, installs and selects the Node.js .node-version names for the frontend or
+    # tooling the build runs (ADR-0200); the job's later commands run in the same shell, with that Node.js on PATH.
+    - git clone --quiet --depth 1 --branch v1.7.1 https://github.com/jasongin/nvs "$HOME/.nvs"
+    - test "$(git -C "$HOME/.nvs" rev-parse HEAD)" = b87ae9593cd20e7b667e9099240c9befeb50659f
+    - . ./.template/use-node.sh
+{%- endif %}
   script:
 {%- if stack == 'dotnet' and build_command == 'dotnet build' and test_command == 'dotnet test' %}
     # The Definition of Done builds, tests and, for a library, packs, as build/dod.ps1 says.
