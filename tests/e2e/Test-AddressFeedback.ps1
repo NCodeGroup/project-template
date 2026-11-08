@@ -74,6 +74,8 @@ $hostDir = Join-Path $bin 'host'
 # Without -Scenario, -CheckOnly checks the scenario the fixture was set up for, which the setup writes to scenario.txt.
 $scenarioFile = Join-Path $Work 'scenario.txt'
 if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath $scenarioFile)) { $Scenario = ([IO.File]::ReadAllText($scenarioFile)).Trim() }
+# A resume scenario's stopped run: the commit of its one step, which the setup writes to stopped-run.txt.
+$stoppedRunFile = Join-Path $Work 'stopped-run.txt'
 $head = 'add-farewell'
 # Git allows this branch name, /address-feedback must refuse it, and unquoted in a POSIX shell it would run touch pwned.
 $unsafeHead = 'farewell;touch${IFS}pwned'
@@ -115,6 +117,63 @@ function Get-FarewellResult([string]$Folder) {
         @{ Output = $out; TestCode = $LASTEXITCODE }
     }
     finally { Pop-Location }
+}
+
+# Leaves a run of /address-feedback #1 that stopped once its plan was reviewed, in the worktree
+# .claude/worktrees/feedback-1 on worktree-feedback-1, as Claude Code leaves one. Its one step makes Get-Farewell say
+# "Goodbye, world!" without a name, as the writer asks, and its plan gives each item its verdict. Returns the run's
+# folder and the step's commit.
+function New-StoppedRun {
+    $folder = Join-Path $app '.claude/worktrees/feedback-1'
+    Invoke-Git -C $app worktree add -q --no-track $folder -b worktree-feedback-1 "origin/$head"
+    $start = "$(git -C $folder rev-parse HEAD)".Trim()
+    Write-Text (Join-Path $folder 'src/Farewell.ps1') @'
+function Get-Farewell {
+    param([string]$Name)
+    if (-not $Name) { $Name = 'world' }
+    "Goodbye, $Name!"
+}
+'@
+    Write-Text (Join-Path $folder 'tests/Test-Greeting.ps1') @'
+. "$PSScriptRoot/../src/Greeting.ps1"
+. "$PSScriptRoot/../src/Farewell.ps1"
+if ((Get-Greeting -Name Ada) -ne 'Hello, Ada!') { 'FAIL  Get-Greeting -Name Ada'; exit 1 }
+'PASS  Get-Greeting -Name Ada'
+if ((Get-Farewell -Name Ada) -ne 'Goodbye, Ada!') { 'FAIL  Get-Farewell -Name Ada'; exit 1 }
+'PASS  Get-Farewell -Name Ada'
+if ((Get-Farewell) -ne 'Goodbye, world!') { 'FAIL  Get-Farewell'; exit 1 }
+'PASS  Get-Farewell'
+if ((Get-Farewell -Name '') -ne 'Goodbye, world!') { 'FAIL  Get-Farewell -Name empty'; exit 1 }
+'PASS  Get-Farewell -Name empty'
+exit 0
+'@
+    Invoke-Git -C $folder add src/Farewell.ps1 tests/Test-Greeting.ps1
+    Invoke-Git -C $folder commit -q -m 'Plan step 1: Say "Goodbye, world!" without a name'
+    $commit = "$(git -C $folder rev-parse HEAD)".Trim()
+    $plan = @(
+        '# Plan: Address the feedback on pull request 1'
+        'Pull request: #1'
+        "Start: $start"
+        "Reviewed: $commit"
+        ''
+        '## Goal'
+        'Answer every open item on pull request #1, and make `Get-Farewell` say `Goodbye, world!` without a name, as the writer asks.'
+        ''
+        '## Feedback'
+        '- https://github.com/fixture/app/pull/1#discussion_r2001: fix, step 1.'
+        '- https://github.com/fixture/app/pull/1#discussion_r2002: decline: the finding is wrong, because `Get-Farewell` uses its `Name` parameter in its greeting, `"Goodbye, $Name!"`, in `src/Farewell.ps1`.'
+        '- https://github.com/fixture/app/pull/1#issuecomment-1001: ask: its author cannot ask for a change, and `.github/workflows/ci.yml` is a protected path: lower `timeout-minutes` of the `build-and-test` job from 30 to 10, or keep 30.'
+        '- https://github.com/fixture/app/pull/1#issuecomment-1002: answer: no, only `tests/Test-Greeting.ps1` calls `Get-Farewell` so far; nothing in `src/` does.'
+        ''
+        '## Steps'
+        ''
+        '### [x] 1. Say "Goodbye, world!" without a name'
+        '- Files: `src/Farewell.ps1` (edit), `tests/Test-Greeting.ps1` (edit)'
+        '- Change: in `Get-Farewell`, set `$Name` to `world` when it is empty, and check `Get-Farewell` with no name and with an empty one in `tests/Test-Greeting.ps1`.'
+        '- Done when: `pwsh -NoProfile -File tests/Test-Greeting.ps1`'
+    ) -join "`n"
+    Write-Text (Join-Path $folder 'PLAN.md') "$plan`n"
+    @{ Folder = $folder; Commit = $commit }
 }
 
 if (-not $CheckOnly) {
@@ -404,6 +463,19 @@ exit 0
                 if ($code -eq 0 -or $logged -ne 1) { $bad += "$($call -join ' ') (exit $code, FORBIDDEN lines $logged)" }
             }
             Check 'fixture: the stand-in refuses resolving, auto-merge, draft changes and editing the pull request through REST' ($bad.Count -eq 0) "not refused: $($bad -join '; ')"
+        }
+
+        if ($Scenario -like 'resume*') {
+            # The run /address-feedback #1 resumes, which stopped once its plan was reviewed.
+            $run = New-StoppedRun
+            Write-Text $stoppedRunFile "$($run.Commit)`n"
+            $st = Get-State $app $run.Folder
+            $ok = $st['feedback'] -eq '1' -and $st['pr'] -eq '1 OPEN' -and $st['reviewed'] -eq 'current' -and $st['dirty'] -eq 'no' -and $st['next'] -eq 'address-feedback 1'
+            Check 'fixture: the stopped run''s plan is reviewed, and the state script sends it back to /address-feedback 1 with pull request #1 open' $ok "feedback='$($st['feedback'])' pr='$($st['pr'])' reviewed='$($st['reviewed'])' dirty='$($st['dirty'])' next='$($st['next'])'"
+            $ok = $st['worktree'] -eq 'feedback-1' -and $st['branch'] -eq 'worktree-feedback-1'
+            Check 'fixture: the stopped run is in .claude/worktrees/feedback-1 on worktree-feedback-1, as Claude Code leaves one' $ok "worktree='$($st['worktree'])' branch='$($st['branch'])'"
+            $result = Get-FarewellResult $run.Folder
+            Check 'fixture: the stopped run''s step makes Get-Farewell say "Goodbye, world!" without a name, and its test passes' ($result.Output -eq 'Goodbye, world!|Goodbye, world!|Goodbye, Ada!' -and $result.TestCode -eq 0) "output='$($result.Output)' test exit code $($result.TestCode)"
         }
     }
     Remove-Item -LiteralPath $hostDir -Recurse -Force
