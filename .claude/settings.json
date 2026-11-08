@@ -10,6 +10,12 @@
       "EnterWorktree",
       "Bash",
       "PowerShell"
+    ],
+    "ask": [
+      "Bash(*.env*)",
+      "PowerShell(*.env*)",
+      "Bash(*secrets*)",
+      "PowerShell(*secrets*)"
     ]
   }
 }
