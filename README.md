@@ -244,6 +244,7 @@ The script works out these answers:
 | `license` | `PackageLicenseExpression` in the root `Directory.Build.props` (.NET); else `Apache-2.0` or `MIT` when the root `LICENSE`, `LICENSE.txt`, `LICENSE.md` or `COPYING` holds that license's text |
 | `build_command`, `test_command` (.NET) | `dotnet build <solution>` and `dotnet test <solution>`, when the only solution isn't at the root |
 | `package_manager` (Node.js) | The one the `packageManager` field in `package.json` names, else the one whose lockfile is at the root (`pnpm-lock.yaml`, `yarn.lock`, `bun.lock` or `bun.lockb`), else npm |
+| `uses_node` (not Node.js) | Yes when a `package.json` is within two folders of the root, outside `bin`, `obj` and `node_modules`, or a `.nvmrc` or `.node-version` is at the root; a Node.js repository takes the default, yes |
 | `build_command`, `test_command` (Node.js) | `<package_manager> run build` and `<package_manager> run test`, each only when `package.json` has that script and the `test` script isn't the failing placeholder `npm init` writes; else blank |
 | `workflow_tools` | `claude`, plus `copilot` if `.github/agents/copilot-*.agent.md`, `.github/skills/` or `.github/prompts/` exists, plus `local` if `.github/agents/hybrid-*.agent.md` exists; with none of these, the template's default (`claude` and `copilot`), and the script prints a line saying so and how to add `local` |
 
@@ -255,7 +256,7 @@ What it does with a file the repository already has depends on the file's owner 
 |---|---|
 | Template | Replaced by the template's file; the repository's copy is discarded, unless the `project_owned_files` answer names it: then the repository's copy is kept exactly as it is, and later updates show the template's changes to it |
 | Merged | Rebuilt as the template's file plus the repository's own content, so a later update merges the repository's content like any project's edits (below) |
-| Project | Kept. `AGENTS.md` gains the template's rules as an index entry: first under its `## Instructions` heading, else in a new `## Project Template` section before its first section, else at the end. `Directory.Build.props` gains the import of `build/ProjectTemplate.props` as its first element, so its own settings override the template's. An `AGENTS.md` the template writes, for a repository that had none, says `pre-release: tracked` in its Landing section, since the repository has a history (ADR-0015). |
+| Project | Kept. `AGENTS.md` gains the template's rules as an index entry: first under its `## Instructions` heading, else in a new `## Project Template` section before its first section, else at the end. `Directory.Build.props` gains the import of `build/ProjectTemplate.props` as its first element, so its own settings override the template's. An `AGENTS.md` the template writes, for a repository that had none, says `pre-release: tracked` in its Landing section, since the repository has a history (ADR-0015). A `.node-version` the repository has is kept; with only a `.nvmrc` that names a version number, such as `v22`, `.node-version` gets that version, and any other `.nvmrc` value is a follow-up. |
 
 A merged file is rebuilt by type:
 
