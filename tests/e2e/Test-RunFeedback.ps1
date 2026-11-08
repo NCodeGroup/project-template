@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Run /run-feedback end to end in headless Claude Code on a fixture pull request with a local origin and a gh
+    Run /run-feedback end to end in headless Claude Code or the Copilot CLI (-Tool) on a fixture pull request with a local origin and a gh
     stand-in, and check what it pushed, commented and replied.
 
 .DESCRIPTION
@@ -12,7 +12,7 @@
     In -SetupOnly it checks the fixture: the project's state, the pull request, the installed commands and the
     stand-in's handling of the check-runs call, of the push review, of a comment read back, edited and deleted by its
     id, and of footer.txt.
-    It runs /run-feedback #1 wait:0 in headless Claude Code, answers the run's one question by resuming the session, and
+    It runs /run-feedback #1 wait:0 in headless Claude Code or the Copilot CLI (-Tool), answers the run's one question by resuming the session, and
     checks that the writer's fix is pushed, never forced; that the writer's thread gets a reply that names the commit;
     that the run comments /review after its last push, asks for NCode Review's check run on the pushed commit and
     answers the bot's nit once; that it recommends the merge once, in a top-level comment after the /review; and that
@@ -42,11 +42,23 @@
     the stand-in saves each comment and reply with the footer that footer.txt in its host folder holds, so the run
     must delete its /review comment and ask the maintainer for one, which the stand-in then takes as posted. Run both.
 
+.PARAMETER Tool
+    claude, the default, runs each prompt in headless Claude Code; copilot runs it in the Copilot CLI. The fixture
+    project has both tools' commands, so the setup and the checks are the same for either tool, but for where a run
+    works. Without -Tool, -CheckOnly checks the tool the fixture's run used, which tool.txt in the work folder names.
+
 .PARAMETER Claude
     The Claude Code CLI. Defaults to claude.
 
+.PARAMETER Copilot
+    The Copilot CLI. Defaults to copilot.
+
+.PARAMETER Model
+    The model each prompt runs on, passed as --model. Empty, the default, keeps the tool's own default.
+
 .PARAMETER MaxBudgetUsd
-    The most each claude call may spend, passed as --max-budget-usd. 0 passes nothing. Defaults to 30.
+    The most each claude call, or each Copilot session, may spend: --max-budget-usd, or --max-ai-credits at 100 AI
+    credits a dollar, 30 at least. 0 passes nothing. Defaults to 30.
 
 .EXAMPLE
     .\tests\e2e\Test-RunFeedback.ps1
@@ -56,6 +68,9 @@
 
 .EXAMPLE
     .\tests\e2e\Test-RunFeedback.ps1 -SetupOnly
+
+.EXAMPLE
+    .\tests\e2e\Test-RunFeedback.ps1 -Tool copilot
 #>
 [CmdletBinding()]
 param(
@@ -63,7 +78,10 @@ param(
     [switch]$SetupOnly,
     [switch]$CheckOnly,
     [ValidateSet('push-review', 'session-footer')][string]$Scenario = 'push-review',
+    [ValidateSet('claude', 'copilot')][string]$Tool = 'claude',
     [string]$Claude = 'claude',
+    [string]$Copilot = 'copilot',
+    [string]$Model = '',
     [double]$MaxBudgetUsd = 30
 )
 $ErrorActionPreference = 'Stop'
@@ -76,12 +94,14 @@ $app = Join-Path $Work 'app'
 $origin = Join-Path $Work 'github.com/fixture/app.git'
 $bin = Join-Path $Work 'bin'
 $hostDir = Join-Path $bin 'host'
+# Without -Tool, -CheckOnly checks the run of the tool the fixture ran, which New-Agent writes to tool.txt.
+if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Tool')) { $Tool = Get-RunTool $Work $Tool }
 # Without -Scenario, -CheckOnly checks the scenario the fixture was set up for: footer.txt in the host folder marks session-footer.
 if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt'))) { $Scenario = 'session-footer' }
 $head = 'add-farewell'
 $prUrl = 'https://github.com/fixture/app/pull/1'
-$commandFile = Join-Path $app '.claude/commands/run-feedback.md'
-$addressFile = Join-Path $app '.claude/commands/address-feedback.md'
+$commandFile = Get-CommandFile $app $Tool 'run-feedback'
+$addressFile = Get-CommandFile $app $Tool 'address-feedback'
 $nitReply = 'Autopilot: not changed: a nit, left for the maintainer to judge.'
 
 function Read-Threads {
@@ -194,6 +214,8 @@ exit 0
         Check 'fixture: pull request #1 is open, from add-farewell at its head on origin, not from a fork' $ok "state='$($view.state)' head='$($view.headRefName)' oid='$($view.headRefOid)' cross=$($view.isCrossRepository)"
 
         Check 'fixture: the installed commands ask for NCode Review''s check run, answer a nit as mandated and read the pull request with a query' ($checkPath -and $checkJq -and $commandText.Contains($nitReply) -and $readQuery) "check path: '$checkPath' jq: '$checkJq' command file: $commandFile read query: $([bool]$readQuery)"
+        Test-InstalledCommand $app 'run-feedback' 'the check-runs call and the nit reply the checks match' @("gh api ""$checkPath"" --jq '$checkJq'", $nitReply)
+        Test-InstalledCommand $app 'address-feedback' 'the read query' @($readQuery)
 
         $data = $null
         if ($readQuery) { $data = (gh api graphql -F 'owner={owner}' -F 'name={repo}' -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json).data.repository.pullRequest }
@@ -312,27 +334,17 @@ if ($SetupOnly) {
 }
 
 if (-not $CheckOnly) {
-    if (-not (Get-Command $Claude -ErrorAction SilentlyContinue)) { throw 'Claude Code CLI not found: install it, or pass -Claude <path>' }
-
-    $claudeArgs = @{ Claude = $Claude; MaxBudgetUsd = $MaxBudgetUsd; App = $app; Work = $Work }
-    $script:cost = 0.0
-    $script:sessionId = ''
+    # New-Agent reads Copilot's token before Use-FixtureEnvironment puts the gh stand-in first on PATH.
+    $agent = New-Agent -Tool $Tool -Claude $Claude -Copilot $Copilot -Model $Model -MaxBudgetUsd $MaxBudgetUsd -App $app -Work $Work
     Use-FixtureEnvironment $Work $bin {
-        $first = Invoke-Claude @claudeArgs -Prompt '/run-feedback #1 wait:0' -Index 1
-        Check 'Claude Code run 1 returned a session' ($first -and $first.session_id) 'no session_id in the output'
-        if ($first -and $first.total_cost_usd) { $script:cost += [double]$first.total_cost_usd }
-        $script:sessionId = if ($first) { "$($first.session_id)" } else { '' }
+        Invoke-Agent $agent -Prompt '/run-feedback #1 wait:0' -Index 1
         $callsPath = Join-Path $hostDir 'calls.log'
         $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match '^CALL (pr comment|api graphql .*addPullRequestReviewThreadReply)' }).Count
-        if (-not $replied -and $first -and $first.session_id) {
-            $second = Invoke-Claude @claudeArgs -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $first.session_id -Index 2
-            Check 'Claude Code run 2 returned a session' ($second -and $second.session_id) 'no session_id in the output'
-            if ($second -and $second.total_cost_usd) { $script:cost += [double]$second.total_cost_usd }
+        if (-not $replied -and $agent.SessionId) {
+            Invoke-Agent $agent -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $agent.SessionId -Index 2
         }
     }
-    "Cost: $script:cost USD"
-    "Fixture: $app"
-    "Continue the session from $app with: claude --resume $script:sessionId"
+    Write-AgentSummary $agent
 }
 
 Use-FixtureEnvironment $Work $bin {
