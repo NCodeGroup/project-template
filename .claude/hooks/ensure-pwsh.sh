@@ -43,11 +43,15 @@ if [ "$(id -u)" != 0 ]; then
     }
 fi
 
+# env sets DEBIAN_FRONTEND for apt-get itself, which sudo would otherwise strip; the package lists are refreshed
+# only when the first install fails, since a fresh container's lists may be empty or stale.
+apt_install() { $sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$dir/$file" >/dev/null; }
+
 dir=$(mktemp -d) || exit 0
 file="powershell_${PWSH_VERSION}_amd64.deb"
 curl -fsS -m 120 -o "$dir/$file" "https://packages.microsoft.com/ubuntu/24.04/prod/pool/main/p/powershell/$file" &&
     echo "$PWSH_SHA256  $dir/$file" | sha256sum -c - >/dev/null &&
-    DEBIAN_FRONTEND=noninteractive $sudo apt-get install -y "$dir/$file" >/dev/null &&
+    { apt_install || { $sudo apt-get update -qq >/dev/null 2>&1 && apt_install; }; } &&
     echo "ensure-pwsh: installed PowerShell $(pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()')" ||
     echo "ensure-pwsh: installing PowerShell failed; the project's scripts need pwsh."
 rm -rf "$dir"
