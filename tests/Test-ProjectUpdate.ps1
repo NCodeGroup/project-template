@@ -52,6 +52,37 @@ if (-not $copierCache) { $env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache' 
 $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
+# Get-PreReleaseAnswer and Invoke-TemplateRender from the template's script, with a stand-in Copier that records its arguments: the render's pre_release comes from -Data, else from AGENTS.md's Landing section.
+$preRelease = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path (Split-Path -Parent $PSScriptRoot) 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'ConvertTo-CopierValue', 'Get-PreReleaseAnswer', 'Invoke-TemplateRender') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $recorded = [Collections.Generic.List[string]]::new()
+    function Invoke-Copier { $recorded.Clear(); foreach ($a in $args) { $recorded.Add("$a") } }
+    $TemplateClone = $tpl
+    $untrackedText = "## Landing`n`n- pre-release: untracked`n"
+    $cases = [ordered]@{
+        'untracked'       = @{ Agents = $untrackedText; Data = @{}; Want = 'untracked' }
+        'tracked'         = @{ Agents = "## Landing`n`n- pre-release: tracked`n"; Data = @{}; Want = 'tracked' }
+        'no-line'         = @{ Agents = "## Landing`n`n- draft: no`n"; Data = @{}; Want = 'tracked' }
+        'outside-landing' = @{ Agents = "## Other`n`n- pre-release: untracked`n`n## Landing`n`n- draft: no`n"; Data = @{}; Want = 'tracked' }
+        'no-agents'       = @{ Agents = $null; Data = @{}; Want = 'tracked' }
+        'data-wins'       = @{ Agents = $untrackedText; Data = @{ pre_release = 'tracked' }; Want = 'tracked' }
+    }
+    foreach ($name in $cases.Keys) {
+        $project = Join-Path $Work "pre-release-$name"
+        $null = New-Item -ItemType Directory -Path $project -Force
+        if ($null -ne $cases[$name].Agents) { [IO.File]::WriteAllText((Join-Path $project 'AGENTS.md'), $cases[$name].Agents) }
+        $Data = $cases[$name].Data
+        $null = Invoke-TemplateRender v0.1.0 (Join-Path $project 'out')
+        $got = @($recorded | Where-Object { $_ -like 'pre_release=*' })
+        if ($got.Count -ne 1 -or $got[0] -ne "pre_release=$($cases[$name].Want)") { "${name}: $($got -join ',')" }
+    }
+}
+Check 'unit: the render takes pre_release from -Data, else untracked only from the Landing section''s - pre-release: untracked line' (-not $preRelease) ($preRelease -join ' | ')
+
 Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test python' --data 'stack=python' --data 'git_host=github' --data 'workflow_tools=[claude, copilot, local]' $tplUrl (Join-Path $Work 'python')
 
 $project = Join-Path $Work 'python'
