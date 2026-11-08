@@ -139,6 +139,21 @@ foreach ($case in $errorCases) {
     if (-not $r.Error.Contains($case.Expect) -or (Test-Path -LiteralPath (Join-Path $dir 'sdk')) -or @(Get-ChildItem -LiteralPath $dir -Force -Filter '.install-dotnet-*')) { $misses.Add("$($case.Name): $($r.Error)") }
 }
 Check 'installer: build/Install-Dotnet.ps1 stops with its own error when global.json or the release metadata gives it nothing to install' (-not $misses) ($misses -join ' | ')
+
+$archiveSource = Join-Path $stubRoot 'archive-src'
+New-Item -ItemType Directory -Force -Path (Join-Path $archiveSource 'sdk/8.0.404') | Out-Null
+[IO.File]::WriteAllText((Join-Path $archiveSource 'dotnet'), 'from the archive')
+[IO.File]::WriteAllText((Join-Path $archiveSource 'sdk/8.0.404/marker'), 'sdk')
+$archive = Join-Path $stubRoot "stub-dotnet-sdk-$suffix"
+if ($IsWindows) { Compress-Archive -Path (Join-Path $archiveSource '*') -DestinationPath $archive }
+else { tar -czf $archive -C $archiveSource . }
+$archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA512).Hash
+$dir = New-StubInstallDir 'merge'
+[IO.File]::WriteAllText((Join-Path $dir 'dotnet'), 'already there')
+$globalJson = Join-Path $stubRoot 'merge.json'
+[IO.File]::WriteAllText($globalJson, '{"sdk":{"version":"8.0.404"}}')
+$r = Invoke-StubInstaller @{ '8.0/releases.json' = New-StubChannel '8.0.11' @(New-StubSdk '8.0.404' @(@{ name = "dotnet-sdk-$suffix"; url = $sdkUrl; hash = $archiveHash })) } @{ $sdkUrl = [IO.File]::ReadAllBytes($archive) } @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' }
+Check 'installer: build/Install-Dotnet.ps1 adds the files of a verified SDK archive that the installation lacks and replaces none' (-not $r.Error -and $r.Printed.Contains('Installed .NET SDK 8.0.404 in') -and [IO.File]::ReadAllText((Join-Path $dir 'dotnet')) -eq 'already there' -and [IO.File]::ReadAllText((Join-Path $dir 'sdk/8.0.404/marker')) -eq 'sdk' -and -not @(Get-ChildItem -LiteralPath $dir -Force -Filter '.install-dotnet-*')) "$($r.Error) | $($r.Printed)"
 if ($InstallerOnly) { Complete-Run }
 
 $tpl = Join-Path $Work 'template-repo'
