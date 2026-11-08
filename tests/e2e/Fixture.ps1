@@ -145,19 +145,6 @@ function Get-State([string]$App, [string]$Path) {
     $state
 }
 
-function Invoke-Claude([string]$Claude, [double]$MaxBudgetUsd, [string]$App, [string]$Work, [string]$Prompt, [string]$SessionId, [int]$Index) {
-    $arguments = @('-p', $Prompt)
-    if ($SessionId) { $arguments += '--resume', $SessionId }
-    # --strict-mcp-config with no --mcp-config gives the session none of the user's MCP servers: it posts only through the gh stand-in.
-    $arguments += '--output-format', 'json', '--permission-mode', 'bypassPermissions', '--strict-mcp-config'
-    if ($MaxBudgetUsd -gt 0) { $arguments += '--max-budget-usd', "$MaxBudgetUsd" }
-    Push-Location $App
-    try { $output = & $Claude @arguments | Out-String }
-    finally { Pop-Location }
-    [IO.File]::WriteAllText((Join-Path $Work "claude-$Index.json"), $output)
-    try { $output | ConvertFrom-Json } catch { $null }
-}
-
 function Read-HostJson([string]$HostDir, [string]$Name) {
     $path = Join-Path $HostDir $Name
     if (-not (Test-Path -LiteralPath $path)) { return $null }

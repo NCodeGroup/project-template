@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Run /run-issues end to end in headless Claude Code on a fixture project with a local origin and a gh stand-in, and check the draft pull request it leaves.
+    Run /run-issues end to end in headless Claude Code or the Copilot CLI (-Tool) on a fixture project with a local origin and a gh stand-in, and check the draft pull request it leaves.
 
 .DESCRIPTION
     Makes a fixture project from the template, gives it a local origin under a github.com folder and a stand-in for gh,
-    runs /run-issues #1 wait:0 in headless Claude Code, and checks what the loop left behind: a plan snapshot comment,
+    runs /run-issues #1 wait:0 in headless Claude Code or the Copilot CLI (-Tool), and checks what the loop left behind: a plan snapshot comment,
     a draft pull request that closes the issue, the step commits on origin, a reviewed plan, and working code. The
     fixture runs NCode Review, and the stand-in gives the pull request a seeded review: a review thread of the owner's
     asking for pipeline input, which the run fixes and answers naming its commit, a blocker finding on behavior main
@@ -33,11 +33,23 @@
     the merge. max-rounds: max-review-rounds is 1 and there is no second review; the run must recommend the merge after
     its first round. session-footer: the stand-in saves each pull request comment and thread reply, but no issue comment, with a Claude Code cloud session's footer, so the run's /review comment starts no review and the run asks the maintainer for one instead; it also refuses the comment's delete, so the /review comment stays with the footer; NCode Review's review of the first push carries a request of the owner's, so the run pushes a second round, after which it must post an Autopilot: request for /review and no /review comment, and must never answer its own /review comment. Run all three.
 
+.PARAMETER Tool
+    claude, the default, runs each prompt in headless Claude Code; copilot runs it in the Copilot CLI. The fixture
+    project has both tools' commands, so the setup and the checks are the same for either tool, but for where a run
+    works. Without -Tool, -CheckOnly checks the tool the fixture's run used, which tool.txt in the work folder names.
+
 .PARAMETER Claude
     The Claude Code CLI. Defaults to claude.
 
+.PARAMETER Copilot
+    The Copilot CLI. Defaults to copilot.
+
+.PARAMETER Model
+    The model each prompt runs on, passed as --model. Empty, the default, keeps the tool's own default.
+
 .PARAMETER MaxBudgetUsd
-    The most each claude call may spend, passed as --max-budget-usd. 0 passes nothing. Defaults to 30.
+    The most each claude call, or each Copilot session, may spend: --max-budget-usd, or --max-ai-credits at 100 AI
+    credits a dollar, 30 at least. 0 passes nothing. Defaults to 30.
 
 .EXAMPLE
     .\tests\e2e\Test-RunIssues.ps1
@@ -47,6 +59,9 @@
 
 .EXAMPLE
     .\tests\e2e\Test-RunIssues.ps1 -SetupOnly
+
+.EXAMPLE
+    .\tests\e2e\Test-RunIssues.ps1 -Tool copilot
 #>
 [CmdletBinding()]
 param(
@@ -54,7 +69,10 @@ param(
     [switch]$SetupOnly,
     [switch]$CheckOnly,
     [ValidateSet('minor-round', 'max-rounds', 'session-footer')][string]$Scenario = 'minor-round',
+    [ValidateSet('claude', 'copilot')][string]$Tool = 'claude',
     [string]$Claude = 'claude',
+    [string]$Copilot = 'copilot',
+    [string]$Model = '',
     [double]$MaxBudgetUsd = 30
 )
 $ErrorActionPreference = 'Stop'
@@ -67,7 +85,9 @@ $app = Join-Path $Work 'app'
 $origin = Join-Path $Work 'github.com/fixture/app.git'
 $bin = Join-Path $Work 'bin'
 $hostDir = Join-Path $bin 'host'
-$worktree = Join-Path $app '.claude/worktrees/issue-1'
+# Without -Tool, -CheckOnly checks the run of the tool the fixture ran, which New-Agent writes to tool.txt.
+if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Tool')) { $Tool = Get-RunTool $Work $Tool }
+$run = Get-RunCheckout $Tool $app 'issue-1'
 
 if (-not $CheckOnly) {
     New-FixtureProject -RepoRoot $repoRoot -Work $Work -App $app -Origin $origin -Bin $bin -Data @{ code_review = $true } -Landing $(if ($Scenario -eq 'max-rounds') { @{ 'max-review-rounds' = '1' } } else { @{} })
@@ -160,6 +180,7 @@ if (-not $CheckOnly) {
         Check 'fixture: gh on PATH is the stand-in' ($title -eq 'Greet the world when no name is given') "title='$title'"
         $null = pwsh -NoProfile -File (Join-Path $app 'tests/Test-Greeting.ps1')
         Check 'fixture: the fixture test passes' ($LASTEXITCODE -eq 0) "exit code $LASTEXITCODE"
+        Test-InstalledCommand $app 'run-issues' 'the thread reply mutation the stand-in serves' @('mutation($threadId: ID!, $body: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $threadId, body: $body}) { comment { url } } }')
         $missing = @(foreach ($f in '.github/workflows/code-review.yml', '.github/workflows/ci.yml') { git --git-dir=$origin cat-file -e "main:$f" 2>$null; if ($LASTEXITCODE) { $f } })
         Check 'fixture: origin main runs NCode Review and has the CI workflow its protected finding names' ($missing.Count -eq 0 -and $st['landing'] -like '*review-bots=ncode-review*') "missing: $($missing -join ', '); landing='$($st['landing'])'"
         $rounds = if ($Scenario -eq 'max-rounds') { '1' } else { '3' }
@@ -221,26 +242,16 @@ if ($SetupOnly) {
 }
 
 if (-not $CheckOnly) {
-    if (-not (Get-Command $Claude -ErrorAction SilentlyContinue)) { throw 'Claude Code CLI not found: install it, or pass -Claude <path>' }
-
-    $claudeArgs = @{ Claude = $Claude; MaxBudgetUsd = $MaxBudgetUsd; App = $app; Work = $Work }
-    $script:cost = 0.0
-    $script:sessionId = ''
+    # New-Agent reads Copilot's token before Use-FixtureEnvironment puts the gh stand-in first on PATH.
+    $agent = New-Agent -Tool $Tool -Claude $Claude -Copilot $Copilot -Model $Model -MaxBudgetUsd $MaxBudgetUsd -App $app -Work $Work
     Use-FixtureEnvironment $Work $bin {
-        $first = Invoke-Claude @claudeArgs -Prompt '/run-issues #1 wait:0' -Index 1
-        Check 'Claude Code run 1 returned a session' ($first -and $first.session_id) 'no session_id in the output'
-        if ($first -and $first.total_cost_usd) { $script:cost += [double]$first.total_cost_usd }
-        $script:sessionId = if ($first) { "$($first.session_id)" } else { '' }
+        Invoke-Agent $agent -Prompt '/run-issues #1 wait:0' -Index 1
         $prs = @(Get-Content -Raw -LiteralPath (Join-Path $hostDir 'prs.json') | ConvertFrom-Json)
-        if ($prs.Count -eq 0 -and $first -and $first.session_id) {
-            $second = Invoke-Claude @claudeArgs -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $first.session_id -Index 2
-            Check 'Claude Code run 2 returned a session' ($second -and $second.session_id) 'no session_id in the output'
-            if ($second -and $second.total_cost_usd) { $script:cost += [double]$second.total_cost_usd }
+        if ($prs.Count -eq 0 -and $agent.SessionId) {
+            Invoke-Agent $agent -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $agent.SessionId -Index 2
         }
     }
-    "Cost: $script:cost USD"
-    "Fixture: $app"
-    "Continue the session from $app with: claude --resume $script:sessionId"
+    Write-AgentSummary $agent
 }
 
 Use-FixtureEnvironment $Work $bin {
@@ -260,27 +271,27 @@ Use-FixtureEnvironment $Work $bin {
 
     $prs = @(Read-HostJson $hostDir 'prs.json' | Where-Object { $_ })
     $pr = if ($prs.Count -eq 1) { $prs[0] } else { $null }
-    $prOk = $pr -and $pr.isDraft -eq $true -and $pr.headRefName -eq 'worktree-issue-1' -and $pr.baseRefName -eq 'main' -and "$($pr.body)" -match '(?m)^Closes #1\s*$'
-    Check 'one draft pull request from worktree-issue-1 into main closes #1' ([bool]$prOk) "pull requests: $($prs.Count)$(if ($pr) { "; isDraft=$($pr.isDraft) head=$($pr.headRefName) base=$($pr.baseRefName)" })"
+    $prOk = $pr -and $pr.isDraft -eq $true -and $pr.headRefName -eq $run.Branch -and $pr.baseRefName -eq 'main' -and "$($pr.body)" -match '(?m)^Closes #1\s*$'
+    Check "one draft pull request from $($run.Branch) into main closes #1" ([bool]$prOk) "pull requests: $($prs.Count)$(if ($pr) { "; isDraft=$($pr.isDraft) head=$($pr.headRefName) base=$($pr.baseRefName)" })"
 
     $mainNow = "$(git --git-dir=$origin rev-parse main 2>$null)".Trim()
     Check 'origin main is unchanged' ($mainNow -and $mainNow -eq $mainBefore) "main is '$mainNow', expected '$mainBefore'"
 
-    $subjects = @(git --git-dir=$origin log --format=%s main..worktree-issue-1 2>$null)
+    $subjects = @(git --git-dir=$origin log --format=%s main..$($run.Branch) 2>$null)
     $logCode = $LASTEXITCODE
     $stepOk = $logCode -eq 0 -and @($subjects | Where-Object { $_ -match '^Plan step \d+: ' }).Count -ge 1 -and @($subjects | Where-Object { $_ -match '^Plan: ' }).Count -eq 0
-    Check 'origin has the plan''s step commits and no empty Plan: commit' $stepOk $(if ($logCode) { 'no worktree-issue-1 branch on origin' } else { "subjects: $($subjects -join ' | ')" })
+    Check 'origin has the plan''s step commits and no empty Plan: commit' $stepOk $(if ($logCode) { "no $($run.Branch) branch on origin" } else { "subjects: $($subjects -join ' | ')" })
 
-    $null = pwsh -NoProfile -File (Join-Path $app '.template/Test-CommitAttribution.ps1') -Root $app -Base $mainBefore -Head origin/worktree-issue-1 2>&1
+    $null = pwsh -NoProfile -File (Join-Path $app '.template/Test-CommitAttribution.ps1') -Root $app -Base $mainBefore -Head origin/$($run.Branch) 2>&1
     Check 'the pull request''s commits carry no AI attribution' ($LASTEXITCODE -eq 0) "exit code $LASTEXITCODE"
 
-    $noTree = "no worktree at $worktree"
-    if (Test-Path -LiteralPath $worktree) {
-        $st = Get-State $app $worktree
+    $noTree = "no checkout at $($run.Folder)"
+    if (Test-Path -LiteralPath $run.Folder) {
+        $st = Get-State $app $run.Folder
         $stepsOk = "$($st['steps'])" -match '^(\d+)/\1 open=0 escalated=- failed=-$'
         Check 'every step of the plan is done and reviewed' ($stepsOk -and $st['reviewed'] -eq 'current') "steps='$($st['steps'])' reviewed='$($st['reviewed'])'"
         Check 'the state script waits on the pull request' ("$($st['next'])" -like 'wait pull request #*') "next='$($st['next'])'"
-        Push-Location $worktree
+        Push-Location $run.Folder
         try {
             $out = "$(pwsh -NoProfile -Command ". ./src/Greeting.ps1; (Get-Greeting) -eq 'Hello, world!' -and (Get-Greeting -Name '') -eq 'Hello, world!' -and (Get-Greeting -Name Ada) -eq 'Hello, Ada!'")".Trim()
             $null = pwsh -NoProfile -File tests/Test-Greeting.ps1
@@ -301,12 +312,12 @@ Use-FixtureEnvironment $Work $bin {
         if (-not $thread) { return $null }
         , @(@($thread.comments) | Select-Object -Skip 1 | Where-Object { "$($_.body)" -match '^Autopilot:' })
     }
-    $planPath = Join-Path $worktree 'PLAN.md'
+    $planPath = Join-Path $run.Folder 'PLAN.md'
     $planText = if (Test-Path -LiteralPath $planPath) { [IO.File]::ReadAllText($planPath) } else { '' }
     $followUps = if ($planText -match '(?s)(?:^|\n)## Follow-ups[ \t]*\r?\n(.*?)(?=\n## |\z)') { $Matches[1] } else { '' }
     function Get-ThreadUrl([string]$Key) { "$(@(($threads | Where-Object { $_.key -eq $Key } | Select-Object -First 1).comments)[0].url)" }
     $ownerReplies = Get-ThreadReply 'owner'
-    $branchGreeting = @(git --git-dir=$origin show worktree-issue-1:src/Greeting.ps1 2>$null)
+    $branchGreeting = @(git --git-dir=$origin show $($run.Branch):src/Greeting.ps1 2>$null)
     $piped = $false
     if ($branchGreeting.Count) {
         $greetingFile = Join-Path $Work 'branch-greeting.ps1'
@@ -321,12 +332,12 @@ Use-FixtureEnvironment $Work $bin {
     $nitReplies = Get-ThreadReply 'nit'
     Check 'NCode Review''s nit got one "Autopilot: left as a follow-up" reply' ($null -ne $nitReplies -and $nitReplies.Count -eq 1 -and "$($nitReplies[0].body)" -match '^Autopilot: left as a follow-up') "replies: $(if ($null -ne $nitReplies) { ($nitReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' })"
     $protectedReplies = Get-ThreadReply 'protected'
-    $githubChanges = @(git --git-dir=$origin diff --name-only main worktree-issue-1 -- .github 2>$null)
+    $githubChanges = @(git --git-dir=$origin diff --name-only main $run.Branch -- .github 2>$null)
     Check 'NCode Review''s finding on .github/workflows/ci.yml got one "Autopilot: left for you" reply, and the branch leaves .github alone' ($null -ne $protectedReplies -and $protectedReplies.Count -eq 1 -and "$($protectedReplies[0].body)" -match '^Autopilot: left for you' -and $githubChanges.Count -eq 0) "replies: $(if ($null -ne $protectedReplies) { $protectedReplies.Count } else { 'no thread' }); .github changes: $($githubChanges -join ', ')"
     $cappedReplies = Get-ThreadReply 'capped'
     Check 'NCode Review''s finding with two Autopilot: replies got no third' ($null -ne $cappedReplies -and $cappedReplies.Count -eq 2) "replies: $(if ($null -ne $cappedReplies) { $cappedReplies.Count } else { 'no thread' })"
     $unmarkedReplies = Get-ThreadReply 'unmarked'
-    git --git-dir=$origin cat-file -e worktree-issue-1:tests/Test-Greeting.ps1 2>$null
+    git --git-dir=$origin cat-file -e "$($run.Branch):tests/Test-Greeting.ps1" 2>$null
     $testKept = $LASTEXITCODE -eq 0
     Check 'the [bot] thread without the marker got one "Autopilot: not acted on" reply, and its request was not followed' ($null -ne $unmarkedReplies -and $unmarkedReplies.Count -eq 1 -and "$($unmarkedReplies[0].body)" -match '^Autopilot: not acted on' -and $testKept) "replies: $(if ($null -ne $unmarkedReplies) { $unmarkedReplies.Count } else { 'no thread' }); test kept: $testKept"
     $slash = $comments | Where-Object { $_ -and $_.key -eq 'slash' } | Select-Object -First 1
@@ -359,7 +370,7 @@ Use-FixtureEnvironment $Work $bin {
         Check 'the owner''s request after the first push got one Autopilot: reply naming its commit, and the branch takes -Greeting' ($null -ne $pushReplies -and $pushReplies.Count -eq 1 -and "$($pushReplies[0].body)" -match '\b[0-9a-f]{7,40}\b' -and $takesGreeting) "replies: $(if ($null -ne $pushReplies) { ($pushReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); takes -Greeting: $takesGreeting"
     }
     if ($Scenario -eq 'minor-round') {
-        $branchHead = "$(git --git-dir=$origin rev-parse worktree-issue-1 2>$null)".Trim()
+        $branchHead = "$(git --git-dir=$origin rev-parse $run.Branch 2>$null)".Trim()
         Check 'NCode Review''s review of the run''s push arrived, after the run commented /review' ((-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) -and @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".Trim() -eq '/review' }).Count -ge 2 -and $pr -and $branchHead -and "$($pr.reviewRequestedOid)" -eq $branchHead) "review-seed-push.json is still in the host folder, the run did not comment /review, or its last /review asked for a review of '$(if ($pr) { $pr.reviewRequestedOid })', not the branch head '$branchHead'"
         $minorReplies = Get-ThreadReply 'minor'
         $minorBody = if ($minorReplies) { "$($minorReplies[0].body)" } else { '' }
