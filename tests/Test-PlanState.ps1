@@ -331,12 +331,19 @@ Write-Text (Join-Path $repo 'scratch.txt') "scratch`n"
 $state = Get-State $repo
 Check 'next: uncommitted changes stop everything' (($state['dirty'] -eq 'yes') -and ($state['next'] -like 'none *')) "dirty='$($state['dirty'])' next='$($state['next'])' expected dirty 'yes' and next 'none *'"
 
-# Stand-ins for gh and glab. glab prints pr.json for 'mr list'; gh refuses pr, issue and release as a Claude Code cloud session's proxy does, and answers the REST paths the state script calls.
+# Stand-ins for gh and glab. glab prints pr.json for 'mr list', and its entry with that iid for 'mr view'; gh refuses pr, issue and release as a Claude Code cloud session's proxy does, and answers the REST paths the state script calls.
 $bin = Join-Path $Work 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 foreach ($cli in 'gh', 'glab') {
     Write-Text (Join-Path $bin "$cli.ps1") @'
 if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1' -and $args[1] -eq 'list' -and $args[0] -eq 'mr') { [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0 }
+if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1' -and $args[0] -eq 'mr' -and $args[1] -eq 'view') {
+    $number = "$($args[2])".TrimStart('!')
+    $item = @([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')) | ConvertFrom-Json) | Where-Object { "$($_.iid)" -eq $number } | Select-Object -First 1
+    if (-not $item) { exit 1 }
+    ConvertTo-Json -InputObject $item -Depth 5
+    exit 0
+}
 if ((Split-Path -Leaf $PSCommandPath) -eq 'gh.ps1' -and ($args[0] -in 'pr', 'issue', 'release' -or ($args[0] -eq 'api' -and $args[1] -eq 'graphql'))) { [Console]::Error.WriteLine('HTTP 403: GitHub GraphQL is not available from Claude Code sessions'); exit 1 }
 if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1' -and $args[0] -eq 'issue' -and $args[1] -eq 'view') {
     $file = Join-Path $PSScriptRoot 'issues.json'
@@ -1014,6 +1021,17 @@ try {
     Write-Text $fPlan ((New-PlanText 'x' (Get-Head $fRepo)) + "`n## Notes`n`nPull request: #43`n")
     $r = Test-State (Get-State $fRepo) @{ feedback = '-' }
     Check 'feedback: a Pull request: line below the plan''s first heading names no pull request' $r.Ok $r.Detail
+
+    $glFeedback = New-MergedClone (Join-Path $Work 'feedback-gitlab')
+    $glPlan = (New-PlanText 'x' (Get-Head $glFeedback.Repo)).Replace("Issue: #7`nRelease: v0.2.0`n", "Pull request: !5`nStart: $($glFeedback.Head)`n")
+    Write-Text (Join-Path $glFeedback.Repo 'PLAN.md') $glPlan
+    Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject @(@{ iid = 5; state = 'opened'; merge_commit_sha = $null; squash_commit_sha = $null; sha = $glFeedback.Head; target_branch = 'main' }) -Depth 3)
+    $r = Test-State (Get-State $glFeedback.Repo) @{ host = 'gitlab'; feedback = '5'; pr = '5 OPEN'; conflicts = '-'; next = 'address-feedback 5' }
+    Check 'feedback: on GitLab a Pull request: !<number> line reads that merge request through glab mr view' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject @(@{ iid = 5; state = 'merged'; merge_commit_sha = $null; squash_commit_sha = $glFeedback.Squash; sha = $glFeedback.Head; target_branch = 'main' }) -Depth 3)
+    $r = Test-State (Get-State $glFeedback.Repo) @{ pr = '5 MERGED'; next = 'none pull request #5 is merged: address-feedback 5 discards this run' }
+    Check 'feedback: on GitLab a feedback plan whose merge request merged is discarded through address-feedback' $r.Ok $r.Detail
 }
 finally { $env:PATH = $savedPath }
 
