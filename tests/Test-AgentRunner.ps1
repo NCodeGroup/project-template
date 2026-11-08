@@ -150,3 +150,4 @@ finally {
 if ($failures.Count) { "Kept the work folder: $Work"; "Agent runner: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Agent runner: PASSED'
+exit 0
