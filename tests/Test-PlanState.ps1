@@ -359,7 +359,8 @@ if ($args[0] -eq 'api') {
     }
     if ($path -match '^repos/[^/]+/[^/]+/issues/(\d+)$') {
         $number = $Matches[1]
-        [IO.File]::AppendAllText((Join-Path $PSScriptRoot 'issue-paths.txt'), "$path`n")
+        . (Join-Path $PSScriptRoot 'StandInLog.ps1')
+        Add-StandInLog (Join-Path $PSScriptRoot 'issue-paths.txt') $path
         $file = Join-Path $PSScriptRoot 'issues.json'
         if (-not (Test-Path $file)) { exit 1 }
         $issues = [IO.File]::ReadAllText($file) | ConvertFrom-Json
@@ -387,6 +388,7 @@ if ($args[0] -eq 'api') {
 exit 1
 '@
 }
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'StandInLog.ps1') -Destination (Join-Path $bin 'StandInLog.ps1')
 function Set-MergedRequest([string]$Merge, [string]$Head, [switch]$GitHub, [string]$Newer = '', [string]$Base = 'main') {
     $item = if ($GitHub) {
         @{ number = 6; state = 'closed'; merged_at = '2026-01-01T00:00:00Z'; merge_commit_sha = $Merge; head = @{ sha = $Head; ref = 'worktree-merged' }; base = @{ ref = $Base } }

@@ -32,7 +32,8 @@ $script:CallArgs = $args
 $hostDir = Join-Path $PSScriptRoot 'host'
 New-Item -ItemType Directory -Force $hostDir | Out-Null
 $callsLog = Join-Path $hostDir 'calls.log'
-[IO.File]::AppendAllText($callsLog, "CALL $($args -join ' ')`n")
+. (Join-Path $PSScriptRoot 'StandInLog.ps1')
+Add-StandInLog $callsLog "CALL $($args -join ' ')"
 
 function Read-Json([string]$Name, $Default) {
     $file = Join-Path $hostDir $Name
@@ -103,7 +104,7 @@ function Write-Result($Value) {
     ConvertTo-Json -InputObject $Value -Depth 10
 }
 function Stop-Call([string]$Kind, [string]$Message, $CallArgs = $script:CallArgs) {
-    [IO.File]::AppendAllText($callsLog, "$Kind $($CallArgs -join ' ')`n")
+    Add-StandInLog $callsLog "$Kind $($CallArgs -join ' ')"
     [Console]::Error.WriteLine($Message)
     exit 1
 }
