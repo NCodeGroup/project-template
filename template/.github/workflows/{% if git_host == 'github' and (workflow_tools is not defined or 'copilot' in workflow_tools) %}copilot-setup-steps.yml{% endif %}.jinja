@@ -17,12 +17,18 @@ on:
       - .github/actions/install-dotnet/**
       - build/Get-TestRuntimes.ps1
 {%- endif %}
+{%- if stack == 'node' %}
+      - .node-version
+{%- endif %}
   pull_request:
     paths:
       - .github/workflows/copilot-setup-steps.yml
 {%- if stack == 'dotnet' %}
       - .github/actions/install-dotnet/**
       - build/Get-TestRuntimes.ps1
+{%- endif %}
+{%- if stack == 'node' %}
+      - .node-version
 {%- endif %}
 
 jobs:
@@ -71,7 +77,7 @@ jobs:
 {%- elif stack == 'node' %}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: lts/*
+          node-version-file: .node-version
 {%- if package_manager in ['pnpm', 'yarn'] %}
       # Corepack runs the version package.json's packageManager field names; Node.js 25 and later don't bundle it.
       - name: Enable {{ package_manager }}
