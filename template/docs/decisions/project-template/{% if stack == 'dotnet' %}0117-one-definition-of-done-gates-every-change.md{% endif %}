@@ -6,11 +6,10 @@
 ## Context
 
 "Done" is checked in several places: a person runs a build before pushing, an agent verifies a plan step, `/ship-plan`,
-`/run-issues`, `/address-feedback` and `/run-feedback` check the work before each push, and CI checks every pull request.
-When each of them runs its own
-commands, they drift. A step passes locally and fails in CI because CI also packs, or restores tools, or builds in
-Release; an agent declares success on a Debug build that never ran the analyzers the way CI does; and nobody can say in
-one sentence what a change must pass.
+`/run-issues`, `/address-feedback` and `/run-feedback` check the work before each push, and CI checks every pull
+request. When each of them runs its own commands, they drift. A step passes locally and fails in CI because CI also
+packs, or restores tools, or builds in Release; an agent declares success on a Debug build that never ran the analyzers
+the way CI does; and nobody can say in one sentence what a change must pass.
 
 A gate is only useful when its result is unambiguous. A script that prints a wall of output and leaves the reader to
 judge whether it passed invites an agent to read success into a failure.
