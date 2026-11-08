@@ -46,6 +46,11 @@
     says how to finish or abandon the update, and exits 1; each file without a conflict is then either unstaged or
     staged as it is in the working tree. On any other failure the project is reset to where it was.
 
+    It stages only what the update changed: the tracked files with git add -u and each file it added by name, never
+    with git add -A. From the reset to the end of the run, .git/info/exclude holds a copy of the project's whole
+    .gitignore, an adopted project's kept lines included, so a folder the project ignores, such as node_modules/, is
+    never staged, also when the updated .gitignore doesn't ignore it. The run then restores .git/info/exclude.
+
     On the default branch (the branch origin/HEAD names) it refuses to run unless -NoCommit is given, because it
     commits. It enables the template's hooks (core.hooksPath .githooks) unless the clone already has a hooks path,
     hooks in .git/hooks, or uses pre-commit; then it leaves them as they are and warns, naming the command that runs
