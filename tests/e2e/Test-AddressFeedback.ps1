@@ -55,6 +55,10 @@
     The most each claude call, or each Copilot session, may spend: --max-budget-usd, or --max-ai-credits at 100 AI
     credits a dollar, 30 at least. 0 passes nothing. Defaults to 30.
 
+.PARAMETER TimeoutMinutes
+    The longest each claude or copilot call may run, in minutes: past it the test stops the CLI and its child processes,
+    and that run fails its session check. 0 sets no limit. Defaults to 45.
+
 .EXAMPLE
     .\tests\e2e\Test-AddressFeedback.ps1
 
@@ -77,7 +81,8 @@ param(
     [string]$Claude = 'claude',
     [string]$Copilot = 'copilot',
     [string]$Model = '',
-    [double]$MaxBudgetUsd = 30
+    [double]$MaxBudgetUsd = 30,
+    [double]$TimeoutMinutes = 45
 )
 $ErrorActionPreference = 'Stop'
 if ($SetupOnly -and $CheckOnly) { throw '-SetupOnly and -CheckOnly can''t be used together.' }
@@ -578,7 +583,7 @@ if ($SetupOnly) {
 
 if (-not $CheckOnly) {
     # New-Agent reads Copilot's token before Use-FixtureEnvironment puts the gh stand-in first on PATH.
-    $agent = New-Agent -Tool $Tool -Claude $Claude -Copilot $Copilot -Model $Model -MaxBudgetUsd $MaxBudgetUsd -App $app -Work $Work
+    $agent = New-Agent -Tool $Tool -Claude $Claude -Copilot $Copilot -Model $Model -MaxBudgetUsd $MaxBudgetUsd -TimeoutMinutes $TimeoutMinutes -App $app -Work $Work
     Use-FixtureEnvironment $Work $bin {
         Invoke-Agent $agent -Prompt '/address-feedback #1' -Index 1
         $callsPath = Join-Path $hostDir 'calls.log'
