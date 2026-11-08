@@ -45,10 +45,11 @@ $suffix = "$os-$arch$(if ($IsWindows) { '.zip' } else { '.tar.gz' })"
 
 function Invoke-StubInstaller {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Stand-ins for the installer''s network calls, seen only by the installer this function runs.')]
-    param([hashtable]$Metadata, [hashtable]$Downloads, [hashtable]$Arguments)
-    $calls = [Collections.Generic.List[string]]::new(); $byPath = $Metadata; $byUrl = $Downloads
+    param([hashtable]$Metadata, [hashtable]$Downloads, [hashtable]$Arguments, [string[]]$ListedRuntimes = @())
+    $calls = [Collections.Generic.List[string]]::new(); $byPath = $Metadata; $byUrl = $Downloads; $runtimeLines = $ListedRuntimes
     function Invoke-RestMethod([string]$Uri) { $calls.Add($Uri); $key = $Uri -replace '^.*/release-metadata/', ''; if (-not $byPath.ContainsKey($key)) { throw "unexpected metadata $Uri" }; $byPath[$key] | ConvertFrom-Json }
     function Invoke-WebRequest([string]$Uri, [string]$OutFile) { $calls.Add($Uri); if (-not $byUrl.ContainsKey($Uri)) { throw "unexpected download $Uri" }; [IO.File]::WriteAllBytes($OutFile, $byUrl[$Uri]) }
+    function dotnet { if ("$args" -ne '--list-runtimes') { throw "unexpected dotnet $args" }; $runtimeLines }
     $printed = ''; $failed = ''
     try { $printed = (& $installer @Arguments 2>&1 | Out-String).Trim() } catch { $failed = "$_" }
     [pscustomobject]@{ Printed = $printed; Calls = @($calls); Error = $failed }
@@ -146,6 +147,12 @@ $globalJson = Join-Path $stubRoot 'merge.json'
 [IO.File]::WriteAllText($globalJson, '{"sdk":{"version":"8.0.404"}}')
 $r = Invoke-StubInstaller @{ '8.0/releases.json' = New-StubChannel '8.0.11' @(New-StubSdk '8.0.404' @(@{ name = "dotnet-sdk-$suffix"; url = $sdkUrl; hash = $archiveHash })) } @{ $sdkUrl = [IO.File]::ReadAllBytes($archive) } @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' }
 Check 'installer: build/Install-Dotnet.ps1 adds the files of a verified SDK archive that the installation lacks and replaces none' (-not $r.Error -and $r.Printed.Contains('Installed .NET SDK 8.0.404 in') -and [IO.File]::ReadAllText((Join-Path $dir 'dotnet')) -eq 'already there' -and [IO.File]::ReadAllText((Join-Path $dir 'sdk/8.0.404/marker')) -eq 'sdk' -and -not @(Get-ChildItem -LiteralPath $dir -Force -Filter '.install-dotnet-*')) "$($r.Error) | $($r.Printed)"
+
+$dir = New-StubInstallDir 'listed'
+$listedRuntimes = "Microsoft.AspNetCore.App 8.0.11 [$([IO.Path]::Combine($dir, 'shared', 'Microsoft.AspNetCore.App'))]", "Microsoft.NETCore.App 8.0.11 [$([IO.Path]::Combine($dir, 'shared', 'Microsoft.NETCore.App'))]"
+$listed = Invoke-StubInstaller @{ '8.0/releases.json' = New-StubChannel '8.0.11' @() } @{} @{ SkipSdk = $true; Channel = '8.0' } -ListedRuntimes $listedRuntimes
+$unlisted = Invoke-StubInstaller @{} @{} @{ SkipSdk = $true; Channel = '8.0' } -ListedRuntimes $listedRuntimes[0]
+Check 'installer: build/Install-Dotnet.ps1 without -InstallDir adds to the installation dotnet --list-runtimes shows for Microsoft.NETCore.App, and stops when it shows none' (-not $listed.Error -and $listed.Printed.Contains("are already in $dir") -and $unlisted.Error.Contains('dotnet --list-runtimes shows no Microsoft.NETCore.App')) "$($listed.Error) $($listed.Printed) | $($unlisted.Error)"
 if ($InstallerOnly) {
     ''
     if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }

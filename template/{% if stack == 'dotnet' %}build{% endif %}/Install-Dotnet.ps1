@@ -59,11 +59,10 @@ if ($SkipSdk -and -not $channelGiven) { $Channel = @(& (Join-Path $PSScriptRoot 
 if ($SkipSdk -and -not $Channel) { return }
 
 if (-not $InstallDir) {
-    $listed = @(dotnet --list-runtimes) | Where-Object { $_.StartsWith('Microsoft.NETCore.App ') -and $_ -match '\[(.+)\]$' } |
-        Select-Object -First 1
-    if (-not $listed) { throw 'dotnet --list-runtimes shows no Microsoft.NETCore.App: pass -InstallDir.' }
-    $null = "$listed" -match '\[(.+)\]$'
-    $InstallDir = Split-Path -Parent (Split-Path -Parent $Matches[1])
+    foreach ($line in @(dotnet --list-runtimes)) {
+        if ($line -match '^Microsoft\.NETCore\.App \S+ \[(.+)\]$') { $InstallDir = Split-Path -Parent (Split-Path -Parent $Matches[1]); break }
+    }
+    if (-not $InstallDir) { throw 'dotnet --list-runtimes shows no Microsoft.NETCore.App: pass -InstallDir.' }
 }
 
 $os = if ($IsWindows) { 'win' } elseif ($IsMacOS) { 'osx' } elseif (Test-Path -LiteralPath '/etc/alpine-release') { 'linux-musl' } else { 'linux' }
