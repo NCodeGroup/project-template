@@ -25,6 +25,10 @@
     done, and a run that stopped after the tag publishes the release the next time. -WhatIf says what it would do and
     pushes and publishes nothing.
 
+    A .NET library's .github/workflows/publish.yml runs on a published release, but a release made with the workflow's
+    GITHUB_TOKEN starts no other workflow. So after it publishes a release, it starts publish.yml with a workflow_dispatch
+    event for the tag, when the project has that workflow, and fails when the workflow has no workflow_dispatch trigger.
+
 .PARAMETER Commit
     The commit to tag: in the workflow, the commit the push made main point to.
 
@@ -35,10 +39,10 @@
     The gh command that reads and publishes the release; the tests pass a stand-in.
 
 .EXAMPLE
-    ./tools/Publish-Release.ps1 -Commit $env:GITHUB_SHA
+    ./.template/Publish-Release.ps1 -Commit $env:GITHUB_SHA
 
 .EXAMPLE
-    ./tools/Publish-Release.ps1 -WhatIf
+    ./.template/Publish-Release.ps1 -WhatIf
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -175,6 +179,7 @@ if ($tags -ccontains $version) {
     }
 }
 
+$publishedNow = $false
 if ($release -eq 'tag+release') {
     # REST, not `gh release view` and `gh release create`, which use GraphQL: a Claude Code cloud session can run this too.
     $lookup = (& $Gh api "repos/{owner}/{repo}/releases/tags/$version" --silent 2>&1 | ForEach-Object { "$_" }) -join "`n"
@@ -189,9 +194,23 @@ if ($release -eq 'tag+release') {
             Set-Content -LiteralPath $notesFile -Value $notes -Encoding utf8NoBOM
             & $Gh api 'repos/{owner}/{repo}/releases' -f "tag_name=$version" -f "name=$version" -F "body=@$notesFile" --silent
             if ($LASTEXITCODE) { throw "Publishing the GitHub release $version failed (gh api exited $LASTEXITCODE)." }
+            $publishedNow = $true
             "Published the GitHub release $version from $source."
         } finally {
             Remove-Item -LiteralPath $notesFile -ErrorAction SilentlyContinue
         }
+    }
+}
+
+# A .NET library's publish.yml runs on a published release, but a release made with the workflow's GITHUB_TOKEN starts no other workflow; a workflow_dispatch event does.
+$publishWorkflow = Join-Path $root '.github/workflows/publish.yml'
+if ($publishedNow -and (Test-Path -LiteralPath $publishWorkflow)) {
+    if ((Get-Content -LiteralPath $publishWorkflow -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
+        throw "Published the release $version, but .github/workflows/publish.yml has no workflow_dispatch trigger, so nothing publishes its packages: a release made with the workflow's token starts no other workflow. Add the trigger with a tag input, as the project template's publish.yml has it, then run Publish packages from the Actions tab with the tag $version."
+    }
+    if ($PSCmdlet.ShouldProcess($version, 'Start publish.yml')) {
+        & $Gh api 'repos/{owner}/{repo}/actions/workflows/publish.yml/dispatches' -f "ref=$version" -f "inputs[tag]=$version" --silent
+        if ($LASTEXITCODE) { throw "Starting publish.yml for $version failed (gh api exited $LASTEXITCODE): run Publish packages from the Actions tab with the tag $version." }
+        "Started publish.yml for $version."
     }
 }
