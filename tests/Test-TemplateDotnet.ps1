@@ -3,13 +3,16 @@
     Render the template's .NET cases and check that the .NET layer builds, tests and packs.
 
 .DESCRIPTION
-    Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
+    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
 
 .EXAMPLE
     .\tests\Test-TemplateDotnet.ps1
 
 .PARAMETER SkipDotnetBuild
     Render nothing and run no .NET check; exit 0.
+
+.PARAMETER InstallerOnly
+    Run only the installer checks, offline: render nothing and build nothing.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-dotnet-test-<process ID> in the temp folder, the
@@ -18,6 +21,7 @@
 [CmdletBinding()]
 param(
     [switch]$SkipDotnetBuild,
+    [switch]$InstallerOnly,
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-dotnet-test-$PID")
 )
 $ErrorActionPreference = 'Stop'
@@ -30,7 +34,61 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
 
+function Complete-Run {
+    ''
+    if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
+    if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
+    'Template .NET tests: PASSED'
+    exit 0
+}
+
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
+
+$stubRoot = Join-Path $Work 'installer'
+New-Item -ItemType Directory -Force -Path $stubRoot | Out-Null
+$installer = Join-Path (Split-Path -Parent $PSScriptRoot) "template/{% if stack == 'dotnet' %}build{% endif %}/Install-Dotnet.ps1"
+$os = if ($IsWindows) { 'win' } elseif ($IsMacOS) { 'osx' } elseif (Test-Path -LiteralPath '/etc/alpine-release') { 'linux-musl' } else { 'linux' }
+$arch = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+$suffix = "$os-$arch$(if ($IsWindows) { '.zip' } else { '.tar.gz' })"
+
+function Invoke-StubInstaller {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Stand-ins for the installer''s network calls, seen only by the installer this function runs.')]
+    param([hashtable]$Metadata, [hashtable]$Downloads, [hashtable]$Arguments)
+    $calls = [Collections.Generic.List[string]]::new(); $byPath = $Metadata; $byUrl = $Downloads
+    function Invoke-RestMethod([string]$Uri) { $calls.Add($Uri); $key = $Uri -replace '^.*/release-metadata/', ''; if (-not $byPath.ContainsKey($key)) { throw "unexpected metadata $Uri" }; $byPath[$key] | ConvertFrom-Json }
+    function Invoke-WebRequest([string]$Uri, [string]$OutFile) { $calls.Add($Uri); if (-not $byUrl.ContainsKey($Uri)) { throw "unexpected download $Uri" }; [IO.File]::WriteAllBytes($OutFile, $byUrl[$Uri]) }
+    $printed = ''; $failed = ''
+    try { $printed = (& $installer @Arguments 2>&1 | Out-String).Trim() } catch { $failed = "$_" }
+    [pscustomobject]@{ Printed = $printed; Calls = @($calls); Error = $failed }
+}
+
+function New-StubSdk([string]$Version, [object[]]$Files = @()) {
+    @{ version = $Version; files = $Files }
+}
+
+function New-StubChannel([string]$Release, [object[]]$Sdks, [object[]]$RuntimeFiles = @()) {
+    ConvertTo-Json -Depth 10 @{ 'latest-release' = $Release; releases = @(@{ 'release-version' = $Release; runtime = @{ version = $Release }; 'aspnetcore-runtime' = @{ version = $Release; files = $RuntimeFiles }; sdks = $Sdks }) }
+}
+
+function New-StubInstallDir([string]$Name, [string[]]$Sdks = @(), [switch]$NoRuntime) {
+    $dir = Join-Path $stubRoot $Name
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    foreach ($version in $Sdks) { New-Item -ItemType Directory -Force -Path (Join-Path $dir "sdk/$version") | Out-Null }
+    if (-not $NoRuntime) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $dir 'shared/Microsoft.NETCore.App/8.0.11') | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $dir 'shared/Microsoft.AspNetCore.App/8.0.11') | Out-Null
+    }
+    $dir
+}
+
+$dir = New-StubInstallDir 'sha'
+$globalJson = Join-Path $stubRoot 'sha.json'
+[IO.File]::WriteAllText($globalJson, '{"sdk":{"version":"8.0.404"}}')
+$sdkUrl = 'https://stub.invalid/dotnet-sdk'
+$r = Invoke-StubInstaller @{ '8.0/releases.json' = New-StubChannel '8.0.11' @(New-StubSdk '8.0.404' @(@{ name = "dotnet-sdk-$suffix"; url = $sdkUrl; hash = ('0' * 128) })) } @{ $sdkUrl = [Text.Encoding]::UTF8.GetBytes('not the archive the metadata describes') } @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' }
+Check 'installer: build/Install-Dotnet.ps1 refuses an archive whose SHA-512 differs from the release metadata''s, installs nothing and leaves no scratch folder' ($r.Error.Contains("doesn't match the SHA-512") -and $r.Calls -contains $sdkUrl -and -not (Test-Path -LiteralPath (Join-Path $dir 'sdk')) -and -not @(Get-ChildItem -LiteralPath $dir -Force -Filter '.install-dotnet-*')) "$($r.Error) | $($r.Printed)"
+if ($InstallerOnly) { Complete-Run }
+
 $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 $copierCommand = @(if (Get-Command copier -ErrorAction SilentlyContinue) { 'copier' } elseif (Get-Command uvx -ErrorAction SilentlyContinue) { 'uvx', '--from', 'copier', 'copier' } else { throw 'Copier not found. Install it with: uv tool install copier' })
@@ -174,8 +232,4 @@ if (Test-Path -LiteralPath $libraryDest) {
     }
     finally { Pop-Location }
 }
-''
-if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
-if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
-'Template .NET tests: PASSED'
-exit 0
+Complete-Run
