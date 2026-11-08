@@ -6,13 +6,16 @@
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), without the
     license question's validator, so a library can have no license answer; v0.2.0 is the working tree's copier.yml.
-    Renders two libraries (nuget_package) from v0.1.0 and updates each to v0.2.0:
-      unlicensed     No license answer, and a release.yml beside publish.yml that runs dotnet nuget push. The update
-                     stops before it changes anything, exits 1 and prints the -Data that gives a license; with
-                     -Data @{ license = 'MIT' } it updates, and warns that both workflows publish.
+    Renders three libraries (nuget_package) from v0.1.0 and updates each to v0.2.0:
+      unlicensed     No license answer, and a release.yml beside a publish.yml without a workflow_dispatch trigger;
+                     release.yml runs dotnet nuget push. The update stops before it changes anything, exits 1 and
+                     prints the -Data that gives a license; with -Data @{ license = 'MIT' } it updates, warns that
+                     both workflows publish, and warns that publish.yml has no workflow_dispatch trigger.
       own-publisher  A release.yml that runs dotnet nuget push and no publish.yml, and a v2.3.0 tag on a commit
-                     without build/ProjectTemplate.props. The update leaves publish.yml out and says so, and names
-                     AssemblyVersion 2.3.0.0 to set in Directory.Build.props.
+                     without build/ProjectTemplate.props. The update leaves publish.yml out and says so, without a
+                     workflow_dispatch warning, and names AssemblyVersion 2.3.0.0 to set in Directory.Build.props.
+      with-trigger   The template's own publish.yml, with its workflow_dispatch trigger. The update adds tag-release.yml
+                     and prints no workflow_dispatch warning.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -80,6 +83,8 @@ $unlicensed = New-Library 'unlicensed'
 Push-Location $unlicensed
 try {
     [IO.File]::WriteAllText((Join-Path $unlicensed '.github/workflows/release.yml'), $release)
+    $publishYml = Join-Path $unlicensed '.github/workflows/publish.yml'
+    [IO.File]::WriteAllText($publishYml, [regex]::Replace([IO.File]::ReadAllText($publishYml), '(?m)^  workflow_dispatch:\r?\n(?:    .*\r?\n)*', ''))
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     Check 'fixture: unlicensed has no license answer, and publish.yml' (-not (Select-String -LiteralPath .copier-answers.yml -Pattern '^license: *[^\s'']' -Quiet) -and (Test-Path -LiteralPath .github/workflows/publish.yml))
     $head = git rev-parse HEAD
@@ -93,6 +98,7 @@ try {
     $result = Invoke-Update $unlicensed @{ license = 'MIT' }
     Check 'unlicensed: with -Data @{ license = ''MIT'' } the update commits v0.2.0 and records the license' ($result.ExitCode -eq 0 -and (git log -1 --format=%s) -eq 'Update from project-template v0.2.0' -and (Select-String -LiteralPath .copier-answers.yml -Pattern '^license: MIT$' -Quiet) -and -not (git status --porcelain)) $result.Output
     Check 'unlicensed: the update warns that publish.yml and release.yml both push NuGet packages' ($result.Output.Contains('Both .github/workflows/publish.yml and .github/workflows/release.yml push NuGet packages') -and (Test-Path -LiteralPath .github/workflows/publish.yml)) $result.Output
+    Check 'unlicensed: the update warns that publish.yml has no workflow_dispatch trigger' ($result.Output.Contains('.github/workflows/publish.yml has no workflow_dispatch trigger') -and (Test-Path -LiteralPath .github/workflows/tag-release.yml)) $result.Output
 }
 finally { Pop-Location }
 
@@ -106,7 +112,18 @@ try {
     Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $ownPublisher
     Check 'own-publisher: the update leaves publish.yml out beside release.yml, and says so' ($result.ExitCode -eq 0 -and -not (Test-Path -LiteralPath .github/workflows/publish.yml) -and $result.Output.Contains('Left out .github/workflows/publish.yml: .github/workflows/release.yml already push NuGet packages')) $result.Output
+    Check 'own-publisher: without publish.yml, no workflow_dispatch warning' (-not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
     Check 'own-publisher: the update names the AssemblyVersion v2.3.0 shipped' ($result.Output.Contains('v2.3.0 was released with AssemblyVersion 2.3.0.0') -and $result.Output.Contains('  <PropertyGroup><AssemblyVersion>2.3.0.0</AssemblyVersion></PropertyGroup>')) $result.Output
+}
+finally { Pop-Location }
+
+# with-trigger: the template's publish.yml keeps its workflow_dispatch trigger, so the update has nothing to warn about.
+$withTrigger = New-Library 'with-trigger' 'license=MIT'
+Push-Location $withTrigger
+try {
+    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
+    $result = Invoke-Update $withTrigger
+    Check 'with-trigger: a publish.yml with workflow_dispatch gets no warning' ($result.ExitCode -eq 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Test-Path -LiteralPath .github/workflows/tag-release.yml) -and -not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
 }
 finally { Pop-Location }
 

@@ -66,7 +66,8 @@
     For a .NET library, it names the AssemblyVersion to set in Directory.Build.props when a release of the current
     major was built with a higher one than build/ProjectTemplate.props pins (ADR-0136). It leaves
     .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
-    publish.
+    publish. When the project has .github/workflows/tag-release.yml and a publish.yml without a workflow_dispatch
+    trigger, it says what to add.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
 
@@ -674,6 +675,11 @@ try {
     elseif ($publishers.Count -gt 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml)) {
         ''
         "Both .github/workflows/publish.yml and $($publishers -join ', ') push NuGet packages, so a published release runs both. Keep one: delete publish.yml, or move the publishing into it and delete the others."
+    }
+    # A library's publish.yml without the trigger tag-release.yml starts it with: a release that workflow publishes would ship no packages.
+    if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
+        ''
+        '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the template''s publish.yml does (the 0.72.0 section of the project template''s CHANGELOG.md).'
     }
 
     # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).

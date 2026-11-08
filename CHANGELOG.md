@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-11-08
+
+### Added
+
+- A GitHub project gets `.github/workflows/tag-release.yml`, template-owned, which runs `.template/Publish-Release.ps1` on each push to `main`: with `release: tag` or `tag+release` in `AGENTS.md`'s Landing section, it tags the commit a pull request merged as with the plan's version and, with `tag+release`, publishes the GitHub release through GitHub's REST API, so a plan landed from a Claude Code cloud session needs nobody to run anything after the merge. The version is the changelog's newest release section or, in a pre-release project, whose changelog has none, the `Release:` line of the merged pull request's description, with `## [Unreleased]` as the release notes; a `Release:` line that disagrees with the changelog fails the run. It never moves a tag or changes a release, and a failed run is retried with Re-run failed jobs in the Actions tab ([#292](https://github.com/NCodeGroup/project-template/issues/292), [ADR-0016](template/docs/decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md)).
+
+### Changed
+
+- **Breaking:** A .NET library's `publish.yml` must also run on `workflow_dispatch`: the Release workflow publishes each release with the workflow's token, which starts no other workflow, and then starts `publish.yml` through `workflow_dispatch`. Until an existing project adds the trigger, the Release workflow publishes the release, then fails and names the change, and no package ships. `publish.yml` is the project's, so updates never change it: add `workflow_dispatch:` with a required string input `tag` to its `on:` section, set the `TAG` of the step that reads the version to `${{ github.event.release.tag_name || inputs.tag }}` and write `"tag=$env:TAG" >> $env:GITHUB_OUTPUT` there, and give the checkout `ref: refs/tags/${{ steps.version.outputs.tag }}`, as the template's `publish.yml` does. `Update-Project.ps1` shows the template's change to it and warns while the trigger is missing ([#292](https://github.com/NCodeGroup/project-template/issues/292), [ADR-0137](template/docs/decisions/project-template/0137-the-release-workflow-starts-package-publishing.md)).
+
+- `/ship-plan` writes the plan's version into the pull request description as a `Release: <version>` line, and sets that line again on the open pull request after a renumber; run after the merge, it finds the tag and the release the Release workflow made and only closes the plan's issues and files its follow-ups ([#292](https://github.com/NCodeGroup/project-template/issues/292)).
+
 ## [0.71.0] - 2026-11-08
 
 ### Added
@@ -1148,7 +1160,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.71.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.72.0...HEAD
+[0.72.0]: https://github.com/NCodeGroup/project-template/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/NCodeGroup/project-template/compare/v0.70.0...v0.71.0
 [0.70.0]: https://github.com/NCodeGroup/project-template/compare/v0.69.0...v0.70.0
 [0.69.0]: https://github.com/NCodeGroup/project-template/compare/v0.68.4...v0.69.0

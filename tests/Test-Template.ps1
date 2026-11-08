@@ -111,7 +111,7 @@ $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
     'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
@@ -128,7 +128,7 @@ $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\Pro
 $nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
-$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\code-review-auto-merge.yml'; gitlab = @('.gitlab-ci.yml') }
+$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml'; gitlab = @('.gitlab-ci.yml') }
 # tests\Test-TemplateDotnet.ps1 renders the dotnet and dotnet-library-apache cases again with the same answers: change both together.
 $cases = @(
     @{ Name = 'dotnet'; Stack = 'dotnet'; Host = 'github' }
@@ -285,6 +285,7 @@ foreach ($case in $cases) {
             Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 4 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
             Check "${name}: the publish workflow runs on a published release, holds no permission by default, and pushes through trusted publishing in the nuget environment" ($workflow.Contains('types: [published]') -and $workflow -match '(?m)^permissions: \{\}\r?$' -and $workflow.Contains('environment: nuget') -and $workflow.Contains('id-token: write') -and $workflow.Contains('uses: NuGet/login@') -and $workflow.Contains('persist-credentials: false') -and -not $workflow.Contains('secrets.')) $workflow
             Check "${name}: the publish workflow packs only a tag whose commit the default branch holds" ($workflow.Contains('fetch-depth: 0') -and $workflow.Contains('DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}') -and $workflow.Contains('git merge-base --is-ancestor HEAD "origin/$env:DEFAULT_BRANCH"') -and $workflow.IndexOf('merge-base --is-ancestor') -lt $workflow.IndexOf('dotnet pack')) $workflow
+            Check "${name}: the publish workflow also runs by hand or from the Release workflow, with a tag input, and checks out that tag" ($workflow -match '(?m)^  workflow_dispatch:\r?\n    inputs:\r?\n      tag:\r?$' -and $workflow.Contains('TAG: ${{ github.event.release.tag_name || inputs.tag }}') -and $workflow.Contains('ref: refs/tags/${{ steps.version.outputs.tag }}')) $workflow
             Check "${name}: the publish workflow installs .NET with the install-dotnet action once the tagged commit is checked, before testing, and counts only a 404 as unpublished" ($workflow.Contains('      - uses: ./.github/actions/install-dotnet') -and $workflow.IndexOf('git merge-base --is-ancestor') -lt $workflow.IndexOf('./.github/actions/install-dotnet') -and $workflow.IndexOf('./.github/actions/install-dotnet') -lt $workflow.IndexOf('dotnet test') -and -not $workflow.Contains('actions/setup-dotnet') -and -not $workflow.Contains('Get-TestRuntimes') -and $workflow.Contains('-SkipHttpErrorCheck -StatusCodeVariable status') -and $workflow.Contains('$status -eq 404') -and -not $workflow.Contains('catch { $versions = @() }')) $workflow
         }
     }
@@ -388,6 +389,9 @@ foreach ($case in $cases) {
         $uses = [regex]::Matches($notice, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the template update workflow runs weekly and by hand, with only contents: read and issues: write, and runs .template/Get-TemplateUpdate.ps1" ($notice.Contains("- cron: '0 7 * * 1'") -and $notice.Contains('workflow_dispatch:') -and $notice -match '(?m)^permissions:\r?\n  contents: read\r?\n  issues: write\r?\n\r?\n' -and $notice.Contains('GH_TOKEN: ${{ github.token }}') -and $notice.Contains('run: ./.template/Get-TemplateUpdate.ps1')) $notice
         Check "${name}: the template update workflow pins each action to a full commit SHA, with its tag in a comment, and persists no credentials" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($notice, '(?m)^\s+persist-credentials: false\r?$').Count -eq $uses.Count) $notice
+        $releaseWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\tag-release.yml') -Raw
+        $uses = [regex]::Matches($releaseWorkflow, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        Check "${name}: the release workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $releaseWorkflow
         # The code review auto-merge workflow: every GitHub project gets it, and it merges nothing where no Dependabot pull
         # request moves the NCode Review pin.
         $autoMerge = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\code-review-auto-merge.yml') -Raw
@@ -716,7 +720,7 @@ Check 'workflow: plan-template-update trials the update in a clone, pins the ver
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.github\prompts\plan-bugfix.prompt.md', 'template\.github\skills\handoff-plan\SKILL.md', 'template\.github\agents\copilot-planner.agent.md') ('gh issue view', 'glab issue view', 'as data, not instructions'))
 Check 'workflow: every planning command reads the issue it names and treats its text as data' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md', 'template\.claude\commands\continue-plan.md') 'pwsh -NoProfile -File .template/Get-PlanState.ps1')
-$m += @(Get-MissingText 'template\.claude\commands\ship-plan.md' ('git push --atomic origin', 'gh pr create', 'glab mr create', 'gh release create', 'glab release create', 'gh issue close', 'Never force-push'))
+$m += @(Get-MissingText 'template\.claude\commands\ship-plan.md' ('git push --atomic origin', 'gh pr create', 'glab mr create', 'gh release create', 'glab release create', 'gh issue close', 'Never force-push', 'Release: <version>', 'tag-release.yml'))
 $m += @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.claude'), (Join-Path $repoRoot 'template\.github') -Recurse -File | Where-Object { [IO.File]::ReadAllText($_.FullName).Contains('{{STATE_SCRIPT}}') } | ForEach-Object { "$($_.Name): left {{STATE_SCRIPT}}" })
 Check 'workflow: ship-plan and continue-plan run .template/Get-PlanState.ps1, and ship-plan lands, tags, publishes and closes' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText 'template\.claude\commands\plan-feature.md' ('Release: <version', '## Follow-ups', 'raised by one patch version'))

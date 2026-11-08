@@ -1,11 +1,16 @@
-# Publish packages: when a GitHub release is published, packs every packable project with the version its tag names
-# and pushes the packages, with their symbol packages, to nuget.org. docs/decisions/project-template/ says why.
+# Publish packages: when a GitHub release is published, or when the Release workflow (tag-release.yml) starts it for
+# the release it published, packs every packable project with the version its tag names and pushes the packages,
+# with their symbol packages, to nuget.org. docs/decisions/project-template/ says why.
 #
 # Two jobs, so the job that builds the code never holds a publishing credential:
 #   - pack checks the tag is a version (v1.2.3 or v1.2.3-rc.1) and names a commit the default branch holds, so a tag on
 #     an unreviewed commit publishes nothing; then it tests and packs in Release, and uploads the packages;
 #   - publish runs in the protected `nuget` environment, exchanges the job's OIDC token for a short-lived nuget.org API
 #     key through nuget.org trusted publishing, and pushes them. A rerun skips the packages already pushed.
+#
+# A release made with a workflow's GITHUB_TOKEN, as tag-release.yml makes it, starts no workflow, so tag-release.yml
+# starts this one through workflow_dispatch, on the tag and with the tag as input. To publish a release by hand:
+# Actions > Publish packages > Run workflow, with its tag.
 #
 # Set up once: on nuget.org, a trusted publishing policy for this repository and the workflow file publish.yml; in the
 # repository, the `nuget` environment, with required reviewers, and the variable NUGET_USER naming the nuget.org account
@@ -17,6 +22,12 @@ name: Publish packages
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to publish, such as v1.2.3
+        required: true
+        type: string
 
 permissions: {}
 
@@ -39,12 +50,15 @@ jobs:
         id: version
         shell: pwsh
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           if ($env:TAG -notmatch '^v(\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?)$') { throw "The release tag '$env:TAG' isn't a version such as v1.2.3." }
           "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
+          "tag=$env:TAG" >> $env:GITHUB_OUTPUT
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The tagged commit, also in a run started by hand from another branch.
+          ref: refs/tags/${{ steps.version.outputs.tag }}
           # Every branch's history, for the check below.
           fetch-depth: 0
           persist-credentials: false
