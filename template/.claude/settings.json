@@ -22,5 +22,18 @@
       "Read(./.env.*)",
       "Read(/secrets/**)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/ensure-pwsh.sh\"",
+            "timeout": 180
+          }
+        ]
+      }
+    ]
   }
 }
