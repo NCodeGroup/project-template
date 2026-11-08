@@ -9,8 +9,9 @@ name: Release
 # the script starts publish.yml through workflow_dispatch after it publishes the release, because the workflow's token
 # starts no other workflow.
 #
-# The template owns this file, so a template update replaces it. To retry a run that failed, run it again from the
-# Actions tab (Release > Run workflow).
+# The template owns this file, so a template update replaces it. To retry a run that failed, choose Re-run failed jobs
+# on that run in the Actions tab: it tags the same commit. Run workflow tags the commit main points to at that time, which
+# has a pre-release project's Release: line only when its pull request merged as that commit.
 
 on:
   push:

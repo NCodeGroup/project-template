@@ -49,7 +49,8 @@ with `contents: write`, `actions: write` and `pull-requests: read`.
 - "Protect release tags" refuses only updating and deleting a `v*` tag, so the token creates one and cannot move it.
 - A release made with the workflow's token starts no other workflow. A .NET library's package publishing needs an
   explicit start, which ADR-0137 records.
-- A failed run is run again from the Actions tab.
+- A failed run is retried with Re-run failed jobs on that run in the Actions tab, which keeps its commit; Run workflow uses the commit
+  `main` points to at that time.
 - Smell: a release whose tag a person pushed by hand, or a `Release:` line that differs from the changelog's newest
   release heading.
 
