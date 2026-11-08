@@ -69,6 +69,27 @@ function Get-WorkflowTools([string]$Path) {
     if ($local) { 'local' }
 }
 
+# Whether a repository uses Node.js (ADR-0200): a package.json within two folders of the root, outside bin, obj, node_modules and .git, or a .nvmrc or .node-version at the root.
+function Test-NodeUse([string]$Path) {
+    if (Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Filter package.json | Where-Object { $_.FullName -notmatch $script:SkipPath }) { return $true }
+    foreach ($name in '.nvmrc', '.node-version') {
+        if (Test-Path -LiteralPath (Join-Path $Path $name) -PathType Leaf) { return $true }
+    }
+    $false
+}
+
+# The Node.js version file a repository already has, .node-version before .nvmrc, with its version when it is a number such as 22 or 22.11.0.
+function Get-NodeVersionFile([string]$Path) {
+    foreach ($name in '.node-version', '.nvmrc') {
+        $file = Join-Path $Path $name
+        if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { continue }
+        $text = "$(Get-Content -LiteralPath $file -TotalCount 1)".Trim()
+        $version = $text -replace '^[vV]', ''
+        return [pscustomobject]@{ File = $name; Version = $(if ($version -match '^\d+(\.\d+){0,2}$') { $version } else { $null }); Text = $text }
+    }
+    $null
+}
+
 function Get-AdoptionAnswers([string]$Path) {
     $Path = (Resolve-Path -LiteralPath $Path).Path
     $found = @(Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Include '*.sln', '*.slnx', '*.csproj', '*.fsproj', '*.vbproj' |
@@ -92,6 +113,8 @@ function Get-AdoptionAnswers([string]$Path) {
     }
     $tools = @(Get-WorkflowTools $Path)
     if ($tools.Count) { $answers.workflow_tools = $tools }
+    # A .NET, Python or other repository with a frontend or Node.js tooling needs Node.js too; a Node.js stack's default is already yes.
+    if ($stack -ne 'node' -and (Test-NodeUse $Path)) { $answers.uses_node = $true }
     if ($stack -eq 'dotnet') {
         $props = Join-Path $Path 'Directory.Build.props'
         if (Test-Path -LiteralPath $props) {
@@ -456,4 +479,4 @@ function Get-AssemblyVersionFloor {
     if ($best -gt [version]::new($major, 0, 0, 0)) { [pscustomobject]@{ Tag = $bestTag; AssemblyVersion = $best.ToString(); Major = $major } }
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup

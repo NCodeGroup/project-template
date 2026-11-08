@@ -136,6 +136,39 @@ $bad = foreach ($name in $nodes.Keys) {
 }
 Check 'unit: Get-AdoptionAnswers works out Node.js commands from package.json' (-not $bad) ($bad -join ' | ')
 
+$nodeUse = [ordered]@{
+    'use-dotnet-web'     = @{ Files = @('src/A/A.csproj', 'src/Web/package.json'); Stack = 'dotnet'; UsesNode = $true }
+    'use-python-nvmrc'   = @{ Files = @('pyproject.toml', '.nvmrc'); Stack = 'python'; UsesNode = $true }
+    'use-dotnet-modules' = @{ Files = @('src/A/A.csproj', 'node_modules/x/package.json'); Stack = 'dotnet'; UsesNode = $false }
+    'use-python'         = @{ Files = @('pyproject.toml'); Stack = 'python'; UsesNode = $false }
+    'use-node'           = @{ Files = @('package.json'); Stack = 'node'; UsesNode = $false }
+}
+$bad = foreach ($name in $nodeUse.Keys) {
+    $files = @{}
+    foreach ($file in $nodeUse[$name].Files) { $files[$file] = if ($file -like '*package.json') { '{}' } else { "x`n" } }
+    $folder = New-TestFolder $name $files
+    $a = Get-AdoptionAnswers $folder
+    $want = $nodeUse[$name]
+    if (-not ($a.stack -eq $want.Stack -and $a.Contains('uses_node') -eq $want.UsesNode -and (-not $want.UsesNode -or $a.uses_node -eq $true))) {
+        "${name}: $(($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')"
+    }
+}
+Check 'unit: Get-AdoptionAnswers answers uses_node for a repository that uses Node.js without being a Node.js project' (-not $bad) ($bad -join ' | ')
+
+$versionCases = [ordered]@{
+    'ver-nvmrc'   = @{ Files = @{ '.nvmrc' = "v22`n" }; File = '.nvmrc'; Version = '22'; Text = 'v22' }
+    'ver-alias'   = @{ Files = @{ '.nvmrc' = "lts/iron`n" }; File = '.nvmrc'; Version = $null; Text = 'lts/iron' }
+    'ver-both'    = @{ Files = @{ '.node-version' = "24.1.0`n"; '.nvmrc' = "20`n" }; File = '.node-version'; Version = '24.1.0'; Text = '24.1.0' }
+    'ver-none'    = @{ Files = @{}; File = $null }
+}
+$bad = foreach ($name in $versionCases.Keys) {
+    $want = $versionCases[$name]
+    $v = Get-NodeVersionFile (New-TestFolder $name $want.Files)
+    $ok = if ($null -eq $want.File) { $null -eq $v } else { $v -and $v.File -eq $want.File -and $v.Version -eq $want.Version -and $v.Text -eq $want.Text }
+    if (-not $ok) { "${name}: $($v | ConvertTo-Json -Compress)" }
+}
+Check 'unit: Get-NodeVersionFile reads .node-version before .nvmrc, without a leading v' (-not $bad) ($bad -join ' | ')
+
 $toolCases = [ordered]@{
     'tools-copilot' = @{ Files = @{ '.github/agents/copilot-implementer.agent.md' = "x`n"; '.github/agents/plan-executor.agent.md' = "x`n" }; Tools = 'claude,copilot' }
     'tools-skills'  = @{ Files = @{ '.github/skills/a/SKILL.md' = "x`n" }; Tools = 'claude,copilot' }
