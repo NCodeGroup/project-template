@@ -15,7 +15,7 @@
     It then runs /address-feedback #2 on a pull request from farewell;touch${IFS}pwned, a branch name with shell
     characters, resumes it once with a go-ahead, and checks that it stopped on the branch name.
     With -Scenario rest, the stand-in refuses GraphQL and the gh pr, gh issue, gh release and gh repo commands, as a Claude Code
-    cloud session's proxy does, and the run must read and reply through the REST routes.
+    cloud session's proxy does, and the run must read and reply through the REST routes. With -Scenario resume, the setup leaves a run of /address-feedback #1 that stopped once its plan was reviewed, and the test runs only /address-feedback #1, which must finish it: push the stopped run's step as it was, name its commit in the writer's reply, reply to the plan's other items and leave no checkout behind.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
@@ -34,7 +34,7 @@
     graphql, the default: the stand-in serves GraphQL, as in a local session. rest: host/graphql-refused.txt makes the
     stand-in refuse GraphQL and the gh pr, gh issue, gh release and gh repo commands as a Claude Code cloud session's
     proxy does, so the run must read the pull request and its threads and reply through the REST routes; the test then
-    also checks that every thread's reply went through pulls/<number>/comments/<id>/replies. Run both. Without
+    also checks that every thread's reply went through pulls/<number>/comments/<id>/replies. resume: the stand-in serves GraphQL, and the setup leaves a stopped run of /address-feedback #1 in .claude/worktrees/feedback-1, as Claude Code leaves one, with its one step committed and its plan reviewed; the test runs only /address-feedback #1. Run each. Without
     -Scenario, -CheckOnly checks the scenario the fixture was set up for.
 
 .PARAMETER Claude
@@ -57,7 +57,7 @@ param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-address-feedback-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
-    [ValidateSet('graphql', 'rest')][string]$Scenario = 'graphql',
+    [ValidateSet('graphql', 'rest', 'resume')][string]$Scenario = 'graphql',
     [string]$Claude = 'claude',
     [double]$MaxBudgetUsd = 30
 )
@@ -71,8 +71,9 @@ $app = Join-Path $Work 'app'
 $origin = Join-Path $Work 'github.com/fixture/app.git'
 $bin = Join-Path $Work 'bin'
 $hostDir = Join-Path $bin 'host'
-# Without -Scenario, -CheckOnly checks the scenario the fixture was set up for: graphql-refused.txt in the host folder marks rest.
-if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath (Join-Path $hostDir 'graphql-refused.txt'))) { $Scenario = 'rest' }
+# Without -Scenario, -CheckOnly checks the scenario the fixture was set up for, which the setup writes to scenario.txt.
+$scenarioFile = Join-Path $Work 'scenario.txt'
+if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath $scenarioFile)) { $Scenario = ([IO.File]::ReadAllText($scenarioFile)).Trim() }
 $head = 'add-farewell'
 # Git allows this branch name, /address-feedback must refuse it, and unquoted in a POSIX shell it would run touch pwned.
 $unsafeHead = 'farewell;touch${IFS}pwned'
@@ -118,6 +119,7 @@ function Get-FarewellResult([string]$Folder) {
 
 if (-not $CheckOnly) {
     New-FixtureProject -RepoRoot $repoRoot -Work $Work -App $app -Origin $origin -Bin $bin
+    Write-Text $scenarioFile "$Scenario`n"
 
     Invoke-Git -C $app switch -q -c $head
     Write-Text (Join-Path $app 'src/Farewell.ps1') @'
