@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Run /address-feedback end to end in headless Claude Code on a fixture pull request with a local origin and a gh
+    Run /address-feedback end to end in headless Claude Code or the Copilot CLI (-Tool) on a fixture pull request with a local origin and a gh
     stand-in, and check what it pushed and replied.
 
 .DESCRIPTION
@@ -8,14 +8,14 @@
     the gh stand-in, and opens a fixture pull request, #1 from add-farewell, that adds Get-Farewell. The pull request has a review thread
     from a writer (COLLABORATOR) that asks for a real fix, a top-level comment from a stranger (NONE) that asks for a
     change to the CI workflow, a review thread from a bot whose finding is wrong, a question, and a review thread whose
-    last comment already starts with "Autopilot:". It runs /address-feedback #1 in headless Claude Code, answers the
+    last comment already starts with "Autopilot:". It runs /address-feedback #1 in headless Claude Code or the Copilot CLI (-Tool), answers the
     run's one question by resuming the session, and checks that only the writer's fix is pushed, never forced; that the
     stranger's request gets an ask, the wrong finding a decline with a reason, the question an answer; that the
     answered thread is left alone; and that nothing is resolved, merged or edited, which the stand-in also refuses.
     It then runs /address-feedback #2 on a pull request from farewell;touch${IFS}pwned, a branch name with shell
     characters, resumes it once with a go-ahead, and checks that it stopped on the branch name.
     With -Scenario rest, the stand-in refuses GraphQL and the gh pr, gh issue, gh release and gh repo commands, as a Claude Code
-    cloud session's proxy does, and the run must read and reply through the REST routes. With -Scenario resume, the setup leaves a run of /address-feedback #1 that stopped once its plan was reviewed, and the test runs only /address-feedback #1, which must finish it: push the stopped run's step as it was, name its commit in the writer's reply, reply to the plan's other items and leave no checkout behind. With -Scenario resume-copilot the stopped run is on Copilot's branch feedback-1 in the main checkout instead, and Claude Code must move it into a worktree first.
+    cloud session's proxy does, and the run must read and reply through the REST routes. With -Scenario resume-claude, the setup leaves a run of /address-feedback #1 that stopped once its plan was reviewed, and the test runs only /address-feedback #1, which must finish it: push the stopped run's step as it was, name its commit in the writer's reply, reply to the plan's other items and leave no checkout behind. With -Scenario resume-copilot the stopped run is on Copilot's branch feedback-1 in the main checkout instead, and Claude Code must move it into a worktree first.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
@@ -34,14 +34,26 @@
     graphql, the default: the stand-in serves GraphQL, as in a local session. rest: host/graphql-refused.txt makes the
     stand-in refuse GraphQL and the gh pr, gh issue, gh release and gh repo commands as a Claude Code cloud session's
     proxy does, so the run must read the pull request and its threads and reply through the REST routes; the test then
-    also checks that every thread's reply went through pulls/<number>/comments/<id>/replies. resume: the stand-in serves GraphQL, and the setup leaves a stopped run of /address-feedback #1 in .claude/worktrees/feedback-1, as Claude Code leaves one, with its one step committed and its plan reviewed; the test runs only /address-feedback #1. resume-copilot: the same, with the stopped run on the branch feedback-1 in the main checkout and PLAN.md at its root, as Copilot leaves one. Run each. Without
+    also checks that every thread's reply went through pulls/<number>/comments/<id>/replies. resume-claude: the stand-in serves GraphQL, and the setup leaves a stopped run of /address-feedback #1 in .claude/worktrees/feedback-1, as Claude Code leaves one, with its one step committed and its plan reviewed; the test runs only /address-feedback #1. resume-copilot: the same, with the stopped run on the branch feedback-1 in the main checkout and PLAN.md at its root, as Copilot leaves one. Run each. Without
     -Scenario, -CheckOnly checks the scenario the fixture was set up for.
+
+.PARAMETER Tool
+    claude, the default, runs each prompt in headless Claude Code; copilot runs it in the Copilot CLI. The fixture
+    project has both tools' commands, so the setup and the checks are the same for either tool, but for where a run
+    works. Without -Tool, -CheckOnly checks the tool the fixture's run used, which tool.txt in the work folder names.
 
 .PARAMETER Claude
     The Claude Code CLI. Defaults to claude.
 
+.PARAMETER Copilot
+    The Copilot CLI. Defaults to copilot.
+
+.PARAMETER Model
+    The model each prompt runs on, passed as --model. Empty, the default, keeps the tool's own default.
+
 .PARAMETER MaxBudgetUsd
-    The most each claude call may spend, passed as --max-budget-usd. 0 passes nothing. Defaults to 30.
+    The most each claude call, or each Copilot session, may spend: --max-budget-usd, or --max-ai-credits at 100 AI
+    credits a dollar, 30 at least. 0 passes nothing. Defaults to 30.
 
 .EXAMPLE
     .\tests\e2e\Test-AddressFeedback.ps1
@@ -51,14 +63,20 @@
 
 .EXAMPLE
     .\tests\e2e\Test-AddressFeedback.ps1 -Scenario rest
+
+.EXAMPLE
+    .\tests\e2e\Test-AddressFeedback.ps1 -Tool copilot -Scenario resume-claude
 #>
 [CmdletBinding()]
 param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-address-feedback-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
-    [ValidateSet('graphql', 'rest', 'resume', 'resume-copilot')][string]$Scenario = 'graphql',
+    [ValidateSet('graphql', 'rest', 'resume-claude', 'resume-copilot')][string]$Scenario = 'graphql',
+    [ValidateSet('claude', 'copilot')][string]$Tool = 'claude',
     [string]$Claude = 'claude',
+    [string]$Copilot = 'copilot',
+    [string]$Model = '',
     [double]$MaxBudgetUsd = 30
 )
 $ErrorActionPreference = 'Stop'
@@ -71,6 +89,8 @@ $app = Join-Path $Work 'app'
 $origin = Join-Path $Work 'github.com/fixture/app.git'
 $bin = Join-Path $Work 'bin'
 $hostDir = Join-Path $bin 'host'
+# Without -Tool, -CheckOnly checks the run of the tool the fixture ran, which New-Agent writes to tool.txt.
+if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Tool')) { $Tool = Get-RunTool $Work $Tool }
 # Without -Scenario, -CheckOnly checks the scenario the fixture was set up for, which the setup writes to scenario.txt.
 $scenarioFile = Join-Path $Work 'scenario.txt'
 if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath $scenarioFile)) { $Scenario = ([IO.File]::ReadAllText($scenarioFile)).Trim() }
@@ -84,7 +104,7 @@ $unsafeCommentUrl = "$unsafeUrl#issuecomment-1003"
 $prUrl = 'https://github.com/fixture/app/pull/1'
 $strangerUrl = "$prUrl#issuecomment-1001"
 $questionUrl = "$prUrl#issuecomment-1002"
-$commandFile = Join-Path $app '.claude/commands/address-feedback.md'
+$commandFile = Get-CommandFile $app $Tool 'address-feedback'
 $replyOpenings = [ordered]@{ fix = 'Autopilot: fixed in'; decline = 'Autopilot: not changed'; ask = 'Autopilot: this needs a decision from the maintainer:' }
 
 function Read-Threads {
@@ -342,12 +362,14 @@ exit 0
         # The checks on the run's replies match these openings, which the command mandates for a fix, a decline and an ask.
         $missing = @($replyOpenings.Values | Where-Object { -not $commandText.Contains("``$_") })
         Check 'fixture: the installed /address-feedback mandates the reply openings the checks match' ($missing.Count -eq 0) "missing: $($missing -join '; ')"
+        Test-InstalledCommand $app 'address-feedback' 'the read query, the thread reply mutation and the reply openings the checks use' (@($readQuery, $replyQuery) + @($replyOpenings.Values | ForEach-Object { "``$_" }))
         if ($Scenario -eq 'graphql') {
             $view2 = gh pr view 2 --json number,headRefName,headRefOid | Out-String | ConvertFrom-Json
             git check-ref-format --branch $unsafeHead | Out-Null
             $gitAllows = $LASTEXITCODE -eq 0
             $branchRule = if ($commandText -match '`<head>` doesn''t match `([^`]+)`') { $Matches[1] } else { '' }
             Check 'fixture: pull request #2 comes from a branch with shell characters that Git allows and the installed /address-feedback refuses' ($view2.headRefName -eq $unsafeHead -and "$(git --git-dir=$origin rev-parse "refs/heads/$unsafeHead")".Trim() -eq $headOid -and $gitAllows -and $branchRule -and $head -match $branchRule -and $unsafeHead -notmatch $branchRule) "head='$($view2.headRefName)' git allows: $gitAllows rule: '$branchRule'"
+            Test-InstalledCommand $app 'address-feedback' 'the branch name rule' @("``<head>`` doesn't match ``$branchRule``")
         }
 
         if ($Scenario -eq 'graphql') {
