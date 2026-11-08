@@ -18,8 +18,8 @@
     latest release for this machine; it holds the .NET runtime too. Adds only its shared/<framework>/<version> folders,
     and skips a version that is already there.
 
-    .gitlab-ci.yml runs it before the build; on GitHub, actions/setup-dotnet installs the same SDK and runtimes. Run it
-    as an administrator or with sudo when .NET is installed system-wide.
+    .gitlab-ci.yml runs it before the build; on GitHub, the .github/actions/install-dotnet action installs the same SDK
+    and runtimes with actions/setup-dotnet. Run it as an administrator or with sudo when .NET is installed system-wide.
 
 .PARAMETER Channel
     The runtime channels to install, such as 8.0.x. Defaults to what build/Get-TestRuntimes.ps1 prints once the SDK is
