@@ -72,6 +72,7 @@ $resume = [array]::IndexOf(@($args), '--resume')
 $nano = if ($resume -ge 0) { 4000000000 } else { 2500000000 }
 $usageFile = $args[[array]::IndexOf(@($args), '--usage-output-file') + 1]
 if (-not $prompt.Contains('no-usage')) { Set-Content -LiteralPath $usageFile -Value "{""totalNanoAiu"":$nano}" }
+if ($prompt.Contains('no-result')) { exit 0 }
 $session = if ($resume -ge 0) { $args[$resume + 1] } else { 'copilot-session-1' }
 "{""type"":""result"",""sessionId"":""$session"",""exitCode"":0}"
 '@
@@ -177,6 +178,12 @@ try {
     Invoke-Agent $usageAgent -Prompt 'go ahead' -SessionId $usageAgent.SessionId -Index 2
     $atLeast = @(Write-AgentSummary $usageAgent)[0]
     Check 'copilot: a run whose usage file is missing warns with its path, and the summary prints the cost as unknown, then as at least the credits read' ($warned.Count -eq 1 -and $warned[0].Contains((Join-Path $usageWork 'copilot-1-usage.json')) -and $unknown -eq 'Cost: unknown (no AI credits read for Copilot run 1)' -and $atLeast -eq 'Cost: at least 0.04 USD (4 AI credits; none read for Copilot run 1)') "warnings: $($warned -join '; '); $unknown; $atLeast"
+
+    $resultWork = Join-Path $Work 'no-result'
+    $resultAgent = New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -App $app -Work $resultWork
+    $null = @(& { Set-Variable failures ([Collections.Generic.List[string]]::new()); Invoke-Agent $resultAgent -Prompt 'no-result' -Index 1 })
+    $noResult = @(Write-AgentSummary $resultAgent)[0]
+    Check 'copilot: a run that returns no session still counts the credits its usage file gives' ($resultAgent.SessionId -eq '' -and $noResult.Contains('(2.5 AI credits)')) $noResult
 
     $timeoutWork = Join-Path $Work 'timeout'
     $slowClaude = New-Agent -Tool claude -Claude (Join-Path $bin 'claude.ps1') -TimeoutMinutes 0.05 -App $app -Work $timeoutWork

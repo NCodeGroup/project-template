@@ -191,6 +191,7 @@ function Invoke-Agent($Agent, [string]$Prompt, [string]$SessionId = '', [int]$In
         if (-not $timedOut) { $session = $run.SessionId }
         if ($null -eq $run.Credits) { $Agent.UnreadUsage.Add($Index) }
         elseif ($session) { $Agent.Credits[$session] = $run.Credits }
+        else { $Agent.Credits["run-$Index"] = $run.Credits }
     }
     else {
         $out = Invoke-ClaudeCli $Agent $Prompt $SessionId $Index
