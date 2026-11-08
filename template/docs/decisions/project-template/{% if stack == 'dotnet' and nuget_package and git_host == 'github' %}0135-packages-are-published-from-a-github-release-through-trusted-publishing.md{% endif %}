@@ -1,6 +1,6 @@
 # 0135. Packages are published from a GitHub release through trusted publishing
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0137)
 - **Date:** 2026-10-31
 
 ## Context
