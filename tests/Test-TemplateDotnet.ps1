@@ -57,7 +57,9 @@ function Invoke-StubInstaller {
     }
     function Invoke-RestMethod([string]$Uri, [int]$ConnectionTimeoutSeconds, [int]$OperationTimeoutSeconds) { Confirm-StubRequest $Uri $ConnectionTimeoutSeconds $OperationTimeoutSeconds; $key = $Uri -replace '^.*/release-metadata/', ''; if (-not $byPath.ContainsKey($key)) { throw "unexpected metadata $Uri" }; $byPath[$key] | ConvertFrom-Json }
     function Invoke-WebRequest([string]$Uri, [string]$OutFile, [int]$ConnectionTimeoutSeconds, [int]$OperationTimeoutSeconds) { Confirm-StubRequest $Uri $ConnectionTimeoutSeconds $OperationTimeoutSeconds; if (-not $byUrl.ContainsKey($Uri)) { throw "unexpected download $Uri" }; [IO.File]::WriteAllBytes($OutFile, $byUrl[$Uri]) }
-    function Start-Sleep([int]$Seconds) { $sleeps.Add($Seconds) }
+    function Start-Sleep([int]$Milliseconds) { $sleeps.Add($Milliseconds) }
+    # The largest number Get-Random can give, so that each wait, with its random part, is known.
+    function Get-Random([int]$Maximum) { $Maximum - 1 }
     function dotnet { if ("$args" -ne '--list-runtimes') { throw "unexpected dotnet $args" }; $runtimeLines }
     $printed = ''; $failed = ''
     try { $printed = (& $installer @Arguments 2>&1 | Out-String).Trim() } catch { $failed = "$_" }
@@ -172,10 +174,10 @@ $notFound = [Microsoft.PowerShell.Commands.HttpResponseException]::new('Response
 $stalled = [AggregateException]::new([TimeoutException]::new('The request was canceled due to the configured OperationTimeout of 60 seconds elapsing'))
 $dir = New-StubInstallDir 'retry'
 $retried = Invoke-StubInstaller $mergeMetadata @{ $sdkUrl = [IO.File]::ReadAllBytes($archive) } @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($unavailable, $rateLimited); $sdkUrl = @($stalled) }
-$retriedOk = -not $retried.Error -and $retried.Printed.Contains('Installed .NET SDK 8.0.404 in') -and @($retried.Calls | Where-Object { $_ -eq $metadataUrl }).Count -eq 4 -and @($retried.Calls | Where-Object { $_ -eq $sdkUrl }).Count -eq 2 -and ($retried.Sleeps -join ',') -eq '5,10,5'
+$retriedOk = -not $retried.Error -and $retried.Printed.Contains('Installed .NET SDK 8.0.404 in') -and @($retried.Calls | Where-Object { $_ -eq $metadataUrl }).Count -eq 4 -and @($retried.Calls | Where-Object { $_ -eq $sdkUrl }).Count -eq 2 -and ($retried.Sleeps -join ',') -eq '5999,10999,5999'
 $dir = New-StubInstallDir 'unavailable'
 $gaveUp = Invoke-StubInstaller $mergeMetadata @{} @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($unavailable, $unavailable, $unavailable) }
-$gaveUpOk = $gaveUp.Error.Contains('503') -and $gaveUp.Calls.Count -eq 3 -and ($gaveUp.Sleeps -join ',') -eq '5,10' -and -not (Test-Path -LiteralPath (Join-Path $dir 'sdk'))
+$gaveUpOk = $gaveUp.Error.Contains('503') -and $gaveUp.Calls.Count -eq 3 -and ($gaveUp.Sleeps -join ',') -eq '5999,10999' -and -not (Test-Path -LiteralPath (Join-Path $dir 'sdk'))
 $dir = New-StubInstallDir 'notfound'
 $missing = Invoke-StubInstaller $mergeMetadata @{} @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($notFound) }
 $missingOk = $missing.Error.Contains('404') -and $missing.Calls.Count -eq 1 -and -not $missing.Sleeps

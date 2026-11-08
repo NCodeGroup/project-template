@@ -6,8 +6,9 @@
     From the project template; template updates replace this file. Takes each download from Microsoft's release
     metadata at https://builds.dotnet.microsoft.com/dotnet/release-metadata/ and installs nothing unless its SHA-512
     equals the one the metadata gives. A request gives up after 30 seconds without an answer, or 60 seconds without
-    more of a download, and a failed one is tried twice more, 5 and then 10 seconds later; a client error (4xx) other
-    than 408 or 429 fails at once. Needs PowerShell 7.4 or later.
+    more of a download. A failed one is tried twice more, after 5 and then 10 seconds, or after the Retry-After a 429
+    or 503 gives, up to 60 seconds, each plus up to a second at random so that clients don't retry in step; a client
+    error (4xx) other than 408 or 429 fails at once. Needs PowerShell 7.4 or later.
 
     The SDK is the one global.json selects, as actions/setup-dotnet reads it on GitHub: the version it names, or, under
     the rollForward policy latestPatch, latestFeature, latestMinor or latestMajor, the newest release that policy
@@ -56,6 +57,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $metadataRoot = 'https://builds.dotnet.microsoft.com/dotnet/release-metadata'
+# Invoke-ReleaseRequest's limits: the seconds a request waits for an answer and for each next part of a download, the
+# tries it makes, the back-off base, which it multiplies by the tries made, and the longest wait between tries.
+$connectionTimeoutSeconds = 30
+$operationTimeoutSeconds = 60
+$maxAttempts = 3
+$retryDelaySeconds = 5
+$maxRetryDelaySeconds = 60
 $channelGiven = $PSBoundParameters.ContainsKey('Channel')
 
 if ($SkipSdk -and -not $channelGiven) { $Channel = @(& (Join-Path $PSScriptRoot 'Get-TestRuntimes.ps1')) }
@@ -73,19 +81,35 @@ $arch = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().
 $suffix = "$os-$arch$(if ($IsWindows) { '.zip' } else { '.tar.gz' })"
 $scratch = Join-Path $InstallDir ".install-dotnet-$PID"
 
-# Reads release metadata, or downloads a file to OutFile, waiting at most 30 seconds for an answer and 60 for each next
-# part of a download, so a download that stalls partway fails too. Tries a failed request twice more, 5 and then 10
-# seconds later, but not a client error (4xx) other than a request timeout (408) or a rate limit (429).
+# Reads release metadata, or downloads a file to OutFile, waiting at most $connectionTimeoutSeconds for an answer and
+# $operationTimeoutSeconds for each next part of a download, so a download that stalls partway fails too. Makes up to
+# $maxAttempts tries, but stops at a client error (4xx) other than a request timeout (408) or a rate limit (429).
+# Between tries it waits the Retry-After a 429 or 503 gives, in seconds or as a date, or else $retryDelaySeconds times
+# the tries made; at most $maxRetryDelaySeconds, plus up to a second at random, so that clients that failed together
+# don't retry together.
 function Invoke-ReleaseRequest([string]$Uri, [string]$OutFile) {
+    $timeouts = @{ ConnectionTimeoutSeconds = $connectionTimeoutSeconds; OperationTimeoutSeconds = $operationTimeoutSeconds }
     for ($attempt = 1; ; $attempt++) {
         try {
-            if ($OutFile) { return Invoke-WebRequest -Uri $Uri -OutFile $OutFile -ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60 }
-            return Invoke-RestMethod -Uri $Uri -ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60
+            if ($OutFile) { return Invoke-WebRequest -Uri $Uri -OutFile $OutFile @timeouts }
+            return Invoke-RestMethod -Uri $Uri @timeouts
         }
         catch {
-            $status = [int]$_.Exception.Response.StatusCode
-            if ($attempt -ge 3 -or ($status -ge 400 -and $status -lt 500 -and $status -notin 408, 429)) { throw }
-            Start-Sleep -Seconds (5 * $attempt)
+            $response = $_.Exception.Response
+            $status = [int]$response.StatusCode
+            if ($attempt -ge $maxAttempts -or ($status -ge 400 -and $status -lt 500 -and $status -notin 408, 429)) { throw }
+            $retryAfter = if ($status -in 429, 503) { $response.Headers.RetryAfter }
+            $delay = if ($null -ne $retryAfter.Delta) {
+                $retryAfter.Delta.TotalSeconds
+            }
+            elseif ($null -ne $retryAfter.Date) {
+                ($retryAfter.Date - [DateTimeOffset]::UtcNow).TotalSeconds
+            }
+            else {
+                $retryDelaySeconds * $attempt
+            }
+            $delay = [Math]::Clamp($delay, 0, $maxRetryDelaySeconds)
+            Start-Sleep -Milliseconds ([int](1000 * $delay) + (Get-Random -Maximum 1000))
         }
     }
 }
