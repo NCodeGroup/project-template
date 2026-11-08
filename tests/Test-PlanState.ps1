@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md and its prelude, valid or not, a push to the default
-    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, with a gh that refuses GitHub's GraphQL API, as a Claude Code cloud session's does, and answers only the REST paths, then a published release and one gh api doesn't find, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open. After each move it runs
+    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, with a gh that refuses GitHub's GraphQL API, as a Claude Code cloud session's does, and answers only the REST paths, then a published release and one gh api doesn't find, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open, then the plan an /address-feedback run leaves, which names its pull request on a Pull request: line, on GitHub and GitLab. After each move it runs
     Get-PlanState.ps1, in a runspace of its own in this process that a check compares once with a pwsh of its own, and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -133,7 +133,7 @@ try { Invoke-Git switch -q -c worktree-demo }
 finally { Pop-Location }
 Add-Commit $repo 'a.txt' 'Plan step 1: A'
 Write-Text $planFile (New-PlanText ' ')
-$r = Test-State (Get-State $repo) @{ plan = 'Demo plan'; issue = '#7'; release = 'v0.2.0'; steps = '1/2 open=1 escalated=- failed=-'; reviewed = '-'; ahead = '1'; landed = 'no'; dirty = 'no'; tag = 'absent' }
+$r = Test-State (Get-State $repo) @{ plan = 'Demo plan'; issue = '#7'; feedback = '-'; release = 'v0.2.0'; steps = '1/2 open=1 escalated=- failed=-'; reviewed = '-'; ahead = '1'; landed = 'no'; dirty = 'no'; tag = 'absent' }
 Check "local: reads the plan's header and steps" $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ next = 'orchestrate-plan' }
 Check 'next: an open step runs orchestrate-plan' $r.Ok $r.Detail
@@ -948,6 +948,72 @@ try {
     finally { Pop-Location }
     $r = Test-State (Get-State $cRepo) @{ conflicts = 'unknown'; next = 'wait pull request #4 is open: run ship-plan again once it merges' }
     Check 'conflicts: unknown when git merge-tree cannot merge the default branch' $r.Ok $r.Detail
+}
+finally { $env:PATH = $savedPath }
+
+# 22. The plan an /address-feedback run leaves, which names its pull request on a Pull request: line.
+$fOrigin = Join-Path $Work 'feedback/github.com/origin.git'
+$fRepo = Join-Path $Work 'feedback/repo'
+Push-Location $Work
+try {
+    Invoke-Git init -q --bare -b main $fOrigin
+    Invoke-Git clone -q $fOrigin $fRepo
+}
+finally { Pop-Location }
+[IO.File]::AppendAllText((Join-Path $fRepo '.git/info/exclude'), "PLAN.md`n")
+Add-Commit $fRepo 'README.md' 'Add README'
+Push-Location $fRepo
+try { Invoke-Git push -q origin HEAD:refs/heads/main; Invoke-Git switch -q -c worktree-feedback-42 }
+finally { Pop-Location }
+$fStart = Get-Head $fRepo
+Add-Commit $fRepo 'fix.txt' 'Plan step 1: Fix'
+$fPlan = Join-Path $fRepo 'PLAN.md'
+function New-FeedbackPlanText([string]$Step2, [string]$Reviewed = '') {
+    (New-PlanText $Step2 $Reviewed).Replace("Issue: #7`nRelease: v0.2.0`n", "Pull request: #42`nStart: $fStart`n")
+}
+function Set-FeedbackPullRequest([string]$State, [string]$MergedAt = '') {
+    $merged = if ($MergedAt) { $MergedAt } else { $null }
+    Set-HostApi @{ 'repos/{owner}/{repo}/pulls/42' = @{ number = 42; state = $State; merged_at = $merged; merge_commit_sha = $null; head = @{ sha = $fStart; ref = 'add-x' }; base = @{ ref = 'main' } } }
+}
+$savedPath = $env:PATH
+$env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+try {
+    Set-FeedbackPullRequest 'open'
+    Remove-Item -LiteralPath (Join-Path $bin 'pulls-path.txt') -ErrorAction Ignore
+    Write-Text $fPlan (New-FeedbackPlanText ' ')
+    $r = Test-State (Get-State $fRepo) @{ host = 'github'; feedback = '42'; issue = '-'; release = '-'; pr = '42 OPEN'; conflicts = '-'; next = 'orchestrate-plan' }
+    $listed = Test-Path -LiteralPath (Join-Path $bin 'pulls-path.txt')
+    Check 'feedback: a plan with a Pull request: line reads that pull request by its number, not the branch''s list' ($r.Ok -and -not $listed) "$($r.Detail) branch list read: $listed"
+
+    Write-Text $fPlan (New-FeedbackPlanText '?')
+    $r = Test-State (Get-State $fRepo) @{ feedback = '42'; next = 'replan-step 2' }
+    Check 'feedback: an escalated step in a feedback plan is re-planned first' $r.Ok $r.Detail
+
+    Write-Text $fPlan (New-FeedbackPlanText 'x')
+    $r = Test-State (Get-State $fRepo) @{ next = 'review-plan-diff' }
+    Check 'feedback: a feedback plan with finished steps runs review-plan-diff' $r.Ok $r.Detail
+
+    Write-Text $fPlan (New-FeedbackPlanText 'x' (Get-Head $fRepo))
+    $r = Test-State (Get-State $fRepo) @{ pr = '42 OPEN'; landed = 'no'; next = 'address-feedback 42' }
+    Check 'feedback: a reviewed feedback plan goes back to address-feedback, never to ship-plan' $r.Ok $r.Detail
+
+    Set-FeedbackPullRequest 'closed' '2026-01-01T00:00:00Z'
+    $r = Test-State (Get-State $fRepo) @{ pr = '42 MERGED'; next = 'none pull request #42 is merged: address-feedback 42 discards this run' }
+    Check 'feedback: a feedback plan whose pull request merged is discarded through address-feedback' $r.Ok $r.Detail
+
+    Set-FeedbackPullRequest 'closed'
+    Write-Text $fPlan (New-FeedbackPlanText ' ')
+    $r = Test-State (Get-State $fRepo) @{ pr = '42 CLOSED'; next = 'none pull request #42 is closed: address-feedback 42 discards this run' }
+    Check 'feedback: a feedback plan whose pull request closed is discarded through address-feedback, open steps and all' $r.Ok $r.Detail
+
+    Set-HostApi @{}
+    Write-Text $fPlan (New-FeedbackPlanText 'x' (Get-Head $fRepo))
+    $r = Test-State (Get-State $fRepo) @{ pr = 'unknown'; next = 'address-feedback 42' }
+    Check 'feedback: a feedback plan whose pull request cannot be read still goes back to address-feedback' $r.Ok $r.Detail
+
+    Write-Text $fPlan ((New-PlanText 'x' (Get-Head $fRepo)) + "`n## Notes`n`nPull request: #43`n")
+    $r = Test-State (Get-State $fRepo) @{ feedback = '-' }
+    Check 'feedback: a Pull request: line below the plan''s first heading names no pull request' $r.Ok $r.Detail
 }
 finally { $env:PATH = $savedPath }
 
