@@ -5,8 +5,9 @@
 
 ## Context
 
-"Done" is checked in several places: a person runs a build before pushing, an agent verifies a plan step, `/ship-plan`
-and `/run-issues` check the work before each push, and CI checks every pull request. When each of them runs its own
+"Done" is checked in several places: a person runs a build before pushing, an agent verifies a plan step, `/ship-plan`,
+`/run-issues`, `/address-feedback` and `/run-feedback` check the work before each push, and CI checks every pull request.
+When each of them runs its own
 commands, they drift. A step passes locally and fails in CI because CI also packs, or restores tools, or builds in
 Release; an agent declares success on a Debug build that never ran the analyzers the way CI does; and nobody can say in
 one sentence what a change must pass.
@@ -33,8 +34,8 @@ judge whether it passed invites an agent to read success into a failure.
 4. A repository with no solution at its root yet passes, with a note saying so.
 5. CI's build-and-test job runs `./build/dod.ps1` for a .NET project whose build and test commands are the defaults,
    `dotnet build` and `dotnet test`. A project with commands of its own keeps them.
-6. A new .NET project's `AGENTS.md` Landing section sets `gate: ./build/dod.ps1 -Fast`, which `/ship-plan` and
-   `/run-issues` run before each push.
+6. A new .NET project's `AGENTS.md` Landing section sets `gate: ./build/dod.ps1 -Fast`, which `/ship-plan`,
+   `/run-issues`, `/address-feedback` and `/run-feedback` run before each push.
 
 No formatter check is in the gate. The formatting style that matters is enforced by the analyzers in the build, with
 `EnforceCodeStyleInBuild`, and the template does not pick a formatter such as CSharpier. `dod.ps1` is template-owned and
