@@ -12,6 +12,8 @@
     The nvs home is $env:NVS_HOME when set, else $env:LOCALAPPDATA\nvs on Windows, else ~/.nvs. Install nvs on Windows
     with: winget install --id jasongin.nvs -e; elsewhere with: git clone https://github.com/jasongin/nvs "$HOME/.nvs";
     . "$HOME/.nvs/nvs.sh" install
+    Initialize-Nvs.ps1 and use-node.sh in this folder carry the same nvs home lookup and install text, because each
+    script runs on its own; change all three together.
 
 .EXAMPLE
     . ./.template/Use-Node.ps1

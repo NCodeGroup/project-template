@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- A new `uses_node` answer, asked for every stack and yes by default for Node.js, decides everything Node.js-related, so a .NET or Python project with a frontend gets the same standard Node.js setup as a Node.js project.
+- A new `uses_node` answer, asked for every stack and yes by default for Node.js, decides the Node.js setup on the PC and in the repository, so a .NET or Python project with a frontend gets the same `.node-version`, scripts, agent rules and prelude as a Node.js project. CI sets up Node.js only for Node.js projects so far.
 
 - `.node-version`, a project-owned file holding the Node.js major version, `26`, which nvs, `actions/setup-node` and the scripts below read, so one file names the version everywhere.
 

@@ -10,6 +10,8 @@
 # Windows with: winget install --id jasongin.nvs -e; elsewhere with:
 #   git clone https://github.com/jasongin/nvs "$HOME/.nvs"; . "$HOME/.nvs/nvs.sh" install
 # It sets no shell options (no set -e or set -u), so it leaves your shell as it was.
+# Initialize-Nvs.ps1 and Use-Node.ps1 in this folder carry the same nvs home lookup and install text, because each
+# script runs on its own; change all three together.
 
 _nvs_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _nvs_status=0

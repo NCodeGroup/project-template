@@ -11,6 +11,8 @@
     PowerShell profile that already names nvs.ps1 (the Windows installer's own line), so running it again changes
     nothing. Last, it installs the Node.js version named in the project's .node-version and links it as the default.
     Each step prints one line saying what it did or that it was already set up.
+    Use-Node.ps1 and use-node.sh in this folder carry the same nvs home lookup and install text, because each
+    script runs on its own; change all three together.
 
 .PARAMETER NvsHome
     The nvs home. Defaults to $env:NVS_HOME when set, else $env:LOCALAPPDATA\nvs on Windows, else ~/.nvs.
@@ -101,5 +103,7 @@ $version = ([IO.File]::ReadAllLines($versionFile) | Select-Object -First 1).Trim
 $env:NVS_HOME = $NvsHome
 . $nvsScript
 nvs add $version
+if (-not $? -or $LASTEXITCODE) { throw "nvs add $version failed." }
 nvs link $version
+if (-not $? -or $LASTEXITCODE) { throw "nvs link $version failed." }
 "Installed Node.js $version with nvs and linked it as the default."

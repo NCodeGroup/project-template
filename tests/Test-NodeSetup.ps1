@@ -97,7 +97,6 @@ Check 'Initialize-Nvs throws the install text when nvs.ps1 is missing' ($message
 Check 'Initialize-Nvs writes nothing when nvs.ps1 is missing' (-not (Test-Path (Join-Path $root 'home/.bashrc')))
 
 # --- Use-Node.ps1 and use-node.sh put the stub node on PATH ---
-$sep = [IO.Path]::PathSeparator
 $stubNvsPs1 = 'function nvs { $env:PATH = "$env:NVS_STUB$([IO.Path]::PathSeparator)$env:PATH" }'
 $root = New-Fixture 'use' $stubNvsPs1 'nvs() { PATH="$NVS_STUB:$PATH"; }'
 $stubDir = Join-Path $root 'stub'
