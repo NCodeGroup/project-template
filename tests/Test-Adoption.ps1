@@ -84,6 +84,7 @@ finally { Pop-Location }
 $a = Get-AdoptionAnswers $demo
 $detail = ($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; '
 Check 'unit: Get-AdoptionAnswers works out a .NET repository' (($a.stack -eq 'dotnet') -and ($a.project_name -eq 'NCode.Demo') -and ($a.git_host -eq 'gitlab') -and ($a.author_name -eq 'NCode Group') -and ($a.build_command -eq 'dotnet build src/NCode.Demo.slnx') -and ($a.test_command -eq 'dotnet test src/NCode.Demo.slnx')) $detail
+Check 'unit: Get-AdoptionAnswers answers pre_release tracked, since a repository has a history' ($a.pre_release -eq 'tracked') $detail
 
 $others = [ordered]@{
     'only-python' = @{ Files = @('pyproject.toml'); Stack = 'python' }
