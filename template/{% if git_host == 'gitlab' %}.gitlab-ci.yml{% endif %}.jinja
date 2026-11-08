@@ -17,6 +17,10 @@ build-and-test:
       prefix: nuget
       files: [Directory.Packages.props, global.json]
     paths: [.nuget/packages/]
+  # A test project that targets an older .NET runs on that version's runtime, which build/Get-TestRuntimes.ps1 names;
+  # build/Install-TestRuntimes.ps1 adds each to the image's .NET once its download matches Microsoft's SHA-512.
+  before_script:
+    - pwsh -NoProfile -File build/Install-TestRuntimes.ps1
 {%- elif stack == 'python' %}
   image: python:3
   rules:
