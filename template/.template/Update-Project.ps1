@@ -60,6 +60,8 @@
     major was built with a higher one than build/ProjectTemplate.props pins (ADR-0136). It leaves
     .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
     publish.
+    A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
+    anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
 
     Every version of this script accepts -Path, -Ref, -Data, -NoCommit, -TemplateClone and -HandedOff, so any
     version can hand over to any later one.
@@ -342,6 +344,10 @@ try {
     try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { Write-Verbose "Couldn't set the console's output encoding: $_" }
     if (-not (Test-Path -LiteralPath .copier-answers.yml)) { throw "$project has no .copier-answers.yml, so it wasn't created from the template." }
     if (git status --porcelain) { throw "$project has uncommitted changes. Commit or stash them first." }
+    # copier.yml's license validator refuses a NuGet library without a license: stop before anything changes, naming the -Data that gives one.
+    $nugetAnswer = if ($Data.ContainsKey('nuget_package')) { "$($Data['nuget_package'])" } else { Get-Answer 'nuget_package' }
+    $licenseAnswer = if ($Data.ContainsKey('license')) { "$($Data['license'])" } else { Get-Answer 'license' }
+    if ($nugetAnswer -eq 'true' -and -not "$licenseAnswer".Trim()) { throw "A NuGet package needs a license, and $project publishes NuGet packages without a license answer. Run the update with the SPDX license expression its packages carry: .\.template\Update-Project.ps1 -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' }" }
     $head = git rev-parse HEAD
     $from = Get-Answer '_commit'
     $src = Get-Answer '_src_path'
