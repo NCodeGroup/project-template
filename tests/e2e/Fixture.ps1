@@ -7,7 +7,7 @@
     Dot-source it from a test script that has a $failures list: Check adds the name of each failed check to it.
     New-FixtureProject makes the project every end-to-end test starts from: a project made from a snapshot of the
     working tree, with a greeting function and its test, the landing policy `protect: hook`, a bare origin in a
-    github.com folder that has its main branch, and the gh and glab stand-ins (gh.ps1, glab.ps1) in a bin folder with an empty host folder. It keeps Copier's mirrors in a copier-cache folder in the work folder.
+    github.com folder that has its main branch, and the gh and glab stand-ins (gh.ps1, glab.ps1) in a bin folder with an empty host folder; Copy-StandIn copies a stand-in with the tests/StandInLog.ps1 it dot-sources. It keeps Copier's mirrors in a copier-cache folder in the work folder.
     Its -Data adds or overrides template answers, such as code_review for a fixture that runs NCode Review.
     Its -Landing sets keys of the Landing section in AGENTS.md, such as max-review-rounds.
     Each test then writes its own host state for the stand-in.
@@ -22,6 +22,11 @@ function Invoke-Git {
 }
 function Write-Text([string]$Path, [string]$Text) {
     [IO.File]::WriteAllText($Path, $Text.Replace("`r`n", "`n"))
+}
+
+function Copy-StandIn([string]$Name, [string]$Destination) {
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "$Name.ps1") -Destination (Join-Path $Destination "$Name.ps1")
+    Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'StandInLog.ps1') -Destination (Join-Path $Destination 'StandInLog.ps1')
 }
 
 function New-FixtureProject([string]$RepoRoot, [string]$Work, [string]$App, [string]$Origin, [string]$Bin, [hashtable]$Data = @{}, [hashtable]$Landing = @{}) {
@@ -79,14 +84,14 @@ exit 0
 
     $hostDir = Join-Path $Bin 'host'
     New-Item -ItemType Directory -Force $hostDir | Out-Null
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'gh.ps1') -Destination (Join-Path $Bin 'gh.ps1')
+    Copy-StandIn gh $Bin
     [IO.File]::WriteAllText((Join-Path $Bin 'gh.cmd'), "@pwsh -NoProfile -File `"%~dp0gh.ps1`" %*`r`n")
     Write-Text (Join-Path $Bin 'gh') @'
 #!/usr/bin/env sh
 exec pwsh -NoProfile -File "$(dirname "$0")/gh.ps1" "$@"
 '@
     if (-not $IsWindows) { chmod +x (Join-Path $Bin 'gh') }
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'glab.ps1') -Destination (Join-Path $Bin 'glab.ps1')
+    Copy-StandIn glab $Bin
     [IO.File]::WriteAllText((Join-Path $Bin 'glab.cmd'), "@pwsh -NoProfile -File `"%~dp0glab.ps1`" %*`r`n")
     Write-Text (Join-Path $Bin 'glab') @'
 #!/usr/bin/env sh

@@ -25,18 +25,8 @@ $script:CallArgs = $args
 $hostDir = Join-Path $PSScriptRoot 'host'
 New-Item -ItemType Directory -Force $hostDir | Out-Null
 $callsLog = Join-Path $hostDir 'calls.log'
-# Get-PlanState.ps1 runs its gh and glab calls at the same time, in runspaces or processes of their own, and an append
-# to the log while another is open fails with a sharing violation, so the appends take turns.
-function Add-CallLog([string]$Line) {
-    $mutex = [Threading.Mutex]::new($false, 'project-template-e2e-calls-log')
-    try {
-        try { $null = $mutex.WaitOne() }
-        catch [Threading.AbandonedMutexException] { Write-Verbose 'A call ended while it held the log; this call holds it now.' }
-        [IO.File]::AppendAllText($callsLog, "$Line`n")
-    }
-    finally { $mutex.ReleaseMutex(); $mutex.Dispose() }
-}
-Add-CallLog "CALL $($args -join ' ')"
+. (Join-Path $PSScriptRoot 'StandInLog.ps1')
+Add-StandInLog $callsLog "CALL $($args -join ' ')"
 
 function Read-Json([string]$Name, $Default) {
     $file = Join-Path $hostDir $Name
@@ -78,7 +68,7 @@ function Get-Field([string]$Key) {
     return $null
 }
 function Stop-Call([string]$Kind, [string]$Message, $CallArgs = $script:CallArgs) {
-    Add-CallLog "$Kind $($CallArgs -join ' ')"
+    Add-StandInLog $callsLog "$Kind $($CallArgs -join ' ')"
     [Console]::Error.WriteLine($Message)
     exit 1
 }
