@@ -34,14 +34,6 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
 
-function Complete-Run {
-    ''
-    if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
-    if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
-    'Template .NET tests: PASSED'
-    exit 0
-}
-
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 
 $stubRoot = Join-Path $Work 'installer'
@@ -154,7 +146,13 @@ $globalJson = Join-Path $stubRoot 'merge.json'
 [IO.File]::WriteAllText($globalJson, '{"sdk":{"version":"8.0.404"}}')
 $r = Invoke-StubInstaller @{ '8.0/releases.json' = New-StubChannel '8.0.11' @(New-StubSdk '8.0.404' @(@{ name = "dotnet-sdk-$suffix"; url = $sdkUrl; hash = $archiveHash })) } @{ $sdkUrl = [IO.File]::ReadAllBytes($archive) } @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' }
 Check 'installer: build/Install-Dotnet.ps1 adds the files of a verified SDK archive that the installation lacks and replaces none' (-not $r.Error -and $r.Printed.Contains('Installed .NET SDK 8.0.404 in') -and [IO.File]::ReadAllText((Join-Path $dir 'dotnet')) -eq 'already there' -and [IO.File]::ReadAllText((Join-Path $dir 'sdk/8.0.404/marker')) -eq 'sdk' -and -not @(Get-ChildItem -LiteralPath $dir -Force -Filter '.install-dotnet-*')) "$($r.Error) | $($r.Printed)"
-if ($InstallerOnly) { Complete-Run }
+if ($InstallerOnly) {
+    ''
+    if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
+    if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
+    'Template .NET tests: PASSED'
+    exit 0
+}
 
 $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
@@ -299,4 +297,8 @@ if (Test-Path -LiteralPath $libraryDest) {
     }
     finally { Pop-Location }
 }
-Complete-Run
+''
+if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
+'Template .NET tests: PASSED'
+exit 0
