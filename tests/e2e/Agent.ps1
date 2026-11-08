@@ -79,3 +79,96 @@ function Get-CommandFile([string]$App, [string]$Tool, [string]$Name) {
     if ($Tool -eq 'copilot') { return Join-Path $App ".github/skills/$Name/SKILL.md" }
     Join-Path $App ".claude/commands/$Name.md"
 }
+
+function Invoke-ClaudeCli($Agent, [string]$Prompt, [string]$SessionId, [int]$Index) {
+    $arguments = @('-p', $Prompt)
+    if ($SessionId) { $arguments += '--resume', $SessionId }
+    # --strict-mcp-config with no --mcp-config gives the session none of the user's MCP servers: it posts only through the gh stand-in.
+    $arguments += '--output-format', 'json', '--permission-mode', 'bypassPermissions', '--strict-mcp-config'
+    if ($Agent.Model) { $arguments += '--model', $Agent.Model }
+    if ($Agent.MaxBudgetUsd -gt 0) { $arguments += '--max-budget-usd', "$($Agent.MaxBudgetUsd)" }
+    Push-Location $Agent.App
+    try { $output = & $Agent.Cli @arguments | Out-String }
+    finally { Pop-Location }
+    [IO.File]::WriteAllText((Join-Path $Agent.Work "claude-$Index.json"), $output)
+    try { $output | ConvertFrom-Json } catch { $null }
+}
+
+function Invoke-CopilotCli($Agent, [string]$Prompt, [string]$SessionId, [int]$Index) {
+    $usageFile = Join-Path $Agent.Work "copilot-$Index-usage.json"
+    $arguments = @('-p', $Prompt)
+    if ($SessionId) { $arguments += '--resume', $SessionId }
+    $arguments += '--allow-all', '--no-ask-user', '--disable-builtin-mcps', '--secret-env-vars=COPILOT_GITHUB_TOKEN'
+    $arguments += '--output-format', 'json', '--usage-output-file', $usageFile, '--log-dir', (Join-Path $Agent.Work 'copilot-logs'), '--no-auto-update'
+    if ($Agent.Model) { $arguments += '--model', $Agent.Model }
+    if ($Agent.MaxBudgetUsd -gt 0) { $arguments += '--max-ai-credits', "$([Math]::Max(30, [Math]::Ceiling($Agent.MaxBudgetUsd * 100)))" }
+    $names = 'COPILOT_HOME', 'COPILOT_ALLOW_ALL', 'COPILOT_GITHUB_TOKEN'
+    $saved = @{}
+    foreach ($n in $names) { $saved[$n] = [Environment]::GetEnvironmentVariable($n) }
+    Push-Location $Agent.App
+    try {
+        # Copilot's own home keeps the user's MCP servers, skills, agents, instructions and memories out, and keeps the sessions for --resume.
+        # COPILOT_ALLOW_ALL=true also trusts the working folder, for a resumed session too, so the fixture's skills and agents load.
+        [Environment]::SetEnvironmentVariable('COPILOT_HOME', $Agent.CopilotHome)
+        [Environment]::SetEnvironmentVariable('COPILOT_ALLOW_ALL', 'true')
+        [Environment]::SetEnvironmentVariable('COPILOT_GITHUB_TOKEN', $(if ($Agent.Token) { $Agent.Token } else { $null }))
+        $lines = @(& $Agent.Cli @arguments 2>&1 | ForEach-Object { "$_" })
+    }
+    finally {
+        Pop-Location
+        foreach ($n in $names) { [Environment]::SetEnvironmentVariable($n, $saved[$n]) }
+    }
+    [IO.File]::WriteAllText((Join-Path $Agent.Work "copilot-$Index.jsonl"), (($lines -join "`n") + "`n"))
+    $events = @($lines | Where-Object { $_ -like '{*' } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } | Where-Object { $_ })
+    $result = @($events | Where-Object { $_.type -eq 'result' }) | Select-Object -Last 1
+    $credits = 0.0
+    try { $credits = [double](Get-Content -Raw -LiteralPath $usageFile -ErrorAction Stop | ConvertFrom-Json).totalNanoAiu / 1e9 } catch { $credits = 0.0 }
+    [pscustomobject]@{
+        SessionId  = if ($result) { "$($result.sessionId)" } else { '' }
+        Credits    = $credits
+        Skills     = @($events | Where-Object { $_.type -eq 'assistant.message' } | ForEach-Object { $_.data.toolRequests } | Where-Object { $_.name -eq 'skill' } | ForEach-Object { "$($_.arguments.skill)" })
+        McpServers = @($events | Where-Object { $_.type -eq 'session.mcp_servers_loaded' } | ForEach-Object { $_.data.servers })
+    }
+}
+
+function Invoke-Agent($Agent, [string]$Prompt, [string]$SessionId = '', [int]$Index) {
+    $session = ''
+    $run = $null
+    if ($Agent.Tool -eq 'copilot') {
+        $run = Invoke-CopilotCli $Agent $Prompt $SessionId $Index
+        $session = $run.SessionId
+        if ($session) { $Agent.Credits[$session] = $run.Credits }
+    }
+    else {
+        $out = Invoke-ClaudeCli $Agent $Prompt $SessionId $Index
+        if ($out) {
+            $session = "$($out.session_id)"
+            $Agent.CostUsd += [double]$out.total_cost_usd
+        }
+    }
+    $Agent.SessionId = $session
+    Check "$($Agent.Name) run $Index returned a session" ([bool]$session) "no session id in the output; see claude-$Index.json (or copilot-$Index.jsonl) in $($Agent.Work)"
+    if ($Agent.Tool -eq 'copilot') {
+        if (-not $SessionId -and $Prompt -match '^/([\w-]+)') {
+            $name = $Matches[1]
+            Check "Copilot run $Index ran the project's /$name skill" ($run.Skills -contains $name) "skills: $($run.Skills -join ', ')"
+        }
+        $loaded = @($run.McpServers | Where-Object { $_.status -ne 'disabled' })
+        Check "Copilot run $Index loaded no MCP server" ($loaded.Count -eq 0) "loaded: $(($loaded | ForEach-Object { "$($_.name)=$($_.status)" }) -join ', ')"
+    }
+}
+
+function Write-AgentSummary($Agent) {
+    if ($Agent.Tool -eq 'copilot') {
+        $credits = 0.0
+        foreach ($value in $Agent.Credits.Values) { $credits += [double]$value }
+        "Cost: $([Math]::Round($credits / 100, 2)) USD ($([Math]::Round($credits, 2)) AI credits)"
+        "Fixture: $($Agent.App)"
+        "Continue the session from $($Agent.App) with: `$env:COPILOT_HOME = '$($Agent.CopilotHome)'; copilot --resume $($Agent.SessionId)"
+    }
+    else {
+        "Cost: $($Agent.CostUsd) USD"
+        "Fixture: $($Agent.App)"
+        "Continue the session from $($Agent.App) with: claude --resume $($Agent.SessionId)"
+    }
+}
