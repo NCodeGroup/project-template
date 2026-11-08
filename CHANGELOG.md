@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.68.3] - 2026-11-08
+
+### Fixed
+
+- `.template/Update-Project.ps1` stages only what an update changes: the tracked files with `git add -u` and each file the update adds by name, never with `git add -A`. From the reset of the template-owned files to the end of the run, `.git/info/exclude` holds a copy of the project's whole `.gitignore`, an adopted project's kept lines included, so a folder only those lines ignore, such as `node_modules/`, `.turbo/` or `dist/` in a checkout with a frontend installed and built, is never staged or committed, and the update doesn't stall staging it. A file the project ignored when the update started stays unstaged when the updated `.gitignore` doesn't ignore it. An update that stops on a conflict stages the files it added and says to finish with `git add -u`. The update to this version runs it, because a project's script hands the update over to the target version's copy ([#275](https://github.com/NCodeGroup/project-template/issues/275)).
+
 ## [0.68.2] - 2026-11-08
 
 ### Fixed
@@ -1086,7 +1092,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.68.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.68.3...HEAD
+[0.68.3]: https://github.com/NCodeGroup/project-template/compare/v0.68.2...v0.68.3
 [0.68.2]: https://github.com/NCodeGroup/project-template/compare/v0.68.1...v0.68.2
 [0.68.1]: https://github.com/NCodeGroup/project-template/compare/v0.68.0...v0.68.1
 [0.68.0]: https://github.com/NCodeGroup/project-template/compare/v0.67.0...v0.68.0
