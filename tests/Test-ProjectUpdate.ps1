@@ -65,6 +65,8 @@ try {
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     # The project edits its own and its merged files, as it should, and edits and deletes template-owned files, which it shouldn't.
     Edit-File AGENTS.md "- (Add the project's conventions here, and any template rule this project overrides.)" '- Local convention added in the project.'
+    # A project from before the pre-release line has none, which means tracked.
+    Edit-File AGENTS.md "- pre-release: untracked`n" ''
     Edit-File README.md '## AI-Assisted Workflow' '## AI-Assisted Workflow in This Project'
     [IO.File]::AppendAllText((Resolve-Path -LiteralPath .gitignore).Path, "local-cache/`n")
     Edit-File CLAUDE.md '## Claude Code' '## Claude Code, Edited in the Project'
@@ -78,6 +80,7 @@ finally { Pop-Location }
 Push-Location (Join-Path $tpl 'template')
 try {
     Edit-File AGENTS.md.jinja 'Run from the repository root in PowerShell 7.' 'Run from the root of the {{ project_name }} repository in PowerShell 7.'
+    Edit-File AGENTS.md.jinja "- draft: no`n" "- draft: no`n- pre-release-check: {{ pre_release }}`n"
     Edit-File README.md.jinja '{{ project_description }}' '{{ project_description }} Updated.'
     Edit-File AGENTS.md.jinja "- (Add the project's conventions here, and any template rule this project overrides.)" '- Local convention added in the project.'
     Edit-File README.md.jinja '## AI-Assisted Workflow' '## AI-Assisted Workflow in This Project'
@@ -119,6 +122,7 @@ try {
     $owned = if ($output -match '(?s)The template changed these project-owned files.*?(?=\r?\n\r?\nCommitted)') { $Matches[0] } else { '' }
     Check 'update: shows project-owned changes rendered with the project answers' ($owned -match '(?m)^  AGENTS\.md:\r?$' -and $owned.Contains('+Run from the root of the Test python repository in PowerShell 7.') -and $owned -notmatch '\{%|\{\{' -and $owned -notmatch '(?m)^  README\.md') $output.Trim()
     Check 'update: leaves out project-owned changes the project already has' ($owned -match '(?m)^  AGENTS\.md:\r?$' -and -not $owned.Contains('+- Local convention added in the project.') -and $owned -notmatch '(?m)^  README\.md') $output.Trim()
+    Check 'update: renders project-owned changes with the pre-release AGENTS.md names, tracked without the line' ($owned.Contains('+- pre-release-check: tracked') -and -not $owned.Contains('pre-release-check: untracked')) $output.Trim()
     $gitignore = Get-Content -LiteralPath .gitignore -Raw
     Check 'update: merged file keeps the project''s edit and gains the template''s' ($gitignore.Contains('local-cache/') -and $gitignore.Contains('desktop.ini'))
     Check 'update: deleted merged file stays deleted' (-not (Test-Path -LiteralPath .vscode/extensions.json))
