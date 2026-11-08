@@ -11,7 +11,7 @@
     them back, and checks the project's skill ran and no MCP server loaded; that a resumed Copilot run passes --resume,
     and that the cost is the last credits of the one session, not the sum of both runs. Also checks that New-Agent warns
     when Copilot's token is a general one, from GH_TOKEN, and not when it is COPILOT_GITHUB_TOKEN. Also checks that
-    -MaxBudgetUsd 0.1 gives Copilot --max-ai-credits 30, its least, and that 0 passes no cap to either tool. Also checks that a Copilot run whose usage file is missing warns with the file's path, and that the summary then prints the cost as unknown, or as at least the credits read. Prints PASS or
+    -MaxBudgetUsd 0.1 gives Copilot --max-ai-credits 30, its least, and that 0 passes no cap to either tool.     Also checks that a Copilot run whose usage file is missing warns with the file's path, and that the summary then prints the cost as unknown, or as at least the credits read. Also checks that a run past -TimeoutMinutes is stopped, with its child processes, and fails its session check. The stand-ins run as processes of their own, as the real CLIs do, so the Copilot run's check also shows that the environment the runner sets reaches the child process. Prints PASS or
     FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -40,10 +40,11 @@ $bin = Join-Path $Work 'bin'
 $app = Join-Path $Work 'app'
 New-Item -ItemType Directory -Force $bin, $app | Out-Null
 
-# The stand-in for claude. It records every call in claude-calls.jsonl and prints the JSON claude -p prints.
+# The stand-in for claude. It records every call in claude-calls.jsonl and prints the JSON claude -p prints. A prompt with hang never ends.
 Write-Text (Join-Path $bin 'claude.ps1') @'
 $log = Join-Path $PSScriptRoot 'claude-calls.jsonl'
 Add-Content -LiteralPath $log -Value (ConvertTo-Json -Compress -InputObject @{ args = @($args); cwd = (Get-Location).Path })
+if ("$($args[[array]::IndexOf(@($args), '-p') + 1])".Contains('hang')) { Start-Sleep 60 }
 $i = [array]::IndexOf(@($args), '--resume')
 $session = if ($i -ge 0) { $args[$i + 1] } else { 'claude-session-1' }
 "{""session_id"":""$session"",""total_cost_usd"":0.25}"
@@ -51,12 +52,17 @@ $session = if ($i -ge 0) { $args[$i + 1] } else { 'claude-session-1' }
 
 # The stand-in for copilot. It records every call and the environment it ran with in copilot-calls.jsonl, and prints the
 # JSONL copilot -p prints. A prompt with no-session gets the authentication error, one with mcp-connected a connected MCP
-# server, one with no-skill no skill request, and one with no-usage no usage file.
+# server, one with no-skill no skill request, one with no-usage no usage file, and one with hang never ends and leaves a child process.
 Write-Text (Join-Path $bin 'copilot.ps1') @'
 $log = Join-Path $PSScriptRoot 'copilot-calls.jsonl'
 Add-Content -LiteralPath $log -Value (ConvertTo-Json -Compress -InputObject @{ args = @($args); cwd = (Get-Location).Path; home = $env:COPILOT_HOME; allowAll = $env:COPILOT_ALLOW_ALL; token = $env:COPILOT_GITHUB_TOKEN })
 $prompt = "$($args[[array]::IndexOf(@($args), '-p') + 1])"
 if ($prompt.Contains('no-session')) { 'Error: No authentication information found.'; exit 1 }
+if ($prompt.Contains('hang')) {
+    $child = Start-Process ([Environment]::ProcessPath) -ArgumentList '-NoProfile', '-Command', 'Start-Sleep 60' -PassThru -NoNewWindow
+    Set-Content -LiteralPath (Join-Path $PSScriptRoot 'hang-child.pid') -Value $child.Id
+    Start-Sleep 60
+}
 $status = if ($prompt.Contains('mcp-connected')) { 'connected' } else { 'disabled' }
 ConvertTo-Json -Compress -Depth 8 -InputObject @{ type = 'session.mcp_servers_loaded'; data = @{ servers = @(@{ name = 'github-mcp-server'; status = $status }) } }
 if ($prompt -match '^/([\w-]+)' -and -not $prompt.Contains('no-skill')) {
@@ -171,6 +177,23 @@ try {
     Invoke-Agent $usageAgent -Prompt 'go ahead' -SessionId $usageAgent.SessionId -Index 2
     $atLeast = @(Write-AgentSummary $usageAgent)[0]
     Check 'copilot: a run whose usage file is missing warns with its path, and the summary prints the cost as unknown, then as at least the credits read' ($warned.Count -eq 1 -and $warned[0].Contains((Join-Path $usageWork 'copilot-1-usage.json')) -and $unknown -eq 'Cost: unknown (no AI credits read for Copilot run 1)' -and $atLeast -eq 'Cost: at least 0.04 USD (4 AI credits; none read for Copilot run 1)') "warnings: $($warned -join '; '); $unknown; $atLeast"
+
+    $timeoutWork = Join-Path $Work 'timeout'
+    $slowClaude = New-Agent -Tool claude -Claude (Join-Path $bin 'claude.ps1') -TimeoutMinutes 0.05 -App $app -Work $timeoutWork
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $outClaude = @(& { Set-Variable failures ([Collections.Generic.List[string]]::new()); Invoke-Agent $slowClaude -Prompt 'hang' -Index 1 })
+    $claudeSeconds = $clock.Elapsed.TotalSeconds
+    Check 'claude: a run past -TimeoutMinutes is stopped and fails its session check' (@($outClaude | Where-Object { $_ -like 'FAIL  Claude Code run 1 returned a session  stopped after 0.05 minutes*' }).Count -gt 0 -and $claudeSeconds -lt 20 -and $slowClaude.SessionId -eq '') "$claudeSeconds s; $($outClaude -join '; ')"
+
+    $slowCopilot = New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -TimeoutMinutes 0.1 -App $app -Work $timeoutWork
+    $clock.Restart()
+    $outCopilot = @(& { Set-Variable failures ([Collections.Generic.List[string]]::new()); Invoke-Agent $slowCopilot -Prompt 'hang' -Index 2 })
+    $copilotSeconds = $clock.Elapsed.TotalSeconds
+    $pidFile = Join-Path $bin 'hang-child.pid'
+    $childId = if (Test-Path -LiteralPath $pidFile) { [int](Get-Content -LiteralPath $pidFile) } else { 0 }
+    foreach ($i in 1..10) { if (-not ($childId -and (Get-Process -Id $childId -ErrorAction SilentlyContinue))) { break }; Start-Sleep -Milliseconds 500 }
+    $childAlive = [bool]($childId -and (Get-Process -Id $childId -ErrorAction SilentlyContinue))
+    Check 'copilot: a run past -TimeoutMinutes is stopped with its child processes and fails its session check' (@($outCopilot | Where-Object { $_ -like 'FAIL  Copilot run 2 returned a session  stopped after 0.1 minutes*' }).Count -gt 0 -and $copilotSeconds -lt 25 -and $childId -gt 0 -and -not $childAlive) "$copilotSeconds s; child $childId alive: $childAlive; $($outCopilot -join '; ')"
 }
 finally {
     foreach ($n in $envNames) { [Environment]::SetEnvironmentVariable($n, $savedEnv[$n]) }

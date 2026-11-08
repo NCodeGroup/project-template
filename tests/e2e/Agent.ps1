@@ -4,10 +4,11 @@
 
 .DESCRIPTION
     Fixture.ps1 dot-sources it. Everything that differs between the two tools lives here, so a scenario is written once and runs under both.
-    New-Agent makes the runner for one tool: its CLI, model, budget, fixture project and work folder, and, for Copilot, its own home folder and the token it runs with, with a warning when that is a general GitHub token rather than COPILOT_GITHUB_TOKEN; it also writes tool.txt in the work folder.
+    New-Agent makes the runner for one tool: its CLI, model, budget, time limit, fixture project and work folder, and, for Copilot, its own home folder and the token it runs with, with a warning when that is a general GitHub token rather than COPILOT_GITHUB_TOKEN; it also writes tool.txt in the work folder.
     Get-RunTool gives the tool a run used, from tool.txt, for -CheckOnly without -Tool.
     Get-RunCheckout gives the folder and branch a run works in: a Claude Code worktree, or a branch in the main checkout for Copilot.
     Get-CommandFile gives the path of a command's installed copy in the fixture: a .claude command, or a .github skill.
+    Invoke-AgentProcess runs a CLI as a process of its own in the fixture project, a .ps1 one in a pwsh of its own, and stops it with its child processes past the runner's -TimeoutMinutes.
     Invoke-ClaudeCli and Invoke-CopilotCli run one headless prompt in the tool and return what it printed, parsed.
     Invoke-Agent runs one prompt in either tool and checks the run returned a session; for Copilot it also checks the project's skill ran and no MCP server loaded.
     Write-AgentSummary prints the cost, as unknown or as at least what it read when a Copilot run's usage file couldn't be read, and how to continue the session by hand.
@@ -23,11 +24,12 @@ function New-Agent(
     [string]$Copilot = 'copilot',
     [string]$Model = '',
     [double]$MaxBudgetUsd = 0,
+    [double]$TimeoutMinutes = 45,
     [string]$App,
     [string]$Work
 ) {
     $cli = if ($Tool -eq 'copilot') { $Copilot } else { $Claude }
-    if (-not (Get-Command $cli -ErrorAction SilentlyContinue)) {
+    if (-not (Get-Command $cli -CommandType Application, ExternalScript -ErrorAction SilentlyContinue)) {
         if ($Tool -eq 'copilot') { throw 'Copilot CLI not found: install it, or pass -Copilot <path>' }
         throw 'Claude Code CLI not found: install it, or pass -Claude <path>'
     }
@@ -59,6 +61,7 @@ function New-Agent(
         Cli          = $cli
         Model        = $Model
         MaxBudgetUsd = $MaxBudgetUsd
+        TimeoutMinutes = $TimeoutMinutes
         App          = $App
         Work         = $Work
         CopilotHome  = $copilotHome
@@ -89,6 +92,39 @@ function Get-CommandFile([string]$App, [string]$Tool, [string]$Name) {
     Join-Path $App ".claude/commands/$Name.md"
 }
 
+function Invoke-AgentProcess($Agent, [string[]]$Arguments) {
+    # A process of its own, not the call operator, so a run past its time limit can be stopped with its child processes.
+    $command = Get-Command $Agent.Cli -CommandType Application, ExternalScript | Select-Object -First 1
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    if ($command.CommandType -eq 'ExternalScript') {
+        # A .ps1 CLI, such as npm's shim or a test's stand-in, runs in a pwsh of its own.
+        $start.FileName = [Environment]::ProcessPath
+        foreach ($a in '-NoProfile', '-File', $command.Source) { $start.ArgumentList.Add($a) }
+    }
+    else { $start.FileName = $command.Source }
+    foreach ($a in $Arguments) { $start.ArgumentList.Add($a) }
+    $start.WorkingDirectory = $Agent.App
+    $start.UseShellExecute = $false
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $start.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $start.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+    $process = [Diagnostics.Process]::Start($start)
+    $output = $process.StandardOutput.ReadToEndAsync()
+    $errors = $process.StandardError.ReadToEndAsync()
+    $limit = if ($Agent.TimeoutMinutes -gt 0) { [int]($Agent.TimeoutMinutes * 60000) } else { -1 }
+    $timedOut = -not $process.WaitForExit($limit)
+    if ($timedOut) { $process.Kill($true) }
+    $process.WaitForExit()
+    $null = [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($output, $errors), 30000)
+    $process.Dispose()
+    [pscustomobject]@{
+        Output   = if ($output.IsCompletedSuccessfully) { $output.Result } else { '' }
+        Errors   = if ($errors.IsCompletedSuccessfully) { $errors.Result } else { '' }
+        TimedOut = $timedOut
+    }
+}
+
 function Invoke-ClaudeCli($Agent, [string]$Prompt, [string]$SessionId, [int]$Index) {
     $arguments = @('-p', $Prompt)
     if ($SessionId) { $arguments += '--resume', $SessionId }
@@ -96,11 +132,11 @@ function Invoke-ClaudeCli($Agent, [string]$Prompt, [string]$SessionId, [int]$Ind
     $arguments += '--output-format', 'json', '--permission-mode', 'bypassPermissions', '--strict-mcp-config'
     if ($Agent.Model) { $arguments += '--model', $Agent.Model }
     if ($Agent.MaxBudgetUsd -gt 0) { $arguments += '--max-budget-usd', "$($Agent.MaxBudgetUsd)" }
-    Push-Location $Agent.App
-    try { $output = & $Agent.Cli @arguments | Out-String }
-    finally { Pop-Location }
-    [IO.File]::WriteAllText((Join-Path $Agent.Work "claude-$Index.json"), $output)
-    try { $output | ConvertFrom-Json } catch { $null }
+    $run = Invoke-AgentProcess $Agent $arguments
+    if ($run.Errors) { [Console]::Error.Write($run.Errors) }
+    [IO.File]::WriteAllText((Join-Path $Agent.Work "claude-$Index.json"), $run.Output)
+    $json = try { $run.Output | ConvertFrom-Json } catch { $null }
+    [pscustomobject]@{ Json = $json; TimedOut = $run.TimedOut }
 }
 
 function Invoke-CopilotCli($Agent, [string]$Prompt, [string]$SessionId, [int]$Index) {
@@ -114,19 +150,18 @@ function Invoke-CopilotCli($Agent, [string]$Prompt, [string]$SessionId, [int]$In
     $names = 'COPILOT_HOME', 'COPILOT_ALLOW_ALL', 'COPILOT_GITHUB_TOKEN'
     $saved = @{}
     foreach ($n in $names) { $saved[$n] = [Environment]::GetEnvironmentVariable($n) }
-    Push-Location $Agent.App
     try {
         # Copilot's own home keeps the user's MCP servers, skills, agents, instructions and memories out, and keeps the sessions for --resume.
         # COPILOT_ALLOW_ALL=true also trusts the working folder, for a resumed session too, so the fixture's skills and agents load.
         [Environment]::SetEnvironmentVariable('COPILOT_HOME', $Agent.CopilotHome)
         [Environment]::SetEnvironmentVariable('COPILOT_ALLOW_ALL', 'true')
         [Environment]::SetEnvironmentVariable('COPILOT_GITHUB_TOKEN', $(if ($Agent.Token) { $Agent.Token } else { $null }))
-        $lines = @(& $Agent.Cli @arguments 2>&1 | ForEach-Object { "$_" })
+        $run = Invoke-AgentProcess $Agent $arguments
     }
     finally {
-        Pop-Location
         foreach ($n in $names) { [Environment]::SetEnvironmentVariable($n, $saved[$n]) }
     }
+    $lines = @((@($run.Output -split '\r?\n') + @($run.Errors -split '\r?\n')) | Where-Object { $_ })
     [IO.File]::WriteAllText((Join-Path $Agent.Work "copilot-$Index.jsonl"), (($lines -join "`n") + "`n"))
     $events = @($lines | Where-Object { $_ -like '{*' } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } | Where-Object { $_ })
     $result = @($events | Where-Object { $_.type -eq 'result' }) | Select-Object -Last 1
@@ -142,27 +177,32 @@ function Invoke-CopilotCli($Agent, [string]$Prompt, [string]$SessionId, [int]$In
         Credits    = $credits
         Skills     = @($events | Where-Object { $_.type -eq 'assistant.message' } | ForEach-Object { $_.data.toolRequests } | Where-Object { $_.name -eq 'skill' } | ForEach-Object { "$($_.arguments.skill)" })
         McpServers = @($events | Where-Object { $_.type -eq 'session.mcp_servers_loaded' } | ForEach-Object { $_.data.servers })
+        TimedOut   = $run.TimedOut
     }
 }
 
 function Invoke-Agent($Agent, [string]$Prompt, [string]$SessionId = '', [int]$Index) {
     $session = ''
     $run = $null
+    $timedOut = $false
     if ($Agent.Tool -eq 'copilot') {
         $run = Invoke-CopilotCli $Agent $Prompt $SessionId $Index
-        $session = $run.SessionId
+        $timedOut = $run.TimedOut
+        if (-not $timedOut) { $session = $run.SessionId }
         if ($null -eq $run.Credits) { $Agent.UnreadUsage.Add($Index) }
         elseif ($session) { $Agent.Credits[$session] = $run.Credits }
     }
     else {
         $out = Invoke-ClaudeCli $Agent $Prompt $SessionId $Index
-        if ($out) {
-            $session = "$($out.session_id)"
-            $Agent.CostUsd += [double]$out.total_cost_usd
+        $timedOut = $out.TimedOut
+        if ($out.Json -and -not $timedOut) {
+            $session = "$($out.Json.session_id)"
+            $Agent.CostUsd += [double]$out.Json.total_cost_usd
         }
     }
     $Agent.SessionId = $session
-    Check "$($Agent.Name) run $Index returned a session" ([bool]$session) "no session id in the output; see claude-$Index.json (or copilot-$Index.jsonl) in $($Agent.Work)"
+    $detail = if ($timedOut) { "stopped after $($Agent.TimeoutMinutes) minutes, the -TimeoutMinutes limit, with its child processes" } else { 'no session id in the output' }
+    Check "$($Agent.Name) run $Index returned a session" ([bool]$session) "$detail; see claude-$Index.json (or copilot-$Index.jsonl) in $($Agent.Work)"
     if ($Agent.Tool -eq 'copilot') {
         if (-not $SessionId -and $Prompt -match '^/([\w-]+)') {
             $name = $Matches[1]
