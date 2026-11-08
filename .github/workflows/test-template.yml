@@ -65,8 +65,8 @@ jobs:
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly
           - name: Set up the address-feedback end-to-end fixture for a session that refuses GraphQL
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly -Scenario rest
-          - name: Set up the address-feedback end-to-end fixture for a resumed run
-            run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly -Scenario resume
+          - name: Set up the address-feedback end-to-end fixture for a run Claude Code stopped
+            run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly -Scenario resume-claude
           - name: Set up the address-feedback end-to-end fixture for a run Copilot stopped
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly -Scenario resume-copilot
           - name: Set up the GitLab address-feedback end-to-end fixture
@@ -111,6 +111,8 @@ jobs:
             run: ./tests/Test-GitLabBaseline.ps1
           - name: Test New-Project.ps1 -CreateRemote's baseline calls
             run: ./tests/Test-NewProjectRemote.ps1
+          - name: Test the end-to-end tests' model runner
+            run: ./tests/Test-AgentRunner.ps1
     defaults:
       run:
         shell: pwsh

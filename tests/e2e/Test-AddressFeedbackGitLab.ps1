@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-    Run /address-feedback end to end in headless Claude Code on a fixture GitLab merge request with a local origin and a
-    glab stand-in, and check what it pushed and replied, and that its read-backs see the notes without the session footer.
+    Run /address-feedback end to end in headless Claude Code or the Copilot CLI (-Tool) on a fixture GitLab merge request
+    with a local origin and a glab stand-in, and check what it pushed and replied, and that its read-backs see the notes
+    without the session footer.
 
 .DESCRIPTION
     Makes the fixture project with New-FixtureProject in Fixture.ps1, with git_host gitlab, a local origin under a
@@ -23,25 +24,48 @@
 .PARAMETER CheckOnly
     Check the fixture of an earlier run again, without building it or calling a model.
 
+.PARAMETER Tool
+    claude, the default, runs each prompt in headless Claude Code; copilot runs it in the Copilot CLI. The fixture
+    project has both tools' commands, so the setup and the checks are the same for either tool, but for where a run
+    works. Without -Tool, -CheckOnly checks the tool the fixture's run used, which tool.txt in the work folder names.
+
 .PARAMETER Claude
     The Claude Code CLI. Defaults to claude.
 
+.PARAMETER Copilot
+    The Copilot CLI. Defaults to copilot.
+
+.PARAMETER Model
+    The model each prompt runs on, passed as --model. Empty, the default, keeps the tool's own default.
+
 .PARAMETER MaxBudgetUsd
-    The most each claude call may spend, passed as --max-budget-usd. 0 passes nothing. Defaults to 30.
+    The most each claude call, or each Copilot session, may spend: --max-budget-usd, or --max-ai-credits at 100 AI
+    credits a dollar, 30 at least. 0 passes nothing. Defaults to 30.
+
+.PARAMETER TimeoutMinutes
+    The longest each claude or copilot call may run, in minutes: past it the test stops the CLI and its child processes,
+    and that run fails its session check. 0 sets no limit. Defaults to 45.
 
 .EXAMPLE
     .\tests\e2e\Test-AddressFeedbackGitLab.ps1
 
 .EXAMPLE
     .\tests\e2e\Test-AddressFeedbackGitLab.ps1 -SetupOnly
+
+.EXAMPLE
+    .\tests\e2e\Test-AddressFeedbackGitLab.ps1 -Tool copilot
 #>
 [CmdletBinding()]
 param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-address-feedback-gitlab-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
+    [ValidateSet('claude', 'copilot')][string]$Tool = 'claude',
     [string]$Claude = 'claude',
-    [double]$MaxBudgetUsd = 30
+    [string]$Copilot = 'copilot',
+    [string]$Model = '',
+    [double]$MaxBudgetUsd = 30,
+    [double]$TimeoutMinutes = 45
 )
 $ErrorActionPreference = 'Stop'
 if ($SetupOnly -and $CheckOnly) { throw '-SetupOnly and -CheckOnly can''t be used together.' }
@@ -53,9 +77,11 @@ $app = Join-Path $Work 'app'
 $origin = Join-Path $Work 'gitlab.com/fixture/app.git'
 $bin = Join-Path $Work 'bin'
 $hostDir = Join-Path $bin 'host'
+# Without -Tool, -CheckOnly checks the run of the tool the fixture ran, which New-Agent writes to tool.txt.
+if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Tool')) { $Tool = Get-RunTool $Work $Tool }
 $head = 'add-farewell'
 $mrUrl = 'https://gitlab.com/fixture/app/-/merge_requests/1'
-$commandFile = Join-Path $app '.claude/commands/address-feedback.md'
+$commandFile = Get-CommandFile $app $Tool 'address-feedback'
 
 if (-not $CheckOnly) {
     New-FixtureProject -RepoRoot $repoRoot -Work $Work -App $app -Origin $origin -Bin $bin -Data @{ git_host = 'gitlab' }
@@ -163,6 +189,7 @@ exit 0
         $routes = @('glab api "projects/:id/merge_requests/<number>/notes/<id>"', 'glab api --method PUT "projects/:id/merge_requests/<number>/notes/<id>" -F body=@<file>', 'discussions/<discussion id>/notes/<id>')
         $missing = @($routes | Where-Object { -not $commandText.Contains($_) })
         Check 'fixture: the installed /address-feedback has the GitLab read-back and edit routes' ($commandText -and $missing.Count -eq 0) "missing: $($missing -join '; ')"
+        Test-InstalledCommand $app 'address-feedback' 'the GitLab read-back and edit routes' $routes
 
         $callsLog = Join-Path $hostDir 'calls.log'
         $footer = ([IO.File]::ReadAllText((Join-Path $hostDir 'footer.txt'))).Trim()
@@ -222,26 +249,16 @@ function Get-FarewellResult([string]$Folder) {
 }
 
 if (-not $CheckOnly) {
-    if (-not (Get-Command $Claude -ErrorAction SilentlyContinue)) { throw 'Claude Code CLI not found: install it, or pass -Claude <path>' }
-
-    $claudeArgs = @{ Claude = $Claude; MaxBudgetUsd = $MaxBudgetUsd; App = $app; Work = $Work }
-    $script:cost = 0.0
-    $script:sessionId = ''
+    # New-Agent reads Copilot's token before Use-FixtureEnvironment puts the gh stand-in first on PATH.
+    $agent = New-Agent -Tool $Tool -Claude $Claude -Copilot $Copilot -Model $Model -MaxBudgetUsd $MaxBudgetUsd -TimeoutMinutes $TimeoutMinutes -App $app -Work $Work
     Use-FixtureEnvironment $Work $bin {
-        $first = Invoke-Claude @claudeArgs -Prompt '/address-feedback #1' -Index 1
-        Check 'Claude Code run 1 returned a session' ($first -and $first.session_id) 'no session_id in the output'
-        if ($first -and $first.total_cost_usd) { $script:cost += [double]$first.total_cost_usd }
-        $script:sessionId = if ($first) { "$($first.session_id)" } else { '' }
+        Invoke-Agent $agent -Prompt '/address-feedback #1' -Index 1
         $pushed = "$(git --git-dir=$origin rev-parse $head 2>$null)".Trim() -ne $headOid
-        if (-not $pushed -and $first -and $first.session_id) {
-            $second = Invoke-Claude @claudeArgs -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $first.session_id -Index 2
-            Check 'Claude Code run 2 returned a session' ($second -and $second.session_id) 'no session_id in the output'
-            if ($second -and $second.total_cost_usd) { $script:cost += [double]$second.total_cost_usd }
+        if (-not $pushed -and $agent.SessionId) {
+            Invoke-Agent $agent -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $agent.SessionId -Index 2
         }
     }
-    "Cost: $script:cost USD"
-    "Fixture: $app"
-    "Continue the session from $app with: claude --resume $script:sessionId"
+    Write-AgentSummary $agent
 }
 
 Use-FixtureEnvironment $Work $bin {

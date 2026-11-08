@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.68.1] - 2026-11-07
+
+### Changed
+
+- No change for projects made from the template. Every end-to-end test, `tests/e2e/Test-AddressFeedback.ps1`, `Test-AddressFeedbackGitLab.ps1`, `Test-RunFeedback.ps1` and `Test-RunIssues.ps1`, takes `-Tool copilot` to run its prompts in the Copilot CLI (`copilot -p`) instead of Claude Code, on the same fixture and with the same checks, so a model runs the Copilot copies of `/address-feedback`, `/run-feedback` and `/run-issues`; `Test-AddressFeedback.ps1 -Tool copilot -Scenario resume-claude` has Copilot move a Claude Code run's worktree into the main checkout and finish it, and `-Scenario resume-claude` names the scenario whose stopped run Claude Code left. The runner, `tests/e2e/Agent.ps1`, gives a Copilot session a `COPILOT_HOME` of its own, no GitHub MCP server and the token it reads before the `gh` stand-in shadows `gh`, and checks that the session ran the project's skill; `-Model` picks either tool's model, `-MaxBudgetUsd` also caps a Copilot session, in AI credits, `-TimeoutMinutes` (45 by default) stops a `claude` or `copilot` call that runs longer, with its child processes, and `tests/Test-AgentRunner.ps1` checks the runner against stand-ins for both CLIs. The fixture project has both tools' commands, and each `-SetupOnly` checks that both copies hold what its checks read. The check that `/address-feedback #2` stopped on its branch name also requires no `feedback-2` or `worktree-feedback-2` branch, the main checkout on `main` and no `PLAN.md`, so a Copilot run that stopped on a leftover checkout fails it ([#270](https://github.com/NCodeGroup/project-template/issues/270)).
+
 ## [0.68.0] - 2026-11-07
 
 ### Added
@@ -1072,7 +1078,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.68.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.68.1...HEAD
+[0.68.1]: https://github.com/NCodeGroup/project-template/compare/v0.68.0...v0.68.1
 [0.68.0]: https://github.com/NCodeGroup/project-template/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/NCodeGroup/project-template/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/NCodeGroup/project-template/compare/v0.65.0...v0.66.0
