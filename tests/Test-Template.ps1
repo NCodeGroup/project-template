@@ -314,7 +314,7 @@ foreach ($case in $cases) {
         Check "${name}: the Copilot setup workflow has the one job Copilot runs, runs by hand, reads only contents and stops at 59 minutes" ($setup -match '(?m)^jobs:\r?\n  copilot-setup-steps:\r?$' -and [regex]::Matches($setup, '(?m)^    runs-on: ').Count -eq 1 -and $setup.Contains('workflow_dispatch:') -and $setup -match '(?m)^    timeout-minutes: 59\r?$' -and $setup -match '(?m)^    permissions:\r?\n      contents: read\r?$' -and -not $setup.Contains(': write')) $setup
         # Its push and pull_request triggers list it and each file of the project its steps run, so a change to any of them runs it.
         $setupLf = $setup -replace '\r\n', "`n"
-        $wantPaths = @('.github/workflows/copilot-setup-steps.yml') + @(if ($case.Stack -eq 'dotnet') { '.github/actions/install-dotnet/**', 'build/Get-TestRuntimes.ps1' }) + @(if ($case.Stack -eq 'node') { '.node-version' })
+        $wantPaths = @('.github/workflows/copilot-setup-steps.yml') + @(if ($case.Stack -eq 'dotnet') { '.github/actions/install-dotnet/**', 'build/Get-TestRuntimes.ps1' }) + @(if ($usesNode) { '.node-version' })
         $pathLists = @([regex]::Matches($setupLf, '(?m)^    paths:\n((?:      - .+\n)+)') | ForEach-Object { @($_.Groups[1].Value.TrimEnd("`n") -split "`n" | ForEach-Object { $_.Substring(8) }) -join ',' })
         $missingPaths = @($wantPaths | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dest ($_ -replace '/\*\*$', ''))) })
         Check "${name}: the Copilot setup workflow's push and pull_request triggers list it and each file of the project it runs, for .NET the install-dotnet action and build/Get-TestRuntimes.ps1" ($pathLists.Count -eq 2 -and -not @($pathLists | Where-Object { $_ -ne ($wantPaths -join ',') }) -and -not $missingPaths) "lists: $($pathLists -join ' | '); missing: $($missingPaths -join ', ')"
@@ -329,6 +329,7 @@ foreach ($case in $cases) {
             default { $setupUses.Count -eq 1 }
         }
         Check "${name}: the Copilot setup workflow installs what CI installs for the stack" $setupOk $setup
+        Check "${name}: the Copilot setup workflow sets up Node.js from .node-version exactly when the project uses Node.js" ($setup.Contains('node-version-file: .node-version') -eq $usesNode) $setup
     }
     # The code review caller: only for a GitHub project that asked for it, and never a GitLab one, which isn't asked.
     $reviewCaller = Join-Path $dest '.github\workflows\code-review.yml'

@@ -17,7 +17,7 @@ on:
       - .github/actions/install-dotnet/**
       - build/Get-TestRuntimes.ps1
 {%- endif %}
-{%- if stack == 'node' %}
+{%- if stack == 'node' or uses_node %}
       - .node-version
 {%- endif %}
   pull_request:
@@ -27,7 +27,7 @@ on:
       - .github/actions/install-dotnet/**
       - build/Get-TestRuntimes.ps1
 {%- endif %}
-{%- if stack == 'node' %}
+{%- if stack == 'node' or uses_node %}
       - .node-version
 {%- endif %}
 
@@ -113,4 +113,10 @@ jobs:
         if: hashFiles('**/*.ps1', '**/*.psm1') != ''
         shell: pwsh
         run: Install-Module Pester, PSScriptAnalyzer -Force -Scope CurrentUser
+{%- endif %}
+{%- if uses_node and stack != 'node' %}
+      # The Node.js .node-version names, for the frontend or tooling the build runs (ADR-0200).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
 {%- endif %}
