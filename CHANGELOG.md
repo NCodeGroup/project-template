@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A `SessionStart` hook in `.claude/settings.json` runs `.claude/hooks/ensure-pwsh.sh`, so a Claude Code cloud session has `pwsh` without stopping to ask to install it. In a cloud session (`CLAUDE_CODE_REMOTE=true`) whose container lacks `pwsh`, the script installs the pinned PowerShell package from Microsoft's apt repository, which a cloud session's default network reaches, after checking its SHA-256; it supports Ubuntu 24.04 x86_64 and elsewhere prints one line and exits 0. It does nothing on a developer's own machine or when `pwsh` is already there, such as after a cloud environment's setup script installed it, and it never fails the session. `tests/Test-EnsurePwsh.ps1` checks the script's paths and the hook's entry in both settings files. Projects get them with `.\.template\Update-Project.ps1`, which merges the hook into the project's `.claude/settings.json`.
+
 ## [0.68.4] - 2026-11-08
 
 ### Changed

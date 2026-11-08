@@ -9,5 +9,18 @@
     "allow": [
       "EnterWorktree"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/ensure-pwsh.sh\"",
+            "timeout": 180
+          }
+        ]
+      }
+    ]
   }
 }
