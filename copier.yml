@@ -38,6 +38,7 @@ _merged_files:
   - .claude/settings.json
   - .github/workflows/ci.yml
   - .github/workflows/copilot-setup-steps.yml
+  - .github/actions/install-dotnet/action.yml
   - .github/dependabot.yml
   - .gitlab-ci.yml
   - Directory.Packages.props
