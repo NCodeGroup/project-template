@@ -354,6 +354,7 @@ foreach ($case in $cases) {
     }
     if ($case.Host -eq 'github') {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
+        Check "${name}: CI sets up Node.js from .node-version exactly when the project uses Node.js" ($ci.Contains('node-version-file: .node-version') -eq $usesNode -and ([regex]::Matches($ci, 'uses: actions/setup-node@').Count -eq [int]$usesNode)) $ci
         Check "${name}: CI runs the commit attribution check" ($ci.Contains('./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD') -and $ci.Contains('merge_group:') -and $ci.Contains('${{ github.event.pull_request.base.sha'))
         Check "${name}: CI checks the pull request's title and description, also after an edit" ($ci.Contains('PR_TITLE: ${{ github.event.pull_request.title }}') -and $ci.Contains('PR_BODY: ${{ github.event.pull_request.body }}') -and $ci.Contains('-PullRequestTitle $env:PR_TITLE -PullRequestBody $env:PR_BODY') -and $ci.Contains('types: [opened, synchronize, reopened, edited]')) $ci
         $checkouts = [regex]::Matches($ci, '(?m)^\s+- uses: actions/checkout@').Count
