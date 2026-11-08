@@ -59,6 +59,8 @@ jobs:
             run: ./tests/Test-UpdateConflictStaging.ps1
           - name: Test the update's exit code
             run: ./tests/Test-UpdateExitCode.ps1
+          - name: Test updating .NET libraries
+            run: ./tests/Test-UpdateLibrary.ps1
           - name: Set up the address-feedback end-to-end fixture
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly
           - name: Set up the address-feedback end-to-end fixture for a session that refuses GraphQL
@@ -93,6 +95,8 @@ jobs:
             run: ./tests/Test-AdoptOwnedFiles.ps1
           - name: Test the changelog backfill check
             run: ./tests/Test-ChangelogBackfill.ps1
+          - name: Test the library release checks
+            run: ./tests/Test-LibraryRelease.ps1
           - name: Check the changelog for duplicate headings
             run: ./tests/Test-ChangelogHeadings.ps1
           - name: Test the plan state script's concurrent calls

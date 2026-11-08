@@ -1,5 +1,4 @@
-{#- The repository's license, as copier.yml computes repository_license; the fallback serves a render before it exists. -#}
-{%- set spdx = repository_license | default(license | default('') or (package_license | default('') if nuget_package | default(false) else '')) or '' -%}
+{%- set spdx = license -%}
 # {{ project_name }}
 {% if project_description %}
 {{ project_description }}
@@ -55,7 +54,7 @@ The workflow files come from a Copier template, which owns them: never edit `.te
 - [CONTRIBUTING.md](CONTRIBUTING.md): how to set up, build, test and propose a change.
 - [SECURITY.md](SECURITY.md): how to report a vulnerability privately.
 - [docs/decisions/](docs/decisions/README.md): the decisions behind the design, the project's and the template's.
-- `CHANGELOG.md`: what changed in each release, in the Keep a Changelog format. The first plan creates it.
+- `CHANGELOG.md`: in the Keep a Changelog format, what the product does until its first stable release, while `AGENTS.md`'s Landing section says `pre-release: untracked`, and what changed in each release from then on. The first plan creates it.
 {%- if spdx in ['Apache-2.0', 'MIT'] %}
 - [LICENSE.txt](LICENSE.txt): the license.
 {%- endif %}

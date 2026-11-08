@@ -43,7 +43,7 @@ if (-not $copierCache) { $env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache' 
 try {
     $output = & $exe @prefix copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test dotnet" --data 'stack=dotnet' --data 'git_host=github' --data "workflow_tools=[claude, copilot, local]" $tplUrl (Join-Path $Work 'dotnet') 2>&1 | Out-String
     if ($LASTEXITCODE) { throw "copier copy for dotnet exited with code ${LASTEXITCODE}: $($output.Trim())" }
-    $output = & $exe @prefix copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test dotnet-library-apache" --data 'stack=dotnet' --data 'git_host=github' --data "workflow_tools=[claude, copilot]" --data 'nuget_package=true' --data 'package_license=Apache-2.0' $tplUrl (Join-Path $Work 'dotnet-library-apache') 2>&1 | Out-String
+    $output = & $exe @prefix copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test dotnet-library-apache" --data 'stack=dotnet' --data 'git_host=github' --data "workflow_tools=[claude, copilot]" --data 'nuget_package=true' --data 'license=Apache-2.0' $tplUrl (Join-Path $Work 'dotnet-library-apache') 2>&1 | Out-String
     if ($LASTEXITCODE) { throw "copier copy for dotnet-library-apache exited with code ${LASTEXITCODE}: $($output.Trim())" }
 }
 finally { $env:COPIER_CACHE_DIR = $copierCache }
@@ -104,6 +104,16 @@ try {
 
     $dodOutput = pwsh -NoProfile -File build/dod.ps1 2>&1 | Out-String
     Check 'dotnet: build/dod.ps1 passes and says so' ($LASTEXITCODE -eq 0 -and $dodOutput.TrimEnd().EndsWith('Definition of Done: PASSED') -and $dodOutput.Contains('== Decisions') -and $dodOutput.Contains('== Test') -and -not $dodOutput.Contains('== Pack')) $dodOutput
+
+    # The runtimes script names the older framework a test project targets, and nothing for the SDK's own.
+    $runtimesNone = @(pwsh -NoProfile -File build/Get-TestRuntimes.ps1 2>&1)
+    $runtimesNoneCode = $LASTEXITCODE
+    New-Item -ItemType Directory -Force tests/Legacy.Tests | Out-Null
+    [IO.File]::WriteAllText((Join-Path (Get-Location) 'tests/Legacy.Tests/Legacy.Tests.csproj'), '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFrameworks>net8.0;net10.0</TargetFrameworks></PropertyGroup></Project>')
+    dotnet sln add tests/Legacy.Tests | Out-Null
+    $runtimesLegacy = @(pwsh -NoProfile -File build/Get-TestRuntimes.ps1 2>&1)
+    $runtimesLegacyCode = $LASTEXITCODE
+    Check 'dotnet: build/Get-TestRuntimes.ps1 names the runtime of an older framework a test project targets, and none for the SDK''s own' ($runtimesNoneCode -eq 0 -and $runtimesNone.Count -eq 0 -and $runtimesLegacyCode -eq 0 -and $runtimesLegacy.Count -eq 1 -and $runtimesLegacy[0] -eq '8.0.x') "$($runtimesNone -join ',') | $($runtimesLegacy -join ',')"
 }
 finally { Pop-Location }
 

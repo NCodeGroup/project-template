@@ -56,6 +56,13 @@
     When the project has version tags merged into HEAD that the changelog (AGENTS.md's Landing changelog key,
     CHANGELOG.md by default) has no section for, it ends with a /plan-migration request to backfill them.
 
+    For a .NET library, it names the AssemblyVersion to set in Directory.Build.props when a release of the current
+    major was built with a higher one than build/ProjectTemplate.props pins (ADR-0136). It leaves
+    .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
+    publish.
+    A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
+    anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
+
     Every version of this script accepts -Path, -Ref, -Data, -NoCommit, -TemplateClone and -HandedOff, so any
     version can hand over to any later one.
 
@@ -274,22 +281,60 @@ function Get-GitHooksSetup {
 
 # The changelog AGENTS.md's Landing section names (CHANGELOG.md by default) as File, and as Range the version tags merged into HEAD
 # that have no release heading in it: <oldest>..<newest>, the tag alone, or -. .template/Get-PlanState.ps1 prints Range as changelog-backfill.
+# With pre-release: untracked in the Landing section, a tag below 1.0.0 needs no section.
 # This is a deliberate copy of that logic, not shared code: Update-Project.ps1 runs on its own, from an older template's copy, before any workflow script exists to dot-source.
 # Change the release-heading pattern and the merged-tag filter in both places, or the request printed here can disagree with changelog-backfill.
 function Get-ChangelogBackfill {
     $file = 'CHANGELOG.md'
+    $untracked = $false
     if (Test-Path -LiteralPath AGENTS.md) {
         $inLanding = $false
         foreach ($line in Get-Content -LiteralPath AGENTS.md) {
             if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
             if ($inLanding -and $line -match '^## ') { break }
-            if ($inLanding -and $line -match '^- changelog:\s*`?([^`\s]+)') { $file = $Matches[1]; break }
+            if ($inLanding -and $line -match '^- changelog:\s*`?([^`\s]+)') { $file = $Matches[1] }
+            if ($inLanding -and $line -match '^- pre-release:\s*`?untracked`?\s*$') { $untracked = $true }
         }
     }
     $listed = @(if (Test-Path -LiteralPath $file -PathType Leaf) { foreach ($line in Get-Content -LiteralPath $file) { if ($line -match '^## \[?v?(\d+\.\d+\.\d+)\]?(?: - \d{4}-\d{2}-\d{2})?(?: \[YANKED\])?\s*$') { [version]$Matches[1] } } })
-    $missing = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -notin $listed } | Sort-Object { [version]($_ -replace '^v') })
+    $missing = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -notin $listed -and -not ($untracked -and ([version]$Matches[1]).Major -lt 1) } | Sort-Object { [version]($_ -replace '^v') })
     $range = if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0] } else { "$($missing[0])..$($missing[-1])" }
     [pscustomobject]@{ File = $file; Range = $range }
+}
+
+# Deliberate copies of tools/adopt/Adoption.psm1's functions, as for Get-ChangelogBackfill: change both, or tests\Test-LibraryRelease.ps1 fails.
+function Get-NuGetPublisher {
+    if (-not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
+    $found = foreach ($file in Get-ChildItem -LiteralPath .github/workflows -File) {
+        if ($file.Extension -in '.yml', '.yaml' -and $file.Name -ne 'publish.yml' -and (Get-Content -LiteralPath $file.FullName -Raw) -match '(?i)\bnuget(?:\.exe)?\s+push\b') { ".github/workflows/$($file.Name)" }
+    }
+    @($found) | Sort-Object
+}
+
+function Get-AssemblyVersionFloor {
+    if (-not (Test-Path -LiteralPath build/ProjectTemplate.props -PathType Leaf)) { return }
+    if ((Get-Content -LiteralPath build/ProjectTemplate.props -Raw) -notmatch 'Name="ProjectTemplatePinAssemblyVersion"') { return }
+    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion[\s>]') { return }
+    $tags = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$' } |
+        Sort-Object { [version]($_ -replace '^v' -replace '-.*$') })
+    if ($tags.Count -eq 0) { return }
+    $major = ([version]($tags[-1] -replace '^v' -replace '-.*$')).Major
+    $best = $null
+    $bestTag = $null
+    foreach ($tag in $tags) {
+        $number = [version]($tag -replace '^v' -replace '-.*$')
+        if ($number.Major -ne $major) { continue }
+        $shipped = $null
+        $props = git show "${tag}:Directory.Build.props" 2>$null
+        if ($LASTEXITCODE -eq 0 -and ($props -join "`n") -match '<AssemblyVersion>\s*(\d+(?:\.\d+){1,3})\s*</AssemblyVersion>') { $shipped = [version]$Matches[1] }
+        if (-not $shipped) {
+            $template = git show "${tag}:build/ProjectTemplate.props" 2>$null
+            $shipped = if ($LASTEXITCODE -eq 0 -and ($template -join "`n") -match 'Name="ProjectTemplatePinAssemblyVersion"') { [version]::new($major, 0, 0, 0) } else { $number }
+        }
+        $shipped = [version]::new($shipped.Major, $shipped.Minor, [Math]::Max($shipped.Build, 0), [Math]::Max($shipped.Revision, 0))
+        if (-not $best -or $shipped -gt $best) { $best = $shipped; $bestTag = $tag }
+    }
+    if ($best -gt [version]::new($major, 0, 0, 0)) { [pscustomobject]@{ Tag = $bestTag; AssemblyVersion = $best.ToString(); Major = $major } }
 }
 
 $project = (Resolve-Path -LiteralPath $Path).Path
@@ -302,6 +347,10 @@ try {
     try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { Write-Verbose "Couldn't set the console's output encoding: $_" }
     if (-not (Test-Path -LiteralPath .copier-answers.yml)) { throw "$project has no .copier-answers.yml, so it wasn't created from the template." }
     if (git status --porcelain) { throw "$project has uncommitted changes. Commit or stash them first." }
+    # copier.yml's license validator refuses a NuGet library without a license: stop before anything changes, naming the -Data that gives one.
+    $nugetAnswer = if ($Data.ContainsKey('nuget_package')) { "$($Data['nuget_package'])" } else { Get-Answer 'nuget_package' }
+    $licenseAnswer = if ($Data.ContainsKey('license')) { "$($Data['license'])" } else { Get-Answer 'license' }
+    if ($nugetAnswer -eq 'true' -and -not "$licenseAnswer".Trim()) { throw "A NuGet package needs a license, and $project publishes NuGet packages without a license answer. Run the update with the SPDX license expression its packages carry: .\.template\Update-Project.ps1 -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' }" }
     $head = git rev-parse HEAD
     $from = Get-Answer '_commit'
     $src = Get-Answer '_src_path'
@@ -423,6 +472,10 @@ try {
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
         foreach ($file in $deleted) { $copierArgs += '--exclude', "/$file" }
+        # A library whose own workflow already pushes NuGet packages gets no publish.yml, which would push them a second time.
+        $publishers = @(if ((Get-Answer 'nuget_package') -eq 'true') { Get-NuGetPublisher })
+        $publishLeftOut = $publishers.Count -gt 0 -and -not (Test-Path -LiteralPath .github/workflows/publish.yml) -and '.github/workflows/publish.yml' -notin @($deleted)
+        if ($publishLeftOut) { $copierArgs += '--exclude', '/.github/workflows/publish.yml' }
         # A file the project owns, merged or template-owned, stays as it is; its template change is shown below.
         foreach ($file in $ownedFiles) { $copierArgs += '--exclude', "/$file" }
         # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes
@@ -561,6 +614,23 @@ try {
         $ownedConflicts | ForEach-Object { "  $_" }
         "To keep the project's versions, make them project-owned$(if ($rewritten) { ', with the merged files above,' }) so updates leave them alone and show the template's changes instead. Abandon this update with git reset --hard; git clean -fd, then run:"
         $ownedCommand
+    }
+
+    # A library release built with a higher AssemblyVersion than build/ProjectTemplate.props pins (Get-AssemblyVersionFloor).
+    $floor = Get-AssemblyVersionFloor
+    if ($floor) {
+        ''
+        "$($floor.Tag) was released with AssemblyVersion $($floor.AssemblyVersion), and build/ProjectTemplate.props gives every $($floor.Major).x release $($floor.Major).0.0.0, which an application compiled against $($floor.AssemblyVersion) can't load. Until the next major version, set it in Directory.Build.props, after the import of build/ProjectTemplate.props (ADR-0136):"
+        "  <PropertyGroup><AssemblyVersion>$($floor.AssemblyVersion)</AssemblyVersion></PropertyGroup>"
+    }
+    # A library with its own NuGet publishing workflow (Get-NuGetPublisher).
+    if ($publishLeftOut) {
+        ''
+        "Left out .github/workflows/publish.yml: $($publishers -join ', ') already push NuGet packages, and a published release would run both. To publish through publish.yml instead, with nuget.org trusted publishing, delete $($publishers -join ', ') and run the update again."
+    }
+    elseif ($publishers.Count -gt 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml)) {
+        ''
+        "Both .github/workflows/publish.yml and $($publishers -join ', ') push NuGet packages, so a published release runs both. Keep one: delete publish.yml, or move the publishing into it and delete the others."
     }
 
     # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).

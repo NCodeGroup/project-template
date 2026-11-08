@@ -87,6 +87,8 @@ function Get-AdoptionAnswers([string]$Path) {
         stack        = $stack
         project_name = if ($solutions.Count -eq 1) { $solutions[0].BaseName } else { Get-RepositoryName $Path $remote }
         git_host     = if ($remote -match 'gitlab') { 'gitlab' } else { 'github' }
+        # A repository with a history tracks its changes (ADR-0015): an AGENTS.md the template writes for it says pre-release: tracked.
+        pre_release  = 'tracked'
     }
     $tools = @(Get-WorkflowTools $Path)
     if ($tools.Count) { $answers.workflow_tools = $tools }
@@ -114,6 +116,24 @@ function Get-AdoptionAnswers([string]$Path) {
         # npm init writes a test script that only fails.
         $answers.test_command = if ($scripts['test'] -and $scripts['test'] -notmatch 'no test specified') { "$manager run test" } else { '' }
     }
+    # The license: a .NET repository's PackageLicenseExpression, else the root license file's text when it is Apache-2.0 or MIT.
+    $license = $null
+    if ($stack -eq 'dotnet') {
+        $props = Join-Path $Path 'Directory.Build.props'
+        if (Test-Path -LiteralPath $props) {
+            $text = Get-Content -LiteralPath $props -Raw
+            if ($text -match '<PackageLicenseExpression>\s*([^<\s]+)\s*</PackageLicenseExpression>') { $license = $Matches[1] }
+        }
+    }
+    if (-not $license) {
+        $licenseFile = Get-ChildItem -LiteralPath $Path -File | Where-Object Name -Match '^(LICEN[CS]E|COPYING)(\.(txt|md))?$' | Select-Object -First 1
+        if ($licenseFile) {
+            $text = Get-Content -LiteralPath $licenseFile.FullName -Raw
+            if ($text -match 'Apache License\s+Version 2\.0') { $license = 'Apache-2.0' }
+            elseif ($text -match '(?m)^\s*MIT License' -or $text -match 'Permission is hereby granted, free of charge') { $license = 'MIT' }
+        }
+    }
+    if ($license) { $answers.license = $license }
     $answers
 }
 
@@ -378,18 +398,62 @@ function Test-KeepAChangelog([string]$Text) { $Text -match '(?m)^## \[(Unrelease
 # that have no release heading in it: <oldest>..<newest>, the tag alone, or -. workflow/Get-PlanState.ps1 prints Range as changelog-backfill.
 function Get-ChangelogBackfill {
     $file = 'CHANGELOG.md'
+    $untracked = $false
     if (Test-Path -LiteralPath AGENTS.md) {
         $inLanding = $false
         foreach ($line in Get-Content -LiteralPath AGENTS.md) {
             if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
             if ($inLanding -and $line -match '^## ') { break }
-            if ($inLanding -and $line -match '^- changelog:\s*`?([^`\s]+)') { $file = $Matches[1]; break }
+            if ($inLanding -and $line -match '^- changelog:\s*`?([^`\s]+)') { $file = $Matches[1] }
+            if ($inLanding -and $line -match '^- pre-release:\s*`?untracked`?\s*$') { $untracked = $true }
         }
     }
     $listed = @(if (Test-Path -LiteralPath $file -PathType Leaf) { foreach ($line in Get-Content -LiteralPath $file) { if ($line -match '^## \[?v?(\d+\.\d+\.\d+)\]?(?: - \d{4}-\d{2}-\d{2})?(?: \[YANKED\])?\s*$') { [version]$Matches[1] } } })
-    $missing = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -notin $listed } | Sort-Object { [version]($_ -replace '^v') })
+    $missing = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -notin $listed -and -not ($untracked -and ([version]$Matches[1]).Major -lt 1) } | Sort-Object { [version]($_ -replace '^v') })
     $range = if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0] } else { "$($missing[0])..$($missing[-1])" }
     [pscustomobject]@{ File = $file; Range = $range }
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+# The workflows other than publish.yml that run nuget push, as .github/workflows/<name>, sorted: a repository with one
+# has its own NuGet publisher, and a second one would publish every package twice.
+function Get-NuGetPublisher {
+    if (-not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
+    $found = foreach ($file in Get-ChildItem -LiteralPath .github/workflows -File) {
+        if ($file.Extension -in '.yml', '.yaml' -and $file.Name -ne 'publish.yml' -and (Get-Content -LiteralPath $file.FullName -Raw) -match '(?i)\bnuget(?:\.exe)?\s+push\b') { ".github/workflows/$($file.Name)" }
+    }
+    @($found) | Sort-Object
+}
+
+# For a library whose build/ProjectTemplate.props pins the assembly version and whose Directory.Build.props sets none:
+# the highest assembly version a version tag of the newest major shipped, when it exceeds <major>.0.0.0, as Tag,
+# AssemblyVersion and Major. A tag shipped its Directory.Build.props's AssemblyVersion, else <major>.0.0.0 when its
+# build/ProjectTemplate.props already pinned, else major.minor.patch.0. Nothing when there is no such version.
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both
+# together; tests keep the two equal.
+function Get-AssemblyVersionFloor {
+    if (-not (Test-Path -LiteralPath build/ProjectTemplate.props -PathType Leaf)) { return }
+    if ((Get-Content -LiteralPath build/ProjectTemplate.props -Raw) -notmatch 'Name="ProjectTemplatePinAssemblyVersion"') { return }
+    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion[\s>]') { return }
+    $tags = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$' } |
+        Sort-Object { [version]($_ -replace '^v' -replace '-.*$') })
+    if ($tags.Count -eq 0) { return }
+    $major = ([version]($tags[-1] -replace '^v' -replace '-.*$')).Major
+    $best = $null
+    $bestTag = $null
+    foreach ($tag in $tags) {
+        $number = [version]($tag -replace '^v' -replace '-.*$')
+        if ($number.Major -ne $major) { continue }
+        $shipped = $null
+        $props = git show "${tag}:Directory.Build.props" 2>$null
+        if ($LASTEXITCODE -eq 0 -and ($props -join "`n") -match '<AssemblyVersion>\s*(\d+(?:\.\d+){1,3})\s*</AssemblyVersion>') { $shipped = [version]$Matches[1] }
+        if (-not $shipped) {
+            $template = git show "${tag}:build/ProjectTemplate.props" 2>$null
+            $shipped = if ($LASTEXITCODE -eq 0 -and ($template -join "`n") -match 'Name="ProjectTemplatePinAssemblyVersion"') { [version]::new($major, 0, 0, 0) } else { $number }
+        }
+        $shipped = [version]::new($shipped.Major, $shipped.Minor, [Math]::Max($shipped.Build, 0), [Math]::Max($shipped.Revision, 0))
+        if (-not $best -or $shipped -gt $best) { $best = $shipped; $bestTag = $tag }
+    }
+    if ($best -gt [version]::new($major, 0, 0, 0)) { [pscustomobject]@{ Tag = $bestTag; AssemblyVersion = $best.ToString(); Major = $major } }
+}
+
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup

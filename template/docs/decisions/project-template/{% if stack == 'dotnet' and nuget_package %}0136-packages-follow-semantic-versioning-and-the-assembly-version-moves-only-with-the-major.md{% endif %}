@@ -31,11 +31,18 @@ A library's packages follow Semantic Versioning 2.0, and their assembly version 
 - A release tag is never moved or deleted: one tag, one published set of packages. A published version is never
   replaced; a bad release is fixed by the next version.
 - A release candidate gates a major version. Minor and patch versions ship directly.
-- Before 1.0.0, a breaking change may land in a minor version, as Semantic Versioning allows for `0.y.z`, but the
-  changelog still calls it out.
-- The changelog is `CHANGELOG.md`, in the Keep a Changelog format. Every plan's last step writes its section, and
-  `/ship-plan`, with `release: tag+release` in `AGENTS.md`'s Landing section, tags the merged commit with the plan's
-  version and publishes the release from that section.
+- Before 1.0.0, what a `0.y.z` package promises its consumers is the project's choice, set by the `pre-release` key of
+  `AGENTS.md`'s Landing section ([ADR-0015](0015-a-pre-release-project-describes-the-product-as-it-is.md)), not by the
+  version. A library whose published `0.y.z` packages have consumers it keeps working sets `pre-release: tracked`: the
+  rules of this section apply to those packages, except that a breaking change may land in a minor version, as Semantic
+  Versioning allows for `0.y.z`, and the changelog marks it with `**Breaking:**` and says what to change. With
+  `pre-release: untracked`, a consumer of a `0.y.z` package gets no compatibility promise: a public member changes or
+  goes in place, with no deprecation step, the changelog describes the product as it is, and the 1.0.0 section lists
+  everything 1.0.0 ships.
+- The changelog is `CHANGELOG.md`, in the Keep a Changelog format. Every plan's last step writes its section, or, in a
+  pre-release project, edits the catalog in `## [Unreleased]`, and `/ship-plan`, with `release: tag+release` in
+  `AGENTS.md`'s Landing section, tags the merged commit with the plan's version and publishes the release from that
+  section.
 
 ### The assembly version
 
@@ -50,6 +57,12 @@ assembly's versions from the final `Version`:
 `2.5.0-rc.1`. It is a target, not a property, so a `Version` set in the project file or on the command line, as
 publishing passes the tag's, counts. A minor or patch upgrade is then a drop-in replacement with no binding redirect,
 and different major versions load side by side.
+
+A library that released a version of its current major with a higher assembly version, such as `5.3.0` built as
+`5.3.0.0` by a build that doesn't pin it, keeps that assembly version for the rest of the major, because an
+application compiled against `5.3.0.0` cannot load `5.0.0.0`. It sets `AssemblyVersion` in `Directory.Build.props` to
+the highest one the major released, which opts it out of the pinning, and removes the setting in the next major.
+`Update-Project.ps1` and the template's adoption name the release and the version to set.
 
 ### The compatibility rules the number expresses
 
@@ -95,6 +108,8 @@ A pull request that touches the public API is reviewed against this checklist:
 - A change in observable validation or security behavior is a major version even when the API diff is empty, so the
   review asks about behavior, not only signatures.
 - A project that sets `AssemblyVersion` itself opts out of the pinning and owns the consequences.
+- A consumer of a `0.y.z` package reads its promise from the project's choice: with `pre-release: tracked`, the
+  changelog names every break and what to change; with `pre-release: untracked`, nothing binds before 1.0.0.
 - The 1.0.0 release is the point where the compatibility rules start to bind, and the point where the tracked surface
   moves to `PublicAPI.Shipped.txt`.
 
@@ -107,4 +122,6 @@ A pull request that touches the public API is reviewed against this checklist:
 - [.NET library guidance: breaking changes](https://learn.microsoft.com/dotnet/standard/library-guidance/breaking-changes)
 - [ADR-0131](0131-public-api-is-tracked-and-evolves-compatibly.md): the public API surface is tracked and evolves
   backward-compatibly.
+- [ADR-0015](0015-a-pre-release-project-describes-the-product-as-it-is.md): a pre-release project describes the product
+  as it is and keeps no compatibility.
 - [ADR-0134](0134-evolving-optional-parameters-are-a-dto.md): a growing set of optional criteria is an init-only DTO.

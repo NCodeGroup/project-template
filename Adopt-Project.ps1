@@ -7,7 +7,7 @@
     Works out the template's answers from what the repository already has (stack, project name, git host, workflow tools, authors,
     build and test commands), applies -Data over them, and runs `copier copy --overwrite --defaults` into the
     repository (Copier from PATH, or through uvx). The answers are recorded in .copier-answers.yml, so the project
-    can update itself with .\.template\Update-Project.ps1 afterwards. A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
+    can update itself with .\.template\Update-Project.ps1 afterwards. The answers include pre_release = tracked, so an AGENTS.md the template writes, for a repository that has none, says pre-release: tracked, since the repository has a history (ADR-0015); Copier records that answer nowhere. A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
 
     The repository must be the root of a Git repository with no uncommitted changes and no .copier-answers.yml.
     The result is one commit, "Adopt project-template <version>"; -NoCommit stages it instead. Before committing, the
@@ -150,6 +150,12 @@ try {
                 }
             }
         }
+        # A repository whose own workflow already pushes NuGet packages keeps it alone, without the template's publish.yml beside it.
+        $publishers = @(Get-NuGetPublisher)
+        if ($publishers.Count -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and '.github/workflows/publish.yml' -notin @(git ls-tree -r --name-only $head -- .github/workflows)) {
+            Remove-Item -LiteralPath .github/workflows/publish.yml
+            $report.Add("  Skipped .github/workflows/publish.yml $([char]0x2014) $($publishers -join ', ') already push NuGet packages")
+        }
 
         $followUps = [Collections.Generic.List[string]]::new()
         if (Test-Path -LiteralPath .github/copilot-instructions.md) { $followUps.Add('fold .github/copilot-instructions.md into AGENTS.md or a file it lists') }
@@ -181,6 +187,8 @@ try {
                 $buildLists = @(Get-BuildFileList $project)
                 if ($buildLists.Count) { $followUps.Add("re-admit Directory.Build.props and build/ProjectTemplate.props, which it imports, in each list of the build's files: $($buildLists -join ', ')") }
             }
+            $floor = Get-AssemblyVersionFloor
+            if ($floor) { $followUps.Add("set <AssemblyVersion>$($floor.AssemblyVersion)</AssemblyVersion> in Directory.Build.props until the next major version, because $($floor.Tag) was released with that assembly version (ADR-0136)") }
             # A library's build fails on a public symbol its PublicAPI.*.txt files don't list; the verification below records the API as it is.
             if ($NoVerify -and (Test-Path -LiteralPath build/Update-PublicApi.ps1)) { $followUps.Add('record each packable project''s public API with ./build/Update-PublicApi.ps1, which the build now checks') }
         }

@@ -84,6 +84,21 @@ finally { Pop-Location }
 $a = Get-AdoptionAnswers $demo
 $detail = ($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; '
 Check 'unit: Get-AdoptionAnswers works out a .NET repository' (($a.stack -eq 'dotnet') -and ($a.project_name -eq 'NCode.Demo') -and ($a.git_host -eq 'gitlab') -and ($a.author_name -eq 'NCode Group') -and ($a.build_command -eq 'dotnet build src/NCode.Demo.slnx') -and ($a.test_command -eq 'dotnet test src/NCode.Demo.slnx')) $detail
+Check 'unit: Get-AdoptionAnswers answers pre_release tracked, since a repository has a history' ($a.pre_release -eq 'tracked') $detail
+$apacheText = "                                 Apache License`n                           Version 2.0, January 2004`n"
+$licenseFolders = [ordered]@{
+    'license-props' = @{ Files = @{ 'src/A/A.csproj' = "<Project />`n"; 'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <PackageLicenseExpression>MIT</PackageLicenseExpression>`n  </PropertyGroup>`n</Project>`n"; 'LICENSE' = $apacheText }; License = 'MIT' }
+    'license-apache' = @{ Files = @{ 'pyproject.toml' = "x`n"; 'LICENSE.txt' = $apacheText }; License = 'Apache-2.0' }
+    'license-mit'    = @{ Files = @{ 'pyproject.toml' = "x`n"; 'LICENSE.md' = "MIT License`n`nCopyright (c) 2026 Example`n" }; License = 'MIT' }
+    'license-own'    = @{ Files = @{ 'pyproject.toml' = "x`n"; 'LICENSE' = "Own license.`n" }; License = $null }
+}
+$badLicense = foreach ($name in $licenseFolders.Keys) {
+    $a = Get-AdoptionAnswers (New-TestFolder $name $licenseFolders[$name].Files)
+    $want = $licenseFolders[$name].License
+    if ($want) { if ($a.license -ne $want) { "${name}: license=$($a.license)" } }
+    elseif ($a.Contains('license')) { "${name}: license=$($a.license)" }
+}
+Check 'unit: Get-AdoptionAnswers works out the license' (-not $badLicense) ($badLicense -join ' | ')
 
 $others = [ordered]@{
     'only-python' = @{ Files = @('pyproject.toml'); Stack = 'python' }
@@ -224,7 +239,7 @@ $a = & $scaffold -Path $folder -Phase Answers
 $out = @(& $scaffold -Path $folder -Phase Apply)
 $proj = Get-Content -Raw -LiteralPath (Join-Path $folder 'src/A/A.csproj')
 $after = & $scaffold -Path $folder -Phase Detect
-Check 'unit: scaffold adapter' ($detected -eq $true -and $a.nuget_package -eq $true -and $a.package_license -eq 'Apache-2.0' -and $a.author_name -eq 'NCode Group' -and $a.package_icon -eq 'NCodeGroup.png' -and $out[0] -like '*src/A/A.csproj' -and $proj.Contains('JetBrains.Annotations') -and -not $proj.Contains('NCode.ProjectSettings.Scaffold') -and $after -eq $false) "$detected | $($out -join ' / ') | $proj | $after"
+Check 'unit: scaffold adapter' ($detected -eq $true -and $a.nuget_package -eq $true -and $a.license -eq 'Apache-2.0' -and $a.author_name -eq 'NCode Group' -and $a.package_icon -eq 'NCodeGroup.png' -and $out[0] -like '*src/A/A.csproj' -and $proj.Contains('JetBrains.Annotations') -and -not $proj.Contains('NCode.ProjectSettings.Scaffold') -and $after -eq $false) "$detected | $($out -join ' / ') | $proj | $after"
 $leftovers = $out -join "`n"
 Check 'unit: scaffold adapter reports what the package left behind' ($leftovers.Contains('References Microsoft.SourceLink.GitHub, which the .NET SDK builds in: remove it from src/A/A.csproj') -and $leftovers.Contains('Sets DocumentationFile') -and $leftovers.Contains('Nothing imports src/A/project.props now') -and -not $leftovers.Contains('bin/Debug/project.props') -and $leftovers.Contains('A.sln.DotSettings holds the scaffold''s ReSharper file header') -and $leftovers.Contains('.github/workflows/main.yml pushes packages to NuGet too') -and -not $leftovers.Contains('.github/workflows/publish.yml pushes')) $leftovers
 
@@ -296,7 +311,7 @@ if (-not $UnitOnly) {
     Invoke-Git -C $scaffoldRepo tag v1.0.0
     $out = & $adopt -Path $scaffoldRepo -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; test_command = '' } -NoVerify:$SkipDotnetBuild | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.copier-answers.yml')
-    Check 'scaffold: answers from the adapter' ($answersText -match '(?m)^stack: dotnet\s*$' -and $answersText -match '(?m)^project_name: NCode\.Demo\s*$' -and $answersText -match '(?m)^nuget_package: true\s*$' -and $answersText -match '(?m)^package_license: Apache-2\.0\s*$' -and $answersText -match '(?m)^package_icon: NCodeGroup\.png\s*$' -and $answersText -match '(?m)^author_name: NCode Group\s*$') "$answersText | $out"
+    Check 'scaffold: answers from the adapter' ($answersText -match '(?m)^stack: dotnet\s*$' -and $answersText -match '(?m)^project_name: NCode\.Demo\s*$' -and $answersText -match '(?m)^nuget_package: true\s*$' -and $answersText -match '(?m)^license: Apache-2\.0\s*$' -and $answersText -match '(?m)^package_icon: NCodeGroup\.png\s*$' -and $answersText -match '(?m)^author_name: NCode Group\s*$') "$answersText | $out"
     $csproj = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'src/NCode.Demo/NCode.Demo.csproj')
     $packages = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'Directory.Packages.props')
     Check 'scaffold: package removed and versions central' (-not $csproj.Contains('NCode.ProjectSettings.Scaffold') -and -not $csproj.Contains('Version="') -and $csproj.Contains('JetBrains.Annotations') -and $packages.Contains('<PackageVersion Include="JetBrains.Annotations" Version="2025.2.4" />') -and -not $packages.Contains('NCode.ProjectSettings.Scaffold')) "$csproj | $packages"
@@ -318,9 +333,13 @@ if (-not $UnitOnly) {
         'src/Lib/Lib.csproj' = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n</Project>`n"
         'README.md'          = "# Lib`n"
         'LICENSE'            = "Own license.`n"
+        '.github/workflows/release.yml' = "name: release`non: release`njobs:`n  push:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push out/*.nupkg`n"
     } 'https://github.com/example/lib.git'
-    $licenseOut = & $adopt -Path $ownLicense -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; nuget_package = $true; package_license = 'Apache-2.0'; test_command = '' } -NoVerify | Out-String
+    Invoke-Git -C $ownLicense tag v2.3.0
+    $licenseOut = & $adopt -Path $ownLicense -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; nuget_package = $true; license = 'Apache-2.0'; test_command = '' } -NoVerify | Out-String
     Check 'own-license: keeps its own license, without LICENSE.txt or COPYRIGHT.txt, and says so' ((Get-Content -Raw -LiteralPath (Join-Path $ownLicense 'LICENSE')) -eq "Own license.`n" -and -not (Test-Path -LiteralPath (Join-Path $ownLicense 'LICENSE.txt')) -and -not (Test-Path -LiteralPath (Join-Path $ownLicense 'COPYRIGHT.txt')) -and $licenseOut.Contains('Skipped LICENSE.txt') -and $licenseOut.Contains('Skipped COPYRIGHT.txt') -and -not (git -C $ownLicense status --porcelain)) $licenseOut
+    Check 'own-license: leaves publish.yml out beside its own publishing workflow, and says so' (-not (Test-Path -LiteralPath (Join-Path $ownLicense '.github/workflows/publish.yml')) -and (Test-Path -LiteralPath (Join-Path $ownLicense '.github/workflows/release.yml')) -and $licenseOut.Contains('Skipped .github/workflows/publish.yml')) $licenseOut
+    Check 'own-license: names the AssemblyVersion its release of the current major shipped' ($licenseOut.Contains('set <AssemblyVersion>2.3.0.0</AssemblyVersion> in Directory.Build.props')) $licenseOut
 
     if (-not $SkipDotnetBuild) {
         $subject = git -C $scaffoldRepo log -1 --format=%s
