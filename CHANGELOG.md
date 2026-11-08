@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-11-07
+
+### Added
+
+- `/address-feedback` and `/run-feedback` run in Copilot Chat and Copilot CLI too, from two new templates, `address-feedback-copilot` and `run-feedback-copilot`: they take the same requests, judge each open review thread, top-level comment and review summary against the code, push the fixes to the pull request's branch, never forced, and reply to each item starting with `Autopilot:`. A pass works in the open folder instead of a worktree: it needs a clean working tree and no `PLAN.md`, works on a branch `feedback-<number>` made from the pull request's branch, and once its fixes are pushed switches back to the branch you had checked out and deletes `feedback-<number>`; a stop after its plan is written leaves that branch checked out for `/continue-plan`. `/run-feedback` waits between passes with a foreground sleep. Run them in a Local session in Copilot Chat, or a Copilot CLI session started on Opus, without approval prompts (Bypass Approvals or Autopilot; `/allow-all`). Projects get them with `.\.template\Update-Project.ps1` ([#254](https://github.com/NCodeGroup/project-template/issues/254)).
+
+### Changed
+
+- `/address-feedback` keeps what differs between Claude Code and Copilot, how the run's worktree or branch is made, left and cleaned up, in a `## Checkout` section at its end; in Claude Code it also stops while a Copilot run on the same pull request is open on its branch `feedback-<number>`, and `/continue-plan` offers `/address-feedback <number>` in every tool. Projects get it with `.\.template\Update-Project.ps1` ([#254](https://github.com/NCodeGroup/project-template/issues/254)).
+- The project instructions, and a new project's `AGENTS.md` Landing section, name `/address-feedback` and `/run-feedback` among the commands that run `prelude` and `gate` before each push, and `USAGE.md` says each feedback pass runs the gate. Projects get the instructions with `.\.template\Update-Project.ps1`; an existing project's `AGENTS.md` is its own, so a project that sets `gate` or `prelude` may add the two commands to its Landing section's description itself ([#254](https://github.com/NCodeGroup/project-template/issues/254)).
+- No change for projects made from the template. The Claude Code and Copilot variants of `address-feedback` and `run-feedback` share their text through `workflow/templates/_address-feedback-body.md` and `_run-feedback-body.md`, and the orchestrating commands share how each tool runs a stage through `_claude-stages.md` and `_copilot-stages.md`, so each rule is written once; `tests/Test-Template.ps1` checks the Copilot copies and that every copy holds its body partial's whole text ([#254](https://github.com/NCodeGroup/project-template/issues/254)).
+
 ## [0.63.1] - 2026-11-07
 
 ### Changed
@@ -1006,7 +1018,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.63.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.64.0...HEAD
+[0.64.0]: https://github.com/NCodeGroup/project-template/compare/v0.63.1...v0.64.0
 [0.63.1]: https://github.com/NCodeGroup/project-template/compare/v0.63.0...v0.63.1
 [0.63.0]: https://github.com/NCodeGroup/project-template/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/NCodeGroup/project-template/compare/v0.61.2...v0.62.0
