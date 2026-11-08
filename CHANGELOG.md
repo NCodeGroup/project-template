@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - A plan that `/address-feedback` writes names its pull request on a `Pull request:` line and the commit the run started from on a `Start:` line. `.template/Get-PlanState.ps1` prints that number as `feedback`, reads that pull request's state by its number on the `pr` line, prints `conflicts: -` for it, and names `address-feedback <number>` as `next` once its steps are done and reviewed, never `ship-plan`, or a `none` that says `address-feedback <number>` discards the run once the pull request is merged or closed. `/continue-plan` names `/address-feedback <number>` for such a plan, and `/ship-plan`, `/finish-plan` and `/review-plan-diff` send it there, so a stopped run's fixes reach the reviewed pull request's branch with a reply on each item, never a pull request of their own. Projects get it with `.\.template\Update-Project.ps1` ([#259](https://github.com/NCodeGroup/project-template/issues/259)).
 
+- `/address-feedback` fetches the pull request's branch before it compares the run's commits with it, so its protected-file check and its check for someone else's push see the branch as it is on `origin`, and it fetches again right before the push. When someone pushed to that branch during the run, it stops and says how to go on: merge `origin/<head>` into the run's checkout, never by a rebase or a force-push, then run `/address-feedback <number>` again. A resumed run whose `next` is one the run stops on, such as `none the plan has no steps`, stops before it asks to go ahead. Projects get it with `.\.template\Update-Project.ps1` ([#259](https://github.com/NCodeGroup/project-template/issues/259)).
+
 ## [0.65.0] - 2026-11-07
 
 ### Added
