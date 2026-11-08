@@ -15,7 +15,7 @@
 
 A pass follows `address-feedback` from its Start item 1 through its Reply, with these changes:
 
-1. Start item 3: when the pull request's state is `MERGED` or `CLOSED` (`merged` or `closed` on GitLab), the run ends: go on with Report.
+1. Start item 3: when the pull request's state is `MERGED` or `CLOSED` (`merged` or `closed` on GitLab), the run ends: go on with Report. An earlier run's checkout stays as it is, and `/address-feedback <number>` discards it.
 2. Start item 5: these aren't items either; list each in the report instead:
    - an NCode Review finding that isn't to act on, as NCode Review Findings says: its nits, its protected findings and those for me; and every top-level comment and review summary NCode Review writes;
    - a thread whose first comment is from a review bot the `landing` line's `review-bots` names and two or more of whose comments start with `Autopilot:`: it is for me, and never gets a third reply;
@@ -25,8 +25,8 @@ A pass follows `address-feedback` from its Start item 1 through its Reply, with 
 
    When no item is left, the pass ends there, before `address-feedback`'s Plan: go on with Wait.
 3. Start item 6 runs in the first pass only. Later passes show no summary and go on.
-4. Push: after its item 5 pushes, note `<pushed>`, the commit `git rev-parse HEAD` prints in the run's checkout. {{PROMPT:_review-request}} When the project runs NCode Review, note the time with `Get-Date`: NCode Review's review of `<pushed>` is awaited from then on, as Wait says.
-5. Reply: as it says. When it leaves the run's checkout in place, stop the run, as Stop says: `/continue-plan` shows it.
+4. Push: after its item 7 pushes, note `<pushed>`, the commit `git rev-parse HEAD` prints in the run's checkout. {{PROMPT:_review-request}} When the project runs NCode Review, note the time with `Get-Date`: NCode Review's review of `<pushed>` is awaited from then on, as Wait says.
+5. Reply: as it says. When it leaves the run's checkout in place, stop the run, as Stop says: `/continue-plan` shows it, and `/address-feedback <number>` or `/run-feedback <number>` finishes it.
 
 When the pass stops in `address-feedback`, follow its Stop, then stop the run: go on with Report.
 
