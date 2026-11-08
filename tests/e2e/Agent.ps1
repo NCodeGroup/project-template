@@ -10,7 +10,7 @@
     Get-CommandFile gives the path of a command's installed copy in the fixture: a .claude command, or a .github skill.
     Invoke-ClaudeCli and Invoke-CopilotCli run one headless prompt in the tool and return what it printed, parsed.
     Invoke-Agent runs one prompt in either tool and checks the run returned a session; for Copilot it also checks the project's skill ran and no MCP server loaded.
-    Write-AgentSummary prints the cost and how to continue the session by hand.
+    Write-AgentSummary prints the cost, as unknown or as at least what it read when a Copilot run's usage file couldn't be read, and how to continue the session by hand.
 #>
 
 # Copilot bills in AI credits, 100 to the dollar, and its --max-ai-credits takes no fewer than 30.
@@ -65,6 +65,7 @@ function New-Agent(
         Token        = $token
         CostUsd      = 0.0
         Credits      = @{}
+        UnreadUsage  = [Collections.Generic.List[int]]::new()
         SessionId    = ''
     }
 }
@@ -129,8 +130,13 @@ function Invoke-CopilotCli($Agent, [string]$Prompt, [string]$SessionId, [int]$In
     [IO.File]::WriteAllText((Join-Path $Agent.Work "copilot-$Index.jsonl"), (($lines -join "`n") + "`n"))
     $events = @($lines | Where-Object { $_ -like '{*' } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } | Where-Object { $_ })
     $result = @($events | Where-Object { $_.type -eq 'result' }) | Select-Object -Last 1
-    $credits = 0.0
-    try { $credits = [double](Get-Content -Raw -LiteralPath $usageFile -ErrorAction Stop | ConvertFrom-Json).totalNanoAiu / 1e9 } catch { $credits = 0.0 }
+    $credits = $null
+    try {
+        $usage = Get-Content -Raw -LiteralPath $usageFile -ErrorAction Stop | ConvertFrom-Json
+        if ($null -eq $usage.totalNanoAiu) { throw 'it has no totalNanoAiu' }
+        $credits = [double]$usage.totalNanoAiu / 1e9
+    }
+    catch { Write-Warning "Copilot run ${Index}: no AI credits read from $usageFile ($($_.Exception.Message)), so its cost is unknown." }
     [pscustomobject]@{
         SessionId  = if ($result) { "$($result.sessionId)" } else { '' }
         Credits    = $credits
@@ -145,7 +151,8 @@ function Invoke-Agent($Agent, [string]$Prompt, [string]$SessionId = '', [int]$In
     if ($Agent.Tool -eq 'copilot') {
         $run = Invoke-CopilotCli $Agent $Prompt $SessionId $Index
         $session = $run.SessionId
-        if ($session) { $Agent.Credits[$session] = $run.Credits }
+        if ($null -eq $run.Credits) { $Agent.UnreadUsage.Add($Index) }
+        elseif ($session) { $Agent.Credits[$session] = $run.Credits }
     }
     else {
         $out = Invoke-ClaudeCli $Agent $Prompt $SessionId $Index
@@ -170,7 +177,12 @@ function Write-AgentSummary($Agent) {
     if ($Agent.Tool -eq 'copilot') {
         $credits = 0.0
         foreach ($value in $Agent.Credits.Values) { $credits += [double]$value }
-        "Cost: $([Math]::Round($credits / $CopilotCreditsPerUsd, 2)) USD ($([Math]::Round($credits, 2)) AI credits)"
+        $usd = [Math]::Round($credits / $CopilotCreditsPerUsd, 2)
+        $read = [Math]::Round($credits, 2)
+        $unread = $Agent.UnreadUsage -join ', '
+        if ($Agent.UnreadUsage.Count -eq 0) { "Cost: $usd USD ($read AI credits)" }
+        elseif ($credits -gt 0) { "Cost: at least $usd USD ($read AI credits; none read for Copilot run $unread)" }
+        else { "Cost: unknown (no AI credits read for Copilot run $unread)" }
         "Fixture: $($Agent.App)"
         "Continue the session from $($Agent.App) with: `$env:COPILOT_HOME = '$($Agent.CopilotHome)'; copilot --resume $($Agent.SessionId)"
     }

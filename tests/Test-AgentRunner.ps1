@@ -11,7 +11,7 @@
     them back, and checks the project's skill ran and no MCP server loaded; that a resumed Copilot run passes --resume,
     and that the cost is the last credits of the one session, not the sum of both runs. Also checks that New-Agent warns
     when Copilot's token is a general one, from GH_TOKEN, and not when it is COPILOT_GITHUB_TOKEN. Also checks that
-    -MaxBudgetUsd 0.1 gives Copilot --max-ai-credits 30, its least, and that 0 passes no cap to either tool. Prints PASS or
+    -MaxBudgetUsd 0.1 gives Copilot --max-ai-credits 30, its least, and that 0 passes no cap to either tool. Also checks that a Copilot run whose usage file is missing warns with the file's path, and that the summary then prints the cost as unknown, or as at least the credits read. Prints PASS or
     FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -51,7 +51,7 @@ $session = if ($i -ge 0) { $args[$i + 1] } else { 'claude-session-1' }
 
 # The stand-in for copilot. It records every call and the environment it ran with in copilot-calls.jsonl, and prints the
 # JSONL copilot -p prints. A prompt with no-session gets the authentication error, one with mcp-connected a connected MCP
-# server, and one with no-skill no skill request.
+# server, one with no-skill no skill request, and one with no-usage no usage file.
 Write-Text (Join-Path $bin 'copilot.ps1') @'
 $log = Join-Path $PSScriptRoot 'copilot-calls.jsonl'
 Add-Content -LiteralPath $log -Value (ConvertTo-Json -Compress -InputObject @{ args = @($args); cwd = (Get-Location).Path; home = $env:COPILOT_HOME; allowAll = $env:COPILOT_ALLOW_ALL; token = $env:COPILOT_GITHUB_TOKEN })
@@ -65,7 +65,7 @@ if ($prompt -match '^/([\w-]+)' -and -not $prompt.Contains('no-skill')) {
 $resume = [array]::IndexOf(@($args), '--resume')
 $nano = if ($resume -ge 0) { 4000000000 } else { 2500000000 }
 $usageFile = $args[[array]::IndexOf(@($args), '--usage-output-file') + 1]
-Set-Content -LiteralPath $usageFile -Value "{""totalNanoAiu"":$nano}"
+if (-not $prompt.Contains('no-usage')) { Set-Content -LiteralPath $usageFile -Value "{""totalNanoAiu"":$nano}" }
 $session = if ($resume -ge 0) { $args[$resume + 1] } else { 'copilot-session-1' }
 "{""type"":""result"",""sessionId"":""$session"",""exitCode"":0}"
 '@
@@ -163,6 +163,14 @@ try {
     $copilotCalls = Read-Calls (Join-Path $bin 'copilot-calls.jsonl')
     $claudeCalls = Read-Calls (Join-Path $bin 'claude-calls.jsonl')
     Check 'budget: -MaxBudgetUsd 0.1 gives Copilot --max-ai-credits 30, its least, and 0 passes neither --max-ai-credits nor --max-budget-usd' ((Get-FlagValue $copilotCalls[-2].args '--max-ai-credits') -eq '30' -and $copilotCalls[-1].args -notcontains '--max-ai-credits' -and $claudeCalls[-1].args -notcontains '--max-budget-usd') "$($copilotCalls[-2] | ConvertTo-Json -Compress) $($copilotCalls[-1] | ConvertTo-Json -Compress) $($claudeCalls[-1] | ConvertTo-Json -Compress)"
+
+    $usageWork = Join-Path $Work 'no-usage'
+    $usageAgent = New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -App $app -Work $usageWork
+    $warned = @(Invoke-Agent $usageAgent -Prompt 'no-usage' -Index 1 3>&1 | Where-Object { $_ -is [Management.Automation.WarningRecord] } | ForEach-Object { $_.Message })
+    $unknown = @(Write-AgentSummary $usageAgent)[0]
+    Invoke-Agent $usageAgent -Prompt 'go ahead' -SessionId $usageAgent.SessionId -Index 2
+    $atLeast = @(Write-AgentSummary $usageAgent)[0]
+    Check 'copilot: a run whose usage file is missing warns with its path, and the summary prints the cost as unknown, then as at least the credits read' ($warned.Count -eq 1 -and $warned[0].Contains((Join-Path $usageWork 'copilot-1-usage.json')) -and $unknown -eq 'Cost: unknown (no AI credits read for Copilot run 1)' -and $atLeast -eq 'Cost: at least 0.04 USD (4 AI credits; none read for Copilot run 1)') "warnings: $($warned -join '; '); $unknown; $atLeast"
 }
 finally {
     foreach ($n in $envNames) { [Environment]::SetEnvironmentVariable($n, $savedEnv[$n]) }
