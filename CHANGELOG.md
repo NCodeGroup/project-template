@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.65.0] - 2026-11-07
+## [0.66.0] - 2026-11-07
 
 ### Added
 
@@ -19,6 +19,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - A plan that `/address-feedback` writes names its pull request on a `Pull request:` line and the commit the run started from on a `Start:` line. `.template/Get-PlanState.ps1` prints that number as `feedback`, reads that pull request's state by its number on the `pr` line, prints `conflicts: -` for it, and names `address-feedback <number>` as `next` once its steps are done and reviewed, never `ship-plan`, or a `none` that says `address-feedback <number>` discards the run once the pull request is merged or closed. `/continue-plan` names `/address-feedback <number>` for such a plan, and `/ship-plan`, `/finish-plan` and `/review-plan-diff` send it there, so a stopped run's fixes reach the reviewed pull request's branch with a reply on each item, never a pull request of their own. Projects get it with `.\.template\Update-Project.ps1` ([#259](https://github.com/NCodeGroup/project-template/issues/259)).
+
+## [0.65.0] - 2026-11-07
+
+### Added
+
+- `build/Install-Dotnet.ps1` (.NET) installs the SDK `global.json` selects, honouring its `rollForward` policy as `actions/setup-dotnet` does, then the runtimes `build/Get-TestRuntimes.ps1` names, taking each from Microsoft's release metadata and only once its download matches the SHA-512 that metadata gives. `.gitlab-ci.yml` runs it before the build, so a GitLab project builds with the SDK a GitHub one does, and a test project that targets an older .NET runs there too ([#255](https://github.com/NCodeGroup/project-template/issues/255), [#260](https://github.com/NCodeGroup/project-template/issues/260)).
+
+### Changed
+
+- ADR-0008 says CI installs the SDK `global.json` selects under its `rollForward` policy, with `actions/setup-dotnet` on GitHub and `build/Install-Dotnet.ps1` on GitLab, and that the SDK under `latestFeature`, the test runtimes and GitLab's `mcr.microsoft.com/dotnet/sdk:10.0` image, which supplies git and PowerShell, follow their newest release. `CONTRIBUTING.md` points at `build/Install-Dotnet.ps1` to install the SDK and runtimes locally ([#255](https://github.com/NCodeGroup/project-template/issues/255), [#260](https://github.com/NCodeGroup/project-template/issues/260)).
+
+## [0.64.1] - 2026-11-07
+
+### Changed
+
+- ADR-0143 and the Entity Framework Core section of `csharp.instructions.md` (.NET) name a pre-release project's one initial migration per database context `InitialCreate`, the name EF Core's documentation gives a project's first migration, keep it in the context's own folder `Migrations/<Context>`, and regenerate it on each model change with `dotnet ef migrations add InitialCreate --context <Context> --output-dir Migrations/<Context>`, which works as written with one context or several. Projects get them with `.\.template\Update-Project.ps1` ([#262](https://github.com/NCodeGroup/project-template/issues/262)).
 
 ## [0.64.0] - 2026-11-07
 
@@ -1032,8 +1048,10 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.65.0...HEAD
-[0.65.0]: https://github.com/NCodeGroup/project-template/compare/v0.64.0...v0.65.0
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.66.0...HEAD
+[0.66.0]: https://github.com/NCodeGroup/project-template/compare/v0.65.0...v0.66.0
+[0.65.0]: https://github.com/NCodeGroup/project-template/compare/v0.64.1...v0.65.0
+[0.64.1]: https://github.com/NCodeGroup/project-template/compare/v0.64.0...v0.64.1
 [0.64.0]: https://github.com/NCodeGroup/project-template/compare/v0.63.1...v0.64.0
 [0.63.1]: https://github.com/NCodeGroup/project-template/compare/v0.63.0...v0.63.1
 [0.63.0]: https://github.com/NCodeGroup/project-template/compare/v0.62.0...v0.63.0

@@ -17,6 +17,11 @@ build-and-test:
       prefix: nuget
       files: [Directory.Packages.props, global.json]
     paths: [.nuget/packages/]
+  # The image supplies git and PowerShell. build/Install-Dotnet.ps1 adds to its .NET the SDK global.json selects, as
+  # actions/setup-dotnet does on GitHub, and the runtimes build/Get-TestRuntimes.ps1 names, each once its download
+  # matches the SHA-512 in Microsoft's release metadata, so dotnet on the PATH builds and tests with them.
+  before_script:
+    - pwsh -NoProfile -File build/Install-Dotnet.ps1
 {%- elif stack == 'python' %}
   image: python:3
   rules:
