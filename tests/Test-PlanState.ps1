@@ -634,6 +634,14 @@ try {
     $r = Test-State (Get-State $gh.Repo) @{ unfiled = '0'; next = 'finish-plan' }
     Check 'follow-ups: filed, tracked and dropped follow-ups let a merged plan finish' $r.Ok $r.Detail
 
+    Write-Text (Join-Path $gh.Repo 'PLAN.md') ($base + "`n## Follow-ups`n`n- Next gap: d. $dash next`n")
+    $r = Test-State (Get-State $gh.Repo) @{ unfiled = '1'; next = 'ship-plan' }
+    Check 'follow-ups: a follow-up marked to act on next goes back to ship-plan until it is filed' $r.Ok $r.Detail
+
+    Write-Text (Join-Path $gh.Repo 'PLAN.md') ($base + "`n## Follow-ups`n`n- Next gap: d. $dash next $dash filed as #13`n- Next tracked gap: e. $dash next $dash already tracked as #14`n")
+    $r = Test-State (Get-State $gh.Repo) @{ unfiled = '0'; next = 'finish-plan' }
+    Check 'follow-ups: follow-ups marked to act on next and then filed or tracked let a merged plan finish' $r.Ok $r.Detail
+
     Write-Text (Join-Path $gh.Repo 'AGENTS.md') "# Demo`n`n## Landing`n`n- follow-ups: none`n"
     [IO.File]::AppendAllText((Join-Path $gh.Repo '.git/info/exclude'), "AGENTS.md`n")
     Write-Text (Join-Path $gh.Repo 'PLAN.md') ($base + $open)
