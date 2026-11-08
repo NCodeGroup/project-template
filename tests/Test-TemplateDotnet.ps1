@@ -167,21 +167,34 @@ Check 'installer: build/Install-Dotnet.ps1 without -InstallDir adds to the insta
 
 $metadataUrl = 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/8.0/releases.json'
 $mergeMetadata = @{ '8.0/releases.json' = New-StubChannel '8.0.11' @(New-StubSdk '8.0.404' @(@{ name = "dotnet-sdk-$suffix"; url = $sdkUrl; hash = $archiveHash })) }
-$unavailable = [Microsoft.PowerShell.Commands.HttpResponseException]::new('Response status code does not indicate success: 503 (Service Unavailable).', [Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::ServiceUnavailable))
-$rateLimited = [Microsoft.PowerShell.Commands.HttpResponseException]::new('Response status code does not indicate success: 429 (Too Many Requests).', [Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::TooManyRequests))
-$notFound = [Microsoft.PowerShell.Commands.HttpResponseException]::new('Response status code does not indicate success: 404 (Not Found).', [Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::NotFound))
+# An HttpResponseException as Invoke-RestMethod and Invoke-WebRequest throw it, with a Retry-After header when given
+# one: a TimeSpan for a number of seconds, a DateTimeOffset for a date.
+function New-StubHttpError([Net.HttpStatusCode]$Status, [object]$RetryAfter) {
+    $response = [Net.Http.HttpResponseMessage]::new($Status)
+    if ($RetryAfter) { $response.Headers.RetryAfter = [Net.Http.Headers.RetryConditionHeaderValue]::new($RetryAfter) }
+    [Microsoft.PowerShell.Commands.HttpResponseException]::new("Response status code does not indicate success: $([int]$Status) ($($response.ReasonPhrase)).", $response)
+}
+$unavailable = New-StubHttpError ServiceUnavailable
+$rateLimited = New-StubHttpError TooManyRequests
+$timedOut = New-StubHttpError RequestTimeout
+$notFound = New-StubHttpError NotFound
+$rateLimitedFor20 = New-StubHttpError TooManyRequests ([TimeSpan]::FromSeconds(20))
+$unavailableForAnHour = New-StubHttpError ServiceUnavailable ([DateTimeOffset]::UtcNow.AddHours(1))
 # What Invoke-WebRequest throws when -OperationTimeoutSeconds ends a download that stalls partway.
 $stalled = [AggregateException]::new([TimeoutException]::new('The request was canceled due to the configured OperationTimeout of 60 seconds elapsing'))
 $dir = New-StubInstallDir 'retry'
-$retried = Invoke-StubInstaller $mergeMetadata @{ $sdkUrl = [IO.File]::ReadAllBytes($archive) } @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($unavailable, $rateLimited); $sdkUrl = @($stalled) }
-$retriedOk = -not $retried.Error -and $retried.Printed.Contains('Installed .NET SDK 8.0.404 in') -and @($retried.Calls | Where-Object { $_ -eq $metadataUrl }).Count -eq 4 -and @($retried.Calls | Where-Object { $_ -eq $sdkUrl }).Count -eq 2 -and ($retried.Sleeps -join ',') -eq '5999,10999,5999'
+$retried = Invoke-StubInstaller $mergeMetadata @{ $sdkUrl = [IO.File]::ReadAllBytes($archive) } @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($unavailable, $timedOut); $sdkUrl = @($stalled, $rateLimitedFor20) }
+$retriedOk = -not $retried.Error -and $retried.Printed.Contains('Installed .NET SDK 8.0.404 in') -and @($retried.Calls | Where-Object { $_ -eq $metadataUrl }).Count -eq 4 -and @($retried.Calls | Where-Object { $_ -eq $sdkUrl }).Count -eq 3 -and ($retried.Sleeps -join ',') -eq '5999,10999,5999,20999'
+$dir = New-StubInstallDir 'throttled'
+$throttled = Invoke-StubInstaller $mergeMetadata @{} @{ SkipSdk = $true; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($rateLimited, $unavailableForAnHour) }
+$throttledOk = -not $throttled.Error -and $throttled.Calls.Count -eq 3 -and ($throttled.Sleeps -join ',') -eq '5999,60999'
 $dir = New-StubInstallDir 'unavailable'
 $gaveUp = Invoke-StubInstaller $mergeMetadata @{} @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($unavailable, $unavailable, $unavailable) }
 $gaveUpOk = $gaveUp.Error.Contains('503') -and $gaveUp.Calls.Count -eq 3 -and ($gaveUp.Sleeps -join ',') -eq '5999,10999' -and -not (Test-Path -LiteralPath (Join-Path $dir 'sdk'))
 $dir = New-StubInstallDir 'notfound'
 $missing = Invoke-StubInstaller $mergeMetadata @{} @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($notFound) }
 $missingOk = $missing.Error.Contains('404') -and $missing.Calls.Count -eq 1 -and -not $missing.Sleeps
-Check 'installer: build/Install-Dotnet.ps1 gives every request a 30-second answer and 60-second stall timeout, tries a failed or stalled one twice more, 5 and then 10 seconds later, and fails at once on a 404' ($retriedOk -and $gaveUpOk -and $missingOk) "$($retried.Error) $($retried.Calls -join ',') $($retried.Sleeps -join ',') | $($gaveUp.Error) $($gaveUp.Sleeps -join ',') | $($missing.Error) $($missing.Calls.Count)"
+Check 'installer: build/Install-Dotnet.ps1 gives every request a 30-second answer and 60-second stall timeout, tries a failed or stalled one twice more, 5 and then 10 seconds later, or after the Retry-After of a 429 or 503 up to 60 seconds, each plus up to a second at random, retries a 408, and fails at once on a 404' ($retriedOk -and $throttledOk -and $gaveUpOk -and $missingOk) "$($retried.Error) $($retried.Calls -join ',') $($retried.Sleeps -join ',') | $($throttled.Error) $($throttled.Sleeps -join ',') | $($gaveUp.Error) $($gaveUp.Sleeps -join ',') | $($missing.Error) $($missing.Calls.Count)"
 if ($InstallerOnly) {
     ''
     if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
