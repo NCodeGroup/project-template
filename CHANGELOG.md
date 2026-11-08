@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.68.2] - 2026-11-08
+
+### Fixed
+
+- The Entity Framework Core rule in `.github/instructions/csharp.instructions.md` and item 8 of ADR-0143 (.NET) keep a pre-release project's `InitialCreate` migration for each context in `Migrations/<Name>`, the context's class name without its `DbContext` or `Context` suffix, such as `Migrations/OpenId` for `OpenIdDbContext`, and regenerate it with `dotnet ef migrations add InitialCreate --context <Context> --output-dir Migrations/<Name>`. A folder named for the class becomes a namespace segment that hides the class from the scaffolded code, which then fails to compile with CS0118. A project whose migrations are in `Migrations/<Context>` deletes that folder and runs the command. Projects get them with `.\.template\Update-Project.ps1` ([#273](https://github.com/NCodeGroup/project-template/issues/273)).
+
+- `.github/workflows/copilot-setup-steps.yml` (GitHub, with Copilot) runs on a push to `main` or a pull request that changes it or a file its steps run, for .NET the `.github/actions/install-dotnet` action and `build/Get-TestRuntimes.ps1`, so a change to the .NET setup, such as a Dependabot bump of the action's `actions/setup-dotnet` pins, shows whether the Copilot setup still works before a session needs it. Its header says that a step that runs a file of the repository adds that file to both `paths` lists, and the action's header says that a workflow whose triggers list `paths` lists the action and the script. Projects get them with `.\.template\Update-Project.ps1`, which merges them with the project's own edits ([#274](https://github.com/NCodeGroup/project-template/issues/274)).
+
 ## [0.68.1] - 2026-11-07
 
 ### Changed
@@ -1078,7 +1086,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.68.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.68.2...HEAD
+[0.68.2]: https://github.com/NCodeGroup/project-template/compare/v0.68.1...v0.68.2
 [0.68.1]: https://github.com/NCodeGroup/project-template/compare/v0.68.0...v0.68.1
 [0.68.0]: https://github.com/NCodeGroup/project-template/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/NCodeGroup/project-template/compare/v0.66.0...v0.67.0
