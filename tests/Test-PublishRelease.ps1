@@ -38,6 +38,11 @@ Check 'release.yml runs on a push to main that changes CHANGELOG.md' ($workflow 
 Check 'release.yml gives its job contents: write and pull-requests: read' ($workflow -match '(?m)^    permissions:\r?\n      contents: write\r?\n(?:      #.*\r?\n)?      pull-requests: read')
 Check 'release.yml runs the script on the merged commit' ($workflow -match [regex]::Escape('run: ./template/.template/Publish-Release.ps1 -Commit $env:GITHUB_SHA'))
 
+$templateWorkflow = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template/.github/workflows/{% if git_host == ''github'' %}tag-release.yml{% endif %}')
+Check 'tag-release.yml runs on every push to main and by hand' ($templateWorkflow -match '(?m)^  push:\r?\n    branches: \[main\]\r?\n  workflow_dispatch:')
+Check 'tag-release.yml gives its job contents: write, actions: write and pull-requests: read' ($templateWorkflow -match '(?m)^    permissions:\r?\n      contents: write\r?\n      actions: write\r?\n      pull-requests: read\r?$')
+Check 'tag-release.yml runs the template''s script on the merged commit and names no nuget push' ($templateWorkflow.Contains('run: ./.template/Publish-Release.ps1 -Commit $env:GITHUB_SHA') -and $templateWorkflow -notmatch '(?i)\bnuget(?:\.exe)?\s+push\b')
+
 $temp = Join-Path ([IO.Path]::GetTempPath()) "publish-release-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $temp | Out-Null
 $releases = Join-Path $temp 'releases'
