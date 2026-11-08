@@ -122,6 +122,7 @@ if ($tags -ccontains $version) {
         & git push $Remote "refs/tags/$version"
         if ($LASTEXITCODE) {
             & git tag -d $version | Out-Null
+            if ($LASTEXITCODE) { Write-Warning "Couldn't delete the local tag $version; delete it with git tag -d $version." }
             # Another run, or /ship-plan, may have pushed the same tag a moment ago; the release below still needs it.
             if (-not ((Get-RemoteTag $Remote) -ccontains $version)) { throw "Pushing the tag $version to $Remote failed." }
             "$Remote got the tag $version from another run meanwhile."
@@ -133,8 +134,11 @@ if ($tags -ccontains $version) {
 
 if ($release -eq 'tag+release') {
     # REST, not `gh release view` and `gh release create`, which use GraphQL: a Claude Code cloud session can run this too.
-    & $Gh api "repos/{owner}/{repo}/releases/tags/$version" --silent *> $null
-    if (-not $LASTEXITCODE) {
+    $lookup = (& $Gh api "repos/{owner}/{repo}/releases/tags/$version" --silent 2>&1 | ForEach-Object { "$_" }) -join "`n"
+    $lookupCode = $LASTEXITCODE
+    # Only a 404 means there is no release; any other failure, such as a bad token or an outage, stops here with gh's message.
+    if ($lookupCode -and $lookup -notmatch 'HTTP 404') { throw "Can't tell whether GitHub has the release ${version}: $lookup" }
+    if (-not $lookupCode) {
         "GitHub has the release $version already."
     } elseif ($PSCmdlet.ShouldProcess($version, 'Publish the GitHub release')) {
         $notesFile = New-TemporaryFile

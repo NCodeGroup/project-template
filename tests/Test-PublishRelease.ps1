@@ -8,7 +8,8 @@
     the release notes; that a second run changes nothing; that a run after a tag without a release publishes only the
     release; that it tags nothing when the remote has a newer version tag, publishes no release with release: tag, and
     does nothing with release: none or pre-release: untracked; that it drops the v when the remote's version tags have
-    none; and that -WhatIf pushes and publishes nothing. Also checks that release.yml runs the script on a push to main
+    none; that a release lookup failing other than with a 404 stops it with gh's message; and that -WhatIf pushes and
+    publishes nothing. Also checks that release.yml runs the script on a push to main
     that changes CHANGELOG.md, with contents: write and the merged commit. Prints PASS or FAIL per check and exits 1 on
     any failure.
 
@@ -36,13 +37,16 @@ New-Item -ItemType Directory -Path $temp | Out-Null
 $releases = Join-Path $temp 'releases'
 New-Item -ItemType Directory -Path $releases | Out-Null
 $standIn = Join-Path $temp 'gh.ps1'
-# A stand-in for gh: `api repos/{owner}/{repo}/releases/tags/<tag>` succeeds when the release's file exists, `api
+# A stand-in for gh: `api repos/{owner}/{repo}/releases/tags/<tag>` succeeds when the release's file exists and else fails
+# printing gh's 404 message, or a 401 one when PUBLISH_RELEASE_TEST_LOOKUP_ERROR is set; `api
 # repos/{owner}/{repo}/releases -f tag_name=<tag> ... -F body=@<file>` copies the notes to it, and every call is logged.
 Set-Content -LiteralPath $standIn -Encoding utf8NoBOM -Value @'
 $releases = $env:PUBLISH_RELEASE_TEST_RELEASES
 Add-Content -LiteralPath (Join-Path $releases 'calls.log') -Value ($args -join ' ')
 if ($args[0] -eq 'api' -and $args[1] -match '^repos/\{owner\}/\{repo\}/releases/tags/(?<tag>.+)$') {
-    if (Test-Path -LiteralPath (Join-Path $releases $Matches.tag)) { exit 0 } else { exit 1 }
+    if (Test-Path -LiteralPath (Join-Path $releases $Matches.tag)) { exit 0 }
+    if ($env:PUBLISH_RELEASE_TEST_LOOKUP_ERROR) { 'gh: Bad credentials (HTTP 401)'; exit 1 }
+    'gh: Not Found (HTTP 404)'; exit 1
 }
 if ($args[0] -eq 'api' -and $args[1] -eq 'repos/{owner}/{repo}/releases') {
     $tag = ($args -match '^tag_name=')[0] -replace '^tag_name='
@@ -152,6 +156,12 @@ try {
     $run = Invoke-Publish $work @('-WhatIf')
     Check '-WhatIf: it pushes and publishes nothing' ($run.Code -eq 0 -and -not (Get-OriginTag $work).Count -and -not (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases -f') -and -not (& git -C $work tag --list)) $run.Output
 
+    $work = New-Clone 'lookup-error' '- release: tag+release'
+    Remove-Item -LiteralPath (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $env:PUBLISH_RELEASE_TEST_LOOKUP_ERROR = '1'
+    try { $run = Invoke-Publish $work } finally { Remove-Item Env:PUBLISH_RELEASE_TEST_LOOKUP_ERROR }
+    Check 'a release lookup that fails other than 404: it fails with gh''s message and publishes nothing' ($run.Code -ne 0 -and $run.Output -match 'HTTP 401' -and -not (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases -f')) $run.Output
+
     $work = New-Clone 'bad-policy' '- release: always'
     $run = Invoke-Publish $work
     Check 'an unknown release value: it fails and names it' ($run.Code -ne 0 -and $run.Output -match 'release: always') $run.Output
@@ -162,3 +172,5 @@ try {
 
 if ($failures.Count) { "Tests: FAILED ($($failures.Count))"; exit 1 }
 'Tests: PASSED'
+# The last git or pwsh call above may have failed on purpose; a caller that reads $LASTEXITCODE, as CI's pwsh shell does, sees 0.
+exit 0
