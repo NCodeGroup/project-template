@@ -219,7 +219,13 @@ foreach ($case in $cases) {
         Check "${name}: the public API is tracked and AssemblyVersion pinned to the major version only for a library" ($apiTracked -eq $library -and $versionPinned -eq $library) "$packages | $buildProps"
         $agentsText = Get-Content -LiteralPath (Join-Path $dest 'AGENTS.md') -Raw
         Check "${name}: AGENTS.md names the Definition of Done and gates each push with it" ($agentsText.Contains('- Definition of Done: `./build/dod.ps1`') -and $agentsText -match '(?m)^- gate: \./build/dod\.ps1 -Fast\r?$' -and ($agentsText.Contains('./build/Update-PublicApi.ps1') -eq $library)) $agentsText
-        $ciFile = if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' }
+        # A context's migrations folder named for its class becomes a namespace segment that hides the class (CS0118).
+        $efRule = Get-Content -LiteralPath (Join-Path $dest '.github\instructions\csharp.instructions.md') -Raw
+        $migrationsAdr = Get-Content -LiteralPath (Join-Path $dest 'docs\decisions\project-template\0143-migrations-run-before-the-rollout-and-only-expand.md') -Raw
+        $efCommand = 'dotnet ef migrations add InitialCreate --context <Context> --output-dir Migrations/<Name>'
+        $efMissing = @(foreach ($doc in @(@{ N = 'rule'; T = $efRule }, @{ N = 'ADR-0143'; T = $migrationsAdr })) { foreach ($t in $efCommand, 'without its `DbContext` or `Context` suffix', '`Migrations/OpenId` for', 'CS0118') { if (-not $doc.T.Contains($t)) { "$($doc.N): $t" } }; if ($doc.T.Contains('Migrations/<Context>')) { "$($doc.N): still Migrations/<Context>" } })
+        Check "${name}: the EF Core rule and ADR-0143 keep each context's initial migration in Migrations/<Name>, its class name without the DbContext or Context suffix, so the folder's namespace never hides the class (CS0118)" (-not $efMissing) ($efMissing -join '; ')
+        $ciFile =if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' }
         $ciText = Get-Content -LiteralPath (Join-Path $dest $ciFile) -Raw
         Check "${name}: CI runs the Definition of Done for the default commands" ($ciText.Contains('build/dod.ps1') -and -not ($ciText -match '(?m)^\s+(- )?dotnet (build|test)\s*$')) $ciText
         if ($case.Host -eq 'github') {
