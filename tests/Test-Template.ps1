@@ -124,6 +124,8 @@ $toolFiles = @{
 }
 $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'build\Get-TestRuntimes.ps1', 'build\Install-Dotnet.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
     '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md'
+# Files only a project that needs Node.js gets (stack node, or uses_node answered yes).
+$nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
 $hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\code-review-auto-merge.yml'; gitlab = @('.gitlab-ci.yml') }
@@ -143,6 +145,7 @@ $cases = @(
     @{ Name = 'node-bun'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'bun' } }
     @{ Name = 'node-yarn-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'yarn' } }
     @{ Name = 'node-bun-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'bun' } }
+    @{ Name = 'dotnet-node'; Stack = 'dotnet'; Host = 'github'; Data = @{ uses_node = 'true' } }
     @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
     @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
@@ -202,6 +205,13 @@ foreach ($case in $cases) {
     $present = @($dotnetOnly | Where-Object { Test-Path (Join-Path $dest $_) })
     if ($case.Stack -eq 'dotnet') { Check "${name}: .NET layer present" ($present.Count -eq $dotnetOnly.Count) }
     else { Check "${name}: no .NET layer" ($present.Count -eq 0) ($present -join ', ') }
+    $usesNode = $case.Stack -eq 'node' -or $case.Data.uses_node -eq 'true'
+    $nodePresent = @($nodeOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -Force -ErrorAction SilentlyContinue) })
+    if ($usesNode) { Check "${name}: Node.js files present" ($nodePresent.Count -eq $nodeOnly.Count) ((@($nodeOnly | Where-Object { $_ -notin $nodePresent })) -join ', ') }
+    else { Check "${name}: no Node.js files" ($nodePresent.Count -eq 0) ($nodePresent -join ', ') }
+    $agentsPrelude = @(Select-String -LiteralPath (Join-Path $dest 'AGENTS.md') -Pattern '^- prelude: (.*)$' | ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() })
+    $wantPrelude = if ($usesNode) { './.template/Use-Node.ps1' } else { 'none' }
+    Check "${name}: AGENTS.md sets the prelude to Use-Node.ps1 exactly when the project uses Node.js" ($agentsPrelude.Count -eq 1 -and $agentsPrelude[0] -eq $wantPrelude) "prelude=$($agentsPrelude -join '|') want=$wantPrelude"
     if ($case.Stack -eq 'dotnet') {
         $buildProps = Get-Content -LiteralPath (Join-Path $dest 'build\ProjectTemplate.props') -Raw
         $library = [bool]$case.Data.nuget_package
@@ -473,6 +483,9 @@ foreach ($case in $cases) {
             $managerOk = $managerOk -and (Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw).Contains("package-ecosystem: $ecosystem")
         }
         Check "${name}: CI installs and runs with $pm" $managerOk $ci
+        if ($case.Host -eq 'github') {
+            Check "${name}: CI reads the Node.js version from .node-version" ($ci.Contains('node-version-file: .node-version') -and -not $ci.Contains('lts/*')) $ci
+        }
     }
     $wanted = @($tools | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique)
     $unwanted = @($allTools | Where-Object { $_ -notin $tools } | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique | Where-Object { $_ -notin $wanted })
