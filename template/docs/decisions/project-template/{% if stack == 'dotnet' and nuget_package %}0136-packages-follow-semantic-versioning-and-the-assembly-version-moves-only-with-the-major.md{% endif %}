@@ -58,6 +58,12 @@ assembly's versions from the final `Version`:
 publishing passes the tag's, counts. A minor or patch upgrade is then a drop-in replacement with no binding redirect,
 and different major versions load side by side.
 
+A library that released a version of its current major with a higher assembly version, such as `5.3.0` built as
+`5.3.0.0` by a build that doesn't pin it, keeps that assembly version for the rest of the major, because an
+application compiled against `5.3.0.0` cannot load `5.0.0.0`. It sets `AssemblyVersion` in `Directory.Build.props` to
+the highest one the major released, which opts it out of the pinning, and removes the setting in the next major.
+`Update-Project.ps1` and the template's adoption name the release and the version to set.
+
 ### The compatibility rules the number expresses
 
 A minor or patch version keeps every consumer compiling and running. The public API evolves by these rules, and the

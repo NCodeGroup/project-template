@@ -30,8 +30,8 @@ evolves additively.
   format` fills an empty file but does not create one), and lists the `RS0017` symbols to delete or mark `*REMOVED*`.
   With `-Release`, in the change that releases a version, it moves the `PublicAPI.Unshipped.txt` entries into
   `PublicAPI.Shipped.txt`, applying the `*REMOVED*` lines.
-- The template's `Adopt-Project.ps1` runs it when it verifies an adopted library's build, so the API at adoption is
-  the baseline.
+- When the project template adopts an existing library, its adoption script runs it while verifying the library's
+  build, so the API at adoption is the baseline.
 - Before 1.0, the whole surface may stay in `PublicAPI.Unshipped.txt`, so every change is visible while the surface may
   still break. At 1.0 it moves to `PublicAPI.Shipped.txt`. In a pre-release project
   ([ADR-0015](0015-a-pre-release-project-describes-the-product-as-it-is.md)), a public member changes or goes in place,

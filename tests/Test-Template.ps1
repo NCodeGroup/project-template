@@ -106,7 +106,7 @@ $toolFiles = @{
     local = '.github\agents\local-implementer.agent.md', '.github\agents\hybrid-planner.agent.md',
         '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-local.prompt.md'
 }
-$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
+$dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'build\Get-TestRuntimes.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
     '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
@@ -129,8 +129,9 @@ $cases = @(
     @{ Name = 'node-bun-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'bun' } }
     @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
     @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
-    @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'MIT'; package_icon = 'icon.png' } }
-    @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; package_license = 'Apache-2.0' } }
+    @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
+    @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'Apache-2.0' } }
+    @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true' }; Refused = 'Required for a NuGet package' }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
     @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT' } }
     @{ Name = 'python-claude'; Stack = 'python'; Host = 'github'; Tools = @('claude') }
@@ -166,11 +167,17 @@ $renders = @($cases | ForEach-Object -ThrottleLimit ([Environment]::ProcessorCou
     $process.WaitForExit()
     [pscustomobject]@{ Name = $case.Name; ExitCode = $process.ExitCode; Output = ($stdout.Result + $stderr).Trim() }
 })
-$failedRenders = @($renders | Where-Object ExitCode -NE 0)
+$refusedNames = @($cases | Where-Object Refused | ForEach-Object Name)
+$failedRenders = @($renders | Where-Object { $_.ExitCode -ne 0 -and $_.Name -notin $refusedNames })
 if ($failedRenders) { throw (($failedRenders | ForEach-Object { "copier copy for $($_.Name) exited with code $($_.ExitCode): $($_.Output)" }) -join "`n") }
 
 foreach ($case in $cases) {
     $name = $case.Name
+    if ($case.Refused) {
+        $render = $renders | Where-Object Name -EQ $name
+        Check "${name}: Copier refuses it: $($case.Refused)" ($render.ExitCode -ne 0 -and $render.Output.Contains($case.Refused)) $render.Output
+        continue
+    }
     $dest = Join-Path $Work $name
     $tools = if ($case.Tools) { @($case.Tools) } else { $allTools }
 
@@ -184,7 +191,7 @@ foreach ($case in $cases) {
         $library = [bool]$case.Data.nuget_package
         # Without an answer, an NCode Group library takes the template's own icon.
         $icon = if ($case.Data.package_icon) { $case.Data.package_icon } else { 'NCodeGroup.png' }
-        $nugetOk = if ($library) { $buildProps.Contains("<PackageLicenseExpression>$($case.Data.package_license)</PackageLicenseExpression>") -and $buildProps.Contains("<PackageIcon>$icon</PackageIcon>") -and $buildProps.Contains("../$icon") -and -not $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
+        $nugetOk = if ($library) { $buildProps.Contains("<PackageLicenseExpression>$($case.Data.license)</PackageLicenseExpression>") -and $buildProps.Contains("<PackageIcon>$icon</PackageIcon>") -and $buildProps.Contains("../$icon") -and -not $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
             else { -not $buildProps.Contains('PackageLicenseExpression') -and $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
         Check "${name}: NuGet package settings" $nugetOk
         Check "${name}: analyzers, banned APIs and test-project suppressions in the build settings" ($buildProps.Contains('<AnalysisLevel>latest-recommended</AnalysisLevel>') -and $buildProps.Contains('<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>') -and $buildProps.Contains('ProjectTemplate.globalconfig') -and $buildProps.Contains('BannedSymbols.txt') -and $buildProps.Contains('ProjectTemplate.Tests.globalconfig')) $buildProps
@@ -201,6 +208,7 @@ foreach ($case in $cases) {
         Check "${name}: CI runs the Definition of Done for the default commands" ($ciText.Contains('build/dod.ps1') -and -not ($ciText -match '(?m)^\s+(- )?dotnet (build|test)\s*$')) $ciText
         if ($case.Host -eq 'github') {
             Check "${name}: CI caches NuGet packages, keyed on the restore's inputs" ($ciText.Contains('uses: actions/cache@') -and $ciText.Contains('path: ~/.nuget/packages') -and $ciText.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $ciText.Contains('${{ runner.os }}-nuget-' + "`n")) $ciText
+            Check "${name}: CI installs the runtimes the tests target" ($ciText.Contains('./build/Get-TestRuntimes.ps1') -and $ciText.Contains('dotnet-version: ${{ steps.runtimes.outputs.channels }}')) $ciText
             Check "${name}: CI keeps the test results, after a failure too, and for a library the packages, as artifacts" ($ciText -match '(?m)^      - name: Upload test results\r?\n        if: always\(\)\r?\n        uses: actions/upload-artifact@[0-9a-f]{40} # v\d+\.\d+\.\d+\r?\n        with:\r?\n          name: test-results\r?\n          path: artifacts/test-results/\r?$' -and $ciText.Contains('if-no-files-found: ignore') -and $ciText.Contains('retention-days: 14') -and ($ciText.Contains('- name: Upload packages') -eq $library) -and -not $ciText.Contains('codecov')) $ciText
         }
         else {
@@ -210,19 +218,19 @@ foreach ($case in $cases) {
         $libraryWrong = @($libraryOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -ErrorAction SilentlyContinue) -ne $library })
         Check "${name}: library decisions only for a library" (-not $libraryWrong) ($libraryWrong -join ', ')
         $license = Join-Path $dest 'LICENSE.txt'
-        $licenseOk = switch ($case.Data.package_license) {
+        $licenseOk = switch ($case.Data.license) {
             'MIT' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).StartsWith("MIT License`n`nCopyright (c) NCode Group`n") }
             'Apache-2.0' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).Contains('Apache License') }
             default { -not (Test-Path -LiteralPath $license) }
         }
         Check "${name}: LICENSE.txt for the license answered" $licenseOk
-        Check "${name}: COPYRIGHT.txt only for an Apache-2.0 library" ((Test-Path -LiteralPath (Join-Path $dest 'COPYRIGHT.txt')) -eq ($case.Data.package_license -eq 'Apache-2.0'))
+        Check "${name}: COPYRIGHT.txt only for an Apache-2.0 library" ((Test-Path -LiteralPath (Join-Path $dest 'COPYRIGHT.txt')) -eq ($case.Data.license -eq 'Apache-2.0'))
         $templateIcon = Join-Path $dest 'NCodeGroup.png'
         Check "${name}: the template's icon only for a library that uses it" ((Test-Path -LiteralPath $templateIcon) -eq ($library -and $icon -eq 'NCodeGroup.png'))
         $editorconfig = Get-Content -LiteralPath (Join-Path $dest '.editorconfig') -Raw
         # Roslyn ends an .editorconfig value at the first ; or #, so the header must hold neither to be read whole: an author_name holding either gets no header.
         $author = if ($case.Data.author_name) { $case.Data.author_name } else { 'NCode Group' }
-        $headerLicense = if ($case.Data.license) { $case.Data.license } elseif ($library) { $case.Data.package_license } else { '' }
+        $headerLicense = if ($case.Data.license) { $case.Data.license } else { '' }
         $header = "file_header_template = Copyright $([char]0xA9) $author" + $(if ($headerLicense) { '\nSPDX-License-Identifier: ' + $headerLicense } else { '' })
         $headerLines = @($editorconfig -split '\r?\n' | Where-Object { $_.StartsWith('file_header_template') })
         $headerOk = if ($author -match '[;#]') { $headerLines.Count -eq 0 -and $editorconfig.Contains('# No file_header_template: author_name holds a ; or #, where Roslyn would cut the header short.') }
@@ -237,6 +245,7 @@ foreach ($case in $cases) {
             Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 5 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
             Check "${name}: the publish workflow runs on a published release, holds no permission by default, and pushes through trusted publishing in the nuget environment" ($workflow.Contains('types: [published]') -and $workflow -match '(?m)^permissions: \{\}\r?$' -and $workflow.Contains('environment: nuget') -and $workflow.Contains('id-token: write') -and $workflow.Contains('uses: NuGet/login@') -and $workflow.Contains('persist-credentials: false') -and -not $workflow.Contains('secrets.')) $workflow
             Check "${name}: the publish workflow packs only a tag whose commit the default branch holds" ($workflow.Contains('fetch-depth: 0') -and $workflow.Contains('DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}') -and $workflow.Contains('git merge-base --is-ancestor HEAD "origin/$env:DEFAULT_BRANCH"') -and $workflow.IndexOf('merge-base --is-ancestor') -lt $workflow.IndexOf('dotnet pack')) $workflow
+            Check "${name}: the publish workflow installs the runtimes the tests target before testing, and counts only a 404 as unpublished" ($workflow.Contains('./build/Get-TestRuntimes.ps1') -and $workflow.IndexOf('./build/Get-TestRuntimes.ps1') -lt $workflow.IndexOf('dotnet test') -and $workflow.Contains('dotnet-version: ${{ steps.runtimes.outputs.channels }}') -and $workflow.Contains('-SkipHttpErrorCheck -StatusCodeVariable status') -and $workflow.Contains('$status -eq 404') -and -not $workflow.Contains('catch { $versions = @() }')) $workflow
         }
     }
     $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
@@ -246,8 +255,8 @@ foreach ($case in $cases) {
     Check "${name}: CI checks the decision index" ($ciForIndex.Contains('.template/Test-AdrIndex.ps1')) $ciForIndex
     $indexHistory = if ($case.Host -eq 'github') { $ciForIndex -match '(?s)  build-and-test:.*?fetch-depth: 0.*?- name: Check the decision index' } else { $ciForIndex.Contains('- pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"') -and $ciForIndex.Contains('GIT_DEPTH: "0"') }
     Check "${name}: CI checks the decision index with the history to tell a new record" $indexHistory $ciForIndex
-    # The repository's license: the license answer, or a library's package license from before that answer existed.
-    $licenseAnswer = if ($case.Data.license) { $case.Data.license } elseif ($case.Data.nuget_package) { $case.Data.package_license } else { '' }
+    # The repository's license: the license answer.
+    $licenseAnswer = if ($case.Data.license) { $case.Data.license } else { '' }
     $licensePath = Join-Path $dest 'LICENSE.txt'
     $licenseText = if (Test-Path -LiteralPath $licensePath) { Get-Content -LiteralPath $licensePath -Raw } else { '' }
     $licenseRight = switch ($licenseAnswer) { 'MIT' { $licenseText.StartsWith("MIT License`n`nCopyright (c) NCode Group`n") } 'Apache-2.0' { $licenseText.Contains('Apache License') } default { -not $licenseText } }
@@ -265,7 +274,7 @@ foreach ($case in $cases) {
         # Copilot ignores a job's defaults, so every run step names its shell.
         Check "${name}: every step of the Copilot setup workflow that runs a command names its shell" ([regex]::Matches($setup, '(?m)^\s+run: ').Count -eq [regex]::Matches($setup, '(?m)^\s+shell: pwsh\r?$').Count -and -not $setup.Contains('defaults:')) $setup
         $setupOk = switch ($case.Stack) {
-            'dotnet' { $setup.Contains('global-json-file: global.json') -and $setup.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $setup.Contains('run: dotnet tool restore') -and $setup.Contains("if: hashFiles('*.sln', '*.slnx') != ''") -and $setup.Contains('run: dotnet restore') }
+            'dotnet' { $setup.Contains('global-json-file: global.json') -and $setup.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $setup.Contains('run: dotnet tool restore') -and $setup.Contains("if: hashFiles('*.sln', '*.slnx') != ''") -and $setup.Contains('run: dotnet restore') -and $setup.Contains('./build/Get-TestRuntimes.ps1') -and $setup.Contains('dotnet-version: ${{ steps.runtimes.outputs.channels }}') }
             'python' { $setup.Contains('uses: actions/setup-python@') -and $setup.Contains('$PSNativeCommandUseErrorActionPreference = $true') -and $setup.Contains('python -m pip install -r requirements.txt') }
             'node' { $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }; $setup.Contains('uses: actions/setup-node@') -and $setup.Contains(@{ npm = 'run: npm ci'; pnpm = 'run: pnpm install --frozen-lockfile'; yarn = 'run: yarn install'; bun = 'run: bun install --frozen-lockfile' }[$pm]) }
             'powershell' { $setup.Contains('Install-Module Pester, PSScriptAnalyzer') }
@@ -287,6 +296,8 @@ foreach ($case in $cases) {
         $reviewJob = if ($outcomesAt -ge 0) { $caller.Substring(0, $outcomesAt) } else { $caller }
         $outcomesJob = if ($outcomesAt -ge 0) { $caller.Substring($outcomesAt) } else { '' }
         Check "${name}: the code review caller's review job leaves a closed pull request alone, a plain /review on one included, and cancels a superseded review" ($caller -match '(?m)^\s+types: \[[^\]\r\n]*\bclosed\b[^\]\r\n]*\]\r?$' -and $reviewJob.Contains("(github.event_name == 'pull_request_target' && github.event.action != 'closed' &&") -and $reviewJob -match "\(github\.event\.issue\.state == 'open' \|\| startsWith\(github\.event\.comment\.body, '/review explain'\) \|\|\s+startsWith\(github\.event\.comment\.body, '/review teach'\)\) &&" -and $reviewJob -match '(?m)^      cancel-in-progress: true\r?$' -and $reviewJob.Contains('id-token: write') -and $reviewJob.Contains('issues: read')) $reviewJob
+        $v112Group = '      group: code-review-${{ github.event_name == ''issue_comment'' && !(github.event.comment.body == ''/review'' || startsWith(github.event.comment.body, format(''/review{0}'', fromJSON(''"\n"''))) || startsWith(github.event.comment.body, format(''/review{0}'', fromJSON(''"\r\n"'')))) && format(''command-{0}'', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}'
+        Check "${name}: the code review caller's review job puts only a comment whose first line is exactly /review in the pull request's concurrency group" ($reviewJob.Contains($v112Group)) $reviewJob
         Check "${name}: the code review caller's outcomes job runs only on a closed pull request from the repository, outside the environment, reading contents and pull requests, with only the app key and without cancelling a review" ($outcomesJob.Contains("github.event_name == 'pull_request_target' && github.event.action == 'closed' &&") -and $outcomesJob.Contains('github.event.pull_request.head.repo.full_name == github.repository') -and $outcomesJob -match '(?m)^      group: code-review-\$\{\{ github\.event\.pull_request\.number \}\}\r?\n      cancel-in-progress: false\r?$' -and $outcomesJob -match '(?m)^    permissions:\r?\n      contents: read\r?\n      pull-requests: read\r?\n    steps:\r?$' -and $outcomesJob -notmatch '(?m)^\s+environment:' -and $outcomesJob -notmatch '(?m)^\s+id-token:' -and -not $outcomesJob.Contains('actions/checkout') -and $outcomesJob.Contains('app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}') -and -not $outcomesJob.Contains('bedrock-api-key')) $outcomesJob
         $checkouts = [regex]::Matches($caller, '(?m)^\s+uses: actions/checkout@').Count
         Check "${name}: the code review caller checks out only the default branch, without persisted credentials, and never the pull request's head" ($checkouts -eq 1 -and [regex]::Matches($caller, '(?m)^\s+persist-credentials: false\r?$').Count -eq 1 -and -not $caller.Contains('refs/pull/') -and -not $caller.Contains('head.sha')) $caller
