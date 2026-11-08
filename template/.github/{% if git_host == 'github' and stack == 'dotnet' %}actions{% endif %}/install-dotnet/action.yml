@@ -2,6 +2,8 @@
 # build/Get-TestRuntimes.ps1 names, with actions/setup-dotnet, as build/Install-Dotnet.ps1 does on GitLab. A workflow
 # that builds or tests calls it right after actions/checkout, which puts it in the workspace:
 #   - uses: ./.github/actions/install-dotnet
+# A workflow whose push or pull_request trigger lists paths also lists .github/actions/install-dotnet/** and
+# build/Get-TestRuntimes.ps1, which this action runs, so a change to either runs it.
 # The project's Dependabot moves the actions/setup-dotnet pins, and template updates merge with the project's edits.
 name: Install .NET
 description: Installs the .NET SDK global.json selects and the runtimes the test projects target.
