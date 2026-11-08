@@ -45,14 +45,23 @@ $suffix = "$os-$arch$(if ($IsWindows) { '.zip' } else { '.tar.gz' })"
 
 function Invoke-StubInstaller {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Stand-ins for the installer''s network calls, seen only by the installer this function runs.')]
-    param([hashtable]$Metadata, [hashtable]$Downloads, [hashtable]$Arguments, [string[]]$ListedRuntimes = @())
-    $calls = [Collections.Generic.List[string]]::new(); $byPath = $Metadata; $byUrl = $Downloads; $runtimeLines = $ListedRuntimes
-    function Invoke-RestMethod([string]$Uri) { $calls.Add($Uri); $key = $Uri -replace '^.*/release-metadata/', ''; if (-not $byPath.ContainsKey($key)) { throw "unexpected metadata $Uri" }; $byPath[$key] | ConvertFrom-Json }
-    function Invoke-WebRequest([string]$Uri, [string]$OutFile) { $calls.Add($Uri); if (-not $byUrl.ContainsKey($Uri)) { throw "unexpected download $Uri" }; [IO.File]::WriteAllBytes($OutFile, $byUrl[$Uri]) }
+    param([hashtable]$Metadata, [hashtable]$Downloads, [hashtable]$Arguments, [hashtable]$Failures = @{}, [string[]]$ListedRuntimes = @())
+    $calls = [Collections.Generic.List[string]]::new(); $sleeps = [Collections.Generic.List[int]]::new(); $byPath = $Metadata; $byUrl = $Downloads; $runtimeLines = $ListedRuntimes
+    $pending = @{}
+    foreach ($url in $Failures.Keys) { $pending[$url] = [Collections.Generic.Queue[object]]::new([object[]]$Failures[$url]) }
+    # Every request must carry the installer's timeouts; a URL in -Failures throws its exceptions, one a call, before it answers.
+    function Confirm-StubRequest([string]$Uri, [int]$ConnectionTimeoutSeconds, [int]$OperationTimeoutSeconds) {
+        $calls.Add($Uri)
+        if ($ConnectionTimeoutSeconds -ne 30 -or $OperationTimeoutSeconds -ne 60) { throw "no 30- and 60-second timeouts on $Uri" }
+        if ($pending.ContainsKey($Uri) -and $pending[$Uri].Count) { throw $pending[$Uri].Dequeue() }
+    }
+    function Invoke-RestMethod([string]$Uri, [int]$ConnectionTimeoutSeconds, [int]$OperationTimeoutSeconds) { Confirm-StubRequest $Uri $ConnectionTimeoutSeconds $OperationTimeoutSeconds; $key = $Uri -replace '^.*/release-metadata/', ''; if (-not $byPath.ContainsKey($key)) { throw "unexpected metadata $Uri" }; $byPath[$key] | ConvertFrom-Json }
+    function Invoke-WebRequest([string]$Uri, [string]$OutFile, [int]$ConnectionTimeoutSeconds, [int]$OperationTimeoutSeconds) { Confirm-StubRequest $Uri $ConnectionTimeoutSeconds $OperationTimeoutSeconds; if (-not $byUrl.ContainsKey($Uri)) { throw "unexpected download $Uri" }; [IO.File]::WriteAllBytes($OutFile, $byUrl[$Uri]) }
+    function Start-Sleep([int]$Seconds) { $sleeps.Add($Seconds) }
     function dotnet { if ("$args" -ne '--list-runtimes') { throw "unexpected dotnet $args" }; $runtimeLines }
     $printed = ''; $failed = ''
     try { $printed = (& $installer @Arguments 2>&1 | Out-String).Trim() } catch { $failed = "$_" }
-    [pscustomobject]@{ Printed = $printed; Calls = @($calls); Error = $failed }
+    [pscustomobject]@{ Printed = $printed; Calls = @($calls); Sleeps = @($sleeps); Error = $failed }
 }
 
 function New-StubSdk([string]$Version, [object[]]$Files = @()) {
@@ -153,6 +162,24 @@ $listedRuntimes = "Microsoft.AspNetCore.App 8.0.11 [$([IO.Path]::Combine($dir, '
 $listed = Invoke-StubInstaller @{ '8.0/releases.json' = New-StubChannel '8.0.11' @() } @{} @{ SkipSdk = $true; Channel = '8.0' } -ListedRuntimes $listedRuntimes
 $unlisted = Invoke-StubInstaller @{} @{} @{ SkipSdk = $true; Channel = '8.0' } -ListedRuntimes $listedRuntimes[0]
 Check 'installer: build/Install-Dotnet.ps1 without -InstallDir adds to the installation dotnet --list-runtimes shows for Microsoft.NETCore.App, and stops when it shows none' (-not $listed.Error -and $listed.Printed.Contains("are already in $dir") -and $unlisted.Error.Contains('dotnet --list-runtimes shows no Microsoft.NETCore.App')) "$($listed.Error) $($listed.Printed) | $($unlisted.Error)"
+
+$metadataUrl = 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/8.0/releases.json'
+$mergeMetadata = @{ '8.0/releases.json' = New-StubChannel '8.0.11' @(New-StubSdk '8.0.404' @(@{ name = "dotnet-sdk-$suffix"; url = $sdkUrl; hash = $archiveHash })) }
+$unavailable = [Microsoft.PowerShell.Commands.HttpResponseException]::new('Response status code does not indicate success: 503 (Service Unavailable).', [Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::ServiceUnavailable))
+$rateLimited = [Microsoft.PowerShell.Commands.HttpResponseException]::new('Response status code does not indicate success: 429 (Too Many Requests).', [Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::TooManyRequests))
+$notFound = [Microsoft.PowerShell.Commands.HttpResponseException]::new('Response status code does not indicate success: 404 (Not Found).', [Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::NotFound))
+# What Invoke-WebRequest throws when -OperationTimeoutSeconds ends a download that stalls partway.
+$stalled = [AggregateException]::new([TimeoutException]::new('The request was canceled due to the configured OperationTimeout of 60 seconds elapsing'))
+$dir = New-StubInstallDir 'retry'
+$retried = Invoke-StubInstaller $mergeMetadata @{ $sdkUrl = [IO.File]::ReadAllBytes($archive) } @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($unavailable, $rateLimited); $sdkUrl = @($stalled) }
+$retriedOk = -not $retried.Error -and $retried.Printed.Contains('Installed .NET SDK 8.0.404 in') -and @($retried.Calls | Where-Object { $_ -eq $metadataUrl }).Count -eq 4 -and @($retried.Calls | Where-Object { $_ -eq $sdkUrl }).Count -eq 2 -and ($retried.Sleeps -join ',') -eq '5,10,5'
+$dir = New-StubInstallDir 'unavailable'
+$gaveUp = Invoke-StubInstaller $mergeMetadata @{} @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($unavailable, $unavailable, $unavailable) }
+$gaveUpOk = $gaveUp.Error.Contains('503') -and $gaveUp.Calls.Count -eq 3 -and ($gaveUp.Sleeps -join ',') -eq '5,10' -and -not (Test-Path -LiteralPath (Join-Path $dir 'sdk'))
+$dir = New-StubInstallDir 'notfound'
+$missing = Invoke-StubInstaller $mergeMetadata @{} @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($notFound) }
+$missingOk = $missing.Error.Contains('404') -and $missing.Calls.Count -eq 1 -and -not $missing.Sleeps
+Check 'installer: build/Install-Dotnet.ps1 gives every request a 30-second answer and 60-second stall timeout, tries a failed or stalled one twice more, 5 and then 10 seconds later, and fails at once on a 404' ($retriedOk -and $gaveUpOk -and $missingOk) "$($retried.Error) $($retried.Calls -join ',') $($retried.Sleeps -join ',') | $($gaveUp.Error) $($gaveUp.Sleeps -join ',') | $($missing.Error) $($missing.Calls.Count)"
 if ($InstallerOnly) {
     ''
     if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }

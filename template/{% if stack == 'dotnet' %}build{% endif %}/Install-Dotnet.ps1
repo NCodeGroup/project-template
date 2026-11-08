@@ -5,7 +5,9 @@
 .DESCRIPTION
     From the project template; template updates replace this file. Takes each download from Microsoft's release
     metadata at https://builds.dotnet.microsoft.com/dotnet/release-metadata/ and installs nothing unless its SHA-512
-    equals the one the metadata gives.
+    equals the one the metadata gives. A request gives up after 30 seconds without an answer, or 60 seconds without
+    more of a download, and a failed one is tried twice more, 5 and then 10 seconds later; a client error (4xx) other
+    than 408 or 429 fails at once. Needs PowerShell 7.4 or later.
 
     The SDK is the one global.json selects, as actions/setup-dotnet reads it on GitHub: the version it names, or, under
     the rollForward policy latestPatch, latestFeature, latestMinor or latestMajor, the newest release that policy
@@ -42,6 +44,7 @@
 .EXAMPLE
     ./build/Install-Dotnet.ps1 -SkipSdk -Channel 8.0.x
 #>
+#Requires -Version 7.4
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+(\.x)?$')]
@@ -70,13 +73,30 @@ $arch = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().
 $suffix = "$os-$arch$(if ($IsWindows) { '.zip' } else { '.tar.gz' })"
 $scratch = Join-Path $InstallDir ".install-dotnet-$PID"
 
+# Reads release metadata, or downloads a file to OutFile, waiting at most 30 seconds for an answer and 60 for each next
+# part of a download, so a download that stalls partway fails too. Tries a failed request twice more, 5 and then 10
+# seconds later, but not a client error (4xx) other than a request timeout (408) or a rate limit (429).
+function Invoke-ReleaseRequest([string]$Uri, [string]$OutFile) {
+    for ($attempt = 1; ; $attempt++) {
+        try {
+            if ($OutFile) { return Invoke-WebRequest -Uri $Uri -OutFile $OutFile -ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60 }
+            return Invoke-RestMethod -Uri $Uri -ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60
+        }
+        catch {
+            $status = [int]$_.Exception.Response.StatusCode
+            if ($attempt -ge 3 -or ($status -ge 400 -and $status -lt 500 -and $status -notin 408, 429)) { throw }
+            Start-Sleep -Seconds (5 * $attempt)
+        }
+    }
+}
+
 # Downloads a file the release metadata lists into the scratch folder, checks its SHA-512 and extracts it; returns the
 # folder it was extracted to.
 function Expand-Release($File, [string]$Label) {
     if (Test-Path -LiteralPath $scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $scratch | Out-Null
     $archive = Join-Path $scratch $File.name
-    Invoke-WebRequest -Uri $File.url -OutFile $archive
+    Invoke-ReleaseRequest $File.url $archive
     if ((Get-FileHash -LiteralPath $archive -Algorithm SHA512).Hash -ne $File.hash) {
         throw "$($File.name) for $Label doesn't match the SHA-512 in Microsoft's release metadata; nothing was installed."
     }
@@ -115,13 +135,13 @@ try {
         $policy = if ($Matches[4]) { '' } else { "$($sdk.rollForward)" }
         $sdkChannel = "$($Matches[1]).$($Matches[2])"
         if ($policy -in 'latestMinor', 'latestMajor') {
-            $sdkChannel = (Invoke-RestMethod "$metadataRoot/releases-index.json").'releases-index' | Where-Object {
+            $sdkChannel = (Invoke-ReleaseRequest "$metadataRoot/releases-index.json").'releases-index' | Where-Object {
                 $channelMajor = [int]($_.'channel-version' -split '\.')[0]
                 $_.'latest-sdk' -notmatch '-' -and ($channelMajor -eq $major -or ($policy -eq 'latestMajor' -and $channelMajor -gt $major))
             } | Sort-Object { [version]$_.'latest-sdk' } | Select-Object -Last 1 -ExpandProperty 'channel-version'
         }
         $sdks = @()
-        if ($sdkChannel) { $sdks = @((Invoke-RestMethod "$metadataRoot/$sdkChannel/releases.json").releases | ForEach-Object { $_.sdks }) }
+        if ($sdkChannel) { $sdks = @((Invoke-ReleaseRequest "$metadataRoot/$sdkChannel/releases.json").releases | ForEach-Object { $_.sdks }) }
         $selected = if ($policy -in 'latestPatch', 'latestFeature', 'latestMinor', 'latestMajor') {
             $sdks | Where-Object {
                 $_.version -notmatch '-' -and [version]$_.version -ge [version]$pinned -and
@@ -156,7 +176,7 @@ try {
 
     foreach ($c in $Channel) {
         $number = $c -replace '\.x$', ''
-        $metadata = Invoke-RestMethod "$metadataRoot/$number/releases.json"
+        $metadata = Invoke-ReleaseRequest "$metadataRoot/$number/releases.json"
         $release = @($metadata.releases | Where-Object { $_.'release-version' -eq $metadata.'latest-release' })[0]
         $version = $release.'release-version'
         $runtimeVersion = $release.runtime.version
