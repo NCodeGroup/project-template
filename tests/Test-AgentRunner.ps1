@@ -1,0 +1,126 @@
+<#
+.SYNOPSIS
+    Test that the end-to-end tests' runner, tests\e2e\Agent.ps1, calls Claude Code and the Copilot CLI as it should, with no model.
+
+.DESCRIPTION
+    Runs the runner against stand-ins for claude and copilot that record each call and print what the real CLIs print.
+    Checks that a missing CLI is refused; that a Claude Code run passes -p, --output-format json, --permission-mode
+    bypassPermissions, --strict-mcp-config, the budget and the model in the fixture project, and that a resumed run passes
+    --resume with the first run's session; that the runner adds up the cost and prints the command that continues the
+    session; that a Copilot run passes its flags, runs with its own home, allow-all and the token for the call only and puts
+    them back, and checks the project's skill ran and no MCP server loaded; that a resumed Copilot run passes --resume,
+    and that the cost is the last credits of the one session, not the sum of both runs. Prints PASS or FAIL per check and
+    exits 1 on any failure.
+
+.PARAMETER Work
+    The scratch folder, deleted and recreated. Defaults to project-template-agent-runner-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
+
+.EXAMPLE
+    .\tests\Test-AgentRunner.ps1
+#>
+[CmdletBinding()]
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-agent-runner-$PID"))
+$ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
+trap { "Kept the work folder: $Work"; break }
+$failures = [Collections.Generic.List[string]]::new()
+. (Join-Path $PSScriptRoot 'e2e/Fixture.ps1')
+
+function Read-Calls([string]$Path) { @(Get-Content -LiteralPath $Path | ForEach-Object { $_ | ConvertFrom-Json }) }
+function Get-FlagValue($CallArgs, [string]$Flag) {
+    $i = [array]::IndexOf($CallArgs, $Flag)
+    if ($i -ge 0) { $CallArgs[$i + 1] }
+}
+
+if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
+$bin = Join-Path $Work 'bin'
+$app = Join-Path $Work 'app'
+New-Item -ItemType Directory -Force $bin, $app | Out-Null
+
+# The stand-in for claude. It records every call in claude-calls.jsonl and prints the JSON claude -p prints.
+Write-Text (Join-Path $bin 'claude.ps1') @'
+$log = Join-Path $PSScriptRoot 'claude-calls.jsonl'
+Add-Content -LiteralPath $log -Value (ConvertTo-Json -Compress -InputObject @{ args = @($args); cwd = (Get-Location).Path })
+$i = [array]::IndexOf(@($args), '--resume')
+$session = if ($i -ge 0) { $args[$i + 1] } else { 'claude-session-1' }
+"{""session_id"":""$session"",""total_cost_usd"":0.25}"
+'@
+
+# The stand-in for copilot. It records every call and the environment it ran with in copilot-calls.jsonl, and prints the
+# JSONL copilot -p prints. A prompt with no-session gets the authentication error, one with mcp-connected a connected MCP
+# server, and one with no-skill no skill request.
+Write-Text (Join-Path $bin 'copilot.ps1') @'
+$log = Join-Path $PSScriptRoot 'copilot-calls.jsonl'
+Add-Content -LiteralPath $log -Value (ConvertTo-Json -Compress -InputObject @{ args = @($args); cwd = (Get-Location).Path; home = $env:COPILOT_HOME; allowAll = $env:COPILOT_ALLOW_ALL; token = $env:COPILOT_GITHUB_TOKEN })
+$prompt = "$($args[[array]::IndexOf(@($args), '-p') + 1])"
+if ($prompt.Contains('no-session')) { 'Error: No authentication information found.'; exit 1 }
+$status = if ($prompt.Contains('mcp-connected')) { 'connected' } else { 'disabled' }
+ConvertTo-Json -Compress -Depth 8 -InputObject @{ type = 'session.mcp_servers_loaded'; data = @{ servers = @(@{ name = 'github-mcp-server'; status = $status }) } }
+if ($prompt -match '^/([\w-]+)' -and -not $prompt.Contains('no-skill')) {
+    ConvertTo-Json -Compress -Depth 8 -InputObject @{ type = 'assistant.message'; data = @{ toolRequests = @(@{ name = 'skill'; arguments = @{ skill = $Matches[1] } }) } }
+}
+$resume = [array]::IndexOf(@($args), '--resume')
+$nano = if ($resume -ge 0) { 4000000000 } else { 2500000000 }
+$usageFile = $args[[array]::IndexOf(@($args), '--usage-output-file') + 1]
+Set-Content -LiteralPath $usageFile -Value "{""totalNanoAiu"":$nano}"
+$session = if ($resume -ge 0) { $args[$resume + 1] } else { 'copilot-session-1' }
+"{""type"":""result"",""sessionId"":""$session"",""exitCode"":0}"
+'@
+
+$envNames = 'COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN', 'COPILOT_HOME', 'COPILOT_ALLOW_ALL'
+$savedEnv = @{}
+foreach ($n in $envNames) { $savedEnv[$n] = [Environment]::GetEnvironmentVariable($n) }
+try {
+    $thrown = try { New-Agent -Tool claude -Claude (Join-Path $bin 'no-such-cli') -App $app -Work $Work | Out-Null; '' } catch { "$_" }
+    Check 'claude: New-Agent refuses a missing CLI' ($thrown -like 'Claude Code CLI not found*') $thrown
+
+    $agent = New-Agent -Tool claude -Claude (Join-Path $bin 'claude.ps1') -Model fixture-model -MaxBudgetUsd 30 -App $app -Work $Work
+    $out1 = @(Invoke-Agent $agent -Prompt '/address-feedback #1' -Index 1)
+    $out1
+    $calls = Read-Calls (Join-Path $bin 'claude-calls.jsonl')
+    $c = $calls[0]
+    Check 'claude: a run passes -p, --output-format json, --permission-mode bypassPermissions, --strict-mcp-config, --max-budget-usd 30 and --model in the fixture project' ((Get-FlagValue $c.args '-p') -eq '/address-feedback #1' -and (Get-FlagValue $c.args '--output-format') -eq 'json' -and (Get-FlagValue $c.args '--permission-mode') -eq 'bypassPermissions' -and $c.args -contains '--strict-mcp-config' -and (Get-FlagValue $c.args '--max-budget-usd') -eq '30' -and (Get-FlagValue $c.args '--model') -eq 'fixture-model' -and $c.cwd -eq $app -and $c.args -notcontains '--resume') ($c | ConvertTo-Json -Compress)
+
+    $first = $agent.SessionId
+    $out2 = @(Invoke-Agent $agent -Prompt 'go ahead' -SessionId $first -Index 2)
+    $out2
+    $calls = Read-Calls (Join-Path $bin 'claude-calls.jsonl')
+    Check 'claude: the resumed run passes --resume with the first run''s session' ($calls.Count -eq 2 -and $first -eq 'claude-session-1' -and (Get-FlagValue $calls[1].args '--resume') -eq $first) ($calls | ConvertTo-Json -Compress)
+
+    $summary = @(Write-AgentSummary $agent) -join ' '
+    Check 'claude: the runner adds up the cost and prints the command that continues the session' ($agent.CostUsd -eq 0.5 -and $summary.Contains('Cost: 0.5 USD') -and $summary.Contains('claude --resume claude-session-1') -and (Test-Path -LiteralPath (Join-Path $Work 'claude-1.json'))) "$($agent.CostUsd) $summary"
+
+    [Environment]::SetEnvironmentVariable('COPILOT_GITHUB_TOKEN', 'fixture-token')
+    $agent = New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -Model fixture-model -MaxBudgetUsd 30 -App $app -Work $Work
+    [Environment]::SetEnvironmentVariable('COPILOT_GITHUB_TOKEN', $null)
+    [Environment]::SetEnvironmentVariable('COPILOT_HOME', 'outer-home')
+    [Environment]::SetEnvironmentVariable('COPILOT_ALLOW_ALL', $null)
+    $out1 = @(Invoke-Agent $agent -Prompt '/address-feedback #1' -Index 1)
+    $out1
+    $after = @{}
+    foreach ($n in 'COPILOT_HOME', 'COPILOT_ALLOW_ALL', 'COPILOT_GITHUB_TOKEN') { $after[$n] = [Environment]::GetEnvironmentVariable($n) }
+    $calls = Read-Calls (Join-Path $bin 'copilot-calls.jsonl')
+    $c = $calls[0]
+    $flags = '--allow-all', '--no-ask-user', '--disable-builtin-mcps', '--secret-env-vars=COPILOT_GITHUB_TOKEN', '--no-auto-update'
+    $hasFlags = @($flags | Where-Object { $c.args -notcontains $_ }).Count -eq 0
+    Check 'copilot: a run passes -p, --allow-all, --no-ask-user, --disable-builtin-mcps, --secret-env-vars, --output-format json, --no-auto-update, --usage-output-file, --max-ai-credits 3000 and --model, with its own home, allow-all and the token, in the fixture project' ((Get-FlagValue $c.args '-p') -eq '/address-feedback #1' -and $hasFlags -and (Get-FlagValue $c.args '--output-format') -eq 'json' -and (Get-FlagValue $c.args '--usage-output-file') -eq (Join-Path $Work 'copilot-1-usage.json') -and (Get-FlagValue $c.args '--max-ai-credits') -eq '3000' -and (Get-FlagValue $c.args '--model') -eq 'fixture-model' -and $c.args -notcontains '--resume' -and $c.home -eq (Join-Path $Work 'copilot-home') -and $c.allowAll -eq 'true' -and $c.token -eq 'fixture-token' -and $c.cwd -eq $app) ($c | ConvertTo-Json -Compress)
+    Check 'copilot: the runner puts COPILOT_HOME, COPILOT_ALLOW_ALL and COPILOT_GITHUB_TOKEN back after the run' ($after.COPILOT_HOME -eq 'outer-home' -and -not $after.COPILOT_ALLOW_ALL -and -not $after.COPILOT_GITHUB_TOKEN) ($after | ConvertTo-Json -Compress)
+    Check 'copilot: a run checks that the project''s skill ran and no MCP server loaded' ($out1 -contains 'PASS  Copilot run 1 ran the project''s /address-feedback skill' -and $out1 -contains 'PASS  Copilot run 1 loaded no MCP server') ($out1 -join '; ')
+
+    $first = $agent.SessionId
+    $out2 = @(Invoke-Agent $agent -Prompt 'go ahead' -SessionId $first -Index 2)
+    $out2
+    $calls = Read-Calls (Join-Path $bin 'copilot-calls.jsonl')
+    Check 'copilot: the resumed run passes --resume with the first run''s session' ($calls.Count -eq 2 -and $first -eq 'copilot-session-1' -and (Get-FlagValue $calls[1].args '--resume') -eq $first -and $agent.SessionId -eq $first) ($calls | ConvertTo-Json -Compress)
+
+    $summary = @(Write-AgentSummary $agent) -join ' '
+    Check 'copilot: the runner keeps the last credits of the session, not the sum of both runs, and prints the command that continues it' ($summary.Contains('Cost: 0.04 USD (4 AI credits)') -and $summary.Contains('copilot --resume copilot-session-1') -and (Get-RunTool $Work 'claude') -eq 'copilot') $summary
+}
+finally {
+    foreach ($n in $envNames) { [Environment]::SetEnvironmentVariable($n, $savedEnv[$n]) }
+}
+
+if ($failures.Count) { "Kept the work folder: $Work"; "Agent runner: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
+'Agent runner: PASSED'
