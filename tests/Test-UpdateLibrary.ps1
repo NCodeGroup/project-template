@@ -6,7 +6,7 @@
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), without the
     license question's validator, so a library can have no license answer; v0.2.0 is the working tree's copier.yml.
-    Renders two libraries (nuget_package) from v0.1.0 and updates each to v0.2.0:
+    Renders three libraries (nuget_package) from v0.1.0 and updates each to v0.2.0:
       unlicensed     No license answer, and a release.yml beside a publish.yml without a workflow_dispatch trigger;
                      release.yml runs dotnet nuget push. The update stops before it changes anything, exits 1 and
                      prints the -Data that gives a license; with -Data @{ license = 'MIT' } it updates, warns that
@@ -14,6 +14,8 @@
       own-publisher  A release.yml that runs dotnet nuget push and no publish.yml, and a v2.3.0 tag on a commit
                      without build/ProjectTemplate.props. The update leaves publish.yml out and says so, without a
                      workflow_dispatch warning, and names AssemblyVersion 2.3.0.0 to set in Directory.Build.props.
+      with-trigger   The template's own publish.yml, with its workflow_dispatch trigger. The update adds tag-release.yml
+                     and prints no workflow_dispatch warning.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -112,6 +114,16 @@ try {
     Check 'own-publisher: the update leaves publish.yml out beside release.yml, and says so' ($result.ExitCode -eq 0 -and -not (Test-Path -LiteralPath .github/workflows/publish.yml) -and $result.Output.Contains('Left out .github/workflows/publish.yml: .github/workflows/release.yml already push NuGet packages')) $result.Output
     Check 'own-publisher: without publish.yml, no workflow_dispatch warning' (-not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
     Check 'own-publisher: the update names the AssemblyVersion v2.3.0 shipped' ($result.Output.Contains('v2.3.0 was released with AssemblyVersion 2.3.0.0') -and $result.Output.Contains('  <PropertyGroup><AssemblyVersion>2.3.0.0</AssemblyVersion></PropertyGroup>')) $result.Output
+}
+finally { Pop-Location }
+
+# with-trigger: the template's publish.yml keeps its workflow_dispatch trigger, so the update has nothing to warn about.
+$withTrigger = New-Library 'with-trigger' 'license=MIT'
+Push-Location $withTrigger
+try {
+    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
+    $result = Invoke-Update $withTrigger
+    Check 'with-trigger: a publish.yml with workflow_dispatch gets no warning' ($result.ExitCode -eq 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Test-Path -LiteralPath .github/workflows/tag-release.yml) -and -not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
 }
 finally { Pop-Location }
 
