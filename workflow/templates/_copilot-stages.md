@@ -1,0 +1,6 @@
+You coordinate. Each stage runs as the workflow's own command does: read that command's installed file and follow its body after the front matter, using the arguments named below wherever the body refers to its request or extra instructions. The file is `.github/skills/<name>/SKILL.md` in the repository; else `.github/prompts/<name>.prompt.md`; else `~/.copilot/skills/<name>/SKILL.md`. Delegate a stage to a subagent where this command says so:
+
+- Copilot Chat, in a Local session: the `runSubagent` tool. A planning stage runs without a named agent, on this session's model. `review-plan-diff` runs on the Copilot Reviewer agent, or on the Hybrid Reviewer when the repository has only that one, so it runs on the reviewer model.
+- Copilot CLI: the general-purpose subagent. It runs on the session's model unless `/subagents` sets another, so start the session on Opus.
+
+A subagent doesn't see this conversation: give it the repository's absolute path, the stage file to follow, its arguments and the rules below, and tell it to work only in that folder and never to switch branches. A subagent can't start subagents of its own, so `orchestrate-plan`, which delegates each step, runs in this session.

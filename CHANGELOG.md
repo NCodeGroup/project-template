@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.64.0] - 2026-11-07
+## [0.65.0] - 2026-11-07
 
 ### Added
 
@@ -15,6 +15,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - ADR-0008 says CI installs the SDK `global.json` selects under its `rollForward` policy, with `actions/setup-dotnet` on GitHub and `build/Install-Dotnet.ps1` on GitLab, and that the SDK under `latestFeature`, the test runtimes and GitLab's `mcr.microsoft.com/dotnet/sdk:10.0` image, which supplies git and PowerShell, follow their newest release. `CONTRIBUTING.md` points at `build/Install-Dotnet.ps1` to install the SDK and runtimes locally ([#255](https://github.com/NCodeGroup/project-template/issues/255), [#260](https://github.com/NCodeGroup/project-template/issues/260)).
+
+## [0.64.0] - 2026-11-07
+
+### Added
+
+- `/address-feedback` and `/run-feedback` run in Copilot Chat and Copilot CLI too, from two new templates, `address-feedback-copilot` and `run-feedback-copilot`: they take the same requests, judge each open review thread, top-level comment and review summary against the code, push the fixes to the pull request's branch, never forced, and reply to each item starting with `Autopilot:`. A pass works in the open folder instead of a worktree: it needs a clean working tree and no `PLAN.md`, works on a branch `feedback-<number>` made from the pull request's branch, and once its fixes are pushed switches back to the branch you had checked out and deletes `feedback-<number>`; a stop after its plan is written leaves that branch checked out for `/continue-plan`. `/run-feedback` waits between passes with a foreground sleep. Run them in a Local session in Copilot Chat, or a Copilot CLI session started on Opus, without approval prompts (Bypass Approvals or Autopilot; `/allow-all`). Projects get them with `.\.template\Update-Project.ps1` ([#254](https://github.com/NCodeGroup/project-template/issues/254)).
+
+### Changed
+
+- `/address-feedback` keeps what differs between Claude Code and Copilot, how the run's worktree or branch is made, left and cleaned up, in a `## Checkout` section at its end; in Claude Code it also stops while a Copilot run on the same pull request is open on its branch `feedback-<number>`, and `/continue-plan` offers `/address-feedback <number>` in every tool. Projects get it with `.\.template\Update-Project.ps1` ([#254](https://github.com/NCodeGroup/project-template/issues/254)).
+- The project instructions, and a new project's `AGENTS.md` Landing section, name `/address-feedback` and `/run-feedback` among the commands that run `prelude` and `gate` before each push, and `USAGE.md` says each feedback pass runs the gate. Projects get the instructions with `.\.template\Update-Project.ps1`; an existing project's `AGENTS.md` is its own, so a project that sets `gate` or `prelude` may add the two commands to its Landing section's description itself ([#254](https://github.com/NCodeGroup/project-template/issues/254)).
+- No change for projects made from the template. The Claude Code and Copilot variants of `address-feedback` and `run-feedback` share their text through `workflow/templates/_address-feedback-body.md` and `_run-feedback-body.md`, and the orchestrating commands share how each tool runs a stage through `_claude-stages.md` and `_copilot-stages.md`, so each rule is written once; `tests/Test-Template.ps1` checks the Copilot copies and that every copy holds its body partial's whole text ([#254](https://github.com/NCodeGroup/project-template/issues/254)).
+
+## [0.63.1] - 2026-11-07
+
+### Changed
+
+- ADR-0014, "Every pull request discussion is remediated and replied to before it merges", states its context and consequences in the present tense: an agent that replies only to the threads it acts on leaves the person who resolves them to read the code again, every nit thread gets a reply, and `tools/Set-RepositoryBaseline.ps1` turns on conversation resolution in a ruleset an owner shaped and changes nothing else in it. Projects get it with `.\.template\Update-Project.ps1` ([#256](https://github.com/NCodeGroup/project-template/issues/256)).
+- No change for projects made from the template. The `gh` stand-in in `tests/Test-PlanState.ps1` and the end-to-end stand-ins `tests/e2e/gh.ps1` and `tests/e2e/glab.ps1` append to their logs one call at a time, through a named mutex, so the calls `workflow/Get-PlanState.ps1` makes at the same time are each logged and answered, and `tests/Test-PlanState.ps1` passes on a loaded machine ([#257](https://github.com/NCodeGroup/project-template/issues/257)).
 
 ## [0.63.0] - 2026-11-07
 
@@ -1009,8 +1028,10 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.64.0...HEAD
-[0.64.0]: https://github.com/NCodeGroup/project-template/compare/v0.63.0...v0.64.0
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.65.0...HEAD
+[0.65.0]: https://github.com/NCodeGroup/project-template/compare/v0.64.0...v0.65.0
+[0.64.0]: https://github.com/NCodeGroup/project-template/compare/v0.63.1...v0.64.0
+[0.63.1]: https://github.com/NCodeGroup/project-template/compare/v0.63.0...v0.63.1
 [0.63.0]: https://github.com/NCodeGroup/project-template/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/NCodeGroup/project-template/compare/v0.61.2...v0.62.0
 [0.61.2]: https://github.com/NCodeGroup/project-template/compare/v0.61.1...v0.61.2

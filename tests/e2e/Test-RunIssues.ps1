@@ -174,7 +174,7 @@ if (-not $CheckOnly) {
     # The stand-in, in a folder of its own, gives a new pull request the seeded review and records thread replies.
     $probe = Join-Path $Work 'gh-probe'
     New-Item -ItemType Directory -Force (Join-Path $probe 'host') | Out-Null
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'gh.ps1') -Destination (Join-Path $probe 'gh.ps1')
+    Copy-StandIn gh $probe
     Write-Text (Join-Path $probe 'host/issues.json') '{}'
     Write-Text (Join-Path $probe 'host/prs.json') '[]'
     Write-Text (Join-Path $probe 'host/comments.json') '[]'

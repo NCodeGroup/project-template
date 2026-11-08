@@ -31,7 +31,7 @@
 
     A template's "targets" field limits it to the targets it names, such as "targets: Claude" for run-issues, which only Claude Code gets; without it a template goes to every target.
 
-    A template's "command" field names the command, prompt file and skill it installs as, its own name by default: run-issues-copilot has "targets: VSCode, CopilotCli" and "command: run-issues", so Copilot Chat and Copilot CLI get their own /run-issues.
+    A template's "command" field names the command, prompt file and skill it installs as, its own name by default: run-issues-copilot has "targets: VSCode, CopilotCli" and "command: run-issues", so Copilot Chat and Copilot CLI get their own /run-issues; address-feedback-copilot and run-feedback-copilot give them /address-feedback and /run-feedback the same way.
 
     VS Code model names use "<model name> (<vendor>)"; the Settings dropdown for
     chat.planAgent.defaultModel lists the exact names. Copilot CLI uses model IDs such as
