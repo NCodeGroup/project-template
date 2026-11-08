@@ -711,7 +711,7 @@ Check 'workflow: run-issues acts only on NCode Review''s unresolved blocker and 
 $m = @(Get-MissingText ($addressFiles + $copilotAddressFiles) ('## Resume', 'go on with Resume', 'the line `Pull request: #<number>` (`Pull request: !<number>` on GitLab)', 'and the line `Start: <start>`', '- `address-feedback <number>`: the plan is done. Go on with Push.', 'git log --oneline "<start>..HEAD"', 'as Checkout item 5 says', 'as Checkout item 6 says', 'stop when its `feedback` value isn''t `<number>`'))
 $m += @(foreach ($p in $addressFiles + $copilotAddressFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('`ship-plan` or a value starting with `wait`: the plan is done')) { "${p}: finishes a feedback plan on ship-plan" } })
 $m += @(Get-MissingText $addressFiles 'git worktree remove --force <worktree path>')
-$m += @(Get-MissingText $copilotAddressFiles ('`<return>` is `<default>`', 'Claude Code''s `/address-feedback <number>` finishes it', 'which Resume finishes here'))
+$m += @(Get-MissingText $copilotAddressFiles ('`<return>` is `<default>`', 'which Resume finishes here'))
 $m += @(Get-MissingText $continueFiles ('`refs`, `feedback`, `steps`', 'name `/address-feedback <feedback>`', 'Never name `/ship-plan` or `/finish-plan` for it'))
 $m += @(Get-MissingText $shipFiles 'because the plan belongs to a stopped `/address-feedback` run on pull request `<feedback>`')
 $m += @(Get-MissingText ('template\.claude\commands\finish-plan.md', 'template\.github\skills\finish-plan\SKILL.md') 'When `feedback` isn''t `-`, stop')
