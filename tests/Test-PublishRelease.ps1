@@ -7,7 +7,7 @@
     as a file. Checks that it tags the commit with the changelog's newest version and publishes that version's section as
     the release notes; that a second run changes nothing; that a run after a tag without a release publishes only the
     release; that it tags nothing when the remote has a newer version tag, publishes no release with release: tag, and
-    does nothing with release: none or pre-release: untracked; that it drops the v when the remote's version tags have
+    does nothing with release: none; that it drops the v when the remote's version tags have
     none; that a release lookup failing other than with a 404 stops it with gh's message; and that -WhatIf pushes and
     publishes nothing. Also checks that the version comes from the merged pull request's Release: line: with pre-release:
     untracked and no release heading it tags the merged commit with that version and publishes the [Unreleased] section,
@@ -153,15 +153,14 @@ try {
     & git -C $work tag v0.3.0
     & git -C $work push -q origin refs/tags/v0.3.0 2>$null
     $run = Invoke-Publish $work
-    Check 'a newer version tag on origin: it tags and publishes nothing' ($run.Code -eq 0 -and -not ((Get-OriginTag $work) -ccontains 'v0.2.0') -and -not (Get-Calls).Count) $run.Output
+    Check 'a newer version tag on origin: it tags and publishes nothing' ($run.Code -eq 0 -and -not ((Get-OriginTag $work) -ccontains 'v0.2.0') -and -not (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases')) $run.Output
 
     $work = New-Clone 'tag-only' '- release: tag'
     $run = Invoke-Publish $work
-    Check 'release: tag: it pushes the tag and publishes no release' ($run.Code -eq 0 -and (Get-OriginTag $work) -ccontains 'v0.2.0' -and -not (Get-Calls).Count) $run.Output
+    Check 'release: tag: it pushes the tag and publishes no release' ($run.Code -eq 0 -and (Get-OriginTag $work) -ccontains 'v0.2.0' -and -not (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases')) $run.Output
 
     foreach ($case in @(
             @{ Name = 'release: none'; Landing = '- release: none' },
-            @{ Name = 'pre-release: untracked'; Landing = "- release: tag+release`n- pre-release: untracked" },
             @{ Name = 'no release line'; Landing = '- integrate: pull-request' })) {
         $work = New-Clone ($case.Name -replace '[^a-z]', '') $case.Landing
         $run = Invoke-Publish $work

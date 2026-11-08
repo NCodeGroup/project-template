@@ -12,9 +12,12 @@
     does. release: none publishes nothing, tag pushes the tag alone, and tag+release also publishes the GitHub release.
     The version is the changelog's newest release heading, `## [<number>] - <date>`, with a v before the number, as
     /ship-plan names it, unless the remote's version tags have no v. Its section, without the heading, is the release's
-    notes: up to the next `## ` heading or the link reference definitions that end a Keep a Changelog file. With
-    pre-release: untracked, the version is in the plan rather than the changelog, so it publishes nothing and leaves the
-    release to /ship-plan.
+    notes: up to the next `## ` heading or the link reference definitions that end a Keep a Changelog file. When the
+    merged pull request's description also has a `Release:` line, which /ship-plan writes, that names another version,
+    it fails. With pre-release: untracked and no release heading, the version is the pull request's `Release:` line and
+    the notes are the `## [Unreleased]` section. With no such line, or with pre-release: tracked and no release
+    heading, it publishes nothing and leaves the release to /ship-plan. The merged pull request is the one GitHub's
+    commits/<sha>/pulls endpoint returns whose merge_commit_sha is -Commit.
 
     It tags -Commit, the commit the pull request merged as, with an annotated tag, and only when the version is newer
     than every version tag the remote has, so an edit to an older section tags nothing. It's safe to run again: a tag the
@@ -74,6 +77,29 @@ function Get-NewestRelease([string[]]$Lines) {
     $null
 }
 
+# The lines after `## [Unreleased]` up to the next `## ` heading or the link reference definitions, without the blank lines around them.
+function Get-UnreleasedNotes([string[]]$Lines) {
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        if ($Lines[$i] -notmatch '^## \[Unreleased\]') { continue }
+        $notes = [Collections.Generic.List[string]]::new()
+        for ($j = $i + 1; $j -lt $Lines.Count -and $Lines[$j] -notmatch '^## ' -and $Lines[$j] -notmatch '^\[[^\]]+\]:\s'; $j++) {
+            $notes.Add($Lines[$j])
+        }
+        return (($notes -join "`n").Trim())
+    }
+    ''
+}
+
+# The pull request that merged as $Sha and the version of its `Release:` line, or $null when it has none.
+function Get-PlannedRelease([string]$Sha) {
+    $output = (& $Gh api "repos/{owner}/{repo}/commits/$Sha/pulls" 2>&1 | ForEach-Object { "$_" }) -join "`n"
+    if ($LASTEXITCODE) { throw "Can't read the pull request that merged as ${Sha}: $output" }
+    $pull = @(@(ConvertFrom-Json $output) | Where-Object { $_.PSObject.Properties['merge_commit_sha'] -and $_.merge_commit_sha -eq $Sha }) | Select-Object -First 1
+    if (-not $pull -or -not $pull.PSObject.Properties['body'] -or -not $pull.body) { return $null }
+    if ($pull.body -notmatch '(?m)^Release:[ \t]*(?<version>v?\d+\.\d+\.\d+)[ \t]*\r?$') { return $null }
+    [pscustomobject]@{ Number = $pull.number; Version = $Matches.version }
+}
+
 # The tag names the remote has, or an error when it can't be read.
 function Get-RemoteTag([string]$Name) {
     $refs = @(& git ls-remote --tags --refs $Name)
@@ -89,33 +115,50 @@ $policy = Get-LandingPolicy @(Get-Content -LiteralPath $agents)
 $release = if ($policy.ContainsKey('release')) { $policy['release'] } else { 'none' }
 if ($release -notin 'none', 'tag', 'tag+release') { throw "AGENTS.md's Landing section says release: $release; use none, tag or tag+release." }
 if ($release -eq 'none') { "AGENTS.md's Landing section says release: none: nothing to publish."; exit 0 }
-if ($policy.ContainsKey('pre-release') -and $policy['pre-release'] -eq 'untracked') {
-    "AGENTS.md's Landing section says pre-release: untracked, so the version is in the plan, not the changelog: /ship-plan tags and publishes it."
-    exit 0
-}
 
 $changelogName = if ($policy.ContainsKey('changelog') -and $policy['changelog']) { $policy['changelog'] } else { 'CHANGELOG.md' }
 $changelog = Join-Path $root $changelogName
 if (-not (Test-Path -LiteralPath $changelog)) { "$changelogName is missing: nothing to publish."; exit 0 }
-$newest = Get-NewestRelease @(Get-Content -LiteralPath $changelog)
-if (-not $newest) { "$changelogName has no release section yet: nothing to publish."; exit 0 }
-if ($newest.Number -notmatch '^\d+\.\d+\.\d+$') { "$changelogName's newest release, $($newest.Number), isn't shaped like 1.2.3: tag it with /ship-plan."; exit 0 }
+$lines = @(Get-Content -LiteralPath $changelog)
+$sha = (& git rev-parse --verify --quiet "$Commit^{commit}")
+if ($LASTEXITCODE -or -not $sha) { throw "$Commit isn't a commit in this clone." }
+$planned = Get-PlannedRelease $sha
+$untracked = $policy.ContainsKey('pre-release') -and $policy['pre-release'] -eq 'untracked'
+
+$newest = Get-NewestRelease $lines
+if ($newest) {
+    if ($newest.Number -notmatch '^\d+\.\d+\.\d+$') { "$changelogName's newest release, $($newest.Number), isn't shaped like 1.2.3: tag it with /ship-plan."; exit 0 }
+    if ($planned -and ($planned.Version -replace '^v') -ne $newest.Number) {
+        throw "Pull request #$($planned.Number) says Release: $($planned.Version), but $changelogName's newest release is $($newest.Number): make them agree, then run the Release workflow again."
+    }
+    $number = $newest.Number
+    $notes = $newest.Notes
+    $source = "its $changelogName section"
+} elseif ($untracked -and $planned) {
+    $number = $planned.Version -replace '^v'
+    $notes = Get-UnreleasedNotes $lines
+    $source = "the [Unreleased] section of $changelogName"
+} elseif ($untracked) {
+    "$changelogName has no release section and the merged pull request has no Release: line: nothing to publish."
+    exit 0
+} else {
+    "$changelogName has no release section yet: nothing to publish."
+    exit 0
+}
 
 $tags = Get-RemoteTag $Remote
 $versionTags = @($tags | Where-Object { $_ -match '^v?\d+\.\d+\.\d+$' })
 $prefix = if ($versionTags.Count -and -not @($versionTags | Where-Object { $_ -like 'v*' }).Count) { '' } else { 'v' }
-$version = "$prefix$($newest.Number)"
+$version = "$prefix$number"
 
 if ($tags -ccontains $version) {
     "$Remote has the tag $version already."
 } else {
-    $newer = @($versionTags | Where-Object { [version]($_ -replace '^v') -ge [version]$newest.Number })
+    $newer = @($versionTags | Where-Object { [version]($_ -replace '^v') -ge [version]$number })
     if ($newer.Count) {
-        "$changelogName's newest release is $version, but $Remote has $(($newer | Sort-Object { [version]($_ -replace '^v') } | Select-Object -Last 1)) already: nothing to tag."
+        "The release is $version, but $Remote has $(($newer | Sort-Object { [version]($_ -replace '^v') } | Select-Object -Last 1)) already: nothing to tag."
         exit 0
     }
-    $sha = (& git rev-parse --verify --quiet "$Commit^{commit}")
-    if ($LASTEXITCODE -or -not $sha) { throw "$Commit isn't a commit in this clone." }
     if ($PSCmdlet.ShouldProcess("$sha on $Remote", "Tag $version")) {
         & git tag -a $version -m $version $sha
         if ($LASTEXITCODE) { throw "git tag -a $version exited $LASTEXITCODE." }
@@ -143,10 +186,10 @@ if ($release -eq 'tag+release') {
     } elseif ($PSCmdlet.ShouldProcess($version, 'Publish the GitHub release')) {
         $notesFile = New-TemporaryFile
         try {
-            Set-Content -LiteralPath $notesFile -Value $newest.Notes -Encoding utf8NoBOM
+            Set-Content -LiteralPath $notesFile -Value $notes -Encoding utf8NoBOM
             & $Gh api 'repos/{owner}/{repo}/releases' -f "tag_name=$version" -f "name=$version" -F "body=@$notesFile" --silent
             if ($LASTEXITCODE) { throw "Publishing the GitHub release $version failed (gh api exited $LASTEXITCODE)." }
-            "Published the GitHub release $version from its $changelogName section."
+            "Published the GitHub release $version from $source."
         } finally {
             Remove-Item -LiteralPath $notesFile -ErrorAction SilentlyContinue
         }
