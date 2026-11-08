@@ -10,7 +10,8 @@
 # Set up once: on nuget.org, a trusted publishing policy for this repository and the workflow file publish.yml; in the
 # repository, the `nuget` environment, with required reviewers, and the variable NUGET_USER naming the nuget.org account
 # that owns the policy. The project owns this file: template updates never change it. A project that publishes from a
-# workflow of its own deletes it.
+# workflow of its own deletes it; the template's update and adoption leave it out of a repository where another
+# workflow runs nuget push, and the update warns when both do.
 name: Publish packages
 
 on:
@@ -59,6 +60,17 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
+      # A test project that targets an older .NET runs on that version's runtime, which build/Get-TestRuntimes.ps1 names.
+      - name: Find the .NET runtimes the tests target
+        id: runtimes
+        shell: pwsh
+        run: |
+          $channels = @(./build/Get-TestRuntimes.ps1)
+          if ($channels) { "channels<<EOF`n$($channels -join "`n")`nEOF" >> $env:GITHUB_OUTPUT }
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: steps.runtimes.outputs.channels != ''
+        with:
+          dotnet-version: ${{ steps.runtimes.outputs.channels }}
       - name: Test
         run: dotnet test --configuration Release
       - name: Pack
@@ -99,6 +111,7 @@ jobs:
           path: packages
       # A version already on nuget.org can't be replaced: when every package has it, this release publishes nothing.
       # When only some do, a run that failed part way is being run again, and the push below completes it.
+      # Only a 404 means a package has no published version; any other failed lookup stops the job rather than miscount.
       - name: Check the version is new
         id: new
         shell: pwsh
@@ -109,7 +122,8 @@ jobs:
           $published = 0
           foreach ($package in $packages) {
             $id = $package.Name.Substring(0, $package.Name.Length - ".$env:VERSION.nupkg".Length).ToLowerInvariant()
-            try { $versions = (Invoke-RestMethod -Uri "https://api.nuget.org/v3-flatcontainer/$id/index.json").versions } catch { $versions = @() }
+            $answer = Invoke-RestMethod -Uri "https://api.nuget.org/v3-flatcontainer/$id/index.json" -SkipHttpErrorCheck -StatusCodeVariable status
+            $versions = if ($status -eq 404) { @() } elseif ($status -eq 200) { @($answer.versions) } else { throw "nuget.org answered HTTP $status for $id: run the workflow again once it answers." }
             if ($versions -contains $env:VERSION.ToLowerInvariant()) { $published++ }
           }
           if ($published -eq $packages.Count) { throw "Every package is already on nuget.org at $env:VERSION; publish a new version." }

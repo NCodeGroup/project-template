@@ -1,6 +1,5 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
-{#- The repository's license, as copier.yml computes repository_license; the fallback serves a render before it exists. #}
-{%- set spdx = repository_license | default(license | default('') or (package_license | default('') if nuget_package | default(false) else '')) or '' %}
+{%- set spdx = license %}
 {%- set pm = package_manager | default('npm') %}
 {%- set pr = 'merge request' if git_host == 'gitlab' else 'pull request' -%}
 # Contributing to {{ project_name }}
@@ -11,7 +10,7 @@ Issues and {{ pr }}s are welcome. [README.md](README.md) explains the project, a
 
 - Git, and PowerShell 7 (`pwsh`): every command here runs from the repository root in PowerShell 7.
 {%- if stack == 'dotnet' %}
-- The .NET SDK version that [global.json](global.json) pins.
+- The .NET SDK version that [global.json](global.json) pins, and the runtime of each older .NET a test project targets, which `./build/Get-TestRuntimes.ps1` names.
 {%- elif stack == 'python' %}
 - Python 3 with pytest: `python -m pip install pytest`, then `python -m pip install -r requirements.txt` or `python -m pip install -e .` when the project has a `requirements.txt` or a `pyproject.toml`.
 {%- elif stack == 'node' %}
@@ -81,7 +80,7 @@ Commits record the people who wrote them. Never add a `Co-authored-by:` trailer 
 
 ## AI-Assisted Work
 
-Most changes here are planned and executed with coding agents: a frontier model plans each change into `PLAN.md`, and a cheaper one executes it one verified step at a time. [README.md](README.md#ai-assisted-workflow) lists the commands. The agents follow the rules above, and so does a change written by hand.
+Most changes here are planned and executed with coding agents: a frontier model plans each change into `PLAN.md`, and a cheaper one executes it one verified step at a time. [AGENTS.md](AGENTS.md) is the index of the instructions every agent follows, and [.github/instructions/project-template.instructions.md](.github/instructions/project-template.instructions.md) describes the workflow and its commands. The agents follow the rules above, and so does a change written by hand.
 
 ## Maintainers and Scope
 

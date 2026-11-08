@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-11-07
+
+### Added
+
+- `build/Get-TestRuntimes.ps1` (.NET) names the .NET runtimes the `<Name>.Tests` projects in the root solution target besides the SDK's own, and `ci.yml`, `copilot-setup-steps.yml` and a library's `publish.yml` install them, so a test project that targets an older .NET runs in CI, in the Copilot cloud agent's session and at release. Projects get it with `.\.template\Update-Project.ps1`, which shows the change to the project-owned `publish.yml` to copy ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+- For a .NET library whose current major has a release built with a higher assembly version than the `<major>.0.0.0` that `build/ProjectTemplate.props` pins, `Update-Project.ps1` and `Adopt-Project.ps1`'s follow-up request name the `AssemblyVersion` to set in `Directory.Build.props` until the next major, as ADR-0136 says ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+- `Update-Project.ps1` and `Adopt-Project.ps1` leave `.github/workflows/publish.yml` out of a library whose own workflow already runs `nuget push`, so a published release runs one publisher, and the update warns when both exist ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+
+### Changed
+
+- The `license` answer is the license of the repository and of every package: `PackageLicenseExpression` in `build/ProjectTemplate.props`, the C# file header in `.editorconfig`, `LICENSE.txt`, `COPYRIGHT.txt`, `README.md` and `CONTRIBUTING.md` follow it, a NuGet library requires it, `Update-Project.ps1` stops before it changes anything when a library's answers give none and prints the `-Data` that gives one, and `Adopt-Project.ps1` works it out from `Directory.Build.props`'s `PackageLicenseExpression` or the repository's license file ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+- `code-review.yml` takes NCode Review v1.1.2's caller: both jobs pin v1.1.2, and the review job's concurrency group puts only a comment whose first line is exactly `/review` in the pull request's group, so a `/review` followed by more lines, such as an agent's `---` footer, reviews instead of cancelling a review in progress. The file is project-owned: `Update-Project.ps1` shows the change ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+- `SECURITY.md` says packages reach nuget.org only through `publish.yml` once its one-time setup is done, and carries no hidden maintainer note: `tools/Set-RepositoryBaseline.ps1` turns on private vulnerability reporting, which its Report a Vulnerability button needs ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+- `CONTRIBUTING.md` points at `AGENTS.md` and `.github/instructions/project-template.instructions.md` for the AI-assisted workflow, and lists the runtimes `build/Get-TestRuntimes.ps1` names among a .NET project's prerequisites ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+- `docs/metrics.md` and `docs/decisions/README.md` say above each table what an empty table means ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+- `/address-feedback` and `/run-feedback` say in their descriptions that they run in Claude Code only ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+- ADR-0109, ADR-0112 and ADR-0143 say whom they apply to inside Context, as the other records do; ADR-0126 describes ADR-0144 by its title; ADR-0131 names the template's adoption without naming its script ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+
+### Removed
+
+- The `package_license` answer: a library's packages carry the `license` answer ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+
+### Fixed
+
+- A library's `publish.yml` counts only a 404 from nuget.org as a package with no published version; any other failed lookup stops the publish job instead of skipping the already-published check and miscounting the summary ([#248](https://github.com/NCodeGroup/project-template/issues/248)).
+
 ## [0.62.0] - 2026-11-07
 
 ### Added
@@ -973,7 +999,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.62.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.63.0...HEAD
+[0.63.0]: https://github.com/NCodeGroup/project-template/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/NCodeGroup/project-template/compare/v0.61.2...v0.62.0
 [0.61.2]: https://github.com/NCodeGroup/project-template/compare/v0.61.1...v0.61.2
 [0.61.1]: https://github.com/NCodeGroup/project-template/compare/v0.61.0...v0.61.1
