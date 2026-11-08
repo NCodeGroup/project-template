@@ -41,5 +41,7 @@ available without a profile.
 - GitHub CI and the Copilot setup workflow install the `.node-version` Node.js with `actions/setup-node` for every
   stack that answers `uses_node`.
 - GitLab CI installs nvs, pinned to a release's commit, and selects the `.node-version` Node.js with `use-node.sh` for
-  a Node.js project; a Bun project and the other stacks' GitLab CI keep their own image.
+  a Node.js project and for a .NET, Python or PowerShell project that answers `uses_node`, after installing Git and
+  curl in the PowerShell image, which has neither. A Bun project keeps the `oven/bun` image, and the `other` stack's
+  `alpine:3` image, which has no bash, gets no nvs.
 - A new PC runs `Initialize-Nvs.ps1` once after installing nvs.
