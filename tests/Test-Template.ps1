@@ -1085,7 +1085,7 @@ $m += @(Get-MissingText ('template\.claude\commands\replan-step.md', 'template\.
 $m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('after its `- Prelude:` command', "$preludeRun<the command>", "${preludeStop}command never ran: stop the review without adding steps or a ``Reviewed:`` line, show me the prelude's error"))
 Check 'workflow: executors and coordinators run the plan''s prelude before each Done-when command and stop when it fails' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\handoff-plan.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-bugfix\SKILL.md', 'template\.github\agents\copilot-planner.agent.md') ('sets `prelude` to a command, not `none`, put that command in Context for the executor as its `- Prelude:` line', 'never copy a `PATH` or tool-setup guard into a Done-when command', '- Prelude: `<the Landing section''s prelude command; only when it isn''t none>`'))
-$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('`prelude`: `none`; one PowerShell command', '- prelude: none'))
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('`prelude`: `none`; one PowerShell command', '- prelude: {% if uses_node %}./.template/Use-Node.ps1{% else %}none{% endif %}'))
 $m += @(Get-MissingText 'template\.github\instructions\project-template.instructions.md.jinja' '`prelude: <command>` names one PowerShell command')
 Check 'workflow: planners name the Landing section''s prelude under Context for the executor, which AGENTS.md documents' (-not $m) ($m -join '; ')
 $preludeDir = Join-Path $Work 'prelude'

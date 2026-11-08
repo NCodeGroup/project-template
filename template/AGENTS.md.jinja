@@ -42,7 +42,7 @@ How `/ship-plan` lands a reviewed plan. `integrate`: `pull-request` pushes the p
 - pr-format: none
 - review-bots: ncode-review
 - max-review-rounds: 3
-- prelude: none
+- prelude: {% if uses_node %}./.template/Use-Node.ps1{% else %}none{% endif %}
 
 ## Conventions
 
