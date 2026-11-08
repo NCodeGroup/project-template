@@ -9,7 +9,12 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
+{%- if stack == 'dotnet' %}
+    # The workflows' actions, and those of the composite actions they call, such as .github/actions/install-dotnet.
+    directories: ["/", "/.github/actions/*"]
+{%- else %}
     directory: /
+{%- endif %}
     schedule:
       interval: weekly
     cooldown:

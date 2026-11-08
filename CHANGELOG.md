@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.67.0] - 2026-11-07
+## [0.68.0] - 2026-11-07
 
 ### Added
 
@@ -15,6 +15,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - No change for projects made from the template. `tests/e2e/Test-AddressFeedback.ps1 -Scenario resume` runs `/address-feedback #1` on a run that stopped once its plan was reviewed, and `-Scenario resume-copilot` on the same run left on Copilot's `feedback-1` branch in the main checkout; each checks that the run pushes the stopped run's step as it was, names that commit in the writer's reply, answers the plan's other items and leaves no checkout behind. CI sets up both fixtures, and every setup checks that the state script still sends a stopped run to `/address-feedback 1` once each tool's resume has moved it ([#266](https://github.com/NCodeGroup/project-template/issues/266), [#267](https://github.com/NCodeGroup/project-template/issues/267)).
+
+## [0.67.0] - 2026-11-07
+
+### Added
+
+- `.github/actions/install-dotnet` (.NET, GitHub), a composite action, installs the SDK `global.json` selects and then the runtimes `build/Get-TestRuntimes.ps1` names with `actions/setup-dotnet`. `ci.yml`, `copilot-setup-steps.yml` and a library's `publish.yml` call it right after their checkout, and a project's own workflows that build or test call it the same way, so the .NET setup lives in one place. It is a merged file, and for .NET `.github/dependabot.yml`'s `github-actions` entry reads `.github/actions/*` beside the workflows, so the project's Dependabot moves the action's `actions/setup-dotnet` pins. Projects get it with `.\.template\Update-Project.ps1`, which lists the template's change to a library's own `publish.yml` ([#263](https://github.com/NCodeGroup/project-template/issues/263)).
+
+### Changed
+
+- ADR-0008, `build/Get-TestRuntimes.ps1`'s help and `build/Install-Dotnet.ps1`'s help say the `.github/actions/install-dotnet` action installs the SDK and the test runtimes on GitHub, and that the project's Dependabot moves the pins in it as in the CI workflow. Projects get them with `.\.template\Update-Project.ps1` ([#263](https://github.com/NCodeGroup/project-template/issues/263)).
+
+- `build/Install-Dotnet.ps1` (.NET) gives up on a request after 30 seconds without an answer, or 60 seconds without more of a download, so a download that stalls partway fails, and tries a failed request twice more, after 5 and then 10 seconds, or after the `Retry-After` a 429 or 503 gives, up to 60 seconds, each plus up to a second at random so that clients that failed together don't retry together; a client error other than 408 or 429 fails at once. The script names these limits once, at its top. It needs PowerShell 7.4 or later, and `tests/Test-TemplateDotnet.ps1` checks the timeouts, the retries and how it finds the installation against its offline stand-ins. Projects get it with `.\.template\Update-Project.ps1` ([#263](https://github.com/NCodeGroup/project-template/issues/263), [#264](https://github.com/NCodeGroup/project-template/pull/264)).
 
 ## [0.66.0] - 2026-11-07
 
@@ -1060,7 +1072,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.67.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.68.0...HEAD
+[0.68.0]: https://github.com/NCodeGroup/project-template/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/NCodeGroup/project-template/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/NCodeGroup/project-template/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/NCodeGroup/project-template/compare/v0.64.1...v0.65.0
