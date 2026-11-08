@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-11-08
+
 ### Added
 
 - A `SessionStart` hook in `.claude/settings.json` runs `.claude/hooks/ensure-pwsh.sh`, so a Claude Code cloud session has `pwsh` without stopping to ask to install it. In a cloud session (`CLAUDE_CODE_REMOTE=true`) whose container lacks `pwsh`, the script installs the pinned PowerShell package from Microsoft's apt repository, which a cloud session's default network reaches, after checking its SHA-256; it supports Ubuntu 24.04 x86_64 and elsewhere prints one line and exits 0. It does nothing on a developer's own machine or when `pwsh` is already there, such as after a cloud environment's setup script installed it, and it never fails the session. `tests/Test-EnsurePwsh.ps1` checks the script's paths and the hook's entry in both settings files. Projects get them with `.\.template\Update-Project.ps1`, which merges the hook into the project's `.claude/settings.json`.
@@ -1130,7 +1132,9 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.68.4...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.70.0...HEAD
+[0.70.0]: https://github.com/NCodeGroup/project-template/compare/v0.69.0...v0.70.0
+[0.69.0]: https://github.com/NCodeGroup/project-template/compare/v0.68.4...v0.69.0
 [0.68.4]: https://github.com/NCodeGroup/project-template/compare/v0.68.3...v0.68.4
 [0.68.3]: https://github.com/NCodeGroup/project-template/compare/v0.68.2...v0.68.3
 [0.68.2]: https://github.com/NCodeGroup/project-template/compare/v0.68.1...v0.68.2
