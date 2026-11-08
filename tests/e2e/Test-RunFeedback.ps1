@@ -264,8 +264,8 @@ exit 0
     Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
     Remove-Item -LiteralPath $probe -Recurse -Force
 
-    # The stand-in, in a folder of its own, reads a comment back by its id, edits it with -X PATCH and deletes it with
-    # -X DELETE, refuses an id it doesn't hold and any other method, and with footer.txt saves each comment with that footer.
+    # The stand-in, in a folder of its own, reads a comment back by its id and edits it with -X PATCH, refuses an id it
+    # doesn't hold and any other method, refuses a delete as FORBIDDEN, and with footer.txt saves each comment with that footer.
     $probe = Join-Path $Work 'gh-comment-probe'
     New-Item -ItemType Directory -Force (Join-Path $probe 'host') | Out-Null
     Copy-StandIn gh $probe
@@ -287,10 +287,11 @@ exit 0
     Write-Text $bodyFile "Edited comment`n"
     $null = pwsh -NoProfile -File $probeGh api -X PATCH "repos/fixture/app/issues/comments/$id" -F "body=@$bodyFile"
     $edited = "$(pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$id" --jq .body)".Trim()
-    $null = pwsh -NoProfile -File $probeGh api -X DELETE "repos/fixture/app/issues/comments/$id"; $deleteCode = $LASTEXITCODE
-    $null = pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$id" 2>$null; $goneCode = $LASTEXITCODE
+    $null = pwsh -NoProfile -File $probeGh api -X DELETE "repos/fixture/app/issues/comments/$id" 2>$null; $deleteCode = $LASTEXITCODE
+    $kept = "$(pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$id" --jq .body)".Trim()
     $unsupported = @(Get-Content -LiteralPath (Join-Path $probe 'host/calls.log') | Where-Object { $_ -match '^UNSUPPORTED' })
-    Check 'fixture: the stand-in reads a comment back by its id, edits it with -X PATCH, deletes it with -X DELETE, and refuses an id it doesn''t hold and any other method' ($readBack -eq 'Probe comment' -and $unknownCode -ne 0 -and $postCode -ne 0 -and $edited -eq 'Edited comment' -and $deleteCode -eq 0 -and $goneCode -ne 0 -and $unsupported.Count -eq 3) "read back: '$readBack'; unknown id: exit $unknownCode; POST: exit $postCode; edited: '$edited'; DELETE: exit $deleteCode; read after it: exit $goneCode; unsupported: $($unsupported.Count)"
+    $forbiddenDelete = @(Get-Content -LiteralPath (Join-Path $probe 'host/calls.log') | Where-Object { $_ -match '^FORBIDDEN api -X DELETE ' })
+    Check 'fixture: the stand-in reads a comment back by its id, edits it with -X PATCH, refuses its delete as FORBIDDEN, and refuses an id it doesn''t hold and any other method' ($readBack -eq 'Probe comment' -and $unknownCode -ne 0 -and $postCode -ne 0 -and $edited -eq 'Edited comment' -and $deleteCode -ne 0 -and $kept -eq 'Edited comment' -and $forbiddenDelete.Count -eq 1 -and $unsupported.Count -eq 2) "read back: '$readBack'; unknown id: exit $unknownCode; POST: exit $postCode; edited: '$edited'; DELETE: exit $deleteCode; kept: '$kept'; FORBIDDEN deletes: $($forbiddenDelete.Count); unsupported: $($unsupported.Count)"
     # gh also takes a method attached to -X, as in -XPATCH, and sends a POST when a call has fields and no method.
     Write-Text $bodyFile "Probe comment`n"
     $attachedId = ("$(pwsh -NoProfile -File $probeGh pr comment 1 --body-file $bodyFile)".Trim() -split '#issuecomment-')[-1]
@@ -300,7 +301,7 @@ exit 0
     $null = pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$attachedId" -f 'body=Posted' 2>$null; $impliedPostCode = $LASTEXITCODE
     $impliedBody = "$(pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$attachedId" --jq .body)".Trim()
     $unsupportedNow = @(Get-Content -LiteralPath (Join-Path $probe 'host/calls.log') | Where-Object { $_ -match '^UNSUPPORTED' })
-    Check 'fixture: the stand-in edits a comment with -XPATCH, and refuses a call with fields and no method, which gh sends as a POST' ($attachedEdit -eq 'Edited with -XPATCH' -and $impliedPostCode -ne 0 -and $impliedBody -eq 'Edited with -XPATCH' -and $unsupportedNow.Count -eq 4) "after -XPATCH: '$attachedEdit'; fields and no method: exit $impliedPostCode, body '$impliedBody'; unsupported: $($unsupportedNow.Count)"
+    Check 'fixture: the stand-in edits a comment with -XPATCH, and refuses a call with fields and no method, which gh sends as a POST' ($attachedEdit -eq 'Edited with -XPATCH' -and $impliedPostCode -ne 0 -and $impliedBody -eq 'Edited with -XPATCH' -and $unsupportedNow.Count -eq 3) "after -XPATCH: '$attachedEdit'; fields and no method: exit $impliedPostCode, body '$impliedBody'; unsupported: $($unsupportedNow.Count)"
     # The state script reads the pull request list by head branch and the release by tag through gh api REST paths.
     $pulls = "$(pwsh -NoProfile -File $probeGh api 'repos/{owner}/{repo}/pulls?head={owner}%3Aprobe&state=all&per_page=100')" | ConvertFrom-Json
     $none = "$(pwsh -NoProfile -File $probeGh api 'repos/{owner}/{repo}/pulls?head={owner}%3Ano-such-branch&state=all&per_page=100')" | ConvertFrom-Json
@@ -312,11 +313,15 @@ exit 0
     Write-Text $bodyFile "/review`n"
     $footerId = ("$(pwsh -NoProfile -File $probeGh pr comment 1 --body-file $bodyFile)".Trim() -split '#issuecomment-')[-1]
     $saved = (pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$footerId" --jq .body | Out-String).Replace("`r`n", "`n").TrimEnd()
-    $unasked = "$(@(Get-Content -Raw -LiteralPath (Join-Path $probe 'host/prs.json') | ConvertFrom-Json)[0].reviewRequestedOid)"
-    Write-Text $bodyFile "Autopilot: please comment ``/review`` on this pull request, so NCode Review reviews the commits just pushed.`n"
-    $null = pwsh -NoProfile -File $probeGh pr comment 1 --body-file $bodyFile
     $asked = "$(@(Get-Content -Raw -LiteralPath (Join-Path $probe 'host/prs.json') | ConvertFrom-Json)[0].reviewRequestedOid)"
-    Check 'fixture: with footer.txt the stand-in saves each comment with the footer under a new id, so a /review comment asks for no review, and an Autopilot: comment that names /review stands for the maintainer''s' ([long]$footerId -gt [long]$id -and $saved -eq "/review`n`n---`n$footer" -and -not $unasked -and $asked -eq $moved) "id $footerId after the deleted $id; saved: '$saved'; review asked for at '$unasked' before the Autopilot: comment and at '$asked' after it; the push is '$moved'"
+    Write-Text $bodyFile "/review edited`n"
+    $null = pwsh -NoProfile -File $probeGh api -X PATCH "repos/fixture/app/issues/comments/$footerId" -F "body=@$bodyFile" 2>$null; $editCode = $LASTEXITCODE
+    $after = (pwsh -NoProfile -File $probeGh api "repos/fixture/app/issues/comments/$footerId" --jq .body | Out-String).Replace("`r`n", "`n").TrimEnd()
+    Check 'fixture: with footer.txt the stand-in saves each comment with the footer under a new id, a /review comment saved with it still asks for a review, and an edit of that comment is refused' ([long]$footerId -gt [long]$id -and $saved -eq "/review`n`n---`n$footer" -and $asked -eq $moved -and $editCode -ne 0 -and $after -eq $saved) "id $footerId after $id; saved: '$saved'; review asked for at '$asked', the push is '$moved'; edit: exit $editCode; after it: '$after'"
+    # The stand-in reads a /review command as NCode Review v1.1.2 does: the first line, once a footer from a --- line on is set aside.
+    $asReview = @("/review", "  /REVIEW  ", "/review`n`n---`n$footer", "/review`r`n`r`n***`r`n$footer", "/review`nPlease look again") | Where-Object { -not (Test-ReviewCommand $_) }
+    $notReview = @("Please /review", "/review please", "/review explain F1", "Autopilot: please comment ``/review```n`n---`n$footer", "---`n/review", '') | Where-Object { Test-ReviewCommand $_ }
+    Check 'fixture: Test-ReviewCommand reads /review from the first line, in any case, and sets aside a footer from a --- line on' ($asReview.Count -eq 0 -and $notReview.Count -eq 0) "missed: $($asReview -join ' | '); wrongly taken: $($notReview -join ' | ')"
     Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
     Remove-Item -LiteralPath $probe -Recurse -Force
 
