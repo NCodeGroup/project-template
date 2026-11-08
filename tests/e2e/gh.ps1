@@ -14,11 +14,12 @@ pull request gets when it is opened. An optional `review-seed-push.json` holds t
 read of its threads, comments or reviews, GraphQL or REST, after a /review comment posted once its branch on origin has moved past the head it was opened at, as NCode Review reviews a push only when a writer asks.
 `api repos/<owner>/<repo>/commits/<sha>/check-runs` answers one completed `Code review` check run of the app `ncode-review` for a commit whose push review it has given, giving it first when a /review comment asked for it, and evaluates only simple `--jq` paths and the count of completed check runs of one app.
 `api repos/<owner>/<repo>/issues/comments/<id>` answers a comment it holds by its id, as the commands read a post back
-after making it; with `-X PATCH` it saves the `body` field as given, and with `-X DELETE` it deletes the comment, whose
-id `last-comment-id.txt` keeps it from giving again. An optional `footer.txt` holds a footer it appends, after a blank
-line and a `---` line, to each top-level comment and thread reply it saves, as a Claude Code cloud session's tooling
-does: a `/review` comment saved with it asks for no review, and an `Autopilot:` comment that names `/review` then
-stands for the `/review` the maintainer posts after it. An optional delete-fails.txt makes a comment's delete fail (logged as REFUSED), so the comment stays.
+after making it; with `-X PATCH` it saves the `body` field as given, and it refuses an edit of a `/review` comment and
+any comment's delete (logged as FORBIDDEN), because the workflow leaves a `/review` comment as it was posted and deletes
+no comment. A comment's id is never given again (`last-comment-id.txt`). A comment asks for a review when NCode Review
+would read it as `/review`: its first line, once everything from a `---` line on is set aside, is `/review`. An optional
+`footer.txt` holds a footer it appends, after a blank line and a `---` line, to each top-level comment and thread reply
+it saves, as a Claude Code cloud session's tooling does, so a `/review` comment saved with it still asks for a review.
 An optional footer-pr-only.txt keeps the footer off issue comments, such as a plan snapshot, so the first post that comes back with it is one on the pull request.
 On that route it reads the method as gh does, from `-X PATCH`, `-XPATCH`, `-X=PATCH` or `--method=PATCH`, and takes a
 call with `-f`, `-F`, `--field`, `--raw-field` or `--input` and no method as the POST gh sends, which it refuses.
@@ -115,6 +116,15 @@ function Get-Body {
     $body = Get-Option '--body', '-b'
     if ($null -ne $body) { return $body }
     return ''
+}
+# Whether a comment's body asks NCode Review for a review, as NCode Review v1.1.2 reads a command: the body without white
+# space around it, cut at its first thematic-break line (such as the `---` an agent's footer starts with), has a first
+# line that is `/review`, in any letter case, with nothing else on it.
+function Test-ReviewCommand([string]$Body) {
+    $text = "$Body".Trim()
+    $rule = [regex]::Match($text, '(?m)^[ \t]{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*\r?$')
+    if ($rule.Success) { $text = $text.Substring(0, $rule.Index).Trim() }
+    return ($text -split '\r?\n', 2)[0].Trim() -match '^/review$'
 }
 # The body a comment or a thread reply is saved with: with host/footer.txt, the body sent, a blank line, a --- line and
 # that footer, as a Claude Code cloud session's tooling appends one to what it posts.
@@ -443,9 +453,8 @@ if ("$($args[0])" -eq 'api' -and $apiPath -match '^repos/[^/]+/[^/]+/issues/(\d+
     $url = Add-Comment $kind ([int]$number) $(if ($isPr) { 'pull' } else { 'issues' }) $sent
     $saved = @(Read-Json 'comments.json' @()) | Where-Object { $_.url -eq $url } | Select-Object -First 1
     if ($isPr) {
-        # As the pr comment route does: only a comment exactly /review as saved asks for a review, and with footer.txt an Autopilot: comment naming /review stands for it.
-        if ("$($saved.body)".Trim() -eq '/review') { Set-ReviewRequest ([int]$number) }
-        elseif ((Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt')) -and $sent -match '^\s*Autopilot:' -and $sent.Contains('/review')) { Set-ReviewRequest ([int]$number) }
+        # As the pr comment route does: a comment saved as a /review command, footer or not, asks for a review.
+        if (Test-ReviewCommand $saved.body) { Set-ReviewRequest ([int]$number) }
     }
     Write-Result @{ id = (Get-RestId $url); html_url = $url; body = $saved.body; user = @{ login = 'fixture-owner'; type = 'User' } }
     exit 0
@@ -475,8 +484,9 @@ if ("$($args[0])" -eq 'api' -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)
     Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')"
 }
 
-# A comment read back, edited or deleted by its id, as the commands do after posting one: a GET answers it, -X PATCH saves
-# its body field as given, with no footer, and -X DELETE deletes it. Any other method, or an id it doesn't hold, is unsupported.
+# A comment read back or edited by its id, as the commands do after posting one: a GET answers it, -X PATCH saves
+# its body field as given, with no footer, except on a /review comment, which it refuses, as it refuses -X DELETE (FORBIDDEN).
+# Any other method, or an id it doesn't hold, is unsupported.
 $commentPath = @($args | Select-Object -Skip 1 | Where-Object { "$_" -match '^/?repos/[^/]+/[^/]+/issues/comments/\d+$' }) | Select-Object -First 1
 if ("$($args[0])" -eq 'api' -and $commentPath) {
     $commentId = "$commentPath".Split('/')[-1]
@@ -485,11 +495,8 @@ if ("$($args[0])" -eq 'api' -and $commentPath) {
     $comment = $comments | Where-Object { "$($_.url)".EndsWith("#issuecomment-$commentId") } | Select-Object -First 1
     $newBody = Get-Field 'body'
     if (-not $comment -or $method -notin 'GET', 'PATCH', 'DELETE' -or ($method -eq 'PATCH' -and $null -eq $newBody)) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
-    if ($method -eq 'DELETE') {
-        if (Test-Path -LiteralPath (Join-Path $hostDir 'delete-fails.txt')) { Stop-Call REFUSED "gh stand-in: the delete of comment $commentId failed" }
-        Write-Json 'comments.json' @($comments | Where-Object { -not "$($_.url)".EndsWith("#issuecomment-$commentId") })
-        exit 0
-    }
+    if ($method -eq 'DELETE') { Stop-Call FORBIDDEN "gh stand-in: the workflow never deletes a comment ($commentId)" }
+    if ($method -eq 'PATCH' -and (Test-ReviewCommand $comment.body)) { Stop-Call FORBIDDEN "gh stand-in: a /review comment is left as it was posted ($commentId)" }
     if ($method -eq 'PATCH') {
         $comment.body = $newBody
         Write-Json 'comments.json' $comments
@@ -608,10 +615,8 @@ switch ("$($args[0]) $($args[1])") {
     'pr comment' {
         $number = [int]"$($args[2])".TrimStart('#')
         Add-Comment 'pr' $number 'pull' (Get-Body)
-        # NCode Review acts only on a comment that is exactly /review as it is saved, so one saved with a footer asks for no review.
-        if ((Get-SavedBody (Get-Body)) -match '^\s*/review\s*\z') { Set-ReviewRequest $number }
-        # With host/footer.txt, an Autopilot: comment that names /review stands for the /review the maintainer posts after it.
-        elseif ((Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt')) -and (Get-Body) -match '^\s*Autopilot:' -and (Get-Body).Contains('/review')) { Set-ReviewRequest $number }
+        # NCode Review reads the command from the saved comment's first line and sets aside a footer, so a /review comment saved with one asks for a review too.
+        if (Test-ReviewCommand (Get-SavedBody (Get-Body))) { Set-ReviewRequest $number }
         exit 0
     }
     'pr edit' {
