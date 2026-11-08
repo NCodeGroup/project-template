@@ -3,13 +3,16 @@
     Render the template's .NET cases and check that the .NET layer builds, tests and packs.
 
 .DESCRIPTION
-    Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
+    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
 
 .EXAMPLE
     .\tests\Test-TemplateDotnet.ps1
 
 .PARAMETER SkipDotnetBuild
     Render nothing and run no .NET check; exit 0.
+
+.PARAMETER InstallerOnly
+    Run only the installer checks, offline: render nothing and build nothing.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-dotnet-test-<process ID> in the temp folder, the
@@ -18,6 +21,7 @@
 [CmdletBinding()]
 param(
     [switch]$SkipDotnetBuild,
+    [switch]$InstallerOnly,
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-dotnet-test-$PID")
 )
 $ErrorActionPreference = 'Stop'
@@ -31,6 +35,125 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
 }
 
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
+
+$stubRoot = Join-Path $Work 'installer'
+New-Item -ItemType Directory -Force -Path $stubRoot | Out-Null
+$installer = Join-Path (Split-Path -Parent $PSScriptRoot) "template/{% if stack == 'dotnet' %}build{% endif %}/Install-Dotnet.ps1"
+$os = if ($IsWindows) { 'win' } elseif ($IsMacOS) { 'osx' } elseif (Test-Path -LiteralPath '/etc/alpine-release') { 'linux-musl' } else { 'linux' }
+$arch = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+$suffix = "$os-$arch$(if ($IsWindows) { '.zip' } else { '.tar.gz' })"
+
+function Invoke-StubInstaller {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Stand-ins for the installer''s network calls, seen only by the installer this function runs.')]
+    param([hashtable]$Metadata, [hashtable]$Downloads, [hashtable]$Arguments)
+    $calls = [Collections.Generic.List[string]]::new(); $byPath = $Metadata; $byUrl = $Downloads
+    function Invoke-RestMethod([string]$Uri) { $calls.Add($Uri); $key = $Uri -replace '^.*/release-metadata/', ''; if (-not $byPath.ContainsKey($key)) { throw "unexpected metadata $Uri" }; $byPath[$key] | ConvertFrom-Json }
+    function Invoke-WebRequest([string]$Uri, [string]$OutFile) { $calls.Add($Uri); if (-not $byUrl.ContainsKey($Uri)) { throw "unexpected download $Uri" }; [IO.File]::WriteAllBytes($OutFile, $byUrl[$Uri]) }
+    $printed = ''; $failed = ''
+    try { $printed = (& $installer @Arguments 2>&1 | Out-String).Trim() } catch { $failed = "$_" }
+    [pscustomobject]@{ Printed = $printed; Calls = @($calls); Error = $failed }
+}
+
+function New-StubSdk([string]$Version, [object[]]$Files = @()) {
+    @{ version = $Version; files = $Files }
+}
+
+function New-StubChannel([string]$Release, [object[]]$Sdks, [object[]]$RuntimeFiles = @()) {
+    ConvertTo-Json -Depth 10 @{ 'latest-release' = $Release; releases = @(@{ 'release-version' = $Release; runtime = @{ version = $Release }; 'aspnetcore-runtime' = @{ version = $Release; files = $RuntimeFiles }; sdks = $Sdks }) }
+}
+
+function New-StubInstallDir([string]$Name, [string[]]$Sdks = @(), [switch]$NoRuntime) {
+    $dir = Join-Path $stubRoot $Name
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    foreach ($version in $Sdks) { New-Item -ItemType Directory -Force -Path (Join-Path $dir "sdk/$version") | Out-Null }
+    if (-not $NoRuntime) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $dir 'shared/Microsoft.NETCore.App/8.0.11') | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $dir 'shared/Microsoft.AspNetCore.App/8.0.11') | Out-Null
+    }
+    $dir
+}
+
+$dir = New-StubInstallDir 'sha'
+$globalJson = Join-Path $stubRoot 'sha.json'
+[IO.File]::WriteAllText($globalJson, '{"sdk":{"version":"8.0.404"}}')
+$sdkUrl = 'https://stub.invalid/dotnet-sdk'
+$r = Invoke-StubInstaller @{ '8.0/releases.json' = New-StubChannel '8.0.11' @(New-StubSdk '8.0.404' @(@{ name = "dotnet-sdk-$suffix"; url = $sdkUrl; hash = ('0' * 128) })) } @{ $sdkUrl = [Text.Encoding]::UTF8.GetBytes('not the archive the metadata describes') } @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' }
+Check 'installer: build/Install-Dotnet.ps1 refuses an archive whose SHA-512 differs from the release metadata''s, installs nothing and leaves no scratch folder' ($r.Error.Contains("doesn't match the SHA-512") -and $r.Calls -contains $sdkUrl -and -not (Test-Path -LiteralPath (Join-Path $dir 'sdk')) -and -not @(Get-ChildItem -LiteralPath $dir -Force -Filter '.install-dotnet-*')) "$($r.Error) | $($r.Printed)"
+
+$selectMetadata = @{
+    'releases-index.json' = @{ 'releases-index' = @(@{ 'channel-version' = '8.0'; 'latest-sdk' = '8.0.404' }, @{ 'channel-version' = '10.0'; 'latest-sdk' = '10.0.100' }, @{ 'channel-version' = '11.0'; 'latest-sdk' = '11.0.100-preview.1.25000.1' }) } | ConvertTo-Json -Depth 5
+    '8.0/releases.json' = New-StubChannel '8.0.11' @((New-StubSdk '8.0.100'), (New-StubSdk '8.0.110'), (New-StubSdk '8.0.300'), (New-StubSdk '8.0.404'))
+    '10.0/releases.json' = New-StubChannel '10.0.0' @((New-StubSdk '10.0.100-rc.1.25451.107'), (New-StubSdk '10.0.100'))
+    '11.0/releases.json' = New-StubChannel '11.0.0-preview.1' @(New-StubSdk '11.0.100-preview.1.25000.1')
+}
+$selectInstalled = '8.0.100', '8.0.110', '8.0.300', '8.0.404', '10.0.100-rc.1.25451.107', '10.0.100', '11.0.100-preview.1.25000.1'
+$selectCases = @(
+    @('8.0.100', '', '8.0.100'),
+    @('8.0.100', 'disable', '8.0.100'),
+    @('8.0.100', 'latestPatch', '8.0.110'),
+    @('8.0.100', 'latestFeature', '8.0.404'),
+    @('8.0.100', 'latestMinor', '8.0.404'),
+    @('8.0.100', 'latestMajor', '10.0.100'),
+    @('10.0.100-rc.1.25451.107', 'latestFeature', '10.0.100-rc.1.25451.107')
+)
+$misses = [Collections.Generic.List[string]]::new()
+for ($i = 0; $i -lt $selectCases.Count; $i++) {
+    $version, $rollForward, $expected = $selectCases[$i]
+    $dir = New-StubInstallDir "select$i" $selectInstalled
+    $sdkSetting = @{ version = $version }
+    if ($rollForward) { $sdkSetting.rollForward = $rollForward }
+    $globalJson = Join-Path $stubRoot "select$i.json"
+    [IO.File]::WriteAllText($globalJson, (@{ sdk = $sdkSetting } | ConvertTo-Json))
+    $r = Invoke-StubInstaller $selectMetadata @{} @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' }
+    if ($r.Error -or -not $r.Printed.Contains(".NET SDK $expected is already in")) { $misses.Add("$version ${rollForward}: $($r.Error)$($r.Printed)") }
+}
+Check 'installer: build/Install-Dotnet.ps1 selects the SDK global.json names, or the newest its rollForward policy allows' (-not $misses) ($misses -join ' | ')
+
+$errorMetadata = @{ '8.0/releases.json' = New-StubChannel '8.0.11' @((New-StubSdk '8.0.100'), (New-StubSdk '8.0.404')) }
+$errorCases = @(
+    @{ Name = 'error1'; Version = '8.0'; Expect = 'names no full SDK version' },
+    @{ Name = 'error2'; Version = '8.0.999'; Expect = 'lists no .NET SDK that' },
+    @{ Name = 'error3'; Version = '8.0.404'; Expect = "Microsoft publishes no dotnet-sdk-$suffix for .NET SDK 8.0.404" },
+    @{ Name = 'error4'; NoRuntime = $true; Expect = "Microsoft publishes no aspnetcore-runtime-$suffix for .NET 8.0.11" }
+)
+$misses = [Collections.Generic.List[string]]::new()
+foreach ($case in $errorCases) {
+    $dir = New-StubInstallDir $case.Name -NoRuntime:([bool]$case.NoRuntime)
+    if ($case.NoRuntime) {
+        $arguments = @{ SkipSdk = $true; InstallDir = $dir; Channel = '8.0' }
+    }
+    else {
+        $globalJson = Join-Path $stubRoot "$($case.Name).json"
+        [IO.File]::WriteAllText($globalJson, (@{ sdk = @{ version = $case.Version } } | ConvertTo-Json))
+        $arguments = @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' }
+    }
+    $r = Invoke-StubInstaller $errorMetadata @{} $arguments
+    if (-not $r.Error.Contains($case.Expect) -or (Test-Path -LiteralPath (Join-Path $dir 'sdk')) -or @(Get-ChildItem -LiteralPath $dir -Force -Filter '.install-dotnet-*')) { $misses.Add("$($case.Name): $($r.Error)") }
+}
+Check 'installer: build/Install-Dotnet.ps1 stops with its own error when global.json or the release metadata gives it nothing to install' (-not $misses) ($misses -join ' | ')
+
+$archiveSource = Join-Path $stubRoot 'archive-src'
+New-Item -ItemType Directory -Force -Path (Join-Path $archiveSource 'sdk/8.0.404') | Out-Null
+[IO.File]::WriteAllText((Join-Path $archiveSource 'dotnet'), 'from the archive')
+[IO.File]::WriteAllText((Join-Path $archiveSource 'sdk/8.0.404/marker'), 'sdk')
+$archive = Join-Path $stubRoot "stub-dotnet-sdk-$suffix"
+if ($IsWindows) { Compress-Archive -Path (Join-Path $archiveSource '*') -DestinationPath $archive }
+else { tar -czf $archive -C $archiveSource . }
+$archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA512).Hash
+$dir = New-StubInstallDir 'merge'
+[IO.File]::WriteAllText((Join-Path $dir 'dotnet'), 'already there')
+$globalJson = Join-Path $stubRoot 'merge.json'
+[IO.File]::WriteAllText($globalJson, '{"sdk":{"version":"8.0.404"}}')
+$r = Invoke-StubInstaller @{ '8.0/releases.json' = New-StubChannel '8.0.11' @(New-StubSdk '8.0.404' @(@{ name = "dotnet-sdk-$suffix"; url = $sdkUrl; hash = $archiveHash })) } @{ $sdkUrl = [IO.File]::ReadAllBytes($archive) } @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' }
+Check 'installer: build/Install-Dotnet.ps1 adds the files of a verified SDK archive that the installation lacks and replaces none' (-not $r.Error -and $r.Printed.Contains('Installed .NET SDK 8.0.404 in') -and [IO.File]::ReadAllText((Join-Path $dir 'dotnet')) -eq 'already there' -and [IO.File]::ReadAllText((Join-Path $dir 'sdk/8.0.404/marker')) -eq 'sdk' -and -not @(Get-ChildItem -LiteralPath $dir -Force -Filter '.install-dotnet-*')) "$($r.Error) | $($r.Printed)"
+if ($InstallerOnly) {
+    ''
+    if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
+    if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
+    'Template .NET tests: PASSED'
+    exit 0
+}
+
 $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 $copierCommand = @(if (Get-Command copier -ErrorAction SilentlyContinue) { 'copier' } elseif (Get-Command uvx -ErrorAction SilentlyContinue) { 'uvx', '--from', 'copier', 'copier' } else { throw 'Copier not found. Install it with: uv tool install copier' })
@@ -108,12 +231,24 @@ try {
     # The runtimes script names the older framework a test project targets, and nothing for the SDK's own.
     $runtimesNone = @(pwsh -NoProfile -File build/Get-TestRuntimes.ps1 2>&1)
     $runtimesNoneCode = $LASTEXITCODE
+    $dotnetRoot = Join-Path $Work 'dotnet-install'
+    $installNone = @(pwsh -NoProfile -File build/Install-Dotnet.ps1 -SkipSdk -InstallDir $dotnetRoot 2>&1)
+    $installNoneCode = $LASTEXITCODE
+    $installNoneCreated = Test-Path -LiteralPath $dotnetRoot
     New-Item -ItemType Directory -Force tests/Legacy.Tests | Out-Null
     [IO.File]::WriteAllText((Join-Path (Get-Location) 'tests/Legacy.Tests/Legacy.Tests.csproj'), '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFrameworks>net8.0;net10.0</TargetFrameworks></PropertyGroup></Project>')
     dotnet sln add tests/Legacy.Tests | Out-Null
     $runtimesLegacy = @(pwsh -NoProfile -File build/Get-TestRuntimes.ps1 2>&1)
     $runtimesLegacyCode = $LASTEXITCODE
     Check 'dotnet: build/Get-TestRuntimes.ps1 names the runtime of an older framework a test project targets, and none for the SDK''s own' ($runtimesNoneCode -eq 0 -and $runtimesNone.Count -eq 0 -and $runtimesLegacyCode -eq 0 -and $runtimesLegacy.Count -eq 1 -and $runtimesLegacy[0] -eq '8.0.x') "$($runtimesNone -join ',') | $($runtimesLegacy -join ',')"
+    $install = @(pwsh -NoProfile -File build/Install-Dotnet.ps1 -InstallDir $dotnetRoot 2>&1)
+    $installCode = $LASTEXITCODE
+    $installAgain = @(pwsh -NoProfile -File build/Install-Dotnet.ps1 -InstallDir $dotnetRoot 2>&1)
+    $installAgainCode = $LASTEXITCODE
+    # Run in the project, the installation's dotnet picks the SDK global.json selects from what the script put there.
+    $installedSdk = "$(& (Join-Path $dotnetRoot $(if ($IsWindows) { 'dotnet.exe' } else { 'dotnet' })) --version 2>&1)"
+    $pinnedSdk = (Get-Content -Raw -LiteralPath global.json | ConvertFrom-Json).sdk.version
+    Check 'dotnet: build/Install-Dotnet.ps1 -SkipSdk installs nothing without an older framework; build/Install-Dotnet.ps1 installs the SDK global.json selects, which dotnet runs from there, and the runtimes build/Get-TestRuntimes.ps1 names, and skips them once they are there' ($installNoneCode -eq 0 -and $installNone.Count -eq 0 -and -not $installNoneCreated -and $installCode -eq 0 -and $installedSdk -match '^\d+\.\d+\.\d+$' -and [version]$installedSdk -ge [version]$pinnedSdk -and ($install -join ' ').Contains("Installed .NET SDK $installedSdk in") -and (Test-Path (Join-Path $dotnetRoot 'shared/Microsoft.NETCore.App/8.0.*')) -and (Test-Path (Join-Path $dotnetRoot 'shared/Microsoft.AspNetCore.App/8.0.*')) -and $installAgainCode -eq 0 -and ($installAgain -join ' ').Contains(".NET SDK $installedSdk is already in") -and ($installAgain -join ' ').Contains('are already in')) "$installedSdk | $($installNone -join ',') | $($install -join ',') | $($installAgain -join ',')"
 }
 finally { Pop-Location }
 

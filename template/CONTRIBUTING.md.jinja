@@ -10,7 +10,7 @@ Issues and {{ pr }}s are welcome. [README.md](README.md) explains the project, a
 
 - Git, and PowerShell 7 (`pwsh`): every command here runs from the repository root in PowerShell 7.
 {%- if stack == 'dotnet' %}
-- The .NET SDK version that [global.json](global.json) pins, and the runtime of each older .NET a test project targets, which `./build/Get-TestRuntimes.ps1` names.
+- The .NET SDK that [global.json](global.json) selects, and the runtime of each older .NET a test project targets, which `./build/Get-TestRuntimes.ps1` names. `./build/Install-Dotnet.ps1` installs both beside the .NET that runs `dotnet`, or into the folder `-InstallDir` names; run it as an administrator, or with `sudo`, when .NET is installed system-wide.
 {%- elif stack == 'python' %}
 - Python 3 with pytest: `python -m pip install pytest`, then `python -m pip install -r requirements.txt` or `python -m pip install -e .` when the project has a `requirements.txt` or a `pyproject.toml`.
 {%- elif stack == 'node' %}
