@@ -13,7 +13,9 @@
     untracked and no release heading it tags the merged commit with that version and publishes the [Unreleased] section,
     it does nothing for another commit's pull request or a description without the line, it accepts a line that agrees
     with the changelog and fails on one that disagrees, and it stops with gh's message when the pull request lookup
-    fails. The stand-in also accepts the call that starts publish.yml. Also checks that release.yml runs the script on a push to main
+    fails. The stand-in also accepts the call that starts publish.yml. Also checks that it starts publish.yml once, on the tag, after
+    publishing the release when publish.yml has a workflow_dispatch trigger, starts nothing on a second run or without a
+    publish.yml, and fails naming the trigger when publish.yml has none. Also checks that release.yml runs the script on a push to main
     that changes CHANGELOG.md, with contents: write and the merged commit. Prints PASS or FAIL per check and exits 1 on
     any failure.
 
@@ -140,6 +142,7 @@ try {
     $notes = if (Test-Path -LiteralPath $notesPath) { (Get-Content -Raw -LiteralPath $notesPath).Trim() } else { '' }
     Check 'a new version: the release has the section without its heading or the link references' ($notes -eq "### Added`n`n- The second thing.") $notes
     Check 'a new version: the release is named with the version and created once' ((@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases -f tag_name=v0\.2\.0 -f name=v0\.2\.0 -F body=@').Count -eq 1) ((Get-Calls) -join ' | ')
+    Check 'no publish.yml: it starts nothing' (-not (@(Get-Calls) -match 'dispatches')) ((Get-Calls) -join ' | ')
 
     $run = Invoke-Publish $work
     Check 'a second run: it exits 0 and publishes nothing' ($run.Code -eq 0 -and -not (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases -f')) ((Get-Calls) -join ' | ')
@@ -233,6 +236,21 @@ try {
     $env:PUBLISH_RELEASE_TEST_PULLS_ERROR = '1'
     try { $run = Invoke-Publish $work } finally { Remove-Item Env:PUBLISH_RELEASE_TEST_PULLS_ERROR }
     Check 'a pull request lookup that fails: it fails with gh''s message and tags nothing' ($run.Code -ne 0 -and $run.Output -match 'HTTP 500' -and -not (Get-OriginTag $work).Count) $run.Output
+
+    $publishWith = "name: Publish packages`non:`n  release:`n    types: [published]`n  workflow_dispatch:`n    inputs:`n      tag:`n        required: true`n        type: string`njobs: {}`n"
+    $publishWithout = "name: Publish packages`non:`n  release:`n    types: [published]`njobs: {}`n"
+
+    $work = New-Clone 'publish-dispatch' '- release: tag+release' -Files @{ '.github/workflows/publish.yml' = $publishWith }
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $run = Invoke-Publish $work
+    Check 'publish.yml with workflow_dispatch: it starts publish.yml once, on the tag, with the tag as input' ($run.Code -eq 0 -and (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/actions/workflows/publish\.yml/dispatches -f ref=v0\.2\.0 -f inputs\[tag\]=v0\.2\.0').Count -eq 1) ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
+    $run = Invoke-Publish $work
+    Check 'publish.yml with workflow_dispatch: a second run starts nothing' ($run.Code -eq 0 -and -not (@(Get-Calls) -match 'dispatches')) ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
+
+    $work = New-Clone 'publish-no-dispatch' '- release: tag+release' -Files @{ '.github/workflows/publish.yml' = $publishWithout }
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $run = Invoke-Publish $work
+    Check 'publish.yml without workflow_dispatch: it publishes the release, then fails and names the trigger' ($run.Code -ne 0 -and (Test-Path -LiteralPath (Join-Path $releases 'v0.2.0')) -and $run.Output -match 'workflow_dispatch' -and -not (@(Get-Calls) -match 'dispatches')) ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
 } finally {
     Remove-Item Env:PUBLISH_RELEASE_TEST_RELEASES -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
