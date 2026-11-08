@@ -286,25 +286,45 @@ exit 0
         $st = Get-State $app $app
         $ok = $st['host'] -eq 'github' -and $st['default'] -eq 'main' -and $st['protected'] -eq 'hook' -and $st['landing'] -like '*integrate=pull-request*' -and $st['next'] -eq 'none no plan in this folder'
         Check 'fixture: the state script sees a GitHub origin whose main takes only pull requests' $ok "host='$($st['host'])' default='$($st['default'])' protected='$($st['protected'])' landing='$($st['landing'])' next='$($st['next'])'"
-        # A run that stopped once its plan was reviewed leaves its worktree: the state script sends it back to /address-feedback, never to /ship-plan.
-        $stopped = Join-Path $app '.claude/worktrees/feedback-1'
-        Invoke-Git -C $app worktree add -q --no-track $stopped -b worktree-feedback-1 "origin/$head"
+        # A run that stopped once its plan was reviewed: the state script sends it back to /address-feedback, never to
+        # /ship-plan, and still does once each tool's Resume has moved it into that tool's checkout (Checkout item 5).
+        $run = New-StoppedRun
         try {
-            $start = "$(git -C $stopped rev-parse HEAD)".Trim()
-            Write-Text (Join-Path $stopped 'stopped.txt') "stopped`n"
-            Invoke-Git -C $stopped add stopped.txt
-            Invoke-Git -C $stopped commit -q -m 'Plan step 1: Add stopped.txt'
-            $done = "$(git -C $stopped rev-parse HEAD)".Trim()
-            Write-Text (Join-Path $stopped 'PLAN.md') "# Plan: Address the feedback on pull request 1`nPull request: #1`nStart: $start`nReviewed: $done`n`n## Steps`n`n### [x] 1. Add stopped.txt`n- Done when: exit 0`n"
-            $fb = Get-State $app $stopped
+            $fb = Get-State $app $run.Folder
             $ok = $fb['feedback'] -eq '1' -and $fb['pr'] -eq '1 OPEN' -and $fb['conflicts'] -eq '-' -and $fb['next'] -eq 'address-feedback 1'
             Check 'fixture: the state script sends a stopped run''s reviewed plan back to /address-feedback 1, with pull request #1 open' $ok "feedback='$($fb['feedback'])' pr='$($fb['pr'])' conflicts='$($fb['conflicts'])' next='$($fb['next'])'"
+
+            # Copilot's Resume: PLAN.md is copied out, the worktree removed without --force, and its branch checked out here as feedback-1.
+            Copy-Item -LiteralPath (Join-Path $run.Folder 'PLAN.md') -Destination (Join-Path $app 'PLAN.md')
+            Invoke-Git -C $app worktree remove $run.Folder
+            Invoke-Git -C $app branch -q -m worktree-feedback-1 feedback-1
+            Invoke-Git -C $app switch -q feedback-1
+            $fb = Get-State $app $app
+            $ok = $fb['worktree'] -eq '-' -and $fb['branch'] -eq 'feedback-1' -and $fb['feedback'] -eq '1' -and $fb['reviewed'] -eq 'current' -and $fb['dirty'] -eq 'no' -and $fb['next'] -eq 'address-feedback 1' -and -not (Test-Path -LiteralPath $run.Folder)
+            Check 'fixture: Copilot''s Resume moves a Claude Code run onto feedback-1 in the main checkout, still reviewed and sent back to /address-feedback 1' $ok "worktree='$($fb['worktree'])' branch='$($fb['branch'])' feedback='$($fb['feedback'])' reviewed='$($fb['reviewed'])' dirty='$($fb['dirty'])' next='$($fb['next'])'"
+
+            # Claude Code's Resume: the main checkout goes back to main, carrying PLAN.md, then the branch and PLAN.md move into the worktree.
+            Invoke-Git -C $app switch -q main
+            Invoke-Git -C $app branch -q -m feedback-1 worktree-feedback-1
+            Invoke-Git -C $app worktree add -q $run.Folder worktree-feedback-1
+            Move-Item -LiteralPath (Join-Path $app 'PLAN.md') -Destination (Join-Path $run.Folder 'PLAN.md')
+            $fb = Get-State $app $run.Folder
+            $main = Get-State $app $app
+            $ok = $fb['worktree'] -eq 'feedback-1' -and $fb['branch'] -eq 'worktree-feedback-1' -and $fb['feedback'] -eq '1' -and $fb['reviewed'] -eq 'current' -and $fb['dirty'] -eq 'no' -and $fb['next'] -eq 'address-feedback 1' -and $main['branch'] -eq 'main' -and $main['plan'] -eq '-'
+            Check 'fixture: Claude Code''s Resume moves a Copilot run into .claude/worktrees/feedback-1, still reviewed and sent back to /address-feedback 1, and leaves the main checkout on main with no plan' $ok "worktree='$($fb['worktree'])' branch='$($fb['branch'])' feedback='$($fb['feedback'])' reviewed='$($fb['reviewed'])' next='$($fb['next'])' main checkout on '$($main['branch'])' with plan '$($main['plan'])'"
         }
         finally {
-            Invoke-Git -C $app worktree remove --force $stopped
-            Invoke-Git -C $app branch -q -D worktree-feedback-1
+            if ("$(git -C $app branch --show-current)".Trim() -ne 'main') { Invoke-Git -C $app switch -q main }
+            Remove-Item -LiteralPath (Join-Path $app 'PLAN.md') -ErrorAction Ignore
+            if (Test-Path -LiteralPath $run.Folder) { Invoke-Git -C $app worktree remove --force $run.Folder }
+            foreach ($runBranch in 'worktree-feedback-1', 'feedback-1') {
+                $null = git -C $app rev-parse --verify --quiet "refs/heads/$runBranch"
+                if (-not $LASTEXITCODE) { Invoke-Git -C $app branch -q -D $runBranch }
+            }
         }
-        Check 'fixture: the stopped run''s worktree is removed before the run' (-not (Test-Path -LiteralPath $stopped)) "still there: $stopped"
+        $runBranches = @(git -C $app branch --list feedback-1 worktree-feedback-1)
+        $ok = -not (Test-Path -LiteralPath $run.Folder) -and $runBranches.Count -eq 0 -and -not (Test-Path -LiteralPath (Join-Path $app 'PLAN.md'))
+        Check 'fixture: the stopped run is removed before the run: no worktree, no feedback-1 or worktree-feedback-1 branch, and no PLAN.md in the main checkout' $ok "worktree: $(Test-Path -LiteralPath $run.Folder); branches: $($runBranches -join ', ')"
 
         $login = "$(gh api user --jq .login)".Trim()
         Check 'fixture: gh on PATH is the stand-in, signed in as fixture-owner' ($login -eq 'fixture-owner') "login='$login'"
