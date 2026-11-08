@@ -182,6 +182,26 @@ function Get-Change {
     }
 }
 
+# Stage the files the update added, by name from a list file, so a long list can't overflow Windows' command line. Git leaves
+# out every ignored path, and with the copy of the project's .gitignore in info/exclude also one the project ignored when the
+# update started, so a folder only the project's own rules ignore, such as node_modules/, is never staged.
+function Add-NewFile([string]$Folder) {
+    $new = @((git -c core.quotePath=false ls-files -z --others --exclude-standard) -split "`0" | Where-Object { $_ })
+    if (-not $new) { return }
+    New-Item -ItemType Directory -Force $Folder | Out-Null
+    $list = Join-Path $Folder 'new-files.txt'
+    [IO.File]::WriteAllText($list, ($new -join "`0"), [Text.UTF8Encoding]::new($false))
+    git --literal-pathspecs add --pathspec-from-file=$list --pathspec-file-nul
+    if ($LASTEXITCODE) { throw 'Staging the files the update added failed.' }
+}
+
+# Stage the update's changes to tracked files, deletions included, and the files it added (Add-NewFile); never git add -A.
+function Add-UpdateChange([string]$Folder) {
+    git add -u
+    if ($LASTEXITCODE) { throw 'Staging the update failed.' }
+    Add-NewFile $Folder
+}
+
 # True when the project's file already has a hunk of the template's change: the hunk applies to it in reverse.
 function Test-HunkApplied([string]$File, [string[]]$Hunk, [string]$Folder) {
     $patch = Join-Path $Folder 'hunk.patch'
@@ -483,8 +503,9 @@ try {
             [IO.File]::WriteAllText((Join-Path $project $file), "$templatePart`n")
         }
         $resetFiles = @()
-        $resetCommitted = [bool](git status --porcelain)
-        if ($resetCommitted) { git add -A; git commit -q --no-verify -m 'Reset template-owned files'; if ($LASTEXITCODE) { throw 'Committing the reset failed.' } }
+        Add-UpdateChange $scratch
+        $resetCommitted = [bool](git diff --cached --name-only)
+        if ($resetCommitted) { git commit -q --no-verify -m 'Reset template-owned files'; if ($LASTEXITCODE) { throw 'Committing the reset failed.' } }
 
         $copierArgs = @('update', '--defaults', '--quiet', '--vcs-ref', $to)
         foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
@@ -518,7 +539,7 @@ try {
 
     $conflicts = @(git diff --name-only --diff-filter=U)
     if (-not $conflicts) {
-        git add -A
+        Add-UpdateChange $scratch
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
         if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
         if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
@@ -528,6 +549,8 @@ try {
         $unmerged = @(git -c core.quotePath=false diff --name-only --diff-filter=U)
         $restage = @($resetFiles | Where-Object { $_ -notin $unmerged })
         if ($restage) { git --literal-pathspecs add -A -- $restage }
+        # The files the update added are staged too, so git add -u after the conflicts are resolved stages the whole update.
+        Add-NewFile $scratch
     }
     # Enable the template's versioned hooks in this clone, unless it already has a hooks path or runs hooks another way
     # (Get-GitHooksSetup): then warn, because without them nothing strips AI agent attribution before a push.
@@ -642,7 +665,7 @@ try {
     if ($conflicts) {
         ''
         "$($conflicts.Count) file(s) conflict: the template and this project changed the same lines. In each, keep the right lines and delete the <<<<<<<, ======= and >>>>>>> marker lines. Then:"
-        '  git add -A'
+        '  git add -u'
         '  git diff --cached --check     # prints any marker you missed'
         "  git commit -m `"$message`""
         'To abandon the update instead: git reset --hard; git clean -fd'
