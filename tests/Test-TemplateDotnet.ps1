@@ -116,6 +116,29 @@ for ($i = 0; $i -lt $selectCases.Count; $i++) {
     if ($r.Error -or -not $r.Printed.Contains(".NET SDK $expected is already in")) { $misses.Add("$version ${rollForward}: $($r.Error)$($r.Printed)") }
 }
 Check 'installer: build/Install-Dotnet.ps1 selects the SDK global.json names, or the newest its rollForward policy allows' (-not $misses) ($misses -join ' | ')
+
+$errorMetadata = @{ '8.0/releases.json' = New-StubChannel '8.0.11' @((New-StubSdk '8.0.100'), (New-StubSdk '8.0.404')) }
+$errorCases = @(
+    @{ Name = 'error1'; Version = '8.0'; Expect = 'names no full SDK version' },
+    @{ Name = 'error2'; Version = '8.0.999'; Expect = 'lists no .NET SDK that' },
+    @{ Name = 'error3'; Version = '8.0.404'; Expect = "Microsoft publishes no dotnet-sdk-$suffix for .NET SDK 8.0.404" },
+    @{ Name = 'error4'; NoRuntime = $true; Expect = "Microsoft publishes no aspnetcore-runtime-$suffix for .NET 8.0.11" }
+)
+$misses = [Collections.Generic.List[string]]::new()
+foreach ($case in $errorCases) {
+    $dir = New-StubInstallDir $case.Name -NoRuntime:([bool]$case.NoRuntime)
+    if ($case.NoRuntime) {
+        $arguments = @{ SkipSdk = $true; InstallDir = $dir; Channel = '8.0' }
+    }
+    else {
+        $globalJson = Join-Path $stubRoot "$($case.Name).json"
+        [IO.File]::WriteAllText($globalJson, (@{ sdk = @{ version = $case.Version } } | ConvertTo-Json))
+        $arguments = @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' }
+    }
+    $r = Invoke-StubInstaller $errorMetadata @{} $arguments
+    if (-not $r.Error.Contains($case.Expect) -or (Test-Path -LiteralPath (Join-Path $dir 'sdk')) -or @(Get-ChildItem -LiteralPath $dir -Force -Filter '.install-dotnet-*')) { $misses.Add("$($case.Name): $($r.Error)") }
+}
+Check 'installer: build/Install-Dotnet.ps1 stops with its own error when global.json or the release metadata gives it nothing to install' (-not $misses) ($misses -join ' | ')
 if ($InstallerOnly) { Complete-Run }
 
 $tpl = Join-Path $Work 'template-repo'
