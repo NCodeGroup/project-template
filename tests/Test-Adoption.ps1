@@ -136,6 +136,40 @@ $bad = foreach ($name in $nodes.Keys) {
 }
 Check 'unit: Get-AdoptionAnswers works out Node.js commands from package.json' (-not $bad) ($bad -join ' | ')
 
+$nodeUse = [ordered]@{
+    'use-dotnet-web'     = @{ Files = @('src/A/A.csproj', 'src/Web/package.json'); Stack = 'dotnet'; UsesNode = $true }
+    'use-python-nvmrc'   = @{ Files = @('pyproject.toml', '.nvmrc'); Stack = 'python'; UsesNode = $true }
+    'use-dotnet-modules' = @{ Files = @('src/A/A.csproj', 'node_modules/x/package.json'); Stack = 'dotnet'; UsesNode = $false }
+    'use-python'         = @{ Files = @('pyproject.toml'); Stack = 'python'; UsesNode = $false }
+    'use-python-deep'    = @{ Files = @('pyproject.toml', 'a/b/c/package.json'); Stack = 'python'; UsesNode = $false }
+    'use-node'           = @{ Files = @('package.json'); Stack = 'node'; UsesNode = $false }
+}
+$bad = foreach ($name in $nodeUse.Keys) {
+    $files = @{}
+    foreach ($file in $nodeUse[$name].Files) { $files[$file] = if ($file -like '*package.json') { '{}' } else { "x`n" } }
+    $folder = New-TestFolder $name $files
+    $a = Get-AdoptionAnswers $folder
+    $want = $nodeUse[$name]
+    if (-not ($a.stack -eq $want.Stack -and $a.Contains('uses_node') -eq $want.UsesNode -and (-not $want.UsesNode -or $a.uses_node -eq $true))) {
+        "${name}: $(($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')"
+    }
+}
+Check 'unit: Get-AdoptionAnswers answers uses_node for a repository that uses Node.js without being a Node.js project' (-not $bad) ($bad -join ' | ')
+
+$versionCases = [ordered]@{
+    'ver-nvmrc'   = @{ Files = @{ '.nvmrc' = "v22`n" }; File = '.nvmrc'; Version = '22'; Text = 'v22' }
+    'ver-alias'   = @{ Files = @{ '.nvmrc' = "lts/iron`n" }; File = '.nvmrc'; Version = $null; Text = 'lts/iron' }
+    'ver-both'    = @{ Files = @{ '.node-version' = "24.1.0`n"; '.nvmrc' = "20`n" }; File = '.node-version'; Version = '24.1.0'; Text = '24.1.0' }
+    'ver-none'    = @{ Files = @{}; File = $null }
+}
+$bad = foreach ($name in $versionCases.Keys) {
+    $want = $versionCases[$name]
+    $v = Get-NodeVersionFile (New-TestFolder $name $want.Files)
+    $ok = if ($null -eq $want.File) { $null -eq $v } else { $v -and $v.File -eq $want.File -and $v.Version -eq $want.Version -and $v.Text -eq $want.Text }
+    if (-not $ok) { "${name}: $($v | ConvertTo-Json -Compress)" }
+}
+Check 'unit: Get-NodeVersionFile reads .node-version before .nvmrc, without a leading v' (-not $bad) ($bad -join ' | ')
+
 $toolCases = [ordered]@{
     'tools-copilot' = @{ Files = @{ '.github/agents/copilot-implementer.agent.md' = "x`n"; '.github/agents/plan-executor.agent.md' = "x`n" }; Tools = 'claude,copilot' }
     'tools-skills'  = @{ Files = @{ '.github/skills/a/SKILL.md' = "x`n" }; Tools = 'claude,copilot' }
@@ -264,6 +298,8 @@ if (-not $UnitOnly) {
         'pyproject.toml'        = "[project]`nname = ""plain""`n"
         '.vscode/settings.json' = "{`n  // editor`n  ""editor.rulers"": [100]`n}`n"
         '.gitlab-ci.yml'        = "test:`n  script: echo hi`n"
+        'web/package.json'      = "{}`n"
+        '.nvmrc'                = "v22`n"
     } 'https://gitlab.com/example/plain.git'
     Invoke-Git -C $plain tag v1.0.0
     $adopt = Join-Path $repoRoot 'Adopt-Project.ps1'
@@ -271,6 +307,7 @@ if (-not $UnitOnly) {
     $out = & $adopt -Path $plain -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot' } -NoVerify 3>&1 | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $plain '.copier-answers.yml')
     Check 'plain: answers recorded' ($answersText -match '(?m)^_commit: v0\.1\.0\s*$' -and $answersText -match '(?m)^stack: python\s*$' -and $answersText -match '(?m)^git_host: gitlab\s*$' -and $answersText -match '(?m)^project_name: plain\s*$') "$answersText | $out"
+    Check 'plain: a Python repository with a frontend answers uses_node and carries .nvmrc over to .node-version' ($answersText -match '(?m)^uses_node: true\s*$' -and (Get-Content -Raw -LiteralPath (Join-Path $plain '.node-version')) -eq "22`n" -and $out.Contains('Carried .node-version') -and (Test-Path -LiteralPath (Join-Path $plain '.nvmrc'))) "$answersText | $out"
     $subject = git -C $plain log -1 --format=%s
     $count = git -C $plain rev-list --count HEAD
     $status = git -C $plain status --porcelain

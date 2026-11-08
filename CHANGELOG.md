@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.71.0] - 2026-11-08
+
+### Added
+
+- `Adopt-Project.ps1` answers `uses_node` for a .NET, Python or other repository with a `package.json` within two folders of the root, or a `.nvmrc` or `.node-version` at the root, and gives `.node-version` the version a `.nvmrc` names when the repository has no `.node-version`; an existing `.node-version` is kept ([#287](https://github.com/NCodeGroup/project-template/issues/287), [ADR-0200](template/docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md)).
+
+### Changed
+
+- CI and the Copilot setup workflow on GitHub set up the Node.js `.node-version` names for every stack that answers `uses_node`, not only Node.js, and the setup workflow runs when `.node-version` changes ([#286](https://github.com/NCodeGroup/project-template/issues/286)).
+
+- GitLab CI for a Node.js project installs nvs v1.7.1, pinned to its commit, and selects the Node.js `.node-version` names, so CI and developers' PCs run the same version; a Bun project keeps the `oven/bun:1` image ([#285](https://github.com/NCodeGroup/project-template/issues/285), [ADR-0200](template/docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md)).
+
+### Fixed
+
+- `Update-Project.ps1` renders the template's changes to project-owned files with `pre-release: tracked` unless the project's `AGENTS.md` says `pre-release: untracked`, so a released project is no longer shown pre-release wording to copy ([#281](https://github.com/NCodeGroup/project-template/issues/281)).
+
 ## [0.70.0] - 2026-11-08
 
 ### Added
@@ -1132,7 +1148,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.70.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.71.0...HEAD
+[0.71.0]: https://github.com/NCodeGroup/project-template/compare/v0.70.0...v0.71.0
 [0.70.0]: https://github.com/NCodeGroup/project-template/compare/v0.69.0...v0.70.0
 [0.69.0]: https://github.com/NCodeGroup/project-template/compare/v0.68.4...v0.69.0
 [0.68.4]: https://github.com/NCodeGroup/project-template/compare/v0.68.3...v0.68.4

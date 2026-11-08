@@ -52,6 +52,38 @@ if (-not $copierCache) { $env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache' 
 $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
+# Get-PreReleaseAnswer and Invoke-TemplateRender from the template's script, with a stand-in Copier that records its arguments: the render's pre_release comes from -Data, else from AGENTS.md's Landing section.
+$preRelease = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path (Split-Path -Parent $PSScriptRoot) 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'ConvertTo-CopierValue', 'Get-PreReleaseAnswer', 'Invoke-TemplateRender') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $recorded = [Collections.Generic.List[string]]::new()
+    function Invoke-Copier { $recorded.Clear(); foreach ($a in $args) { $recorded.Add("$a") } }
+    # Set-Variable: only the loaded functions read TemplateClone and Data, which the script analyzer can't see.
+    Set-Variable -Name TemplateClone -Value $tpl
+    $untrackedText = "## Landing`n`n- pre-release: untracked`n"
+    $cases = [ordered]@{
+        'untracked'       = @{ Agents = $untrackedText; Data = @{}; Want = 'untracked' }
+        'tracked'         = @{ Agents = "## Landing`n`n- pre-release: tracked`n"; Data = @{}; Want = 'tracked' }
+        'no-line'         = @{ Agents = "## Landing`n`n- draft: no`n"; Data = @{}; Want = 'tracked' }
+        'outside-landing' = @{ Agents = "## Other`n`n- pre-release: untracked`n`n## Landing`n`n- draft: no`n"; Data = @{}; Want = 'tracked' }
+        'no-agents'       = @{ Agents = $null; Data = @{}; Want = 'tracked' }
+        'data-wins'       = @{ Agents = $untrackedText; Data = @{ pre_release = 'tracked' }; Want = 'tracked' }
+    }
+    foreach ($name in $cases.Keys) {
+        $project = Join-Path $Work "pre-release-$name"
+        $null = New-Item -ItemType Directory -Path $project -Force
+        if ($null -ne $cases[$name].Agents) { [IO.File]::WriteAllText((Join-Path $project 'AGENTS.md'), $cases[$name].Agents) }
+        Set-Variable -Name Data -Value $cases[$name].Data
+        $null = Invoke-TemplateRender v0.1.0 (Join-Path $project 'out')
+        $got = @($recorded | Where-Object { $_ -like 'pre_release=*' })
+        if ($got.Count -ne 1 -or $got[0] -ne "pre_release=$($cases[$name].Want)") { "${name}: $($got -join ',')" }
+    }
+}
+Check 'unit: the render takes pre_release from -Data, else untracked only from the Landing section''s - pre-release: untracked line' (-not $preRelease) ($preRelease -join ' | ')
+
 Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test python' --data 'stack=python' --data 'git_host=github' --data 'workflow_tools=[claude, copilot, local]' $tplUrl (Join-Path $Work 'python')
 
 $project = Join-Path $Work 'python'
@@ -65,6 +97,8 @@ try {
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     # The project edits its own and its merged files, as it should, and edits and deletes template-owned files, which it shouldn't.
     Edit-File AGENTS.md "- (Add the project's conventions here, and any template rule this project overrides.)" '- Local convention added in the project.'
+    # A project from before the pre-release line has none, which means tracked.
+    Edit-File AGENTS.md "- pre-release: untracked`n" ''
     Edit-File README.md '## AI-Assisted Workflow' '## AI-Assisted Workflow in This Project'
     [IO.File]::AppendAllText((Resolve-Path -LiteralPath .gitignore).Path, "local-cache/`n")
     Edit-File CLAUDE.md '## Claude Code' '## Claude Code, Edited in the Project'
@@ -78,6 +112,7 @@ finally { Pop-Location }
 Push-Location (Join-Path $tpl 'template')
 try {
     Edit-File AGENTS.md.jinja 'Run from the repository root in PowerShell 7.' 'Run from the root of the {{ project_name }} repository in PowerShell 7.'
+    Edit-File AGENTS.md.jinja "- draft: no`n" "- draft: no`n- pre-release-check: {{ pre_release }}`n"
     Edit-File README.md.jinja '{{ project_description }}' '{{ project_description }} Updated.'
     Edit-File AGENTS.md.jinja "- (Add the project's conventions here, and any template rule this project overrides.)" '- Local convention added in the project.'
     Edit-File README.md.jinja '## AI-Assisted Workflow' '## AI-Assisted Workflow in This Project'
@@ -119,6 +154,7 @@ try {
     $owned = if ($output -match '(?s)The template changed these project-owned files.*?(?=\r?\n\r?\nCommitted)') { $Matches[0] } else { '' }
     Check 'update: shows project-owned changes rendered with the project answers' ($owned -match '(?m)^  AGENTS\.md:\r?$' -and $owned.Contains('+Run from the root of the Test python repository in PowerShell 7.') -and $owned -notmatch '\{%|\{\{' -and $owned -notmatch '(?m)^  README\.md') $output.Trim()
     Check 'update: leaves out project-owned changes the project already has' ($owned -match '(?m)^  AGENTS\.md:\r?$' -and -not $owned.Contains('+- Local convention added in the project.') -and $owned -notmatch '(?m)^  README\.md') $output.Trim()
+    Check 'update: renders project-owned changes with the pre-release AGENTS.md names, tracked without the line' ($owned.Contains('+- pre-release-check: tracked') -and -not $owned.Contains('pre-release-check: untracked')) $output.Trim()
     $gitignore = Get-Content -LiteralPath .gitignore -Raw
     Check 'update: merged file keeps the project''s edit and gains the template''s' ($gitignore.Contains('local-cache/') -and $gitignore.Contains('desktop.ini'))
     Check 'update: deleted merged file stays deleted' (-not (Test-Path -LiteralPath .vscode/extensions.json))

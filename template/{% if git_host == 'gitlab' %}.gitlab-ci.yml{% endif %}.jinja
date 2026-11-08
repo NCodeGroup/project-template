@@ -35,6 +35,13 @@ build-and-test:
   rules:
     - exists: ["package.json"]
   before_script:
+{%- if package_manager != 'bun' and uses_node %}
+    # nvs, pinned to the v1.7.1 tag's commit, installs and selects the Node.js .node-version names, as on a developer's
+    # PC (ADR-0200); the job's later commands run in the same shell, with that Node.js on PATH.
+    - git clone --quiet --depth 1 --branch v1.7.1 https://github.com/jasongin/nvs "$HOME/.nvs"
+    - test "$(git -C "$HOME/.nvs" rev-parse HEAD)" = b87ae9593cd20e7b667e9099240c9befeb50659f
+    - . ./.template/use-node.sh
+{%- endif %}
 {%- if package_manager in ['pnpm', 'yarn'] %}
     # Corepack runs the version package.json's packageManager field names; Node.js 25 and later don't bundle it.
     - npm install --global corepack@latest

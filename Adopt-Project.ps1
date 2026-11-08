@@ -7,7 +7,7 @@
     Works out the template's answers from what the repository already has (stack, project name, git host, workflow tools, authors,
     build and test commands), applies -Data over them, and runs `copier copy --overwrite --defaults` into the
     repository (Copier from PATH, or through uvx). The answers are recorded in .copier-answers.yml, so the project
-    can update itself with .\.template\Update-Project.ps1 afterwards. The answers include pre_release = tracked, so an AGENTS.md the template writes, for a repository that has none, says pre-release: tracked, since the repository has a history (ADR-0015); Copier records that answer nowhere. A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
+    can update itself with .\.template\Update-Project.ps1 afterwards. The answers include pre_release = tracked, so an AGENTS.md the template writes, for a repository that has none, says pre-release: tracked, since the repository has a history (ADR-0015); Copier records that answer nowhere. A repository that uses Node.js without being a Node.js project answers uses_node, and a .nvmrc without a .node-version gives .node-version its version (ADR-0200). A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
 
     The repository must be the root of a Git repository with no uncommitted changes and no .copier-answers.yml.
     The result is one commit, "Adopt project-template <version>"; -NoCommit stages it instead. Before committing, the
@@ -79,6 +79,9 @@ try {
     $merged = @(Get-CopierList (Join-Path $PSScriptRoot 'copier.yml') '_merged_files')
     $ownable = @(Get-OwnableFile (Join-Path $PSScriptRoot 'template'))
     $answers = Get-AdoptionAnswers $project
+    # Read before Copier writes the template's .node-version.
+    $nodeVersion = Get-NodeVersionFile $project
+    $nvmrcText = $null
     $adapters = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'tools\adopt\legacy') -Filter '*.ps1' -File | Sort-Object Name | Where-Object { & $_.FullName -Path $project -Phase Detect })
     foreach ($adapter in $adapters) {
         "Found $($adapter.BaseName)"
@@ -136,6 +139,13 @@ try {
         foreach ($adapter in $adapters) {
             foreach ($line in @(& $adapter.FullName -Path $project -Phase Apply)) { $report.Add("  $line") }
         }
+        if ($nodeVersion -and $nodeVersion.File -eq '.nvmrc' -and (Test-Path -LiteralPath .node-version)) {
+            if ($nodeVersion.Version) {
+                [IO.File]::WriteAllText((Join-Path $project '.node-version'), "$($nodeVersion.Version)`n", $utf8)
+                $report.Add("  Carried .node-version $([char]0x2014) Node.js $($nodeVersion.Version), from .nvmrc")
+            }
+            else { $nvmrcText = $nodeVersion.Text }
+        }
         if ((Test-Path -LiteralPath Directory.Packages.props) -and -not $originals.ContainsKey('Directory.Packages.props')) {
             foreach ($line in @(Move-PackageVersionsToCentral $project)) { $report.Add("  $line") }
         }
@@ -158,6 +168,7 @@ try {
         }
 
         $followUps = [Collections.Generic.List[string]]::new()
+        if ($nvmrcText) { $followUps.Add("set .node-version to the Node.js version .nvmrc names ($nvmrcText); it holds the template's version until then") }
         if (Test-Path -LiteralPath .github/copilot-instructions.md) { $followUps.Add('fold .github/copilot-instructions.md into AGENTS.md or a file it lists') }
         # A ci.yml the repository already had was kept, so its other workflows are not in conflict with the template's.
         if ((Test-Path -LiteralPath .github/workflows/ci.yml) -and -not $originals.ContainsKey('.github/workflows/ci.yml')) {
