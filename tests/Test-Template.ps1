@@ -124,6 +124,8 @@ $toolFiles = @{
 }
 $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'build\Get-TestRuntimes.ps1', 'build\Install-Dotnet.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
     '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md'
+# Files only a project that needs Node.js gets (stack node, or uses_node answered yes).
+$nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
 $hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\code-review-auto-merge.yml'; gitlab = @('.gitlab-ci.yml') }
@@ -143,6 +145,7 @@ $cases = @(
     @{ Name = 'node-bun'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'bun' } }
     @{ Name = 'node-yarn-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'yarn' } }
     @{ Name = 'node-bun-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'bun' } }
+    @{ Name = 'dotnet-node'; Stack = 'dotnet'; Host = 'github'; Data = @{ uses_node = 'true' } }
     @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
     @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
@@ -202,6 +205,13 @@ foreach ($case in $cases) {
     $present = @($dotnetOnly | Where-Object { Test-Path (Join-Path $dest $_) })
     if ($case.Stack -eq 'dotnet') { Check "${name}: .NET layer present" ($present.Count -eq $dotnetOnly.Count) }
     else { Check "${name}: no .NET layer" ($present.Count -eq 0) ($present -join ', ') }
+    $usesNode = $case.Stack -eq 'node' -or $case.Data.uses_node -eq 'true'
+    $nodePresent = @($nodeOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -Force -ErrorAction SilentlyContinue) })
+    if ($usesNode) { Check "${name}: Node.js files present" ($nodePresent.Count -eq $nodeOnly.Count) ((@($nodeOnly | Where-Object { $_ -notin $nodePresent })) -join ', ') }
+    else { Check "${name}: no Node.js files" ($nodePresent.Count -eq 0) ($nodePresent -join ', ') }
+    $agentsPrelude = @(Select-String -LiteralPath (Join-Path $dest 'AGENTS.md') -Pattern '^- prelude: (.*)$' | ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() })
+    $wantPrelude = if ($usesNode) { './.template/Use-Node.ps1' } else { 'none' }
+    Check "${name}: AGENTS.md sets the prelude to Use-Node.ps1 exactly when the project uses Node.js" ($agentsPrelude.Count -eq 1 -and $agentsPrelude[0] -eq $wantPrelude) "prelude=$($agentsPrelude -join '|') want=$wantPrelude"
     if ($case.Stack -eq 'dotnet') {
         $buildProps = Get-Content -LiteralPath (Join-Path $dest 'build\ProjectTemplate.props') -Raw
         $library = [bool]$case.Data.nuget_package
@@ -304,7 +314,7 @@ foreach ($case in $cases) {
         Check "${name}: the Copilot setup workflow has the one job Copilot runs, runs by hand, reads only contents and stops at 59 minutes" ($setup -match '(?m)^jobs:\r?\n  copilot-setup-steps:\r?$' -and [regex]::Matches($setup, '(?m)^    runs-on: ').Count -eq 1 -and $setup.Contains('workflow_dispatch:') -and $setup -match '(?m)^    timeout-minutes: 59\r?$' -and $setup -match '(?m)^    permissions:\r?\n      contents: read\r?$' -and -not $setup.Contains(': write')) $setup
         # Its push and pull_request triggers list it and each file of the project its steps run, so a change to any of them runs it.
         $setupLf = $setup -replace '\r\n', "`n"
-        $wantPaths = @('.github/workflows/copilot-setup-steps.yml') + @(if ($case.Stack -eq 'dotnet') { '.github/actions/install-dotnet/**', 'build/Get-TestRuntimes.ps1' })
+        $wantPaths = @('.github/workflows/copilot-setup-steps.yml') + @(if ($case.Stack -eq 'dotnet') { '.github/actions/install-dotnet/**', 'build/Get-TestRuntimes.ps1' }) + @(if ($case.Stack -eq 'node') { '.node-version' })
         $pathLists = @([regex]::Matches($setupLf, '(?m)^    paths:\n((?:      - .+\n)+)') | ForEach-Object { @($_.Groups[1].Value.TrimEnd("`n") -split "`n" | ForEach-Object { $_.Substring(8) }) -join ',' })
         $missingPaths = @($wantPaths | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dest ($_ -replace '/\*\*$', ''))) })
         Check "${name}: the Copilot setup workflow's push and pull_request triggers list it and each file of the project it runs, for .NET the install-dotnet action and build/Get-TestRuntimes.ps1" ($pathLists.Count -eq 2 -and -not @($pathLists | Where-Object { $_ -ne ($wantPaths -join ',') }) -and -not $missingPaths) "lists: $($pathLists -join ' | '); missing: $($missingPaths -join ', ')"
@@ -473,6 +483,9 @@ foreach ($case in $cases) {
             $managerOk = $managerOk -and (Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw).Contains("package-ecosystem: $ecosystem")
         }
         Check "${name}: CI installs and runs with $pm" $managerOk $ci
+        if ($case.Host -eq 'github') {
+            Check "${name}: CI reads the Node.js version from .node-version" ($ci.Contains('node-version-file: .node-version') -and -not $ci.Contains('lts/*')) $ci
+        }
     }
     $wanted = @($tools | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique)
     $unwanted = @($allTools | Where-Object { $_ -notin $tools } | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique | Where-Object { $_ -notin $wanted })
@@ -1072,7 +1085,7 @@ $m += @(Get-MissingText ('template\.claude\commands\replan-step.md', 'template\.
 $m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('after its `- Prelude:` command', "$preludeRun<the command>", "${preludeStop}command never ran: stop the review without adding steps or a ``Reviewed:`` line, show me the prelude's error"))
 Check 'workflow: executors and coordinators run the plan''s prelude before each Done-when command and stop when it fails' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\handoff-plan.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-bugfix\SKILL.md', 'template\.github\agents\copilot-planner.agent.md') ('sets `prelude` to a command, not `none`, put that command in Context for the executor as its `- Prelude:` line', 'never copy a `PATH` or tool-setup guard into a Done-when command', '- Prelude: `<the Landing section''s prelude command; only when it isn''t none>`'))
-$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('`prelude`: `none`; one PowerShell command', '- prelude: none'))
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('`prelude`: `none`; one PowerShell command', '- prelude: {% if uses_node %}./.template/Use-Node.ps1{% else %}none{% endif %}'))
 $m += @(Get-MissingText 'template\.github\instructions\project-template.instructions.md.jinja' '`prelude: <command>` names one PowerShell command')
 Check 'workflow: planners name the Landing section''s prelude under Context for the executor, which AGENTS.md documents' (-not $m) ($m -join '; ')
 $preludeDir = Join-Path $Work 'prelude'
