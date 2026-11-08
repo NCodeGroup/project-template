@@ -747,6 +747,11 @@ $shipFiles = 'template\.claude\commands\ship-plan.md', 'template\.github\prompts
 $m = @(Get-MissingText $shipFiles ('gh label create "<label>" --color FBCA04 --description "Work a plan found and did not do" <repo args>', 'leaves that label as it is'))
 $m += @(foreach ($p in $shipFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('--force <repo args>')) { "${p}: gh label create has --force" } })
 Check 'workflow: ship-plan creates the follow-up label only when it is missing and leaves an existing one as it is' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $shipFiles ('file them for later, act on them next, or drop them', 'to the line of each I named to act on next', 'leave it out of the title and the body', "<body> $([char]0x2014) next $([char]0x2014) filed as #12", 'finish-plan then names the command that plans that work'))
+Check 'workflow: ship-plan offers to act on follow-ups next, still files them, and keeps the next mark before the filed mark' (-not $m) ($m -join '; ')
+$finishFiles = 'template\.claude\commands\finish-plan.md', 'template\.github\prompts\finish-plan.prompt.md', 'template\.github\skills\finish-plan\SKILL.md'
+$m = @(Get-MissingText $finishFiles ("$([char]0x2014) next $([char]0x2014) filed as #<number>", '`/plan-issue #<number>` for each noted follow-up', '`/run-issues #<number> #<number>', 'which takes them all in one session'))
+Check 'workflow: finish-plan names the command that plans each follow-up marked next' (-not $m) ($m -join '; ')
 $runFiles = 'template\.claude\commands\run-issues.md', '.claude\commands\run-issues.md'
 $copilotRunFiles = 'template\.github\prompts\run-issues.prompt.md', 'template\.github\skills\run-issues\SKILL.md', '.github\prompts\run-issues.prompt.md', '.github\skills\run-issues\SKILL.md'
 $m = @(Get-MissingText $runFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`','git worktree add --no-track .claude/worktrees/issue-<number> -b worktree-issue-<number> origin/<default>', '`--no-track` leaves the branch without an upstream until `ship-plan` pushes it with `git push -u`', 'plan-executor', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'ExitWorktree'))
