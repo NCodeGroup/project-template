@@ -90,6 +90,22 @@ function Invoke-AutoMergeMethod([string]$Script, [hashtable]$Settings, [object[]
     [pscustomobject]@{ Printed = $printed; Calls = @($calls); Error = $failed }
 }
 
+# Runs the install-dotnet action's runtimes step as the runner does (pwsh, $ErrorActionPreference Stop) in a scratch
+# folder whose build/Get-TestRuntimes.ps1 is a stand-in that runs $Printed. Returns what the step wrote to
+# GITHUB_OUTPUT, with LF line endings.
+function Invoke-RuntimesStep([string]$Script, [string]$Printed, [string]$Folder) {
+    $stub = Join-Path $Folder "runtimes-step-$([guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Force -Path (Join-Path $stub 'build') | Out-Null
+    [IO.File]::WriteAllText((Join-Path $stub 'build/Get-TestRuntimes.ps1'), $Printed)
+    $output = Join-Path $stub 'output.txt'
+    $saved = $env:GITHUB_OUTPUT
+    $env:GITHUB_OUTPUT = $output
+    Push-Location -LiteralPath $stub
+    try { & ([scriptblock]::Create("`$ErrorActionPreference = 'Stop'`n$Script")) | Out-Null }
+    finally { Pop-Location; $env:GITHUB_OUTPUT = $saved }
+    if (Test-Path -LiteralPath $output) { [IO.File]::ReadAllText($output).Replace("`r", '') } else { '' }
+}
+
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
@@ -208,7 +224,14 @@ foreach ($case in $cases) {
         Check "${name}: CI runs the Definition of Done for the default commands" ($ciText.Contains('build/dod.ps1') -and -not ($ciText -match '(?m)^\s+(- )?dotnet (build|test)\s*$')) $ciText
         if ($case.Host -eq 'github') {
             Check "${name}: CI caches NuGet packages, keyed on the restore's inputs" ($ciText.Contains('uses: actions/cache@') -and $ciText.Contains('path: ~/.nuget/packages') -and $ciText.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $ciText.Contains('${{ runner.os }}-nuget-' + "`n")) $ciText
-            Check "${name}: CI installs the runtimes the tests target" ($ciText.Contains('./build/Get-TestRuntimes.ps1') -and $ciText.Contains('dotnet-version: ${{ steps.runtimes.outputs.channels }}')) $ciText
+            Check "${name}: CI installs .NET with the install-dotnet action after the checkout and before the build" ([regex]::Matches($ciText, '(?m)^      - uses: \./\.github/actions/install-dotnet\r?$').Count -eq 1 -and $ciText.IndexOf('uses: actions/checkout@') -lt $ciText.IndexOf('./.github/actions/install-dotnet') -and $ciText.IndexOf('./.github/actions/install-dotnet') -lt $ciText.IndexOf('build/dod.ps1') -and -not $ciText.Contains('actions/setup-dotnet') -and -not $ciText.Contains('Get-TestRuntimes')) $ciText
+            $installAction = Get-Content -LiteralPath (Join-Path $dest '.github\actions\install-dotnet\action.yml') -Raw
+            $actionUses = [regex]::Matches($installAction, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+            Check "${name}: the install-dotnet action installs the SDK global.json selects, then the runtimes build/Get-TestRuntimes.ps1 names, with actions/setup-dotnet pinned to a full commit SHA, and names the shell of each command" ($installAction -match '(?m)^runs:\r?\n  using: composite\r?$' -and $actionUses.Count -eq 2 -and -not ($actionUses | Where-Object { $_.Groups[1].Value -ne 'actions/setup-dotnet' -or $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and $installAction.IndexOf('global-json-file: global.json') -gt 0 -and $installAction.IndexOf('global-json-file: global.json') -lt $installAction.IndexOf('./build/Get-TestRuntimes.ps1') -and $installAction.Contains("if: steps.runtimes.outputs.channels != ''") -and $installAction.Contains('dotnet-version: ${{ steps.runtimes.outputs.channels }}') -and [regex]::Matches($installAction, '(?m)^\s+run: ').Count -eq [regex]::Matches($installAction, '(?m)^\s+shell: pwsh\r?$').Count) $installAction
+            $runtimesStep = Get-StepScript $installAction 'runtimes'
+            $twoChannels = Invoke-RuntimesStep $runtimesStep "'8.0.x'`n'9.0.x'" $Work
+            $noChannel = Invoke-RuntimesStep $runtimesStep '' $Work
+            Check "${name}: the install-dotnet action's runtimes step passes each channel build/Get-TestRuntimes.ps1 prints to actions/setup-dotnet, and none when it prints none" ($runtimesStep -and $twoChannels -eq "channels<<EOF`n8.0.x`n9.0.x`nEOF`n" -and $noChannel -eq '') "$runtimesStep | $twoChannels | $noChannel"
             Check "${name}: CI keeps the test results, after a failure too, and for a library the packages, as artifacts" ($ciText -match '(?m)^      - name: Upload test results\r?\n        if: always\(\)\r?\n        uses: actions/upload-artifact@[0-9a-f]{40} # v\d+\.\d+\.\d+\r?\n        with:\r?\n          name: test-results\r?\n          path: artifacts/test-results/\r?$' -and $ciText.Contains('if-no-files-found: ignore') -and $ciText.Contains('retention-days: 14') -and ($ciText.Contains('- name: Upload packages') -eq $library) -and -not $ciText.Contains('codecov')) $ciText
         }
         else {
@@ -243,15 +266,17 @@ foreach ($case in $cases) {
         if ($wantsPublish) {
             $workflow = Get-Content -LiteralPath $publish -Raw
             $uses = [regex]::Matches($workflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
-            Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 5 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
+            Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 4 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
             Check "${name}: the publish workflow runs on a published release, holds no permission by default, and pushes through trusted publishing in the nuget environment" ($workflow.Contains('types: [published]') -and $workflow -match '(?m)^permissions: \{\}\r?$' -and $workflow.Contains('environment: nuget') -and $workflow.Contains('id-token: write') -and $workflow.Contains('uses: NuGet/login@') -and $workflow.Contains('persist-credentials: false') -and -not $workflow.Contains('secrets.')) $workflow
             Check "${name}: the publish workflow packs only a tag whose commit the default branch holds" ($workflow.Contains('fetch-depth: 0') -and $workflow.Contains('DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}') -and $workflow.Contains('git merge-base --is-ancestor HEAD "origin/$env:DEFAULT_BRANCH"') -and $workflow.IndexOf('merge-base --is-ancestor') -lt $workflow.IndexOf('dotnet pack')) $workflow
-            Check "${name}: the publish workflow installs the runtimes the tests target before testing, and counts only a 404 as unpublished" ($workflow.Contains('./build/Get-TestRuntimes.ps1') -and $workflow.IndexOf('./build/Get-TestRuntimes.ps1') -lt $workflow.IndexOf('dotnet test') -and $workflow.Contains('dotnet-version: ${{ steps.runtimes.outputs.channels }}') -and $workflow.Contains('-SkipHttpErrorCheck -StatusCodeVariable status') -and $workflow.Contains('$status -eq 404') -and -not $workflow.Contains('catch { $versions = @() }')) $workflow
+            Check "${name}: the publish workflow installs .NET with the install-dotnet action once the tagged commit is checked, before testing, and counts only a 404 as unpublished" ($workflow.Contains('      - uses: ./.github/actions/install-dotnet') -and $workflow.IndexOf('git merge-base --is-ancestor') -lt $workflow.IndexOf('./.github/actions/install-dotnet') -and $workflow.IndexOf('./.github/actions/install-dotnet') -lt $workflow.IndexOf('dotnet test') -and -not $workflow.Contains('actions/setup-dotnet') -and -not $workflow.Contains('Get-TestRuntimes') -and $workflow.Contains('-SkipHttpErrorCheck -StatusCodeVariable status') -and $workflow.Contains('$status -eq 404') -and -not $workflow.Contains('catch { $versions = @() }')) $workflow
         }
     }
     $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
     $wrong = @($hostOnly[$case.Host] | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($hostOnly[$otherHost] | Where-Object { Test-Path (Join-Path $dest $_) })
     Check "${name}: $($case.Host) files only" (-not $wrong) ($wrong -join ', ')
+    $installActionWanted = $case.Stack -eq 'dotnet' -and $case.Host -eq 'github'
+    Check "${name}: the install-dotnet action, and a .github/actions folder, only for a .NET project on GitHub" ((Test-Path -LiteralPath (Join-Path $dest '.github\actions\install-dotnet\action.yml')) -eq $installActionWanted -and (Test-Path -LiteralPath (Join-Path $dest '.github\actions')) -eq $installActionWanted)
     $ciForIndex = Get-Content -LiteralPath (Join-Path $dest $(if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' })) -Raw
     Check "${name}: CI checks the decision index" ($ciForIndex.Contains('.template/Test-AdrIndex.ps1')) $ciForIndex
     $indexHistory = if ($case.Host -eq 'github') { $ciForIndex -match '(?s)  build-and-test:.*?fetch-depth: 0.*?- name: Check the decision index' } else { $ciForIndex.Contains('- pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"') -and $ciForIndex.Contains('GIT_DEPTH: "0"') }
@@ -275,7 +300,7 @@ foreach ($case in $cases) {
         # Copilot ignores a job's defaults, so every run step names its shell.
         Check "${name}: every step of the Copilot setup workflow that runs a command names its shell" ([regex]::Matches($setup, '(?m)^\s+run: ').Count -eq [regex]::Matches($setup, '(?m)^\s+shell: pwsh\r?$').Count -and -not $setup.Contains('defaults:')) $setup
         $setupOk = switch ($case.Stack) {
-            'dotnet' { $setup.Contains('global-json-file: global.json') -and $setup.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $setup.Contains('run: dotnet tool restore') -and $setup.Contains("if: hashFiles('*.sln', '*.slnx') != ''") -and $setup.Contains('run: dotnet restore') -and $setup.Contains('./build/Get-TestRuntimes.ps1') -and $setup.Contains('dotnet-version: ${{ steps.runtimes.outputs.channels }}') }
+            'dotnet' { $setup.Contains('      - uses: ./.github/actions/install-dotnet') -and $setup.IndexOf('./.github/actions/install-dotnet') -lt $setup.IndexOf('run: dotnet tool restore') -and -not $setup.Contains('actions/setup-dotnet') -and -not $setup.Contains('Get-TestRuntimes') -and $setup.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $setup.Contains('run: dotnet tool restore') -and $setup.Contains("if: hashFiles('*.sln', '*.slnx') != ''") -and $setup.Contains('run: dotnet restore') }
             'python' { $setup.Contains('uses: actions/setup-python@') -and $setup.Contains('$PSNativeCommandUseErrorActionPreference = $true') -and $setup.Contains('python -m pip install -r requirements.txt') }
             'node' { $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }; $setup.Contains('uses: actions/setup-node@') -and $setup.Contains(@{ npm = 'run: npm ci'; pnpm = 'run: pnpm install --frozen-lockfile'; yarn = 'run: yarn install'; bun = 'run: bun install --frozen-lockfile' }[$pm]) }
             'powershell' { $setup.Contains('Install-Module Pester, PSScriptAnalyzer') }
@@ -319,6 +344,8 @@ foreach ($case in $cases) {
         # A version published minutes ago waits out the cooldown before it reaches the project.
         $ecosystems = [regex]::Matches($dependabot, '(?m)^  - package-ecosystem: ').Count
         Check "${name}: every Dependabot entry has a cooldown" ($ecosystems -gt 0 -and [regex]::Matches($dependabot, '(?m)^    cooldown:\r?\n      default-days: 3\r?$').Count -eq $ecosystems) $dependabot
+        $actionsDirectories = if ($case.Stack -eq 'dotnet') { '    directories: \["/", "/\.github/actions/\*"\]' } else { '    directory: /' }
+        Check "${name}: Dependabot moves the actions of the workflows and, for .NET, of the composite actions under .github/actions" ($dependabot -match "(?m)^  - package-ecosystem: github-actions\r?\n(?:    #.*\r?\n)*$actionsDirectories\r?$") $dependabot
         Check "${name}: CI cancels a superseded run, but never a default-branch commit's or a merge queue entry's, whose group holds the commit SHA" ($ci.Contains('  group: ci-${{ github.ref }}-${{ (github.ref == format(''refs/heads/{0}'', github.event.repository.default_branch) || github.event_name == ''merge_group'') && github.sha || ''latest'' }}') -and $ci.Contains('  cancel-in-progress: ${{ github.ref != format(''refs/heads/{0}'', github.event.repository.default_branch) && github.event_name != ''merge_group'' }}')) $ci
         Check "${name}: every CI job has a timeout, 30 minutes for the build" ([regex]::Matches($ci, '(?m)^    runs-on: ').Count -eq [regex]::Matches($ci, '(?m)^    timeout-minutes: \d+\r?$').Count -and $ci -match '(?m)^  build-and-test:\r?\n    runs-on: ubuntu-latest\r?\n    timeout-minutes: 30\r?$') $ci
         $ciUses = [regex]::Matches($ci, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
