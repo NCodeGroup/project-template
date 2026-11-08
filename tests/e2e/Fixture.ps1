@@ -1,10 +1,13 @@
 <#
 .SYNOPSIS
     The helpers the end-to-end tests dot-source: the fixture project, its local origin and the gh and glab stand-ins, the fixture
-    environment, the state script, headless Claude Code and the checks.
+    environment, the state script, the headless runner in Agent.ps1 and the checks.
 
 .DESCRIPTION
     Dot-source it from a test script that has a $failures list: Check adds the name of each failed check to it.
+    It dot-sources Agent.ps1, the headless runner.
+    Every fixture has both tools' commands (workflow_tools claude and copilot), so each test runs under either tool.
+    Test-InstalledCommand checks that both tools' copies of a command hold what the setup reads from one.
     New-FixtureProject makes the project every end-to-end test starts from: a project made from a snapshot of the
     working tree, with a greeting function and its test, the landing policy `protect: hook`, a bare origin in a
     github.com folder that has its main branch, and the gh and glab stand-ins (gh.ps1, glab.ps1) in a bin folder with an empty host folder; Copy-StandIn copies a stand-in with the tests/StandInLog.ps1 it dot-sources. It keeps Copier's mirrors in a copier-cache folder in the work folder.
@@ -13,8 +16,22 @@
     Each test then writes its own host state for the stand-in.
 #>
 
+. (Join-Path $PSScriptRoot 'Agent.ps1')
+
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
+}
+function Test-InstalledCommand([string]$App, [string]$Name, [string]$What, [string[]]$Text) {
+    $problems = [Collections.Generic.List[string]]::new()
+    foreach ($tool in 'claude', 'copilot') {
+        $path = Get-CommandFile $App $tool $Name
+        if (-not (Test-Path -LiteralPath $path)) { $problems.Add("$path is missing"); continue }
+        $content = Get-Content -Raw -LiteralPath $path
+        foreach ($item in $Text) {
+            if ($item -and -not $content.Contains($item)) { $problems.Add("${path}: no '$item'") }
+        }
+    }
+    Check "fixture: the Claude Code and Copilot copies of /$Name hold $What" ($problems.Count -eq 0) ($problems -join '; ')
 }
 function Invoke-Git {
     git -c user.name=template-test -c user.email=template-test@example.invalid @args
@@ -34,7 +51,7 @@ function New-FixtureProject([string]$RepoRoot, [string]$Work, [string]$App, [str
     $tpl = Join-Path $Work 'template-repo'
     $null = & (Join-Path $RepoRoot 'tests/New-TemplateSnapshot.ps1') $tpl
 
-    $answers = @{ project_name = 'Fixture App'; stack = 'other'; workflow_tools = @('claude'); test_command = 'pwsh -NoProfile -File tests/Test-Greeting.ps1' }
+    $answers = @{ project_name = 'Fixture App'; stack = 'other'; workflow_tools = @('claude', 'copilot'); test_command = 'pwsh -NoProfile -File tests/Test-Greeting.ps1' }
     foreach ($key in $Data.Keys) { $answers[$key] = $Data[$key] }
     # The fixture keeps Copier's mirrors in its work folder, not in the user's cache, unless COPIER_CACHE_DIR is already set.
     $copierCache = $env:COPIER_CACHE_DIR
@@ -105,14 +122,14 @@ exec pwsh -NoProfile -File "$(dirname "$0")/glab.ps1" "$@"
 }
 
 function Use-FixtureEnvironment([string]$Work, [string]$Bin, [scriptblock]$Body) {
-    $names = 'PATH', 'GH_CONFIG_DIR', 'GLAB_CONFIG_DIR', 'GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'CLAUDECODE'
+    $names = 'PATH', 'GH_CONFIG_DIR', 'GLAB_CONFIG_DIR', 'GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'CLAUDECODE', 'COPILOT_GITHUB_TOKEN'
     $saved = @{}
     foreach ($n in $names) { $saved[$n] = [Environment]::GetEnvironmentVariable($n) }
     try {
         $env:PATH = $Bin + [IO.Path]::PathSeparator + $env:PATH
         $env:GH_CONFIG_DIR = Join-Path $Work 'gh-config'
         $env:GLAB_CONFIG_DIR = Join-Path $Work 'glab-config'
-        foreach ($n in 'GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'CLAUDECODE') { [Environment]::SetEnvironmentVariable($n, $null) }
+        foreach ($n in 'GH_TOKEN', 'GITHUB_TOKEN', 'GITLAB_TOKEN', 'CLAUDECODE', 'COPILOT_GITHUB_TOKEN') { [Environment]::SetEnvironmentVariable($n, $null) }
         & $Body
     }
     finally {
