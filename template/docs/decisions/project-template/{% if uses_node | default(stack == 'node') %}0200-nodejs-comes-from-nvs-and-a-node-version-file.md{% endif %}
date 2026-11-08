@@ -38,5 +38,8 @@ available without a profile.
 ## Consequences
 
 - One file moves the Node.js version for people, agents and CI.
-- GitLab CI and the CI of stacks other than Node.js do not read `.node-version` yet; they keep their own Node.js setup.
+- GitHub CI and the Copilot setup workflow install the `.node-version` Node.js with `actions/setup-node` for every
+  stack that answers `uses_node`.
+- GitLab CI installs nvs, pinned to a release's commit, and selects the `.node-version` Node.js with `use-node.sh` for
+  a Node.js project; a Bun project and the other stacks' GitLab CI keep their own image.
 - A new PC runs `Initialize-Nvs.ps1` once after installing nvs.
