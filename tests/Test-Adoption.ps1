@@ -297,6 +297,8 @@ if (-not $UnitOnly) {
         'pyproject.toml'        = "[project]`nname = ""plain""`n"
         '.vscode/settings.json' = "{`n  // editor`n  ""editor.rulers"": [100]`n}`n"
         '.gitlab-ci.yml'        = "test:`n  script: echo hi`n"
+        'web/package.json'      = "{}`n"
+        '.nvmrc'                = "v22`n"
     } 'https://gitlab.com/example/plain.git'
     Invoke-Git -C $plain tag v1.0.0
     $adopt = Join-Path $repoRoot 'Adopt-Project.ps1'
@@ -304,6 +306,7 @@ if (-not $UnitOnly) {
     $out = & $adopt -Path $plain -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot' } -NoVerify 3>&1 | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $plain '.copier-answers.yml')
     Check 'plain: answers recorded' ($answersText -match '(?m)^_commit: v0\.1\.0\s*$' -and $answersText -match '(?m)^stack: python\s*$' -and $answersText -match '(?m)^git_host: gitlab\s*$' -and $answersText -match '(?m)^project_name: plain\s*$') "$answersText | $out"
+    Check 'plain: a Python repository with a frontend answers uses_node and carries .nvmrc over to .node-version' ($answersText -match '(?m)^uses_node: true\s*$' -and (Get-Content -Raw -LiteralPath (Join-Path $plain '.node-version')) -eq "22`n" -and $out.Contains('Carried .node-version') -and (Test-Path -LiteralPath (Join-Path $plain '.nvmrc'))) "$answersText | $out"
     $subject = git -C $plain log -1 --format=%s
     $count = git -C $plain rev-list --count HEAD
     $status = git -C $plain status --porcelain
