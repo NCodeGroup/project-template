@@ -341,6 +341,7 @@ $project = (Resolve-Path -LiteralPath $Path).Path
 $ownClone = -not $TemplateClone
 $scratch = Join-Path ([IO.Path]::GetTempPath()) "project-template-update-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
 $outputEncoding = [Console]::OutputEncoding
+$restoreExclude = $false
 Push-Location -LiteralPath $project
 try {
     # Read Git's output as UTF-8, so file contents and diffs keep their characters.
@@ -430,6 +431,24 @@ try {
             $rewritten = @()
         }
     }
+    # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes every path
+    # Git reports as ignored to one `git apply` command, and the update sets an adopted .gitignore's kept lines aside while
+    # Copier merges. Keep the project's whole .gitignore, kept lines included, in force through info/exclude from the reset
+    # to the end of the run, or a folder only it ignores, such as node_modules/, is staged with the reset, or is listed file
+    # by file and overflows Windows' command line. The copy sits between marker lines, so a run that was killed before
+    # restoring info/exclude is cleaned up here; the outer finally restores it.
+    $infoExclude = git rev-parse --path-format=absolute --git-path info/exclude
+    $beginCopy = '# Update-Project.ps1: the project''s .gitignore, in force while Copier updates'
+    $endCopy = '# Update-Project.ps1: end of the .gitignore copy'
+    $excludeBefore = if (Test-Path -LiteralPath $infoExclude) {
+        [regex]::Replace([IO.File]::ReadAllText($infoExclude), "(?s)\n$([regex]::Escape($beginCopy))\n.*?\n$([regex]::Escape($endCopy))\n", '')
+    }
+    $restoreExclude = $true
+    $projectIgnore = Join-Path $project '.gitignore'
+    if (Test-Path -LiteralPath $projectIgnore) {
+        New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
+        [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$beginCopy`n$([IO.File]::ReadAllText($projectIgnore))`n$endCopy`n")
+    }
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
@@ -478,28 +497,7 @@ try {
         if ($publishLeftOut) { $copierArgs += '--exclude', '/.github/workflows/publish.yml' }
         # A file the project owns, merged or template-owned, stays as it is; its template change is shown below.
         foreach ($file in $ownedFiles) { $copierArgs += '--exclude', "/$file" }
-        # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes
-        # every path Git reports as ignored to one `git apply` command. Keep the project's rules in force meanwhile, or a
-        # folder only they ignore, such as node_modules/, is listed file by file and overflows Windows' command line.
-        # The copy sits between marker lines, so a run that was killed before restoring info/exclude is cleaned up here.
-        $infoExclude = git rev-parse --path-format=absolute --git-path info/exclude
-        $beginCopy = '# Update-Project.ps1: the project''s .gitignore, in force while Copier updates'
-        $endCopy = '# Update-Project.ps1: end of the .gitignore copy'
-        $excludeBefore = if (Test-Path -LiteralPath $infoExclude) {
-            [regex]::Replace([IO.File]::ReadAllText($infoExclude), "(?s)\n$([regex]::Escape($beginCopy))\n.*?\n$([regex]::Escape($endCopy))\n", '')
-        }
-        $projectIgnore = Join-Path $project '.gitignore'
-        try {
-            if (Test-Path -LiteralPath $projectIgnore) {
-                New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
-                [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$beginCopy`n$([IO.File]::ReadAllText($projectIgnore))$($keptLines['.gitignore'])`n$endCopy`n")
-            }
-            Invoke-Copier @copierArgs
-        }
-        finally {
-            if ($null -eq $excludeBefore) { Remove-Item -LiteralPath $infoExclude -Force -ErrorAction SilentlyContinue }
-            else { [IO.File]::WriteAllText($infoExclude, $excludeBefore) }
-        }
+        Invoke-Copier @copierArgs
 
         # Put the kept lines back at the end, after any conflict.
         foreach ($file in $keptLines.Keys) {
@@ -658,6 +656,10 @@ try {
     exit 0
 }
 finally {
+    if ($restoreExclude) {
+        if ($null -eq $excludeBefore) { Remove-Item -LiteralPath $infoExclude -Force -ErrorAction SilentlyContinue }
+        else { [IO.File]::WriteAllText($infoExclude, $excludeBefore) }
+    }
     Pop-Location
     try { [Console]::OutputEncoding = $outputEncoding } catch { Write-Verbose "Couldn't restore the console's output encoding: $_" }
     if ($ownClone -and $TemplateClone -and (Test-Path -LiteralPath $TemplateClone)) { Remove-Item -LiteralPath $TemplateClone -Recurse -Force -ErrorAction SilentlyContinue }
