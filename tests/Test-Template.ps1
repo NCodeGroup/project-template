@@ -225,7 +225,7 @@ foreach ($case in $cases) {
         $efCommand = 'dotnet ef migrations add InitialCreate --context <Context> --output-dir Migrations/<Name>'
         $efMissing = @(foreach ($doc in @(@{ N = 'rule'; T = $efRule }, @{ N = 'ADR-0143'; T = $migrationsAdr })) { foreach ($t in $efCommand, 'without its `DbContext` or `Context` suffix', '`Migrations/OpenId` for', 'CS0118') { if (-not $doc.T.Contains($t)) { "$($doc.N): $t" } }; if ($doc.T.Contains('Migrations/<Context>')) { "$($doc.N): still Migrations/<Context>" } })
         Check "${name}: the EF Core rule and ADR-0143 keep each context's initial migration in Migrations/<Name>, its class name without the DbContext or Context suffix, so the folder's namespace never hides the class (CS0118)" (-not $efMissing) ($efMissing -join '; ')
-        $ciFile =if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' }
+        $ciFile = if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' }
         $ciText = Get-Content -LiteralPath (Join-Path $dest $ciFile) -Raw
         Check "${name}: CI runs the Definition of Done for the default commands" ($ciText.Contains('build/dod.ps1') -and -not ($ciText -match '(?m)^\s+(- )?dotnet (build|test)\s*$')) $ciText
         if ($case.Host -eq 'github') {
