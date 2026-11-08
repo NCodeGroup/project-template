@@ -75,6 +75,8 @@ jobs:
             run: ./tests/e2e/Test-RunFeedback.ps1 -SetupOnly
           - name: Test the Git hooks
             run: ./tests/Test-GitHooks.ps1
+          - name: Test the Node.js setup scripts
+            run: ./tests/Test-NodeSetup.ps1
           - name: Test the commit attribution check
             run: ./tests/Test-CommitAttribution.ps1
           - name: Test updating a project that ignores a large folder
