@@ -3,11 +3,14 @@
     Test that an adopted project's update keeps the lines it kept at adoption out of the template's merge.
 
 .DESCRIPTION
-    Renders two projects from v0.1.0 whose .gitignore ends with the block the adoption kept from the repository's own
+    Renders three projects from v0.1.0 whose .gitignore ends with the block the adoption kept from the repository's own
     file, then updates them to a v0.2.0 that changes the secrets/ rule just above that block. The first project has no
     edit of its own and must update without a conflict. The second has a project edit next to the change and must stop
-    on a conflict that leaves the kept block outside both sides. Prints PASS or FAIL per check and exits 1 on any
-    failure.
+    on a conflict that leaves the kept block outside both sides and says to finish with git add -u. Both have a
+    node_modules/ and a .turbo/ folder that only the kept lines ignore, which neither update may stage or commit, and
+    the first must leave .git/info/exclude as it was. The third has a docs/secrets/ file that v0.1.0's secrets/ ignores
+    and v0.2.0's /secrets/ doesn't: its update, with -NoCommit, must leave that file untracked. Prints PASS or FAIL per
+    check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-kept-test-<process ID> in the
@@ -81,6 +84,10 @@ $a = New-AdoptedProject 'adopted'
 $b = New-AdoptedProject 'adopted-edit'
 Add-KeptIgnoredFile $a
 Add-KeptIgnoredFile $b
+$c = New-AdoptedProject 'adopted-unignored'
+# v0.1.0's secrets/ ignores docs/secrets/ too, and v0.2.0's /secrets/ doesn't.
+[void][IO.Directory]::CreateDirectory((Join-Path $c 'docs/secrets'))
+[IO.File]::WriteAllText((Join-Path $c 'docs/secrets/token.txt'), 'x')
 
 # The second project adds a line of its own right below secrets/, next to where v0.2.0 changes it.
 Push-Location $b
@@ -137,6 +144,18 @@ try {
     $staged = @(git ls-files -- node_modules .turbo)
     Check 'conflict: nothing that only the kept lines ignore is staged' ($staged.Count -eq 0) ($staged | Select-Object -First 5 | Out-String)
     Check 'conflict: the update says to stage the resolved files with git add -u, not git add -A' (($lines -contains '  git add -u') -and -not ($lines -contains '  git add -A')) $output.Trim()
+}
+finally { Pop-Location }
+
+Push-Location $c
+try {
+    $lines = [Collections.Generic.List[string]]::new()
+    try { & (Join-Path $c '.template\Update-Project.ps1') -NoCommit 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
+    $output = $lines -join "`n"
+    Check 'unignored: the update stages without a conflict' (($exitCode -eq 0) -and $output.Contains('Staged for review')) "exit $exitCode`n$($output.Trim())"
+    $staged = @(git ls-files -- docs/secrets)
+    Check 'unignored: a file the project ignored before the update is not staged' ($staged.Count -eq 0) ($staged | Out-String)
+    Check 'unignored: fixture: the updated .gitignore does not ignore it, so it is left untracked' ([bool](git ls-files --others --exclude-standard -- docs/secrets)) (git status --porcelain | Out-String)
 }
 finally { Pop-Location }
 ''
