@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - ADR-0008 says CI installs the SDK `global.json` selects under its `rollForward` policy, with `actions/setup-dotnet` on GitHub and `build/Install-Dotnet.ps1` on GitLab, and that the SDK under `latestFeature`, the test runtimes and GitLab's `mcr.microsoft.com/dotnet/sdk:10.0` image, which supplies git and PowerShell, follow their newest release. `CONTRIBUTING.md` points at `build/Install-Dotnet.ps1` to install the SDK and runtimes locally ([#255](https://github.com/NCodeGroup/project-template/issues/255), [#260](https://github.com/NCodeGroup/project-template/issues/260)).
 
+## [0.64.1] - 2026-11-07
+
+### Changed
+
+- ADR-0143 and the Entity Framework Core section of `csharp.instructions.md` (.NET) name a pre-release project's one initial migration per database context `InitialCreate`, the name EF Core's documentation gives a project's first migration, keep it in the context's own folder `Migrations/<Context>`, and regenerate it on each model change with `dotnet ef migrations add InitialCreate --context <Context> --output-dir Migrations/<Context>`, which works as written with one context or several. Projects get them with `.\.template\Update-Project.ps1` ([#262](https://github.com/NCodeGroup/project-template/issues/262)).
+
 ## [0.64.0] - 2026-11-07
 
 ### Added
@@ -1029,7 +1035,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
 [unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.65.0...HEAD
-[0.65.0]: https://github.com/NCodeGroup/project-template/compare/v0.64.0...v0.65.0
+[0.65.0]: https://github.com/NCodeGroup/project-template/compare/v0.64.1...v0.65.0
+[0.64.1]: https://github.com/NCodeGroup/project-template/compare/v0.64.0...v0.64.1
 [0.64.0]: https://github.com/NCodeGroup/project-template/compare/v0.63.1...v0.64.0
 [0.63.1]: https://github.com/NCodeGroup/project-template/compare/v0.63.0...v0.63.1
 [0.63.0]: https://github.com/NCodeGroup/project-template/compare/v0.62.0...v0.63.0

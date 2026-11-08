@@ -64,10 +64,13 @@ expands the schema unless it is marked as a contract step, which ships in a late
    `dotnet ef migrations has-pending-model-changes` checks.
 8. Before the first stable release. In a pre-release project
    ([ADR-0015](0015-a-pre-release-project-describes-the-product-as-it-is.md)), no previous release serves against the
-   schema and no database holds data a release must keep, so each context has one initial migration, named `Initial`,
-   which only creates tables and so only expands. A model change regenerates it: delete the context's migrations and
-   run `dotnet ef migrations add Initial`. Items 1, 2, 3 and 7 hold; items 4 to 6 bind from the first stable release,
-   which ships that migration.
+   schema and no database holds data a release must keep, so each context has one initial migration, named
+   `InitialCreate` as in EF Core's documentation, in a folder of its own, `Migrations/<Context>`, where `<Context>` is
+   the context's class name. The migration only creates tables and so only expands. A model change regenerates it:
+   delete the context's folder, model snapshot included, and run
+   `dotnet ef migrations add InitialCreate --context <Context> --output-dir Migrations/<Context>`, which works the same
+   with one context or several and keeps each context's migrations in their own namespace. Items 1, 2, 3 and 7 hold;
+   items 4 to 6 bind from the first stable release, which ships that migration.
 
 ## Options considered
 
@@ -88,6 +91,8 @@ expands the schema unless it is marked as a contract step, which ships in a late
 
 ## References
 
+- [Migrations overview](https://learn.microsoft.com/ef/core/managing-schemas/migrations/)
+- [Using multiple context types](https://learn.microsoft.com/ef/core/managing-schemas/migrations/providers#using-multiple-context-types)
 - [Applying migrations](https://learn.microsoft.com/ef/core/managing-schemas/migrations/applying)
 - [Migration bundles](https://learn.microsoft.com/ef/core/managing-schemas/migrations/applying#bundles)
 - [Design-time DbContext creation](https://learn.microsoft.com/ef/core/cli/dbcontext-creation)
