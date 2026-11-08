@@ -15,7 +15,7 @@
     It then runs /address-feedback #2 on a pull request from farewell;touch${IFS}pwned, a branch name with shell
     characters, resumes it once with a go-ahead, and checks that it stopped on the branch name.
     With -Scenario rest, the stand-in refuses GraphQL and the gh pr, gh issue, gh release and gh repo commands, as a Claude Code
-    cloud session's proxy does, and the run must read and reply through the REST routes. With -Scenario resume, the setup leaves a run of /address-feedback #1 that stopped once its plan was reviewed, and the test runs only /address-feedback #1, which must finish it: push the stopped run's step as it was, name its commit in the writer's reply, reply to the plan's other items and leave no checkout behind.
+    cloud session's proxy does, and the run must read and reply through the REST routes. With -Scenario resume, the setup leaves a run of /address-feedback #1 that stopped once its plan was reviewed, and the test runs only /address-feedback #1, which must finish it: push the stopped run's step as it was, name its commit in the writer's reply, reply to the plan's other items and leave no checkout behind. With -Scenario resume-copilot the stopped run is on Copilot's branch feedback-1 in the main checkout instead, and Claude Code must move it into a worktree first.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
@@ -34,7 +34,7 @@
     graphql, the default: the stand-in serves GraphQL, as in a local session. rest: host/graphql-refused.txt makes the
     stand-in refuse GraphQL and the gh pr, gh issue, gh release and gh repo commands as a Claude Code cloud session's
     proxy does, so the run must read the pull request and its threads and reply through the REST routes; the test then
-    also checks that every thread's reply went through pulls/<number>/comments/<id>/replies. resume: the stand-in serves GraphQL, and the setup leaves a stopped run of /address-feedback #1 in .claude/worktrees/feedback-1, as Claude Code leaves one, with its one step committed and its plan reviewed; the test runs only /address-feedback #1. Run each. Without
+    also checks that every thread's reply went through pulls/<number>/comments/<id>/replies. resume: the stand-in serves GraphQL, and the setup leaves a stopped run of /address-feedback #1 in .claude/worktrees/feedback-1, as Claude Code leaves one, with its one step committed and its plan reviewed; the test runs only /address-feedback #1. resume-copilot: the same, with the stopped run on the branch feedback-1 in the main checkout and PLAN.md at its root, as Copilot leaves one. Run each. Without
     -Scenario, -CheckOnly checks the scenario the fixture was set up for.
 
 .PARAMETER Claude
@@ -57,7 +57,7 @@ param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-address-feedback-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
-    [ValidateSet('graphql', 'rest', 'resume')][string]$Scenario = 'graphql',
+    [ValidateSet('graphql', 'rest', 'resume', 'resume-copilot')][string]$Scenario = 'graphql',
     [string]$Claude = 'claude',
     [double]$MaxBudgetUsd = 30
 )
@@ -123,9 +123,16 @@ function Get-FarewellResult([string]$Folder) {
 # .claude/worktrees/feedback-1 on worktree-feedback-1, as Claude Code leaves one. Its one step makes Get-Farewell say
 # "Goodbye, world!" without a name, as the writer asks, and its plan gives each item its verdict. Returns the run's
 # folder and the step's commit.
-function New-StoppedRun {
-    $folder = Join-Path $app '.claude/worktrees/feedback-1'
-    Invoke-Git -C $app worktree add -q --no-track $folder -b worktree-feedback-1 "origin/$head"
+# With -Copilot it leaves the run on the branch feedback-1 in the main checkout, with PLAN.md at its root, as Copilot leaves one.
+function New-StoppedRun([switch]$Copilot) {
+    if ($Copilot) {
+        $folder = $app
+        Invoke-Git -C $app switch -q --no-track -c feedback-1 "origin/$head"
+    }
+    else {
+        $folder = Join-Path $app '.claude/worktrees/feedback-1'
+        Invoke-Git -C $app worktree add -q --no-track $folder -b worktree-feedback-1 "origin/$head"
+    }
     $start = "$(git -C $folder rev-parse HEAD)".Trim()
     Write-Text (Join-Path $folder 'src/Farewell.ps1') @'
 function Get-Farewell {
@@ -467,13 +474,19 @@ exit 0
 
         if ($Scenario -like 'resume*') {
             # The run /address-feedback #1 resumes, which stopped once its plan was reviewed.
-            $run = New-StoppedRun
+            $run = New-StoppedRun -Copilot:($Scenario -eq 'resume-copilot')
             Write-Text $stoppedRunFile "$($run.Commit)`n"
             $st = Get-State $app $run.Folder
             $ok = $st['feedback'] -eq '1' -and $st['pr'] -eq '1 OPEN' -and $st['reviewed'] -eq 'current' -and $st['dirty'] -eq 'no' -and $st['next'] -eq 'address-feedback 1'
             Check 'fixture: the stopped run''s plan is reviewed, and the state script sends it back to /address-feedback 1 with pull request #1 open' $ok "feedback='$($st['feedback'])' pr='$($st['pr'])' reviewed='$($st['reviewed'])' dirty='$($st['dirty'])' next='$($st['next'])'"
-            $ok = $st['worktree'] -eq 'feedback-1' -and $st['branch'] -eq 'worktree-feedback-1'
-            Check 'fixture: the stopped run is in .claude/worktrees/feedback-1 on worktree-feedback-1, as Claude Code leaves one' $ok "worktree='$($st['worktree'])' branch='$($st['branch'])'"
+            if ($Scenario -eq 'resume-copilot') {
+                $ok = $st['worktree'] -eq '-' -and $st['branch'] -eq 'feedback-1'
+                Check 'fixture: the stopped run is on feedback-1 in the main checkout, with PLAN.md at its root, as Copilot leaves one' $ok "worktree='$($st['worktree'])' branch='$($st['branch'])'"
+            }
+            else {
+                $ok = $st['worktree'] -eq 'feedback-1' -and $st['branch'] -eq 'worktree-feedback-1'
+                Check 'fixture: the stopped run is in .claude/worktrees/feedback-1 on worktree-feedback-1, as Claude Code leaves one' $ok "worktree='$($st['worktree'])' branch='$($st['branch'])'"
+            }
             $result = Get-FarewellResult $run.Folder
             Check 'fixture: the stopped run''s step makes Get-Farewell say "Goodbye, world!" without a name, and its test passes' ($result.Output -eq 'Goodbye, world!|Goodbye, world!|Goodbye, Ada!' -and $result.TestCode -eq 0) "output='$($result.Output)' test exit code $($result.TestCode)"
         }
