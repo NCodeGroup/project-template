@@ -10,17 +10,17 @@
     stand-in also holds NCode Review's review of the run's push, a nit, which it gives once a /review comment follows
     the push, and it completes NCode Review's Code review check run on the pushed commit.
     In -SetupOnly it checks the fixture: the project's state, the pull request, the installed commands and the
-    stand-in's handling of the check-runs call, of the push review, of a comment read back, edited and deleted by its
-    id, and of footer.txt.
+    stand-in's handling of the check-runs call, of the push review, of a comment read back and edited by its id, of a
+    comment's delete and a /review comment's edit, which it refuses, and of footer.txt.
     It runs /run-feedback #1 wait:0 in headless Claude Code or the Copilot CLI (-Tool), answers the run's one question by resuming the session, and
     checks that the writer's fix is pushed, never forced; that the writer's thread gets a reply that names the commit;
     that the run comments /review after its last push, asks for NCode Review's check run on the pushed commit and
     answers the bot's nit once; that it recommends the merge once, in a top-level comment after the /review; and that
     nothing is resolved, merged or edited, which the stand-in also refuses. It waits at least five minutes for the
     review, as the command does. With -Scenario session-footer the stand-in saves each comment and thread reply with a
-    Claude Code cloud session's footer, so the run's /review comment starts no review: the test then checks that the
-    run deletes it and posts no other, asks the maintainer in an Autopilot: comment to comment /review, and removes
-    the footer from every top-level comment it leaves.
+    Claude Code cloud session's footer: the test then checks that each /review comment keeps the footer and still asks
+    for the review, that the run deletes no comment, edits no /review comment and asks no one to comment /review, and
+    that it removes the footer from every other top-level comment it leaves.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
@@ -39,8 +39,8 @@
 
 .PARAMETER Scenario
     push-review, the default: the run's /review comment asks NCode Review for its review of the push. session-footer:
-    the stand-in saves each comment and reply with the footer that footer.txt in its host folder holds, so the run
-    must delete its /review comment and ask the maintainer for one, which the stand-in then takes as posted. Run both.
+    the stand-in saves each comment and reply with the footer that footer.txt in its host folder holds, and the run's
+    /review comment, footer and all, still asks for that review and stays as posted. Run both.
 
 .PARAMETER Tool
     claude, the default, runs each prompt in headless Claude Code; copilot runs it in the Copilot CLI. The fixture
@@ -402,19 +402,20 @@ Use-FixtureEnvironment $Work $bin {
     Check 'the writer''s thread gets "Autopilot: fixed in <commit>"' ($writerReply -match '^Autopilot: fixed in [0-9a-f]{7,}') "comments: $($writer.Count); last: '$writerReply'"
 
     $prComments = @($comments | Where-Object { $_.kind -eq 'pr' })
-    $slash = @($prComments | Where-Object { "$($_.body)".Trim() -eq '/review' })
+    $slash = @($prComments | Where-Object { Test-ReviewCommand $_.body })
     $pr = $pr1 | Select-Object -First 1
+    Check 'the run commented /review after its last push' ($slash.Count -ge 1 -and $pr -and $headNow -and "$($pr.reviewRequestedOid)" -eq $headNow) "/review comments: $($slash.Count); reviewRequestedOid='$(if ($pr) { $pr.reviewRequestedOid })', branch head '$headNow'"
+    $commentDeletes = @($calls | Where-Object { $_ -match '^CALL api ' -and $_ -match '(^| )(-X|--method)[ =]?DELETE( |$)' -and $_ -match 'issues/comments/\d+' })
+    $refusedEdits = @($calls | Where-Object { $_ -match '^FORBIDDEN .*issues/comments/\d+' })
+    Check 'the run deleted no comment and edited no /review comment' ($commentDeletes.Count -eq 0 -and $refusedEdits.Count -eq 0) "comment deletes: $($commentDeletes.Count); refused comment edits: $($refusedEdits.Count)"
     if ($Scenario -eq 'session-footer') {
-        $leftSlash = @($prComments | Where-Object { "$($_.body)".TrimStart() -match '^/review\b' })
-        $deletes = @($calls | Where-Object { $_ -match '^CALL api ' -and $_ -match '(^| )(-X|--method)[ =]?DELETE( |$)' -and $_ -match 'issues/comments/\d+' })
-        Check 'no /review comment is left on the pull request: the run deleted the one that came back with the footer, and posted no other' ($leftSlash.Count -eq 0 -and $deletes.Count -eq 1) "/review comments left: $($leftSlash.Count); comments deleted: $($deletes.Count)"
-        $asks = @(for ($i = 0; $i -lt $comments.Count; $i++) { if ($comments[$i].kind -eq 'pr' -and (Test-Autopilot $comments[$i].body) -and "$($comments[$i].body)".Contains('/review')) { $i } })
-        Check 'an Autopilot: comment after the last push asks the maintainer to comment /review' ($asks.Count -ge 1 -and $pr -and $headNow -and "$($pr.reviewRequestedOid)" -eq $headNow) "comments that ask: $($asks.Count); reviewRequestedOid='$(if ($pr) { $pr.reviewRequestedOid })', branch head '$headNow'"
-        $footed = @($comments | Where-Object { "$($_.body)".Contains('claude.ai/code/session_') })
-        Check 'the run removed the footer from every top-level comment it left' ($prComments.Count -ge 1 -and $footed.Count -eq 0) "comments with the footer: $($footed.Count)"
-    }
-    else {
-        Check 'the run commented /review after its last push' ($slash.Count -ge 1 -and $pr -and $headNow -and "$($pr.reviewRequestedOid)" -eq $headNow) "/review comments: $($slash.Count); reviewRequestedOid='$(if ($pr) { $pr.reviewRequestedOid })', branch head '$headNow'"
+        $footer = '_Generated by [Claude Code](https://claude.ai/code/session_01AbCdEf)_'
+        $keptFooter = @($slash | Where-Object { "$($_.body)".Contains($footer) })
+        Check 'each /review comment the run posted keeps the footer the stand-in appended' ($slash.Count -ge 1 -and $keptFooter.Count -eq $slash.Count) "/review comments: $($slash.Count); with the footer: $($keptFooter.Count)"
+        $footed = @($comments | Where-Object { "$($_.body)".Contains('claude.ai/code/session_') -and -not (Test-ReviewCommand $_.body) })
+        Check 'the run removed the footer from every top-level comment it left but its /review comments' ($prComments.Count -ge 2 -and $footed.Count -eq 0) "comments with the footer, /review comments aside: $($footed.Count)"
+        $asks = @($prComments | Where-Object { (Test-Autopilot $_.body) -and "$($_.body)" -match '(?i)\bcomment\b[^.]*/review' })
+        Check 'the run asked no one to comment /review for it' ($asks.Count -eq 0) "Autopilot: comments that ask for /review: $($asks.Count)"
     }
 
     $checked = @($calls | Where-Object { $_ -match '^CALL api repos/\S+/commits/([0-9a-f]{7,40})/check-runs' -and $headNow.StartsWith($Matches[1]) })
@@ -429,15 +430,13 @@ Use-FixtureEnvironment $Work $bin {
     Check 'no thread is resolved' ($threads.Count -eq 2 -and $resolved.Count -eq 0) "threads: $($threads.Count); resolved: $($resolved.Count)"
 
     $lastSlash = -1
-    for ($i = 0; $i -lt $comments.Count; $i++) { if ($comments[$i].kind -eq 'pr' -and "$($comments[$i].body)".Trim() -eq '/review') { $lastSlash = $i } }
-    # In the session-footer scenario no /review comment is left, so the recommendation comes after the comment that asks for one.
-    if ($Scenario -eq 'session-footer') { $lastSlash = if ($asks.Count) { $asks[0] } else { -1 } }
+    for ($i = 0; $i -lt $comments.Count; $i++) { if ($comments[$i].kind -eq 'pr' -and (Test-ReviewCommand $comments[$i].body)) { $lastSlash = $i } }
     $merge = @(for ($i = 0; $i -lt $comments.Count; $i++) {
             if ($i -ne $lastSlash -and $comments[$i].kind -eq 'pr' -and "$($comments[$i].body)".TrimStart().StartsWith('Autopilot:') -and "$($comments[$i].body)" -match '(?i)\bmerg') { $i }
         })
-    Check 'the run recommended the merge once, in a top-level Autopilot: comment after its /review, or after its request for one' ($merge.Count -eq 1 -and $lastSlash -ge 0 -and $merge[0] -gt $lastSlash) "merge recommendations: $($merge.Count); at index $($merge -join ','), last /review at index $lastSlash"
+    Check 'the run recommended the merge once, in a top-level Autopilot: comment after its last /review' ($merge.Count -eq 1 -and $lastSlash -ge 0 -and $merge[0] -gt $lastSlash) "merge recommendations: $($merge.Count); at index $($merge -join ','), last /review at index $lastSlash"
 
-    $written = @($comments | Where-Object { "$($_.body)".Trim() -ne '/review' }) + @($threads | ForEach-Object { @($_.comments) | Select-Object -Skip 1 })
+    $written = @($comments | Where-Object { -not (Test-ReviewCommand $_.body) }) + @($threads | ForEach-Object { @($_.comments) | Select-Object -Skip 1 })
     $unmarked = @($written | Where-Object { -not (Test-Autopilot $_.body) })
     Check 'every comment and reply the run wrote, but /review, starts with Autopilot:' ($written.Count -ge 1 -and $unmarked.Count -eq 0) "written: $($written.Count); without the prefix: $($unmarked.Count)"
 }
