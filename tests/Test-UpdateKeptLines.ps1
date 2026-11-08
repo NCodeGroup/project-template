@@ -4,9 +4,10 @@
 
 .DESCRIPTION
     Renders three projects from v0.1.0 whose .gitignore ends with the block the adoption kept from the repository's own
-    file, then updates them to a v0.2.0 that changes the secrets/ rule just above that block. The first project has no
-    edit of its own and must update without a conflict. The second has a project edit next to the change and must stop
-    on a conflict that leaves the kept block outside both sides and says to finish with git add -u. Both have a
+    file, then updates them to a v0.2.0 that changes the secrets/ rule just above that block and adds a file,
+    update-added.txt. The first project has no edit of its own and must update without a conflict. The second has a
+    project edit next to the change and must stop on a conflict that leaves the kept block outside both sides and says
+    to finish with git add -u. The update adds the file in the first project and stages it in the second. Both have a
     node_modules/ and a .turbo/ folder that only the kept lines ignore, which neither update may stage or commit, and
     the first must leave .git/info/exclude as it was. The third has a docs/secrets/ file that v0.1.0's secrets/ ignores
     and v0.2.0's /secrets/ doesn't: its update, with -NoCommit, must leave that file untracked. Prints PASS or FAIL per
@@ -98,10 +99,10 @@ try {
 finally { Pop-Location }
 
 Push-Location (Join-Path $tpl 'template')
-try { Edit-File .gitignore.jinja "`nsecrets/`n" "`n/secrets/`n" }
+try { Edit-File .gitignore.jinja "`nsecrets/`n" "`n/secrets/`n"; [IO.File]::WriteAllText((Join-Path (Get-Location) 'update-added.txt'), "added by v0.2.0`n") }
 finally { Pop-Location }
 Push-Location $tpl
-try { Invoke-Git commit -q -am 'Root secrets folder only'; Invoke-Git tag v0.2.0 }
+try { Invoke-Git add -A; Invoke-Git commit -q -m 'Root secrets folder only'; Invoke-Git tag v0.2.0 }
 finally { Pop-Location }
 
 Push-Location $a
@@ -116,6 +117,7 @@ try {
     try { & (Join-Path $a '.template\Update-Project.ps1') 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
     $output = $lines -join "`n"
     Check 'update: the change to secrets/ next to the kept block merges without a conflict' (($exitCode -eq 0) -and $output.Contains('Committed "Update from project-template v0.2.0"') -and -not (git status --porcelain)) "exit $exitCode`n$($output.Trim())`n$(git status --porcelain | Out-String)"
+    Check 'update: the file v0.2.0 adds is committed' ((@(git ls-files -- update-added.txt) -contains 'update-added.txt') -and (Test-Path -LiteralPath update-added.txt))
     $text = [IO.File]::ReadAllText((Join-Path $a '.gitignore'))
     Check 'update: .gitignore has /secrets/ and still ends with the kept block' ($text.Contains("`n/secrets/`n") -and -not $text.Contains("`nsecrets/`n") -and $text.EndsWith("`n/secrets/`n`n$marker`n$kept")) $text
     $tracked = @(git ls-files -- node_modules .turbo) + @(git log --format= --name-only -- node_modules .turbo)
@@ -143,6 +145,8 @@ try {
     Check 'conflict: the kept block stays after the conflict, out of both sides' (($text.IndexOf($marker) -gt $text.LastIndexOf('>>>>>>>')) -and ($text.LastIndexOf('>>>>>>>') -ge 0) -and $text.Contains('/vault/') -and $text.EndsWith("`n`n$marker`n$kept")) $text
     $staged = @(git ls-files -- node_modules .turbo)
     Check 'conflict: nothing that only the kept lines ignore is staged' ($staged.Count -eq 0) ($staged | Select-Object -First 5 | Out-String)
+    $stagedFiles = @(git diff --cached --name-only)
+    Check 'conflict: the file v0.2.0 adds is staged and .gitignore stays unmerged' (($stagedFiles -contains 'update-added.txt') -and (@(git diff --name-only --diff-filter=U) -contains '.gitignore')) ($stagedFiles -join ', ')
     Check 'conflict: the update says to stage the resolved files with git add -u, not git add -A' (($lines -contains '  git add -u') -and -not ($lines -contains '  git add -A')) $output.Trim()
 }
 finally { Pop-Location }
