@@ -15,7 +15,8 @@
     with the changelog and fails on one that disagrees, and it stops with gh's message when the pull request lookup
     fails. The stand-in also accepts the call that starts publish.yml. Also checks that it starts publish.yml once, on the tag, after
     publishing the release when publish.yml has a workflow_dispatch trigger, starts nothing on a second run or without a
-    publish.yml, and fails naming the trigger when publish.yml has none. Also checks that release.yml runs the script on a push to main
+    publish.yml, and fails naming the trigger when publish.yml has none, and fails naming publish.yml and the tag when starting it fails. Also checks that with
+    pre-release: untracked the release notes stop at the link reference definitions and at the next ## heading. Also checks that release.yml runs the script on a push to main
     that changes CHANGELOG.md, with contents: write and the merged commit. Prints PASS or FAIL per check and exits 1 on
     any failure.
 
@@ -52,7 +53,7 @@ $standIn = Join-Path $temp 'gh.ps1'
 # printing gh's 404 message, or a 401 one when PUBLISH_RELEASE_TEST_LOOKUP_ERROR is set; `api
 # repos/{owner}/{repo}/releases -f tag_name=<tag> ... -F body=@<file>` copies the notes to it, `api
 # repos/{owner}/{repo}/commits/<sha>/pulls` prints pulls.json (or [], or a 500 when PUBLISH_RELEASE_TEST_PULLS_ERROR is set),
-# the publish.yml dispatch succeeds, and every call is logged.
+# the publish.yml dispatch succeeds (or prints a 500 when PUBLISH_RELEASE_TEST_DISPATCH_ERROR is set), and every call is logged.
 Set-Content -LiteralPath $standIn -Encoding utf8NoBOM -Value @'
 $releases = $env:PUBLISH_RELEASE_TEST_RELEASES
 Add-Content -LiteralPath (Join-Path $releases 'calls.log') -Value ($args -join ' ')
@@ -73,7 +74,10 @@ if ($args[0] -eq 'api' -and $args[1] -match '^repos/\{owner\}/\{repo\}/commits/[
     if (Test-Path -LiteralPath $pulls) { Get-Content -Raw -LiteralPath $pulls } else { '[]' }
     exit 0
 }
-if ($args[0] -eq 'api' -and $args[1] -eq 'repos/{owner}/{repo}/actions/workflows/publish.yml/dispatches') { exit 0 }
+if ($args[0] -eq 'api' -and $args[1] -eq 'repos/{owner}/{repo}/actions/workflows/publish.yml/dispatches') {
+    if ($env:PUBLISH_RELEASE_TEST_DISPATCH_ERROR) { 'gh: Server Error (HTTP 500)'; exit 1 }
+    exit 0
+}
 exit 2
 '@
 $env:PUBLISH_RELEASE_TEST_RELEASES = $releases
@@ -256,6 +260,28 @@ try {
     Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
     $run = Invoke-Publish $work
     Check 'publish.yml without workflow_dispatch: it publishes the release, then fails and names the trigger' ($run.Code -ne 0 -and (Test-Path -LiteralPath (Join-Path $releases 'v0.2.0')) -and $run.Output -match 'workflow_dispatch' -and -not (@(Get-Calls) -match 'dispatches')) ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
+
+    $notesChangelogBase = "# Changelog`n`n## [Unreleased]`n`n### Added`n`n- The product does a thing.`n`n"
+    $stopCases = @(
+        @{ Name = 'pre-release: untracked, the release notes stop at the link reference definitions'; Dir = 'untracked-notes-links'; Changelog = $notesChangelogBase + "[unreleased]: https://example.com/compare/v0.2.0...HEAD`n" }
+        @{ Name = 'pre-release: untracked, the release notes stop at the next ## heading'; Dir = 'untracked-notes-heading'; Changelog = $notesChangelogBase + "## Notes`n`n- Not part of the release.`n" }
+    )
+    foreach ($case in $stopCases) {
+        $work = New-Clone $case.Dir $untrackedLanding $case.Changelog
+        $head = (& git -C $work rev-parse HEAD)
+        Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.3.0') -ErrorAction SilentlyContinue
+        Set-Pulls $head $body030
+        $run = Invoke-Publish $work
+        $notesPath = Join-Path $releases 'v0.3.0'
+        $notes = if (Test-Path -LiteralPath $notesPath) { (Get-Content -Raw -LiteralPath $notesPath).Trim() } else { '' }
+        Check $case.Name ($run.Code -eq 0 -and $notes -eq "### Added`n`n- The product does a thing.") ($run.Output + ' | ' + $notes)
+    }
+
+    $work = New-Clone 'publish-dispatch-error' '- release: tag+release' -Files @{ '.github/workflows/publish.yml' = $publishWith }
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $env:PUBLISH_RELEASE_TEST_DISPATCH_ERROR = '1'
+    try { $run = Invoke-Publish $work } finally { Remove-Item Env:PUBLISH_RELEASE_TEST_DISPATCH_ERROR }
+    Check 'publish.yml start that fails: it fails and names publish.yml and the tag' ($run.Code -ne 0 -and $run.Output -match 'publish\.yml' -and $run.Output -match 'v0\.2\.0' -and (Test-Path -LiteralPath (Join-Path $releases 'v0.2.0'))) $run.Output
 } finally {
     Remove-Item Env:PUBLISH_RELEASE_TEST_RELEASES -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
