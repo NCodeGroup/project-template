@@ -46,6 +46,11 @@
     says how to finish or abandon the update, and exits 1; each file without a conflict is then either unstaged or
     staged as it is in the working tree. On any other failure the project is reset to where it was.
 
+    It stages only what the update changed: the tracked files with git add -u and each file it added by name, never
+    with git add -A. From the reset to the end of the run, .git/info/exclude holds a copy of the project's whole
+    .gitignore, an adopted project's kept lines included, so a folder the project ignores, such as node_modules/, is
+    never staged, also when the updated .gitignore doesn't ignore it. The run then restores .git/info/exclude.
+
     On the default branch (the branch origin/HEAD names) it refuses to run unless -NoCommit is given, because it
     commits. It enables the template's hooks (core.hooksPath .githooks) unless the clone already has a hooks path,
     hooks in .git/hooks, or uses pre-commit; then it leaves them as they are and warns, naming the command that runs
@@ -180,6 +185,26 @@ function Get-Change {
         else { 'modified' }
         [pscustomobject]@{ Kind = $kind; File = $file }
     }
+}
+
+# Stage the files the update added, by name from a list file, so a long list can't overflow Windows' command line. Git leaves
+# out every ignored path, and with the copy of the project's .gitignore in info/exclude also one the project ignored when the
+# update started, so a folder only the project's own rules ignore, such as node_modules/, is never staged.
+function Add-NewFile([string]$Folder) {
+    $new = @((git -c core.quotePath=false ls-files -z --others --exclude-standard) -split "`0" | Where-Object { $_ })
+    if (-not $new) { return }
+    New-Item -ItemType Directory -Force $Folder | Out-Null
+    $list = Join-Path $Folder 'new-files.txt'
+    [IO.File]::WriteAllText($list, ($new -join "`0"), [Text.UTF8Encoding]::new($false))
+    git --literal-pathspecs add --pathspec-from-file=$list --pathspec-file-nul
+    if ($LASTEXITCODE) { throw 'Staging the files the update added failed.' }
+}
+
+# Stage the update's changes to tracked files, deletions included, and the files it added (Add-NewFile); never git add -A.
+function Add-UpdateChange([string]$Folder) {
+    git add -u
+    if ($LASTEXITCODE) { throw 'Staging the update failed.' }
+    Add-NewFile $Folder
 }
 
 # True when the project's file already has a hunk of the template's change: the hunk applies to it in reverse.
@@ -341,6 +366,7 @@ $project = (Resolve-Path -LiteralPath $Path).Path
 $ownClone = -not $TemplateClone
 $scratch = Join-Path ([IO.Path]::GetTempPath()) "project-template-update-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
 $outputEncoding = [Console]::OutputEncoding
+$restoreExclude = $false
 Push-Location -LiteralPath $project
 try {
     # Read Git's output as UTF-8, so file contents and diffs keep their characters.
@@ -430,6 +456,24 @@ try {
             $rewritten = @()
         }
     }
+    # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes every path
+    # Git reports as ignored to one `git apply` command, and the update sets an adopted .gitignore's kept lines aside while
+    # Copier merges. Keep the project's whole .gitignore, kept lines included, in force through info/exclude from the reset
+    # to the end of the run, or a folder only it ignores, such as node_modules/, is staged with the reset, or is listed file
+    # by file and overflows Windows' command line. The copy sits between marker lines, so a run that was killed before
+    # restoring info/exclude is cleaned up here; the outer finally restores it.
+    $infoExclude = git rev-parse --path-format=absolute --git-path info/exclude
+    $beginCopy = '# Update-Project.ps1: the project''s .gitignore, in force while Copier updates'
+    $endCopy = '# Update-Project.ps1: end of the .gitignore copy'
+    $excludeBefore = if (Test-Path -LiteralPath $infoExclude) {
+        [regex]::Replace([IO.File]::ReadAllText($infoExclude), "(?s)\n$([regex]::Escape($beginCopy))\n.*?\n$([regex]::Escape($endCopy))\n", '')
+    }
+    $restoreExclude = $true
+    $projectIgnore = Join-Path $project '.gitignore'
+    if (Test-Path -LiteralPath $projectIgnore) {
+        New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
+        [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$beginCopy`n$([IO.File]::ReadAllText($projectIgnore))`n$endCopy`n")
+    }
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
@@ -464,8 +508,9 @@ try {
             [IO.File]::WriteAllText((Join-Path $project $file), "$templatePart`n")
         }
         $resetFiles = @()
-        $resetCommitted = [bool](git status --porcelain)
-        if ($resetCommitted) { git add -A; git commit -q --no-verify -m 'Reset template-owned files'; if ($LASTEXITCODE) { throw 'Committing the reset failed.' } }
+        Add-UpdateChange $scratch
+        $resetCommitted = [bool](git diff --cached --name-only)
+        if ($resetCommitted) { git commit -q --no-verify -m 'Reset template-owned files'; if ($LASTEXITCODE) { throw 'Committing the reset failed.' } }
 
         $copierArgs = @('update', '--defaults', '--quiet', '--vcs-ref', $to)
         foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
@@ -478,28 +523,7 @@ try {
         if ($publishLeftOut) { $copierArgs += '--exclude', '/.github/workflows/publish.yml' }
         # A file the project owns, merged or template-owned, stays as it is; its template change is shown below.
         foreach ($file in $ownedFiles) { $copierArgs += '--exclude', "/$file" }
-        # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes
-        # every path Git reports as ignored to one `git apply` command. Keep the project's rules in force meanwhile, or a
-        # folder only they ignore, such as node_modules/, is listed file by file and overflows Windows' command line.
-        # The copy sits between marker lines, so a run that was killed before restoring info/exclude is cleaned up here.
-        $infoExclude = git rev-parse --path-format=absolute --git-path info/exclude
-        $beginCopy = '# Update-Project.ps1: the project''s .gitignore, in force while Copier updates'
-        $endCopy = '# Update-Project.ps1: end of the .gitignore copy'
-        $excludeBefore = if (Test-Path -LiteralPath $infoExclude) {
-            [regex]::Replace([IO.File]::ReadAllText($infoExclude), "(?s)\n$([regex]::Escape($beginCopy))\n.*?\n$([regex]::Escape($endCopy))\n", '')
-        }
-        $projectIgnore = Join-Path $project '.gitignore'
-        try {
-            if (Test-Path -LiteralPath $projectIgnore) {
-                New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
-                [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$beginCopy`n$([IO.File]::ReadAllText($projectIgnore))$($keptLines['.gitignore'])`n$endCopy`n")
-            }
-            Invoke-Copier @copierArgs
-        }
-        finally {
-            if ($null -eq $excludeBefore) { Remove-Item -LiteralPath $infoExclude -Force -ErrorAction SilentlyContinue }
-            else { [IO.File]::WriteAllText($infoExclude, $excludeBefore) }
-        }
+        Invoke-Copier @copierArgs
 
         # Put the kept lines back at the end, after any conflict.
         foreach ($file in $keptLines.Keys) {
@@ -520,7 +544,7 @@ try {
 
     $conflicts = @(git diff --name-only --diff-filter=U)
     if (-not $conflicts) {
-        git add -A
+        Add-UpdateChange $scratch
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
         if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
         if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
@@ -529,7 +553,9 @@ try {
         # git add -A would mark the conflicted files resolved, conflict markers and all, so stage only each file the reset changed that doesn't conflict, as the update left it. Otherwise the index keeps the reset's version: a file the update left as it was is listed as modified, and a commit that doesn't stage it again takes that version.
         $unmerged = @(git -c core.quotePath=false diff --name-only --diff-filter=U)
         $restage = @($resetFiles | Where-Object { $_ -notin $unmerged })
-        if ($restage) { git --literal-pathspecs add -A -- $restage }
+        if ($restage) { git --literal-pathspecs add -u -- $restage }
+        # The files the update added are staged too, so git add -u after the conflicts are resolved stages the whole update.
+        Add-NewFile $scratch
     }
     # Enable the template's versioned hooks in this clone, unless it already has a hooks path or runs hooks another way
     # (Get-GitHooksSetup): then warn, because without them nothing strips AI agent attribution before a push.
@@ -644,7 +670,7 @@ try {
     if ($conflicts) {
         ''
         "$($conflicts.Count) file(s) conflict: the template and this project changed the same lines. In each, keep the right lines and delete the <<<<<<<, ======= and >>>>>>> marker lines. Then:"
-        '  git add -A'
+        '  git add -u'
         '  git diff --cached --check     # prints any marker you missed'
         "  git commit -m `"$message`""
         'To abandon the update instead: git reset --hard; git clean -fd'
@@ -658,6 +684,10 @@ try {
     exit 0
 }
 finally {
+    if ($restoreExclude) {
+        if ($null -eq $excludeBefore) { Remove-Item -LiteralPath $infoExclude -Force -ErrorAction SilentlyContinue }
+        else { [IO.File]::WriteAllText($infoExclude, $excludeBefore) }
+    }
     Pop-Location
     try { [Console]::OutputEncoding = $outputEncoding } catch { Write-Verbose "Couldn't restore the console's output encoding: $_" }
     if ($ownClone -and $TemplateClone -and (Test-Path -LiteralPath $TemplateClone)) { Remove-Item -LiteralPath $TemplateClone -Recurse -Force -ErrorAction SilentlyContinue }

@@ -3,11 +3,15 @@
     Test that an adopted project's update keeps the lines it kept at adoption out of the template's merge.
 
 .DESCRIPTION
-    Renders two projects from v0.1.0 whose .gitignore ends with the block the adoption kept from the repository's own
-    file, then updates them to a v0.2.0 that changes the secrets/ rule just above that block. The first project has no
-    edit of its own and must update without a conflict. The second has a project edit next to the change and must stop
-    on a conflict that leaves the kept block outside both sides. Prints PASS or FAIL per check and exits 1 on any
-    failure.
+    Renders three projects from v0.1.0 whose .gitignore ends with the block the adoption kept from the repository's own
+    file, then updates them to a v0.2.0 that changes the secrets/ rule just above that block and adds a file,
+    update-added.txt. The first project has no edit of its own and must update without a conflict. The second has a
+    project edit next to the change and must stop on a conflict that leaves the kept block outside both sides and says
+    to finish with git add -u. The update adds the file in the first project and stages it in the second. Both have a
+    node_modules/ and a .turbo/ folder that only the kept lines ignore, which neither update may stage or commit, and
+    the first must leave .git/info/exclude as it was. The third has a docs/secrets/ file that v0.1.0's secrets/ ignores
+    and v0.2.0's /secrets/ doesn't: its update, with -NoCommit, must leave that file untracked. Prints PASS or FAIL per
+    check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-kept-test-<process ID> in the
@@ -54,7 +58,7 @@ $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl -BeforeCommi
 
 Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
 $marker = "# Kept from this repository's own .gitignore when it adopted the project template"
-$kept = "# OpenTofu working directories and state`n.terraform/`n*.tfstate`n*.tfplan`nplan.txt`n"
+$kept = "# OpenTofu working directories and state`n.terraform/`n*.tfstate`n*.tfplan`nplan.txt`n# Frontend packages and build cache`nnode_modules/`n.turbo/`n"
 
 # Renders a project from v0.1.0 and replaces its .gitignore with the merge the adoption would have written.
 function New-AdoptedProject([string]$Name) {
@@ -67,8 +71,24 @@ function New-AdoptedProject([string]$Name) {
     finally { Pop-Location }
     $path
 }
+# Fills the folders that only the kept lines ignore, as an installed and built frontend does: an update must never stage them.
+function Add-KeptIgnoredFile([string]$Path) {
+    foreach ($i in 1..200) {
+        $package = Join-Path $Path ('node_modules/package-{0:d3}' -f $i)
+        [void][IO.Directory]::CreateDirectory($package)
+        [IO.File]::WriteAllText((Join-Path $package 'index.js'), 'x')
+    }
+    [void][IO.Directory]::CreateDirectory((Join-Path $Path '.turbo'))
+    [IO.File]::WriteAllText((Join-Path $Path '.turbo/cache.log'), 'x')
+}
 $a = New-AdoptedProject 'adopted'
 $b = New-AdoptedProject 'adopted-edit'
+Add-KeptIgnoredFile $a
+Add-KeptIgnoredFile $b
+$c = New-AdoptedProject 'adopted-unignored'
+# v0.1.0's secrets/ ignores docs/secrets/ too, and v0.2.0's /secrets/ doesn't.
+[void][IO.Directory]::CreateDirectory((Join-Path $c 'docs/secrets'))
+[IO.File]::WriteAllText((Join-Path $c 'docs/secrets/token.txt'), 'x')
 
 # The second project adds a line of its own right below secrets/, next to where v0.2.0 changes it.
 Push-Location $b
@@ -79,23 +99,32 @@ try {
 finally { Pop-Location }
 
 Push-Location (Join-Path $tpl 'template')
-try { Edit-File .gitignore.jinja "`nsecrets/`n" "`n/secrets/`n" }
+try { Edit-File .gitignore.jinja "`nsecrets/`n" "`n/secrets/`n"; [IO.File]::WriteAllText((Join-Path (Get-Location) 'update-added.txt'), "added by v0.2.0`n") }
 finally { Pop-Location }
 Push-Location $tpl
-try { Invoke-Git commit -q -am 'Root secrets folder only'; Invoke-Git tag v0.2.0 }
+try { Invoke-Git add -A; Invoke-Git commit -q -m 'Root secrets folder only'; Invoke-Git tag v0.2.0 }
 finally { Pop-Location }
 
 Push-Location $a
 try {
     $text = [IO.File]::ReadAllText((Join-Path $a '.gitignore'))
     Check 'fixture: the adopted .gitignore ends with secrets/ and then the kept block' ($text.EndsWith("`nsecrets/`n`n$marker`n$kept")) $text
+    $infoExclude = git rev-parse --path-format=absolute --git-path info/exclude
+    New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
+    [IO.File]::WriteAllText($infoExclude, "# kept by the project`n")
 
     $lines = [Collections.Generic.List[string]]::new()
     try { & (Join-Path $a '.template\Update-Project.ps1') 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
     $output = $lines -join "`n"
     Check 'update: the change to secrets/ next to the kept block merges without a conflict' (($exitCode -eq 0) -and $output.Contains('Committed "Update from project-template v0.2.0"') -and -not (git status --porcelain)) "exit $exitCode`n$($output.Trim())`n$(git status --porcelain | Out-String)"
+    Check 'update: the file v0.2.0 adds is committed' ((@(git ls-files -- update-added.txt) -contains 'update-added.txt') -and (Test-Path -LiteralPath update-added.txt))
     $text = [IO.File]::ReadAllText((Join-Path $a '.gitignore'))
     Check 'update: .gitignore has /secrets/ and still ends with the kept block' ($text.Contains("`n/secrets/`n") -and -not $text.Contains("`nsecrets/`n") -and $text.EndsWith("`n/secrets/`n`n$marker`n$kept")) $text
+    $tracked = @(git ls-files -- node_modules .turbo) + @(git log --format= --name-only -- node_modules .turbo)
+    Check 'update: nothing that only the kept lines ignore is staged or committed' ($tracked.Count -eq 0) ($tracked | Select-Object -First 5 | Out-String)
+    Check 'update: the folders that only the kept lines ignore stay in place' ((Test-Path -LiteralPath node_modules/package-001/index.js) -and (Test-Path -LiteralPath .turbo/cache.log))
+    $excludeAfter = [IO.File]::ReadAllText($infoExclude)
+    Check 'update: info/exclude ends as it was' ($excludeAfter -eq "# kept by the project`n") "after: '$excludeAfter'"
 
     $afterFirst = $text
     $lines = [Collections.Generic.List[string]]::new()
@@ -114,6 +143,23 @@ try {
     Check 'conflict: a project edit next to the change stops the update on .gitignore' (($exitCode -eq 1) -and $output.Contains('conflict  .gitignore')) "exit $exitCode`n$($output.Trim())"
     $text = [IO.File]::ReadAllText((Join-Path $b '.gitignore'))
     Check 'conflict: the kept block stays after the conflict, out of both sides' (($text.IndexOf($marker) -gt $text.LastIndexOf('>>>>>>>')) -and ($text.LastIndexOf('>>>>>>>') -ge 0) -and $text.Contains('/vault/') -and $text.EndsWith("`n`n$marker`n$kept")) $text
+    $staged = @(git ls-files -- node_modules .turbo)
+    Check 'conflict: nothing that only the kept lines ignore is staged' ($staged.Count -eq 0) ($staged | Select-Object -First 5 | Out-String)
+    $stagedFiles = @(git diff --cached --name-only)
+    Check 'conflict: the file v0.2.0 adds is staged and .gitignore stays unmerged' (($stagedFiles -contains 'update-added.txt') -and (@(git diff --name-only --diff-filter=U) -contains '.gitignore')) ($stagedFiles -join ', ')
+    Check 'conflict: the update says to stage the resolved files with git add -u, not git add -A' (($lines -contains '  git add -u') -and -not ($lines -contains '  git add -A')) $output.Trim()
+}
+finally { Pop-Location }
+
+Push-Location $c
+try {
+    $lines = [Collections.Generic.List[string]]::new()
+    try { & (Join-Path $c '.template\Update-Project.ps1') -NoCommit 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
+    $output = $lines -join "`n"
+    Check 'unignored: the update stages without a conflict' (($exitCode -eq 0) -and $output.Contains('Staged for review')) "exit $exitCode`n$($output.Trim())"
+    $staged = @(git ls-files -- docs/secrets)
+    Check 'unignored: a file the project ignored before the update is not staged' ($staged.Count -eq 0) ($staged | Out-String)
+    Check 'unignored: fixture: the updated .gitignore does not ignore it, so it is left untracked' ([bool](git ls-files --others --exclude-standard -- docs/secrets)) (git status --porcelain | Out-String)
 }
 finally { Pop-Location }
 ''
