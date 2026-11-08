@@ -486,6 +486,11 @@ foreach ($case in $cases) {
         if ($case.Host -eq 'github') {
             Check "${name}: CI reads the Node.js version from .node-version" ($ci.Contains('node-version-file: .node-version') -and -not $ci.Contains('lts/*')) $ci
         }
+        elseif ($pm -ne 'bun') {
+            $useNode = $ci.IndexOf('. ./.template/use-node.sh')
+            Check "${name}: GitLab CI selects the .node-version Node.js through the pinned nvs before it installs anything" ($ci.Contains('--branch v1.7.1 https://github.com/jasongin/nvs') -and $ci.Contains('= b87ae9593cd20e7b667e9099240c9befeb50659f') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf($install) -and ($pm -notin 'pnpm', 'yarn' -or $useNode -lt $ci.IndexOf('corepack'))) $ci
+        }
+        else { Check "${name}: GitLab CI runs Bun without nvs" (-not $ci.Contains('jasongin/nvs')) $ci }
     }
     $wanted = @($tools | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique)
     $unwanted = @($allTools | Where-Object { $_ -notin $tools } | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique | Where-Object { $_ -notin $wanted })
