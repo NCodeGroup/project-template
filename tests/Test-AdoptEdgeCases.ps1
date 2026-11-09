@@ -88,6 +88,7 @@ Check 'gaps: the code review and release workflows are not asked to be reconcile
 $updateScript = [IO.File]::ReadAllText((Join-Path $repoRoot 'template/.template/Update-Project.ps1'))
 $dispatchWarning = [regex]::Match($updateScript, "(?m)^\s*'(\.github/workflows/publish\.yml has no workflow_dispatch trigger\.(?:[^']|'')*)'\s*$").Groups[1].Value.Replace("''", "'")
 Check 'gaps: warns, word for word as the update does, that the kept publish.yml has no workflow_dispatch trigger' ($dispatchWarning.Length -gt 100 -and $gapsOut.Contains($dispatchWarning)) $gapsOut
+Check 'gaps: the workflow_dispatch warning points at the template''s publish.yml and ADR-0137, not at one release''s changelog section' ($dispatchWarning.EndsWith('as the publish.yml the project template gives a .NET library on GitHub does (ADR-0137).') -and $dispatchWarning -notmatch '\d+\.\d+\.\d+|CHANGELOG') $dispatchWarning
 
 # Copilot agents and no Hybrid ones, like a public repository: the adoption leaves out the local model's files.
 $copilotOnly = New-Fixture 'copilot-only' @{
