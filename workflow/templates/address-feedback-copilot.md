@@ -1,6 +1,6 @@
 ---
 description: Take every open comment and discussion on one pull request, from anyone or any bot, judge each against the code, plan and execute the fixes, push them to the pull request's branch and reply to each one
-argument-hint: The pull request, such as #42, owner/repo#42 or its URL, and optionally only:<login> or exclude:<login> to take or leave one author's comments
+argument-hint: The pull request, such as #42, owner/repo#42 or its URL, and optionally only:<login> or exclude:<login> to take or leave one author's comments, and push-branch:<name> for a session's designated branch
 role: orchestrator
 append-format: false
 targets: VSCode, CopilotCli
