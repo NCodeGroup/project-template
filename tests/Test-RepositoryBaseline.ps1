@@ -745,7 +745,7 @@ try {
     Check 'params: -Owner picks the owner of the repository' (($r.Changes -join '|') -like '*BODY POST repos/someone/fresh/rulesets*') ($r.Changes -join '|')
     foreach ($extra in @('-Repo', 'fresh'), @('-All'), @('-RequireChecks', 'auto')) {
         $r = Invoke-Baseline (@('-OrganizationPolicy') + $extra)
-        Check "params: -OrganizationPolicy takes no $($extra[0])" ($r.ExitCode -ne 0 -and $r.Changes.Count -eq 0 -and $r.Output -match 'pass it with -Owner only') $r.Output
+        Check "params: -OrganizationPolicy takes no $($extra[0])" ($r.ExitCode -ne 0 -and $r.Changes.Count -eq 0 -and $r.Output -match 'sets the organization.s policy alone') $r.Output
     }
 }
 finally { $env:PATH = $savedPath }
