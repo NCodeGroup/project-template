@@ -4,10 +4,11 @@
 
 .DESCRIPTION
     Runs Get-WindowsNameProblem on names Windows refuses and accepts, then lists every path with
-    git ls-files -z --cached --others --exclude-standard and fails each one with a part Windows refuses (a control character,
-    one of <>:"|?*\, a reserved name such as CON, NUL, COM1 or LPT1 with or without an extension, or a name ending in a dot or
-    a space), because Copier checks out the whole template repository at a tag and Git for Windows refuses such a path. Prints
-    PASS or FAIL per check and exits 1 on any failure.
+    git ls-files -z --cached --others --exclude-standard and fails each one with a part Windows
+    refuses (a control character, one of <>:"|?*\, a reserved name such as CON, NUL, COM1 or LPT1
+    with or without an extension, or a name ending in a dot or a space), because Copier checks out
+    the whole template repository at a tag and Git for Windows refuses such a path. Prints PASS or
+    FAIL per check and exits 1 on any failure.
 
 .EXAMPLE
     .\tests\Test-WindowsFileNames.ps1
@@ -22,6 +23,7 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
 
+# Test-WindowsName in template/.template/Update-Project.ps1 applies the same rules, and tests/Test-UpdateWindowsCheckout.ps1 checks that the two agree: change both together.
 function Get-WindowsNameProblem([string]$Name) {
     if ($Name -match '[\x00-\x1F]') { return 'has a control character' }
     if ($Name -match '[<>:"|?*\\]') { return "has '$($Matches[0])', a character Windows forbids in file names" }
