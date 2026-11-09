@@ -27,15 +27,13 @@ $ownWork = -not $PSBoundParameters.ContainsKey('Work')
 trap { "Kept the work folder: $Work"; break }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
-$tag = "{% if (uses_node is defined and uses_node) or (uses_node is not defined and stack == 'node') %}"
-$endTag = '{% endif %}'
 $pwshPath = (Get-Process -Id $PID).Path
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
 function Skip([string]$Name, [string]$Why) { "SKIP  $Name  $Why" }
-function Get-TemplateFile([string]$Name) { Join-Path $repoRoot "template/.template/$tag$Name$endTag" }
+function Get-TemplateFile([string]$Name) { Join-Path $repoRoot "template/.template/$Name" }
 
 # A fixture project: <root>/.node-version, <root>/.template/<the three scripts>, <root>/nvs/<stubs>, <root>/stub/node.
 function New-Fixture([string]$Name, [string]$NvsPs1, [string]$NvsSh) {

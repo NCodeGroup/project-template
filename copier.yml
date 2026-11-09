@@ -60,6 +60,14 @@ _exclude:
   - "{% if 'local' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/agents/local-implementer.agent.md{% endif %}"
   - "{% if 'local' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/prompts/execute-step-local.prompt.md{% endif %}"
   - "{% if 'copilot' not in (workflow_tools | default(['claude', 'copilot', 'local'])) and 'local' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/prompts{% endif %}"
+  - |-
+    {% if stack is defined and not ((uses_node is defined and uses_node) or (uses_node is not defined and stack == 'node')) %}
+    /.node-version
+    .template/Initialize-Nvs.ps1
+    .template/Use-Node.ps1
+    .template/use-node.sh
+    docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md
+    {% endif %}
 
 project_name:
   type: str
