@@ -14,7 +14,8 @@
     and that use-node.sh, under -eo pipefail too, reports a missing .node-version.
     Every check passes -HomeDirectory and -ProfilePath or sets NVS_HOME itself, so nothing touches the real home folder or
     profile. The Use-Node.ps1 and use-node.sh checks run with a PATH of the system folders alone (System32 on Windows,
-    /usr/bin:/bin elsewhere), so an nvs or node the PC has can't stand in for the stubs; the use-node.sh checks run only
+    /usr/bin:/bin elsewhere), so an nvs or node the PC has can't stand in for the stubs; where those folders hold a
+    node, the no-node checks use a folder of links to every other tool in them; the use-node.sh checks run only
     on Linux and macOS, as in CI. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -37,6 +38,19 @@ $pwshPath = (Get-Process -Id $PID).Path
 # The child processes run with this PATH, so a PC's own nvs or node can't stand in for the fixture's stubs.
 $basePath = if ($IsWindows) { Join-Path $env:SystemRoot 'System32' } else { '/usr/bin:/bin' }
 $baseHasNode = [bool]($basePath -split [IO.Path]::PathSeparator | Where-Object { (Test-Path (Join-Path $_ 'node')) -or (Test-Path (Join-Path $_ 'node.exe')) })
+if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
+New-Item -ItemType Directory -Force $Work | Out-Null
+# Where the system folders hold a node, the no-node checks get a folder of links to every other system tool instead.
+$noNodePath = $basePath
+if ($baseHasNode -and -not $IsWindows) {
+    $noNodePath = Join-Path $Work 'no-node-bin'
+    New-Item -ItemType Directory -Force $noNodePath | Out-Null
+    foreach ($tool in Get-ChildItem -LiteralPath ($basePath -split ':') -File -ErrorAction Ignore) {
+        $link = Join-Path $noNodePath $tool.Name
+        if ($tool.Name -ne 'node' -and -not (Test-Path -LiteralPath $link)) { [IO.File]::CreateSymbolicLink($link, $tool.FullName) | Out-Null }
+    }
+}
+$noNodeHasNode = [bool]($noNodePath -split [IO.Path]::PathSeparator | Where-Object { (Test-Path (Join-Path $_ 'node')) -or (Test-Path (Join-Path $_ 'node.exe')) })
 # The bash checks put Windows paths on a bash PATH, which only Linux and macOS bash can read; CI runs them on Linux.
 $bash = if ($IsWindows) { $null } else { Get-Command bash -ErrorAction Ignore }
 $noBash = if ($IsWindows) { 'the bash checks run on Linux and macOS' } else { 'bash not found' }
@@ -74,9 +88,6 @@ function Invoke-Child {
     $ErrorActionPreference = 'Continue'
     & $args[0] @($args | Select-Object -Skip 1) 2>&1 | Out-String
 }
-
-if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
-New-Item -ItemType Directory -Force $Work | Out-Null
 
 # --- Initialize-Nvs.ps1 ---
 $root = New-Fixture 'init' 'function nvs {}' ''
@@ -126,8 +137,8 @@ else { Skip 'use-node.sh puts the stub node on PATH' $noBash }
 
 # --- Both fail when no node appears ---
 $root = New-Fixture 'nonode' 'function nvs {}' 'nvs() { :; }'
-$noNodeEnv = @{ NVS_HOME = (Join-Path $root 'nvs'); NVS_STUB = (Join-Path $root 'stub'); PATH = $basePath }
-if (-not $baseHasNode) {
+$noNodeEnv = @{ NVS_HOME = (Join-Path $root 'nvs'); NVS_STUB = (Join-Path $root 'stub'); PATH = $noNodePath }
+if (-not $noNodeHasNode) {
     $out = Invoke-WithEnv $noNodeEnv {
         Invoke-Child $pwshPath -NoProfile -NonInteractive -Command ". '$(Join-Path $root '.template/Use-Node.ps1')'"
     }
@@ -141,8 +152,8 @@ if (-not $baseHasNode) {
     else { Skip 'use-node.sh fails naming Initialize-Nvs.ps1 when no node appears' $noBash }
 }
 else {
-    Skip 'Use-Node.ps1 fails naming Initialize-Nvs.ps1 when no node appears' "$basePath holds a node"
-    Skip 'use-node.sh fails naming Initialize-Nvs.ps1 when no node appears' "$basePath holds a node"
+    Skip 'Use-Node.ps1 fails naming Initialize-Nvs.ps1 when no node appears' "$noNodePath holds a node"
+    Skip 'use-node.sh fails naming Initialize-Nvs.ps1 when no node appears' "$noNodePath holds a node"
 }
 
 # --- Without nvs, both accept the node on PATH only when it is the version .node-version names ---
@@ -156,14 +167,14 @@ $noNvsCases = @(
 )
 for ($i = 0; $i -lt $noNvsCases.Count; $i++) {
     $case = $noNvsCases[$i]
-    if (-not $case.Have -and $baseHasNode) { Skip "Use-Node.ps1 without nvs $($case.Name)" "$basePath holds a node"; Skip "use-node.sh without nvs $($case.Name)" "$basePath holds a node"; continue }
+    if (-not $case.Have -and $noNodeHasNode) { Skip "Use-Node.ps1 without nvs $($case.Name)" "$noNodePath holds a node"; Skip "use-node.sh without nvs $($case.Name)" "$noNodePath holds a node"; continue }
     $root = New-Fixture "nonvs-$i" '' ''
     Set-Content (Join-Path $root '.node-version') $case.Want
     $stubDir = Join-Path $root 'stub'
     $stubNode = Join-Path $stubDir $(if ($IsWindows) { 'node.cmd' } else { 'node' })
     Set-Content $stubNode $(if ($IsWindows) { "@echo $($case.Have)" } else { '#!/bin/sh', "echo $($case.Have)" })
     if (-not $IsWindows) { chmod +x $stubNode }
-    $noNvsEnv = @{ NVS_HOME = (Join-Path $root 'nvs'); PATH = $(if ($case.Have) { "$stubDir$([IO.Path]::PathSeparator)$basePath" } else { $basePath }) }
+    $noNvsEnv = @{ NVS_HOME = (Join-Path $root 'nvs'); PATH = $(if ($case.Have) { "$stubDir$([IO.Path]::PathSeparator)$basePath" } else { $noNodePath }) }
     # The child prints the exception message itself, so PowerShell's error view can't wrap the text the check looks for.
     $out = Invoke-WithEnv $noNvsEnv { Invoke-Child $pwshPath -NoProfile -NonInteractive -Command "try { . '$(Join-Path $root '.template/Use-Node.ps1')'; (Get-Command node -ErrorAction Ignore).Source } catch { `$_.Exception.Message; exit 1 }" }
     $ok = if ($case.Ok) { $LASTEXITCODE -eq 0 -and $out.Trim() -eq $stubNode } else { $LASTEXITCODE -ne 0 -and $out -like '*nvs is not installed*Install it with*' }
