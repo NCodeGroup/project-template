@@ -164,6 +164,18 @@ _exclude:
     {% if git_host is defined and git_host != 'github' %}
     .github/workflows/ci.yml
     {% endif %}
+  - |-
+    {% if git_host is defined and git_host != 'github' %}
+    .github/dependabot.yml
+    {% endif %}
+  - |-
+    {% if git_host is defined and stack is defined and not (git_host == 'github' and stack == 'dotnet') %}
+    .github/actions
+    {% endif %}
+  - |-
+    {% if git_host is defined and git_host != 'gitlab' %}
+    /.gitlab-ci.yml
+    {% endif %}
 
 project_name:
   type: str
