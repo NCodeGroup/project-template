@@ -30,8 +30,11 @@
     gets, last, an active Actions event policy allowing pull_request_target and issue_comment for those two files alone,
     which -WhatIf shows, unless it isn't public, has neither file, or has a policy of that name or an active one, its own
     or its organization's, that already allows the event for its files, read by its id when the list leaves its rules
-    out, and that a file or policy it can't read, or a refusal, is reported without failing the run; that -All skips
-    archived repositories and forks; and that bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
+    out, and that a file or policy it can't read, or a refusal, is reported without failing the run; that
+    -OrganizationPolicy posts the same policy, on every repository, to the organization alone, prints its body with
+    -WhatIf, leaves alone one of that name or one that already covers every repository, exits 1 when it can't read the
+    policies or is refused, and takes no -Repo, -All or -RequireChecks; that -All skips archived repositories and forks;
+    and that bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-baseline-test-<process ID> in the
@@ -707,6 +710,30 @@ try {
     $r = Invoke-Baseline @('-Repo', 'reviewedRefused')
     Check 'events: a refusal is reported as not available and does not fail the run' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match [regex]::Escape("reviewedRefused: ${label}: not available (HTTP 403: Stand-in refused actions/policies)")) $r.Output
 
+    # 7f. -OrganizationPolicy: the same policy once, on every repository of the organization.
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgEmpty', '-WhatIf')
+    Check 'org: -WhatIf prints the body it would post and writes nothing' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("orgEmpty (organization): ${label}: would set (POST orgs/orgEmpty/actions/policies with this body)") -and $r.Output -match [regex]::Escape('"restrict_action_events"')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgEmpty')
+    $callLog = if (Test-Path -LiteralPath $calls) { Get-Content -LiteralPath $calls } else { @() }
+    $touched = @($callLog | Where-Object { $_ -like '*repos/*' -or $_ -like 'repo list*' })
+    Check 'org: an organization without the policy gets one POST and no repository is touched' ($r.ExitCode -eq 0 -and ($r.Changes -join '|') -eq 'BODY POST orgs/orgEmpty/actions/policies' -and $r.Output -match [regex]::Escape("orgEmpty (organization): ${label}: set ('$policyName')") -and -not $touched.Count) "$($r.Changes -join '|') $($r.Output) $($touched -join '|')"
+    $policy = ($r.Bodies | Where-Object { $_.path -eq 'orgs/orgEmpty/actions/policies' } | Select-Object -Last 1).body
+    $rules = @($policy.rules)
+    Check 'org: the policy covers every repository and the two files, and allows pull_request_target and issue_comment' ($policy.name -eq $policyName -and $policy.enforcement -eq 'active' -and (@($policy.conditions.repository_name.include) -join ',') -eq '~ALL' -and @($policy.conditions.repository_name.exclude).Count -eq 0 -and (@($policy.conditions.workflow_path.include) -join ',') -eq ($reviewWorkflows -join ',') -and $rules.Count -eq 1 -and $rules[0].type -eq 'restrict_action_events' -and (@($rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment') ($policy | ConvertTo-Json -Depth 8 -Compress)
+    $cases = @(
+        @{ Owner = 'orgAllows'; Exit = 0; Says = "orgAllows (organization): ${label}: already set ('review everywhere' allows it)" }
+        @{ Owner = 'orgOurs'; Exit = 0; Says = "orgOurs (organization): ${label}: left alone (already has '$policyName')" }
+        @{ Owner = 'orgUnreadable'; Exit = 1; Says = "orgUnreadable (organization): ${label}: not available (couldn't read its Actions policies: HTTP 403" }
+        @{ Owner = 'NCodeGroup'; Exit = 1; Says = "NCodeGroup (organization): ${label}: not available (couldn't read its Actions policies: HTTP 404" })
+    foreach ($case in $cases) {
+        $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', $case.Owner)
+        Check "org: $($case.Owner) exits $($case.Exit), writes nothing and says so" ($r.ExitCode -eq $case.Exit -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape($case.Says)) "$($r.Changes -join '|') $($r.Output)"
+    }
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgOthers')
+    Check 'org: a policy for some repositories does not count' ($r.ExitCode -eq 0 -and ($r.Changes -join '|') -eq 'BODY POST orgs/orgOthers/actions/policies') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgRefuses')
+    Check 'org: a refusal is reported and fails the run' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("orgRefuses (organization): ${label}: not available (HTTP 403")) $r.Output
+
     # 8. Bad parameters.
     $r = Invoke-Baseline @()
     Check 'params: needs -Repo or -All' ($r.ExitCode -ne 0 -and $r.Output -match 'Pass -Repo <name> or -All') $r.Output
@@ -716,6 +743,10 @@ try {
     Check 'params: -RequireChecks auto takes no job names' ($r.ExitCode -ne 0 -and $r.Changes.Count -eq 0 -and $r.Output -match 'pass auto alone') $r.Output
     $r = Invoke-Baseline @('-Repo', 'fresh', '-Owner', 'someone')
     Check 'params: -Owner picks the owner of the repository' (($r.Changes -join '|') -like '*BODY POST repos/someone/fresh/rulesets*') ($r.Changes -join '|')
+    foreach ($extra in @('-Repo', 'fresh'), @('-All'), @('-RequireChecks', 'auto')) {
+        $r = Invoke-Baseline (@('-OrganizationPolicy') + $extra)
+        Check "params: -OrganizationPolicy takes no $($extra[0])" ($r.ExitCode -ne 0 -and $r.Changes.Count -eq 0 -and $r.Output -match 'pass it with -Owner only') $r.Output
+    }
 }
 finally { $env:PATH = $savedPath }
 
