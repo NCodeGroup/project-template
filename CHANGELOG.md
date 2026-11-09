@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- `tools/Set-RepositoryBaseline.ps1` allows, in the event policy "Allow pull_request_target for code review", every event the code-review workflows' top-level `on:` keys name, besides `pull_request_target` and `issue_comment`, so a trigger a project adds to its `.github/workflows/code-review.yml`, such as `workflow_dispatch`, isn't blocked by the policy. A project that adds one reruns `tools/Set-RepositoryBaseline.ps1 -Repo <name>` from a clone of the template, which updates the policy ([#323](https://github.com/NCodeGroup/project-template/issues/323)).
+- `tools/Set-RepositoryBaseline.ps1` allows, in the event policy "Allow pull_request_target for code review", every event the code-review workflows' top-level `on:` keys name, besides `pull_request_target` and `issue_comment`, so a trigger a project adds to its `.github/workflows/code-review.yml`, such as `workflow_dispatch`, isn't blocked by the policy. A file whose content it can't read, such as one over 1 MB, is named in the policy's line. A project that adds one reruns `tools/Set-RepositoryBaseline.ps1 -Repo <name>` from a clone of the template, which updates the policy ([#323](https://github.com/NCodeGroup/project-template/issues/323)).
 
 ### Fixed
 

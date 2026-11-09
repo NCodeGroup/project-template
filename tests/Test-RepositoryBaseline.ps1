@@ -137,14 +137,15 @@ if ($path -match '^repos/[^/]+/([^/]+)/(actions/permissions/workflow|vulnerabili
 }
 # A file on the default branch: 200 when the repository's workflows list names it, 404 when it doesn't, or, for a
 # list of fail:<code>, that status for every file. A file with text in workflowText comes as base64 with line breaks, as
-# GitHub sends it.
+# GitHub sends it. A file workflowText maps to $null comes without content, as a file over 1 MB does, and any other file as on: pull_request_target.
 if ($path -match '^repos/[^/]+/([^/]+)/contents/([^?]+)') {
     $files = @($data.repos[$Matches[1]].workflows | Where-Object { $_ }); $file = $Matches[2]
     $texts = $data.repos[$Matches[1]].workflowText
     if ($files.Count -and "$($files[0])".StartsWith('fail:')) { Out-Answer ([int]"$($files[0])".Substring(5)) '{"message":"Stand-in refused to read it"}' }
     if ($files -contains $file) {
-        if ($texts -and $texts.ContainsKey($file)) { Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ type = 'file'; encoding = 'base64'; content = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($texts[$file]), [Base64FormattingOptions]::InsertLineBreaks) }) }
-        else { Out-Answer 200 '{"type":"file"}' }
+        if ($texts -and $texts.ContainsKey($file) -and $null -eq $texts[$file]) { Out-Answer 200 '{"type":"file"}' }
+        $text = if ($texts -and $texts.ContainsKey($file)) { $texts[$file] } else { "on:`n  pull_request_target:`n" }
+        Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ type = 'file'; encoding = 'base64'; content = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text), [Base64FormattingOptions]::InsertLineBreaks) })
     } else { Out-Answer 404 '{"message":"Not Found"}' }
 }
 # Actions policies: a repository's list is an object whose policies holds them, an organization's a bare array, the
@@ -350,6 +351,7 @@ $repos = @{
     reviewedDispatch = New-Repo -Workflows $reviewWorkflows -WorkflowText @{ '.github/workflows/code-review.yml' = $dispatchYaml }
     reviewedOursDispatch = New-Repo -Workflows $reviewWorkflows -WorkflowText @{ '.github/workflows/code-review.yml' = $dispatchYaml } -Policies @((New-EventPolicy 'Allow pull_request_target for code review' -Paths $reviewWorkflows))
     reviewedTemplate = New-Repo -Workflows $reviewWorkflows -WorkflowText @{ '.github/workflows/code-review.yml' = (Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/code-review.yml')); '.github/workflows/code-review-auto-merge.yml' = (Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/code-review-auto-merge.yml')) }
+    reviewedNoContent = New-Repo -Workflows $reviewWorkflows -WorkflowText @{ '.github/workflows/code-review.yml' = $null }
     reviewedNarrow = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'one file' -Paths @('.github/workflows/code-review.yml')))
     reviewedInactive = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'review workflows' -Paths @('.github/workflows/*') -Enforcement 'evaluate'))
     reviewedOtherEvents = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'push only' -Events @('push')))
@@ -762,6 +764,11 @@ try {
     $r = Invoke-Baseline @('-Repo', 'reviewedTemplate')
     $post = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
     Check "events: the template's own workflows add no event" ($post.Count -eq 1 -and $post[0].method -eq 'POST' -and (@($post[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedNoContent')
+    $post = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: a workflow file whose triggers could not be read is named in the line' ($r.ExitCode -eq 0 -and $post.Count -eq 1 -and (@($post[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment' -and $r.Output -match [regex]::Escape("reviewedNoContent: ${label}: set ('$policyName') (the on: key of .github/workflows/code-review.yml wasn't read: the contents API sent no base64 UTF-8 text, such as for a file over 1 MB)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewed')
+    Check 'events: files whose triggers were read add no note' ($r.Output -match [regex]::Escape("reviewed: ${label}: set ('$policyName')") -and $r.Output -notmatch "wasn't read") "$($r.Changes -join '|') $($r.Output)"
 
     # Get-ContentText and Get-WorkflowEvents are read from the script with the AST, as in section 3c.
     $scriptAst = [Management.Automation.Language.Parser]::ParseFile($script, [ref]$null, [ref]$null)
@@ -787,8 +794,11 @@ try {
     }
     $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(('on: push' + "`n") * 20), [Base64FormattingOptions]::InsertLineBreaks)
     Check 'content: base64 with line breaks is decoded' ((Get-ContentText (ConvertTo-Json -Compress -InputObject @{ type = 'file'; encoding = 'base64'; content = $b64 })) -eq (('on: push' + "`n") * 20)) 'the text differs'
-    Check 'content: an answer without content gives no text' ((Get-ContentText '{"type":"file"}') -eq '') 'got text'
-    Check 'content: an answer that is not JSON gives no text' ((Get-ContentText '<html>') -eq '') 'got text'
+    Check 'content: an answer without content gives no text' ($null -eq (Get-ContentText '{"type":"file"}')) 'got text'
+    Check 'content: an answer that is not JSON gives no text' ($null -eq (Get-ContentText '<html>')) 'got text'
+    Check 'content: content that is not UTF-8 gives no text' ($null -eq (Get-ContentText (ConvertTo-Json -Compress -InputObject @{ type = 'file'; encoding = 'base64'; content = [Convert]::ToBase64String([byte[]](0xC3, 0x28)) }))) 'got text'
+    $e = Get-ContentText '{"type":"file","encoding":"base64","content":""}'
+    Check 'content: an empty file gives empty text' ($null -ne $e -and $e -eq '') 'got none'
 
     # 7f. -OrganizationPolicy: the same policy once, on every repository of the organization.
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgEmpty', '-WhatIf')

@@ -475,15 +475,15 @@ function Set-TagRuleset {
     Write-Host "done: $summary"
 }
 
-# The text of a file as the contents API answers it: base64, with line breaks. '' when the answer isn't JSON or holds
-# no base64 content, such as for a file over 1 MB.
+# The text of a file as the contents API answers it: base64, with line breaks. $null when the answer isn't JSON, holds no
+# base64 content, such as for a file over 1 MB, or isn't UTF-8 text.
 function Get-ContentText([string]$Body) {
     try {
         $answer = $Body | ConvertFrom-Json -ErrorAction Stop
-        if ($answer.encoding -ne 'base64' -or -not $answer.content) { return '' }
-        [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($answer.content -replace '\s', '')))
+        if ($answer.encoding -ne 'base64' -or $null -eq $answer.content) { return $null }
+        [Text.UTF8Encoding]::new($false, $true).GetString([Convert]::FromBase64String(($answer.content -replace '\s', '')))
     }
-    catch { '' }
+    catch { $null }
 }
 
 # The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, or the keys or
@@ -646,6 +646,7 @@ function Set-EventPolicy {
     }
     $present = [Collections.Generic.List[string]]::new()
     $started = [Collections.Generic.List[string]]::new()
+    $unread = [Collections.Generic.List[string]]::new()
     foreach ($file in $codeReviewWorkflows) {
         $read = Invoke-HostApi gh "repos/$Owner/$Name/contents/${file}?ref=$($Info.default_branch)"
         if ($read.Status -eq 404) { continue }
@@ -654,45 +655,47 @@ function Set-EventPolicy {
             return
         }
         $present.Add($file)
-        foreach ($trigger in Get-WorkflowEvents (Get-ContentText $read.Body)) { $started.Add($trigger) }
+        $text = Get-ContentText $read.Body
+        if ($null -eq $text) { $unread.Add($file) } else { foreach ($trigger in Get-WorkflowEvents $text) { $started.Add($trigger) } }
     }
     if (-not $present.Count) { Write-Host "${prefix}not needed (it has no code-review workflow)"; return }
     $events = @(@($codeReviewEvents) + @($started) | Select-Object -Unique)
+    $triggerNote = if ($unread.Count) { " (the on: key of $($unread -join ' and ') wasn't read: the contents API sent no base64 UTF-8 text, such as for a file over 1 MB)" } else { '' }
 
     $own = Read-EventPolicies "repos/$Owner/$Name/actions/policies"
-    if ($own.Why) { Write-Host "${prefix}not available ($($own.Why))"; return }
+    if ($own.Why) { Write-Host "${prefix}not available ($($own.Why))$triggerNote"; return }
     $ours = @($own.Policies | Where-Object { $_.name -eq $eventPolicyName }) | Select-Object -First 1
     if ($ours) {
         $gaps = @(Get-EventPolicyGaps $ours $events)
-        if (-not $gaps.Count) { Write-Host "${prefix}already set ('$eventPolicyName' allows it)"; return }
+        if (-not $gaps.Count) { Write-Host "${prefix}already set ('$eventPolicyName' allows it)$triggerNote"; return }
         $why = $gaps -join '; '
         $kept = @($ours.rules | Where-Object { $_.type -eq 'restrict_action_events' } | ForEach-Object { @($_.parameters.allowed_events) })
         $allowed = @(@($events) + $kept | Where-Object { $_ } | Select-Object -Unique)
         if (-not $PSCmdlet.ShouldProcess($Name, "update Actions policy '$eventPolicyName'")) {
-            Write-Host "${prefix}would set (update '$eventPolicyName', as $why, for $($codeReviewWorkflows -join ' and '), allowing $($allowed -join ', '))"
+            Write-Host "${prefix}would set (update '$eventPolicyName', as $why, for $($codeReviewWorkflows -join ' and '), allowing $($allowed -join ', '))$triggerNote"
             return
         }
         $result = Invoke-HostWrite PUT "repos/$Owner/$Name/actions/policies/$($ours.id)" (New-EventPolicyBody $allowed)
-        if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set (updated '$eventPolicyName', as $why)" }
-        else { Write-Host "${prefix}not available (couldn't update '$eventPolicyName', as ${why}: $(Get-FailureReason $result))" }
+        if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set (updated '$eventPolicyName', as $why)$triggerNote" }
+        else { Write-Host "${prefix}not available (couldn't update '$eventPolicyName', as ${why}: $(Get-FailureReason $result))$triggerNote" }
         return
     }
     $allowing = @($own.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present })
-    if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)"; return }
+    if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)$triggerNote"; return }
 
     $org = Read-EventPolicies "orgs/$Owner/actions/policies"
     # HTTP 403 or 404 is what an account that may not read them, or an owner that is a user, gets: nothing to report.
     $orgNote = if ($org.Why -and $org.Status -notin @(403, 404)) { " (the organization's policies weren't checked: $($org.Why))" } else { '' }
     $allowing = @($org.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present $Name })
-    if ($allowing.Count) { Write-Host "${prefix}already set (the organization's '$($allowing[0].name)' allows it)"; return }
+    if ($allowing.Count) { Write-Host "${prefix}already set (the organization's '$($allowing[0].name)' allows it)$triggerNote"; return }
 
     if (-not $PSCmdlet.ShouldProcess($Name, "create Actions policy '$eventPolicyName'")) {
-        Write-Host "${prefix}would set (create '$eventPolicyName' for $($codeReviewWorkflows -join ' and '), allowing $($events -join ', '))$orgNote"
+        Write-Host "${prefix}would set (create '$eventPolicyName' for $($codeReviewWorkflows -join ' and '), allowing $($events -join ', '))$orgNote$triggerNote"
         return
     }
     $result = Invoke-HostWrite POST "repos/$Owner/$Name/actions/policies" (New-EventPolicyBody $events)
-    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')$orgNote" }
-    else { Write-Host "${prefix}not available ($(Get-FailureReason $result))$orgNote" }
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')$orgNote$triggerNote" }
+    else { Write-Host "${prefix}not available ($(Get-FailureReason $result))$orgNote$triggerNote" }
 }
 
 # GitHub offers organization event policies only on GitHub Team and above, and refuses them on another plan with a
