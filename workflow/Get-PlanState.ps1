@@ -5,7 +5,7 @@
 .DESCRIPTION
     Reads the Git repository that contains the folder and prints one "key: value" line per fact, in a fixed order:
     folder, worktree, branch, push-branch, pr-branch, default, host, plan, issue, refs, feedback, release, steps, reviewed, landing, pre-release, protected, ahead, behind, landed,
-    pr, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, changelog-duplicates, published, issue-state, issue-states, unfiled, dirty, plans and next. A fact that does not apply prints
+    pr, pr-branch-state, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, changelog-duplicates, published, issue-state, issue-states, unfiled, dirty, plans and next. A fact that does not apply prints
     "-". With an origin remote, the script fetches it, ignoring a failure, unless -NoFetch is given. The calls that wait on the network start together, each in a runspace of its own: the fetch, git ls-remote for origin's tags, and, through gh's REST API (gh api, which works where GitHub's GraphQL API is refused, as in a Claude Code cloud session) or glab, the pull request or merge request list, the branch protection, each issue's state and the release. The release check starts with them only when the clone already has the Release: tag, and otherwise once the fetch shows origin has it. The script waits for the fetch before it reads origin's refs, and for each other call where it uses the answer. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
     merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
@@ -13,6 +13,7 @@
     issue or up to three separated by spaces; issue-states gives each one's state as <reference>=<state>, and
     issue-state is OPEN while any of them is open, CLOSED when all are closed, and unknown otherwise. refs is the plan's Refs: line, the issues it relates to without resolving them; the script reads no state for them. feedback is the number on the plan's Pull request: line above its first ## heading, written #<number> on GitHub and !<number> on GitLab, in ASCII digits: the pull request whose feedback an /address-feedback run's plan answers, or -. For such a plan, pr names that pull request and its state, read by its number (gh api repos/{owner}/{repo}/pulls/<number>, or glab mr view <number>) in place of the branch's own, and conflicts is -. Its next names the stage to run, then address-feedback <number> once its steps are done and reviewed, which pushes the fixes to that pull request's branch and replies, never ship-plan, wait or finish-plan; once that pull request is merged or closed, next is none pull request #<number> is merged (or closed): address-feedback <number> discards this run.
     push-branch is the clone's plan.pushBranch Git setting, the branch a session with a designated push branch, such as a Claude Code cloud session's claude/<words>-<id> branch, pushes each plan to, or -; it is invalid when it isn't a valid branch name or names the default branch. pr-branch is the branch on origin the plan's pull request comes from: the branch's upstream on origin, read from its branch.<name>.remote and branch.<name>.merge settings, which outlast the branch on origin, unless it is the default branch; else the push branch; else the branch itself; - on the default branch or a detached HEAD. The pull request list is read for pr-branch. When pr-branch isn't the branch itself, a request counts for pr only when it holds this plan's commits: its head commit is in this clone, isn't on the default branch, and is in HEAD's history or holds HEAD; the requests other plans opened from the same branch are left out.
+    pr-branch-state says whether origin's copy of pr-branch can take this plan: new when origin has no such branch; ours when its tip holds this plan's commits, as above; landed when its tip is on the default branch; else unknown when GitHub's or GitLab's requests can't be read; else busy <number> when a request from it is open; else landed when its tip is the head of a merged request; else other. It is - on the default branch, for a feedback plan or once the plan has landed.
     landing gives each key of AGENTS.md's Landing section that the workflow reads as key=value, with its default when
     the section leaves it out; a value may be written in backticks, and a value with a space is printed in double quotes.
     The Landing section's pre-release is tracked, the default, or untracked; any other value prints as invalid. pre-release is yes while it is untracked, no tag merged into HEAD is a stable version (shaped like v1.2.3 or 1.2.3, with a major version of 1 or more) and the plan's Release: version, when it has one, isn't stable; else no.
@@ -523,6 +524,22 @@ try {
     }
     $merge = if ($prState -eq 'MERGED' -and $prMerge) { $prMerge } else { '-' }
 
+    # Whether origin's copy of pr-branch can take this plan
+    $prBranchState = '-'
+    if ($prBranch -ne '-' -and $default -ne '-' -and $feedback -eq '-' -and $landed -ne 'yes') {
+        $tip = (& git rev-parse -q --verify "refs/remotes/origin/${prBranch}^{commit}" 2>$null | Out-String).Trim()
+        $tipOnDefault = $false
+        if ($tip) { & git merge-base --is-ancestor $tip "origin/$default" 2>$null | Out-Null; $tipOnDefault = ($LASTEXITCODE -eq 0) }
+        $openRequest = @($requests | Where-Object { $_.State -eq 'OPEN' }) | Select-Object -First 1
+        if (-not $tip) { $prBranchState = 'new' }
+        elseif (Test-PlanCommit $tip $default) { $prBranchState = 'ours' }
+        elseif ($tipOnDefault) { $prBranchState = 'landed' }
+        elseif ($hostName -in 'github', 'gitlab' -and -not $requestsRead) { $prBranchState = 'unknown' }
+        elseif ($openRequest) { $prBranchState = "busy $($openRequest.Number)" }
+        elseif (@($requests | Where-Object { $_.State -eq 'MERGED' -and $_.Head -eq $tip }).Count) { $prBranchState = 'landed' }
+        else { $prBranchState = 'other' }
+    }
+
     # Changelog in this checkout
     $changelogFormat = 'missing'; $changelogVersion = '-'
     $changelogFile = Join-Path $folder $policy['changelog']
@@ -675,6 +692,7 @@ try {
     Write-Output "behind: $behind"
     Write-Output "landed: $landed"
     Write-Output "pr: $pr"
+    Write-Output "pr-branch-state: $prBranchState"
     Write-Output "merge: $merge"
     Write-Output "tag: $tag"
     Write-Output "renumber: $renumber"

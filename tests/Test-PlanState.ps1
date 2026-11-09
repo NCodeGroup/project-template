@@ -1135,6 +1135,53 @@ try {
     Set-PushRequests @((New-PushRequest 4 'closed' $pHead $pMerge4), $pEarlierRequest)
     $r = Test-State (Get-State $pRepo) @{ 'pr-branch' = 'claude/test-abc1'; pr = '4 MERGED'; merge = $pMerge4; landed = 'yes'; next = 'finish-plan' }
     Check 'push: a landed plan finds its merged pull request through the branch it was pushed to' $r.Ok $r.Detail
+
+    $r = Test-State (Get-State $pRepo -NoFetch) @{ 'pr-branch-state' = '-' }
+    Check 'push: a landed plan has no pr-branch-state' $r.Ok $r.Detail
+
+    Push-Location $pRepo
+    try { Invoke-Git switch -q --no-track -c worktree-second origin/main; Invoke-Git config plan.pushBranch claude/test-abc1 }
+    finally { Pop-Location }
+    Add-Commit $pRepo 'second.txt' 'Plan step 1: Second'
+    $pSecond = Get-Head $pRepo
+    Write-Text $pPlan (New-PlanText 'x' $pSecond)
+    Push-Location $pRepo
+    try { $pOther = (Invoke-Git commit-tree 'origin/main^{tree}' -p origin/main -m 'Plan step 1: Other' | Out-String).Trim() }
+    finally { Pop-Location }
+    $r = Test-State (Get-State $pRepo) @{ 'pr-branch' = 'claude/test-abc1'; pr = '-'; 'pr-branch-state' = 'new' }
+    Check 'push-state: origin without the push branch is new' $r.Ok $r.Detail
+
+    Push-Location $pRepo
+    try { Invoke-Git push -q origin "${pMerge4}:refs/heads/claude/test-abc1" }
+    finally { Pop-Location }
+    $r = Test-State (Get-State $pRepo) @{ pr = '-'; 'pr-branch-state' = 'landed' }
+    Check 'push-state: a push branch at a commit on the default branch is landed' $r.Ok $r.Detail
+
+    Push-Location $pRepo
+    try { Invoke-Git push -q -f origin "${pOther}:refs/heads/claude/test-abc1" }
+    finally { Pop-Location }
+    Set-PushRequests @((New-PushRequest 5 'open' $pOther), (New-PushRequest 4 'closed' $pHead $pMerge4), $pEarlierRequest)
+    $r = Test-State (Get-State $pRepo) @{ pr = '-'; 'pr-branch-state' = 'busy 5' }
+    Check 'push-state: a push branch with another plan''s open pull request is busy' $r.Ok $r.Detail
+
+    Set-PushRequests @((New-PushRequest 5 'closed' $pOther $pMerge4), (New-PushRequest 4 'closed' $pHead $pMerge4))
+    $r = Test-State (Get-State $pRepo -NoFetch) @{ pr = '-'; landed = 'no'; 'pr-branch-state' = 'landed' }
+    Check 'push-state: a push branch at a merged pull request''s head is landed' $r.Ok $r.Detail
+
+    Set-PushRequests @((New-PushRequest 4 'closed' $pHead $pMerge4), $pEarlierRequest)
+    $r = Test-State (Get-State $pRepo -NoFetch) @{ pr = '-'; 'pr-branch-state' = 'other' }
+    Check 'push-state: a push branch with commits that are neither landed nor the plan''s is other' $r.Ok $r.Detail
+
+    Remove-Item -LiteralPath (Join-Path $bin 'pr.json')
+    $r = Test-State (Get-State $pRepo -NoFetch) @{ pr = 'unknown'; 'pr-branch-state' = 'unknown' }
+    Check 'push-state: a push branch whose pull requests cannot be read is unknown' $r.Ok $r.Detail
+
+    Push-Location $pRepo
+    try { Invoke-Git push -q -f -u origin HEAD:refs/heads/claude/test-abc1 }
+    finally { Pop-Location }
+    Set-PushRequests @((New-PushRequest 6 'open' $pSecond), (New-PushRequest 5 'closed' $pOther $pMerge4))
+    $r = Test-State (Get-State $pRepo) @{ pr = '6 OPEN'; 'pr-branch-state' = 'ours'; next = 'wait pull request #6 is open: run ship-plan again once it merges' }
+    Check 'push-state: a push branch that holds the plan''s commits is ours' $r.Ok $r.Detail
 }
 finally { $env:PATH = $savedPath }
 
