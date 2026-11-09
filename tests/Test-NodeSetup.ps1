@@ -180,7 +180,7 @@ for ($i = 0; $i -lt $noNvsCases.Count; $i++) {
 # --- use-node.sh reports a missing .node-version in a set -eo pipefail shell ---
 if ($bash) {
     $root = New-Fixture 'noversion' '' ''
-    Remove-Item -LiteralPath (Join-Path $root '.node-version')
+    Remove-Item -LiteralPath (Join-Path $root '.node-version') -Force
     $out = Invoke-WithEnv @{ NVS_HOME = (Join-Path $root 'nvs'); PATH = $basePath } { Invoke-Child $bash.Source -eo pipefail -c ". '$(Join-Path $root '.template/use-node.sh')'; command -v node" }
     Check 'use-node.sh reports a missing .node-version under set -eo pipefail' ($LASTEXITCODE -ne 0 -and $out -like '*No Node.js version in*') $out
 }
