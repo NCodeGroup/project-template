@@ -79,8 +79,8 @@
 
     -OrganizationPolicy, with -Owner alone, creates the same policy once for the organization, on every repository
     (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
-    auth refresh -h github.com -s admin:org). It reads the organization's policies first and leaves alone one of that
-    name or an active one that already allows pull_request_target and issue_comment for both files on every repository; -WhatIf prints the body it
+    auth refresh -h github.com -s admin:org). It reads the organization's policies first and updates one of that
+    name in place, keeping the other events it allows, when it isn't active, misses one of those events or doesn't cover both files on every repository, and leaves alone one that does, or an active one that already allows pull_request_target and issue_comment for both files on every repository; -WhatIf prints the body it
     would post. It exits 1 when it can't read the policies or the API refuses the policy.
     It needs GitHub Team or above, the plans GitHub offers organization event policies on: when GitHub refuses them for
     the organization's plan, with an answer that asks to upgrade, such as "Upgrade to GitHub Team to enable this
@@ -711,8 +711,9 @@ function Get-PlanRefusalHint([string]$Reason) {
     'organization event policies need GitHub Team or above: run it for each repository instead, with -Repo <name>, or with -All once its -WhatIf looks right'
 }
 
-# The same policy once for the organization, on every repository (~ALL). Returns $true unless it can't read the policies
-# or the API refuses the policy. It writes only its report lines (and, with -WhatIf, the body) to the host.
+# The same policy once for the organization, on every repository (~ALL). Its own policy, by name, is updated in place
+# when it isn't active, misses an event or doesn't cover both files on every repository. Returns $true unless it can't
+# read the policies or the API refuses the policy. It writes only its report lines (and, with -WhatIf, the body) to the host.
 function Set-OrganizationEventPolicy {
     [CmdletBinding(SupportsShouldProcess)]
     param()
@@ -724,9 +725,26 @@ function Set-OrganizationEventPolicy {
         Write-Host "${prefix}not available ($($read.Why)); $hint"
         return $false
     }
-    if (@($read.Policies | Where-Object { $_.name -eq $eventPolicyName }).Count) {
-        Write-Host "${prefix}left alone (already has '$eventPolicyName')"
-        return $true
+    $ours = @($read.Policies | Where-Object { $_.name -eq $eventPolicyName }) | Select-Object -First 1
+    if ($ours) {
+        $gaps = @(Get-EventPolicyGaps $ours $codeReviewEvents)
+        if (-not (Test-ConditionCovers $ours.conditions.repository_name '~ALL')) { $gaps += "it doesn't cover every repository" }
+        if (-not $gaps.Count) { Write-Host "${prefix}already set ('$eventPolicyName' allows it)"; return $true }
+        $why = $gaps -join '; '
+        $kept = @($ours.rules | Where-Object { $_.type -eq 'restrict_action_events' } | ForEach-Object { @($_.parameters.allowed_events) })
+        $allowed = @(@($codeReviewEvents) + $kept | Where-Object { $_ } | Select-Object -Unique)
+        $body = New-EventPolicyBody $allowed -Organization
+        if (-not $PSCmdlet.ShouldProcess($Owner, "update Actions policy '$eventPolicyName'")) {
+            Write-Host "${prefix}would set (update '$eventPolicyName', as ${why}: PUT orgs/$Owner/actions/policies/$($ours.id) with this body)"
+            Write-Host ($body | ConvertTo-Json -Depth 10)
+            return $true
+        }
+        $result = Invoke-HostWrite PUT "orgs/$Owner/actions/policies/$($ours.id)" $body
+        if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set (updated '$eventPolicyName', as $why)"; return $true }
+        $reason = Get-FailureReason $result
+        $hint = Get-PlanRefusalHint $reason
+        Write-Host "${prefix}not available (couldn't update '$eventPolicyName', as ${why}: $reason)$(if ($hint) { "; $hint" })"
+        return $false
     }
     $allowing = @($read.Policies | Where-Object { Test-AllowsEvents $_ $codeReviewWorkflows $codeReviewEvents '~ALL' })
     if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)"; return $true }

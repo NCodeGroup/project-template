@@ -365,6 +365,9 @@ $orgs = @{
     orgEmpty = @{ policies = @() }
     orgAllows = @{ policies = @((New-EventPolicy 'review everywhere' -Paths @('.github/workflows/*') -Repos @('~ALL'))) }
     orgOurs = @{ policies = @((New-EventPolicy 'Allow pull_request_target for code review' -Enforcement 'disabled')) }
+    orgOursActive = @{ policies = @((New-EventPolicy 'Allow pull_request_target for code review' -Paths @('.github/workflows/code-review.yml', '.github/workflows/code-review-auto-merge.yml') -Repos @('~ALL'))) }
+    orgOursNarrow = @{ policies = @((New-EventPolicy 'Allow pull_request_target for code review' -Events @('pull_request_target', 'push') -Repos @('some-repo'))) }
+    orgOursRefused = @{ policies = @((New-EventPolicy 'Allow pull_request_target for code review' -Enforcement 'disabled')); writeFail = 403 }
     orgOthers = @{ policies = @((New-EventPolicy 'some repositories' -Repos @('someone-else'))) }
     orgUnreadable = @{ policies = 'fail:403' }
     orgBroken = @{ policies = 'fail:500' }
@@ -826,13 +829,20 @@ try {
     Check 'org: the policy covers every repository and the two files, and allows pull_request_target and issue_comment' ($policy.name -eq $policyName -and $policy.enforcement -eq 'active' -and (@($policy.conditions.repository_name.include) -join ',') -eq '~ALL' -and @($policy.conditions.repository_name.exclude).Count -eq 0 -and (@($policy.conditions.workflow_path.include) -join ',') -eq ($reviewWorkflows -join ',') -and $rules.Count -eq 1 -and $rules[0].type -eq 'restrict_action_events' -and (@($rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment') ($policy | ConvertTo-Json -Depth 8 -Compress)
     $cases = @(
         @{ Owner = 'orgAllows'; Exit = 0; Says = "orgAllows (organization): ${label}: already set ('review everywhere' allows it)" }
-        @{ Owner = 'orgOurs'; Exit = 0; Says = "orgOurs (organization): ${label}: left alone (already has '$policyName')" }
+        @{ Owner = 'orgOursActive'; Exit = 0; Says = "orgOursActive (organization): ${label}: already set ('$policyName' allows it)" }
         @{ Owner = 'orgUnreadable'; Exit = 1; Says = "orgUnreadable (organization): ${label}: not available (couldn't read its Actions policies: HTTP 403" }
         @{ Owner = 'NCodeGroup'; Exit = 1; Says = "NCodeGroup (organization): ${label}: not available (couldn't read its Actions policies: HTTP 404" })
     foreach ($case in $cases) {
         $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', $case.Owner)
         Check "org: $($case.Owner) exits $($case.Exit), writes nothing and says so" ($r.ExitCode -eq $case.Exit -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape($case.Says)) "$($r.Changes -join '|') $($r.Output)"
     }
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgOurs')
+    $put = @($r.Bodies | Where-Object { $_.path -like 'orgs/orgOurs/actions/policies/*' })
+    Check 'org: a disabled policy of that name is updated in place, and the run says why' ($r.ExitCode -eq 0 -and $put.Count -eq 1 -and $put[0].method -eq 'PUT' -and $put[0].body.enforcement -eq 'active' -and (@($put[0].body.conditions.repository_name.include) -join ',') -eq '~ALL' -and (@($put[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment' -and $r.Output -match [regex]::Escape("orgOurs (organization): ${label}: set (updated '$policyName', as its enforcement is disabled)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgOursNarrow', '-WhatIf')
+    Check 'org: -WhatIf names every gap of a policy of that name, prints the body and writes nothing' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("orgOursNarrow (organization): ${label}: would set (update '$policyName', as it doesn't allow issue_comment; it doesn't cover every repository: PUT orgs/orgOursNarrow/actions/policies/") -and $r.Output -match [regex]::Escape('"push"')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgOursRefused')
+    Check 'org: a refused update of a policy of that name is reported with its gaps and fails the run' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("orgOursRefused (organization): ${label}: not available (couldn't update '$policyName', as its enforcement is disabled: HTTP 403")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgOthers')
     Check 'org: a policy for some repositories does not count' ($r.ExitCode -eq 0 -and ($r.Changes -join '|') -eq 'BODY POST orgs/orgOthers/actions/policies') "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgPullOnly', '-WhatIf')
