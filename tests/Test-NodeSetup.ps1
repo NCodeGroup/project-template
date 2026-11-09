@@ -3,7 +3,7 @@
     Test the template's Node.js setup scripts: .template\Initialize-Nvs.ps1, .template\Use-Node.ps1 and .template\use-node.sh.
 
 .DESCRIPTION
-    The three template files have Jinja-tag file names without a .ps1 extension, so the suite copies each into a fixture
+    The suite copies each of the three template files into a fixture
     project folder under -Work first. Checks that Initialize-Nvs.ps1 writes the bash and PowerShell profile blocks once and
     not twice, leaves a profile that already names nvs.ps1 alone, and throws the install text when nvs.ps1 is missing. Then
     checks, with a stub nvs that puts a stub node on PATH, that Use-Node.ps1 and use-node.sh put that node on PATH, and,
