@@ -10,7 +10,8 @@
     with a stub nvs that does nothing and a PATH holding no node, that both fail with a message naming Initialize-Nvs.ps1.
     Then checks, with no nvs and a stub node on PATH that prints a version, that both accept that node when it is the
     version .node-version names or starts with it and a dot, and refuse it, with the nvs install text, when it is another
-    version or missing.
+    version or missing, running bash with -eo pipefail as GitHub Actions does, so a refusal still prints its message;
+    and that use-node.sh, under -eo pipefail too, reports a missing .node-version.
     Every check passes -HomeDirectory and -ProfilePath or sets NVS_HOME itself, so nothing touches the real home folder or
     profile. The Use-Node.ps1 and use-node.sh checks run with a PATH of the system folders alone (System32 on Windows,
     /usr/bin:/bin elsewhere), so an nvs or node the PC has can't stand in for the stubs; the use-node.sh checks run only
@@ -169,12 +170,22 @@ for ($i = 0; $i -lt $noNvsCases.Count; $i++) {
     $ok = if ($case.Ok) { $LASTEXITCODE -eq 0 -and $out.Trim() -eq $stubNode } else { $LASTEXITCODE -ne 0 -and $out -like '*nvs is not installed*Install it with*' }
     Check "Use-Node.ps1 without nvs $($case.Name)" $ok $out
     if ($bash) {
-        $out = Invoke-WithEnv $noNvsEnv { Invoke-Child $bash.Source -c ". '$(Join-Path $root '.template/use-node.sh')' && command -v node" }
+        # GitHub Actions runs bash with -eo pipefail, and a refusal must still print its message there.
+        $out = Invoke-WithEnv $noNvsEnv { Invoke-Child $bash.Source -eo pipefail -c ". '$(Join-Path $root '.template/use-node.sh')'; command -v node" }
         $ok = if ($case.Ok) { $LASTEXITCODE -eq 0 -and $out.Trim() -eq $stubNode } else { $LASTEXITCODE -ne 0 -and $out -like '*nvs is not installed*Install it with*' }
         Check "use-node.sh without nvs $($case.Name)" $ok $out
     }
     else { Skip "use-node.sh without nvs $($case.Name)" $noBash }
 }
+
+# --- use-node.sh reports a missing .node-version in a set -eo pipefail shell ---
+if ($bash) {
+    $root = New-Fixture 'noversion' '' ''
+    Remove-Item -LiteralPath (Join-Path $root '.node-version')
+    $out = Invoke-WithEnv @{ NVS_HOME = (Join-Path $root 'nvs'); PATH = $basePath } { Invoke-Child $bash.Source -eo pipefail -c ". '$(Join-Path $root '.template/use-node.sh')'; command -v node" }
+    Check 'use-node.sh reports a missing .node-version under set -eo pipefail' ($LASTEXITCODE -ne 0 -and $out -like '*No Node.js version in*') $out
+}
+else { Skip 'use-node.sh reports a missing .node-version under set -eo pipefail' $noBash }
 
 if ($failures.Count) { "Kept the work folder: $Work"; "Node.js setup tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }

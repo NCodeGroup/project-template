@@ -19,7 +19,9 @@
 _nvs_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _nvs_status=0
 _nvs_on_path=0
-_nvs_version="$(head -n1 "$_nvs_dir/../.node-version" 2>/dev/null | tr -d '\r ')"
+# Each || : keeps a missing .node-version or node from ending a set -eo pipefail shell, such as GitHub Actions' bash,
+# before the message below.
+_nvs_version="$(head -n1 "$_nvs_dir/../.node-version" 2>/dev/null | tr -d '\r ' || :)"
 if [ -z "$_nvs_version" ]; then
     echo "No Node.js version in $_nvs_dir/../.node-version; cannot choose a Node.js version." >&2
     _nvs_status=1
@@ -35,7 +37,7 @@ if [ "$_nvs_status" -eq 0 ] && ! type nvs >/dev/null 2>&1; then
     else
         # No nvs, as in CI and cloud sessions that install Node.js another way: accept the node on PATH when it matches.
         _nvs_want="${_nvs_version#v}"
-        _nvs_have="$(node --version 2>/dev/null | head -n1 | tr -d '\r ')"
+        _nvs_have="$(node --version 2>/dev/null | head -n1 | tr -d '\r ' || :)"
         _nvs_have="${_nvs_have#v}"
         case "$_nvs_have" in
             "$_nvs_want" | "$_nvs_want".*) _nvs_on_path=1 ;;
