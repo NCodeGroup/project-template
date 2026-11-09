@@ -3,7 +3,7 @@
     Test the template's Node.js setup scripts: .template\Initialize-Nvs.ps1, .template\Use-Node.ps1 and .template\use-node.sh.
 
 .DESCRIPTION
-    The three template files have Jinja-tag file names without a .ps1 extension, so the suite copies each into a fixture
+    The suite copies each of the three template files into a fixture
     project folder under -Work first. Checks that Initialize-Nvs.ps1 writes the bash and PowerShell profile blocks once and
     not twice, leaves a profile that already names nvs.ps1 alone, and throws the install text when nvs.ps1 is missing. Then
     checks, with a stub nvs that puts a stub node on PATH, that Use-Node.ps1 and use-node.sh put that node on PATH, and,
@@ -33,8 +33,6 @@ $ownWork = -not $PSBoundParameters.ContainsKey('Work')
 trap { "Kept the work folder: $Work"; break }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
-$tag = "{% if (uses_node is defined and uses_node) or (uses_node is not defined and stack == 'node') %}"
-$endTag = '{% endif %}'
 $pwshPath = (Get-Process -Id $PID).Path
 # The child processes run with this PATH, so a PC's own nvs or node can't stand in for the fixture's stubs.
 $basePath = if ($IsWindows) { Join-Path $env:SystemRoot 'System32' } else { '/usr/bin:/bin' }
@@ -47,7 +45,7 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
 function Skip([string]$Name, [string]$Why) { "SKIP  $Name  $Why" }
-function Get-TemplateFile([string]$Name) { Join-Path $repoRoot "template/.template/$tag$Name$endTag" }
+function Get-TemplateFile([string]$Name) { Join-Path $repoRoot "template/.template/$Name" }
 
 # A fixture project: <root>/.node-version, <root>/.template/<the three scripts>, <root>/nvs/<stubs>, <root>/stub/node.
 function New-Fixture([string]$Name, [string]$NvsPs1, [string]$NvsSh) {

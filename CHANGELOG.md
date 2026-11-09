@@ -6,12 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.75.6] - 2026-11-09
+## [0.75.7] - 2026-11-09
 
 ### Fixed
 
 - `.template/Use-Node.ps1`, the `prelude` a new Node.js project's `AGENTS.md` names, and `.template/use-node.sh` no longer fail where nvs isn't installed, as in GitHub CI, Copilot's cloud agent and a Claude Code cloud session, which stopped every Done-when command and gate there: they accept the `node` already on `PATH` when `node --version`, without its leading `v`, is the version `.node-version` names or starts with it and a dot, so `26` accepts 26.1.0 and `26.1` accepts 26.1.4 but not 26.10.0, and fail with the nvs install command only when `node` is missing or another version. `tests/Test-NodeSetup.ps1` checks both with a stand-in `node` on `PATH` and no nvs home, runs its checks with a `PATH` of the system folders alone, so a PC's own nvs or node no longer fails them, and runs its `use-node.sh` checks only on Linux and macOS, as in CI ([#307](https://github.com/NCodeGroup/project-template/issues/307), [ADR-0200](template/docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md)).
 - `.template/use-node.sh`, sourced in a shell that runs with `set -eo pipefail` as GitHub Actions' bash does, prints why it stopped and returns non-zero when `.node-version` is missing, or when nvs isn't installed and no `node` is on `PATH`, instead of ending the shell without a message. `tests/Test-NodeSetup.ps1` runs its `use-node.sh` checks without nvs, and a new one with no `.node-version`, that way ([#307](https://github.com/NCodeGroup/project-template/issues/307)).
+
+## [0.75.6] - 2026-11-09
+
+### Changed
+
+- No change for projects made from the template. Every file and folder name under `template/` is plain: the 79 names that held a Copier condition, such as `{% if stack == 'dotnet' %}global.json{% endif %}`, lost it, and their conditions are `_exclude` entries in `copier.yml`, so a project gets exactly the files it got before, and an update from an earlier version changes nothing it didn't. No path in the repository holds a Jinja tag, and the longest is 141 characters instead of 200, so the repository checks out the same on Windows, Linux and macOS, with no setting such as `core.longpaths`. `tests/Test-WindowsFileNames.ps1` fails a path that holds a Jinja tag or is longer than 160 characters, and the new `tests/Compare-Renders.ps1 -Base <commit>` checks that the working tree's template renders, and updates a project, exactly as the template at that commit does.
 
 ## [0.75.5] - 2026-11-09
 
@@ -1227,7 +1233,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.6...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.7...HEAD
+[0.75.7]: https://github.com/NCodeGroup/project-template/compare/v0.75.6...v0.75.7
 [0.75.6]: https://github.com/NCodeGroup/project-template/compare/v0.75.5...v0.75.6
 [0.75.5]: https://github.com/NCodeGroup/project-template/compare/v0.75.4...v0.75.5
 [0.75.4]: https://github.com/NCodeGroup/project-template/compare/v0.75.3...v0.75.4

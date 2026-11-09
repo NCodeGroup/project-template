@@ -242,7 +242,7 @@ $x = "<?xml version=""1.0""?>`n<Project>`n  <PropertyGroup>`n    <A>1</A>`n  </P
 $r = Add-ProjectTemplateImport $x
 Check 'unit: Add-ProjectTemplateImport' ($r.StartsWith("<?xml version=""1.0""?>`n<Project>`n") -and $r.Contains('<Import Project="$(MSBuildThisFileDirectory)build/ProjectTemplate.props" />') -and $r.IndexOf('<Import') -lt $r.IndexOf('<PropertyGroup>') -and (Add-ProjectTemplateImport $r) -eq $r) $r
 # The template's Directory.Packages.props as a project without nuget_package renders it.
-$central = (Get-Content -Raw -LiteralPath (Join-Path $repoRoot "template\{% if stack == 'dotnet' %}Directory.Packages.props{% endif %}.jinja")) -replace '\{%-? if nuget_package %\}[\s\S]*?\{%-? endif %\}', ''
+$central = (Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template\Directory.Packages.props.jinja')) -replace '\{%-? if nuget_package %\}[\s\S]*?\{%-? endif %\}', ''
 if ($central.Contains('{%')) { throw "The test can't render the template's Directory.Packages.props: it has Jinja this test doesn't strip." }
 $folder = New-TestFolder 'central' @{
     'Directory.Packages.props' = $central

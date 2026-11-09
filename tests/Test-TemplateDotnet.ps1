@@ -38,7 +38,7 @@ if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 
 $stubRoot = Join-Path $Work 'installer'
 New-Item -ItemType Directory -Force -Path $stubRoot | Out-Null
-$installer = Join-Path (Split-Path -Parent $PSScriptRoot) "template/{% if stack == 'dotnet' %}build{% endif %}/Install-Dotnet.ps1"
+$installer = Join-Path (Split-Path -Parent $PSScriptRoot) 'template/build/Install-Dotnet.ps1'
 $os = if ($IsWindows) { 'win' } elseif ($IsMacOS) { 'osx' } elseif (Test-Path -LiteralPath '/etc/alpine-release') { 'linux-musl' } else { 'linux' }
 $arch = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
 $suffix = "$os-$arch$(if ($IsWindows) { '.zip' } else { '.tar.gz' })"

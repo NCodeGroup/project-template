@@ -75,7 +75,7 @@ Check 'adopt: .copier-answers.yml records project_owned_files' ([IO.File]::ReadA
 Check 'adopt: one commit' ((git -C $repo log -1 --format=%s) -eq 'Adopt project-template v0.1.0')
 
 Push-Location (Join-Path $tpl 'template')
-try { Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "    runs-on: ubuntu-latest`n    timeout-minutes: 30`n    defaults:" "    runs-on: ubuntu-latest`n    timeout-minutes: 45`n    defaults:"
+try { Edit-File '.github/workflows/ci.yml.jinja' "    runs-on: ubuntu-latest`n    timeout-minutes: 30`n    defaults:" "    runs-on: ubuntu-latest`n    timeout-minutes: 45`n    defaults:"
     Edit-File CLAUDE.md "## Claude Code`n" "## Claude Code`n`nOwned-test line from the template.`n"
 }
 finally { Pop-Location }
