@@ -486,8 +486,9 @@ function Get-ContentText([string]$Body) {
     catch { $null }
 }
 
-# The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, or the keys or
-# items indented below it, with quotes, comments and blank lines allowed. A mapping in braces, or no on: key, gives none.
+# The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, the keys or items
+# indented below it, or - items at its own indent, with quotes, comments and blank lines allowed. A mapping in braces, or
+# no on: key, gives none.
 function Get-WorkflowEvents([string]$Text) {
     $lines = @($Text -split '\r?\n')
     for ($i = 0; $i -lt $lines.Count; $i++) {
@@ -501,11 +502,15 @@ function Get-WorkflowEvents([string]$Text) {
             @(for ($j = $i + 1; $j -lt $lines.Count; $j++) {
                 $line = $lines[$j]
                 if ($line -match '^\s*(#.*)?$') { continue }
-                if ($line -notmatch '^(\s+)(.*)$') { break }
-                if ($indent -lt 0) { $indent = $Matches[1].Length }
-                if ($Matches[1].Length -ne $indent) { continue }
-                if ($Matches[2] -match '^-\s*([^\s#]+)') { $Matches[1] }
-                elseif ($Matches[2] -match '^([^\s:#]+)\s*:') { $Matches[1] }
+                $null = $line -match '^(\s*)(.*)$'
+                $lead = $Matches[1].Length
+                $item = $Matches[2]
+                # A line at column 0 ends the block, unless it is a - item of a sequence at the key's own indent.
+                if (-not $lead -and -not ($indent -le 0 -and $item -match '^-(\s|$)')) { break }
+                if ($indent -lt 0) { $indent = $lead }
+                if ($lead -ne $indent) { continue }
+                if ($item -match '^-\s*([^\s#]+)') { $Matches[1] }
+                elseif ($item -match '^([^\s:#]+)\s*:') { $Matches[1] }
             })
         }
         return @($names | ForEach-Object { $_.Trim().Trim('"', "'") } | Where-Object { $_ -match '^[A-Za-z_]+$' })

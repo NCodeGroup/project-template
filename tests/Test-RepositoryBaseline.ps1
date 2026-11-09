@@ -784,6 +784,8 @@ try {
         "a quoted 'on' key" = @("'on':`n  issue_comment:`n", 'issue_comment')
         'an on: key that is not top-level' = @("name: none`njobs:`n  x:`n    on: push`n", '')
         'a mapping in braces gives none' = @("on: { push: {} }`n", '')
+        'a block sequence at the same indent as on:' = @("on:`n- push`n- 'workflow_dispatch'`njobs:`n  a: b`n", 'push,workflow_dispatch')
+        'a block mapping ends at a key at column 0' = @("on:`n  push:`n- x`njobs:`n  a: b`n", 'push')
         "the template's code-review.yml" = @((Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/code-review.yml')), 'pull_request_target,issue_comment')
         "the template's code-review-auto-merge.yml" = @((Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/code-review-auto-merge.yml')), 'pull_request_target')
     }
