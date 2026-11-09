@@ -1168,8 +1168,10 @@ $gateFailures = @(foreach ($name in $gateCases.Keys) {
         $case = $gateCases[$name]
         $command = "$($case[3])$preludeRun<gate>; if (-not `$? -or `$LASTEXITCODE) { exit 1 } else { exit 0 }".Replace('<prelude>', $case[0]).Replace('<gate>', $case[1])
         Push-Location $preludeDir
-        try { $out = & pwsh -NoProfile -NonInteractive -Command $command 2>&1 | Out-String; $code = $LASTEXITCODE }
+        try { $lines = @(& pwsh -NoProfile -NonInteractive -Command $command 2>&1); $code = $LASTEXITCODE }
         finally { Pop-Location }
+        # The child's standard error reaches this pipe apart from its standard output, in no fixed order, so the last line is read from standard output alone.
+        $out = @($lines | Where-Object { $_ -isnot [Management.Automation.ErrorRecord] }) | Out-String
         if ($code -ne $case[2]) { "${name}: exit $code, expected $($case[2])" }
         elseif ($case[2] -eq 2 -and $out.TrimEnd() -notmatch '(^|\n)prelude failed$') { "${name}: the output doesn't end with 'prelude failed'" }
     })
