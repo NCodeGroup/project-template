@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Render the template for every stack and check the result: expected files, LF line endings, valid JSON, no leftover Jinja and no Markdown line that joins two list items. tests\Test-TemplateDotnet.ps1 builds the .NET layer. tests\Test-ProjectUpdate.ps1 and tests\Test-ProjectUpdateHooks.ps1 test a rendered project's update.
+    Render the template for every stack and check the result: expected files, LF line endings, valid JSON, no leftover Jinja and no Markdown line that joins two list items, no citation of a template decision record the project doesn't have. tests\Test-TemplateDotnet.ps1 builds the .NET layer. tests\Test-ProjectUpdate.ps1 and tests\Test-ProjectUpdateHooks.ps1 test a rendered project's update.
 
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
@@ -154,6 +154,7 @@ $cases = @(
     @{ Name = 'other-node-gitlab'; Stack = 'other'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
     @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'Apache-2.0' } }
+    @{ Name = 'dotnet-library-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT' } }
     @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true' }; Refused = 'Required for a NuGet package' }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
     @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT' } }
@@ -206,6 +207,19 @@ foreach ($case in $cases) {
 
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
+    # Every template decision record a rendered Markdown file cites by number is one the project has.
+    $recordNumbers = @(Get-ChildItem -LiteralPath (Join-Path $dest 'docs\decisions'), (Join-Path $dest 'docs\decisions\project-template') -File -Filter '*.md' | ForEach-Object { if ($_.Name -match '^(\d{4})-') { $Matches[1] } })
+    $unknownCitations = @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force -Filter '*.md' | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } | ForEach-Object {
+        $file = $_
+        Select-String -LiteralPath $file.FullName -Pattern 'ADR-(0\d{3})\b' -AllMatches | ForEach-Object {
+            $hit = $_
+            $hit.Matches | Where-Object { $_.Groups[1].Value -notin $recordNumbers } | ForEach-Object { "$($file.FullName.Substring($dest.Length + 1)):$($hit.LineNumber) ADR-$($_.Groups[1].Value)" }
+        }
+    })
+    Check "${name}: every template decision record a Markdown file cites is one the project has" (-not $unknownCitations) ($unknownCitations -join '; ')
+    $adr16 = [IO.File]::ReadAllText((Join-Path $dest 'docs\decisions\project-template\0016-releases-are-tagged-and-published-when-their-pull-request-merges.md'))
+    $has137 = Test-Path -LiteralPath (Join-Path $dest 'docs\decisions\project-template\0137-the-release-workflow-starts-package-publishing.md')
+    Check "${name}: ADR-0016 cites ADR-0137 exactly when the project has it" (($adr16 -match 'the script starts\s+the project''s `\.github/workflows/publish\.yml`') -and ($adr16.Contains('ADR-0137') -eq $has137)) "has ADR-0137: $has137"
     $present = @($dotnetOnly | Where-Object { Test-Path (Join-Path $dest $_) })
     if ($case.Stack -eq 'dotnet') { Check "${name}: .NET layer present" ($present.Count -eq $dotnetOnly.Count) }
     else { Check "${name}: no .NET layer" ($present.Count -eq 0) ($present -join ', ') }
