@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.75.2] - 2026-11-09
+
+### Fixed
+
+- On Windows, `Update-Project.ps1` stops before it changes anything when the project is on a template version Git for Windows can't check out, such as v0.69.0 to v0.75.0, whose `uses_node` file names held a `|`: it names the path and says to update once from Linux, macOS or WSL, instead of failing in `copier recopy` with Copier's `invalid path` error. A project on v0.69.0 to v0.75.0 gets the stop when it updates to v0.75.2 or later, because its own script hands the update over to that version's ([#305](https://github.com/NCodeGroup/project-template/issues/305)).
+
 ## [0.75.1] - 2026-11-09
 
 ### Fixed
@@ -1192,7 +1198,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.2...HEAD
+[0.75.2]: https://github.com/NCodeGroup/project-template/compare/v0.75.1...v0.75.2
 [0.75.1]: https://github.com/NCodeGroup/project-template/compare/v0.75.0...v0.75.1
 [0.75.0]: https://github.com/NCodeGroup/project-template/compare/v0.74.0...v0.75.0
 [0.74.0]: https://github.com/NCodeGroup/project-template/compare/v0.73.0...v0.74.0

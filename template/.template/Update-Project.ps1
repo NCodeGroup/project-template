@@ -71,6 +71,10 @@
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
 
+    On Windows it stops before it changes anything when the project's template version has a path Git for Windows
+    refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
+    copier recopy at that version; it names the path and says to update once from Linux, macOS or WSL.
+
     Every version of this script accepts -Path, -Ref, -Data, -NoCommit, -TemplateClone and -HandedOff, so any
     version can hand over to any later one.
 
@@ -189,6 +193,20 @@ function Get-RenderedFile([string]$Repo, [string]$Version) {
 function Get-NewestTag([string]$Repo) {
     git -C $Repo tag --list | Where-Object { $_ -match '^v?\d+(\.\d+){0,3}$' } |
         Sort-Object { $v = $_ -replace '^v'; if ($v -notmatch '\.') { $v += '.0' }; [version]$v } | Select-Object -Last 1
+}
+
+# Whether Windows can hold a file or folder name, by the rules tests/Test-WindowsFileNames.ps1 checks this repository's paths with; change both together.
+function Test-WindowsName([string]$Name) {
+    $Name -notmatch '[\x00-\x1F<>:"|?*\\]' -and $Name -notmatch '^(?i:CON|PRN|AUX|NUL|COM[0-9\xB9\xB2\xB3]|LPT[0-9\xB9\xB2\xB3]|CONIN\$|CONOUT\$)(\..*)?$' -and $Name -notmatch '[. ]$'
+}
+
+# The first path of the template at a version that Git for Windows refuses to check out, or nothing.
+function Get-WindowsCheckoutProblem([string]$Repo, [string]$Version) {
+    $listing = (git -C $Repo ls-tree -r -z --name-only $Version 2>$null) -join "`n"
+    if ($LASTEXITCODE) { return }
+    foreach ($path in $listing -split "`0" | Where-Object { $_ }) {
+        if (@($path -split '/' | Where-Object { -not (Test-WindowsName $_) }).Count) { return $path }
+    }
 }
 
 function Get-Change {
@@ -439,6 +457,13 @@ try {
             & $next -Path $project -Ref $to -Data $Data -NoCommit:$NoCommit -TemplateClone $TemplateClone -HandedOff
             exit $LASTEXITCODE
         }
+    }
+
+    # copier recopy and the renders below check out the project's version, which Git for Windows refuses when a name
+    # in it is one Windows can't hold, such as the uses_node file names of v0.69.0 to v0.75.0: stop before any of them runs.
+    if ($IsWindows) {
+        $badPath = Get-WindowsCheckoutProblem $TemplateClone $from
+        if ($badPath) { throw "This project is on template $from, which Git for Windows can't check out: it refuses the path $badPath. The update starts by resetting the template-owned files to $from, so it can't run on Windows. Update once from Linux, macOS or WSL, such as with pwsh ./.template/Update-Project.ps1 in WSL; later updates run on Windows again." }
     }
 
     $skipFrom = @(Get-TemplateList $TemplateClone $from '_skip_if_exists')
