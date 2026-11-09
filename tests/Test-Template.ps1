@@ -562,7 +562,7 @@ foreach ($case in $cases) {
     Check "${name}: AGENTS.md starts the project pre-release, and the answers record no pre_release" (($agents -match '(?m)^- pre-release: untracked\r?$') -and ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -notmatch '(?m)^pre_release:')) $agents
     Check "${name}: .gitignore ignores the plan" ($ignore -match '(?m)^PLAN\.md\r?$')
     $rules = Get-Content -LiteralPath (Join-Path $dest '.github\instructions\project-template.instructions.md') -Raw
-    Check "${name}: template rules for the chosen tools" (($rules.Contains('.claude/') -eq $claude) -and ($rules.Contains('.github/skills/') -eq ('copilot' -in $tools)))
+    Check "${name}: template rules for the chosen tools" (($rules.Contains('.claude/') -eq $claude) -and ($rules.Contains('as `.claude/settings.json` lets it in Claude Code') -eq $claude) -and ($rules.Contains('.github/skills/') -eq ('copilot' -in $tools)))
     $readme = Get-Content -LiteralPath (Join-Path $dest 'README.md') -Raw
     Check "${name}: README for the chosen tools" (($readme.Contains('| Claude Code |') -eq $claude) -and ($readme.Contains('| Copilot CLI |') -eq ('copilot' -in $tools)) -and ($readme.Contains('Hybrid Planner') -eq $local))
     Check "${name}: answers record v0.1.0" ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -match '(?m)^_commit: v0\.1\.0$')
@@ -732,6 +732,12 @@ $rulesJinja = 'template\.github\instructions\project-template.instructions.md.ji
 $m = @(Get-MissingText $rulesJinja ('`git log --stat origin/<branch>..` when `origin` has the branch you push to', '`git log --stat origin/<default branch>..` when it doesn''t yet', 'Compare with `origin`, not the branch''s upstream'))
 $m += @(if ([IO.File]::ReadAllText((Join-Path $repoRoot $rulesJinja)).Contains('@{u}')) { "${rulesJinja}: still lists the unpushed commits against the upstream" })
 Check 'workflow: the project rules list the unpushed commits against origin, not the upstream' (-not $m) ($m -join '; ')
+# .claude/settings.json lets git push run without asking since v0.69.0, and a Copilot run without approvals doesn't ask either.
+$pushPromptDirs = 'workflow\templates', 'template\.claude', 'template\.github', '.claude\commands', '.claude\agents', '.github\agents', '.github\prompts', '.github\skills'
+$m = @(Get-ChildItem -LiteralPath ($pushPromptDirs | ForEach-Object { Join-Path $repoRoot $_ }) -Recurse -File | Where-Object { [IO.File]::ReadAllText($_.FullName) -match '`git push` (always asks for approval|may still ask for its own approval)' } | ForEach-Object { $_.FullName.Substring($repoRoot.Length + 1) })
+$m += @(Get-MissingText $rulesJinja 'Don''t count on an approval prompt to stop a push')
+$m += @(Get-MissingText ('workflow\templates\ship-plan.md', 'workflow\templates\run-issues.md', 'workflow\templates\run-issues-copilot.md', 'workflow\templates\address-feedback-copilot.md') 'no prompt stops the')
+Check 'workflow: no rule or command says git push asks for approval, which .claude/settings.json allows without asking' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.claude\agents\plan-executor.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\agents\copilot-implementer.agent.md', 'template\.github\agents\local-implementer.agent.md', 'template\.github\skills\execute-step\SKILL.md', 'template\.github\prompts\execute-step.prompt.md', 'template\.github\prompts\execute-step-local.prompt.md') { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); if ($t.Contains('gh issue') -or $t.Contains('glab issue')) { $p } })
 Check 'workflow: no executor calls gh or glab on the issue' (-not $m) ($m -join ', ')
 $issuePlanFiles = 'template\.claude\commands\plan-issue.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-issue\SKILL.md'
@@ -1162,8 +1168,10 @@ $gateFailures = @(foreach ($name in $gateCases.Keys) {
         $case = $gateCases[$name]
         $command = "$($case[3])$preludeRun<gate>; if (-not `$? -or `$LASTEXITCODE) { exit 1 } else { exit 0 }".Replace('<prelude>', $case[0]).Replace('<gate>', $case[1])
         Push-Location $preludeDir
-        try { $out = & pwsh -NoProfile -NonInteractive -Command $command 2>&1 | Out-String; $code = $LASTEXITCODE }
+        try { $lines = @(& pwsh -NoProfile -NonInteractive -Command $command 2>&1); $code = $LASTEXITCODE }
         finally { Pop-Location }
+        # The child's standard error reaches this pipe apart from its standard output, in no fixed order, so the last line is read from standard output alone.
+        $out = @($lines | Where-Object { $_ -isnot [Management.Automation.ErrorRecord] }) | Out-String
         if ($code -ne $case[2]) { "${name}: exit $code, expected $($case[2])" }
         elseif ($case[2] -eq 2 -and $out.TrimEnd() -notmatch '(^|\n)prelude failed$') { "${name}: the output doesn't end with 'prelude failed'" }
     })

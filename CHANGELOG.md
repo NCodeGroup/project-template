@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.75.5] - 2026-11-09
+
+### Fixed
+
+- `.github/instructions/project-template.instructions.md` no longer says that `git push` always asks for approval; `.claude/settings.json` has let it run without asking since v0.69.0. It now says not to count on an approval prompt to stop a push, because `git push` can run without one, so the check of the unpushed commits is what catches an unexpected push. `/ship-plan`, `/run-issues` and Copilot's `/address-feedback` no longer say that `git push` may still ask for its own approval: they say that after the yes to their summary, no prompt stops a push. `tests/Test-Template.ps1` fails when a rule or command says again that `git push` asks, and its check that a prelude command that writes an error ends the output with `prelude failed` no longer fails now and then: it reads that last line from the child PowerShell's standard output alone, because the error on its standard error could arrive after it ([#308](https://github.com/NCodeGroup/project-template/issues/308)).
+
 ## [0.75.4] - 2026-11-09
 
 ### Changed
@@ -1214,7 +1220,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.4...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.5...HEAD
+[0.75.5]: https://github.com/NCodeGroup/project-template/compare/v0.75.4...v0.75.5
 [0.75.4]: https://github.com/NCodeGroup/project-template/compare/v0.75.3...v0.75.4
 [0.75.3]: https://github.com/NCodeGroup/project-template/compare/v0.75.2...v0.75.3
 [0.75.2]: https://github.com/NCodeGroup/project-template/compare/v0.75.1...v0.75.2
