@@ -1,14 +1,18 @@
 <#
 .SYNOPSIS
-    Puts the project's Node.js on PATH in the current PowerShell session through nvs.
+    Puts the project's Node.js on PATH in the current PowerShell session through nvs, or checks the one already there.
 
 .DESCRIPTION
     From the project template; template updates replace this file. Dot-source it, so that nvs and the PATH change stay
     in your session: ". ./.template/Use-Node.ps1". It is also the AGENTS.md prelude of a project that uses Node.js.
     It reads the version from the first line of the project's .node-version, loads nvs when the session has no nvs
-    command, and runs "nvs use" for that version, adding it with "nvs add" first when it is not installed. It throws
-    when .node-version is missing, when nvs is not installed (with the install command), or when node is still not on
-    PATH. It does not change $ErrorActionPreference or the strict mode of the session, and it never calls exit.
+    command, and runs "nvs use" for that version, adding it with "nvs add" first when it is not installed. Where nvs is
+    not installed at all, as in GitHub CI, Copilot's cloud agent and a Claude Code cloud session, it checks the node on
+    PATH instead, and accepts it when "node --version", without its leading v, is the .node-version version or starts
+    with it and a dot: 26 accepts 26.1.0, and 26.1 accepts 26.1.4 but not 26.10.0. It throws when .node-version is
+    missing, when nvs is not installed and the node on PATH is missing or another version (with the install command),
+    or when node is still not on PATH after nvs use. It does not change $ErrorActionPreference or the strict mode of
+    the session, and it never calls exit.
     The nvs home is $env:NVS_HOME when set, else $env:LOCALAPPDATA\nvs on Windows, else ~/.nvs. Install nvs on Windows
     with: winget install --id jasongin.nvs -e; elsewhere with: git clone https://github.com/jasongin/nvs "$HOME/.nvs";
     . "$HOME/.nvs/nvs.sh" install
