@@ -57,7 +57,7 @@ Every external input is pinned exactly, and on GitHub Dependabot moves the pins 
   the project's Dependabot, whose `github-actions` entry, for .NET, reads `.github/actions/*` as well as the workflows;
   a template release that moves the same pin can conflict on that line, and the newer version wins.
 - Some inputs of the template's CI float: the Python runtime follows a release line (`3.x`), the Node.js runtime
-  follows the major version `.node-version` names (ADR-0200), the PowerShell job installs the newest Pester and
+  follows the major version `.node-version` names{% if (uses_node is defined and uses_node) or (uses_node is not defined and stack == 'node') %} (ADR-0200){% endif %}, the PowerShell job installs the newest Pester and
   PSScriptAnalyzer, and GitLab CI images use tags such as `python:3` and `node:lts`. A project that needs one of them
   fixed pins it in its CI file.
 - The .NET SDK follows `global.json`'s `rollForward` policy: the template's `latestFeature` gives CI the newest SDK of

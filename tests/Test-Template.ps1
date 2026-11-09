@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Render the template for every stack and check the result: expected files, LF line endings, valid JSON, no leftover Jinja and no Markdown line that joins two list items. tests\Test-TemplateDotnet.ps1 builds the .NET layer. tests\Test-ProjectUpdate.ps1 and tests\Test-ProjectUpdateHooks.ps1 test a rendered project's update.
+    Render the template for every stack and check the result: expected files, LF line endings, valid JSON, no leftover Jinja, no Markdown line that joins two list items and no citation of a template decision record the project doesn't have. tests\Test-TemplateDotnet.ps1 builds the .NET layer. tests\Test-ProjectUpdate.ps1 and tests\Test-ProjectUpdateHooks.ps1 test a rendered project's update.
 
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
@@ -154,6 +154,7 @@ $cases = @(
     @{ Name = 'other-node-gitlab'; Stack = 'other'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
     @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'Apache-2.0' } }
+    @{ Name = 'dotnet-library-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT' } }
     @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true' }; Refused = 'Required for a NuGet package' }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
     @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT' } }
@@ -206,6 +207,19 @@ foreach ($case in $cases) {
 
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
+    # Every template decision record a rendered Markdown file cites by number is one the project has.
+    $recordNumbers = @(Get-ChildItem -LiteralPath (Join-Path $dest 'docs\decisions'), (Join-Path $dest 'docs\decisions\project-template') -File -Filter '*.md' | ForEach-Object { if ($_.Name -match '^(\d{4})-') { $Matches[1] } })
+    $unknownCitations = @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force -Filter '*.md' | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } | ForEach-Object {
+        $file = $_
+        Select-String -LiteralPath $file.FullName -Pattern 'ADR-(0\d{3})\b' -AllMatches | ForEach-Object {
+            $hit = $_
+            $hit.Matches | Where-Object { $_.Groups[1].Value -notin $recordNumbers } | ForEach-Object { "$($file.FullName.Substring($dest.Length + 1)):$($hit.LineNumber) ADR-$($_.Groups[1].Value)" }
+        }
+    })
+    Check "${name}: every template decision record a Markdown file cites is one the project has" (-not $unknownCitations) ($unknownCitations -join '; ')
+    $adr16 = [IO.File]::ReadAllText((Join-Path $dest 'docs\decisions\project-template\0016-releases-are-tagged-and-published-when-their-pull-request-merges.md'))
+    $has137 = Test-Path -LiteralPath (Join-Path $dest 'docs\decisions\project-template\0137-the-release-workflow-starts-package-publishing.md')
+    Check "${name}: ADR-0016 cites ADR-0137 exactly when the project has it" (($adr16 -match 'the script starts\s+the project''s `\.github/workflows/publish\.yml`') -and ($adr16.Contains('ADR-0137') -eq $has137)) "has ADR-0137: $has137"
     $present = @($dotnetOnly | Where-Object { Test-Path (Join-Path $dest $_) })
     if ($case.Stack -eq 'dotnet') { Check "${name}: .NET layer present" ($present.Count -eq $dotnetOnly.Count) }
     else { Check "${name}: no .NET layer" ($present.Count -eq 0) ($present -join ', ') }
@@ -289,7 +303,7 @@ foreach ($case in $cases) {
             Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 4 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
             Check "${name}: the publish workflow runs on a published release, holds no permission by default, and pushes through trusted publishing in the nuget environment" ($workflow.Contains('types: [published]') -and $workflow -match '(?m)^permissions: \{\}\r?$' -and $workflow.Contains('environment: nuget') -and $workflow.Contains('id-token: write') -and $workflow.Contains('uses: NuGet/login@') -and $workflow.Contains('persist-credentials: false') -and -not $workflow.Contains('secrets.')) $workflow
             Check "${name}: the publish workflow packs only a tag whose commit the default branch holds" ($workflow.Contains('fetch-depth: 0') -and $workflow.Contains('DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}') -and $workflow.Contains('git merge-base --is-ancestor HEAD "origin/$env:DEFAULT_BRANCH"') -and $workflow.IndexOf('merge-base --is-ancestor') -lt $workflow.IndexOf('dotnet pack')) $workflow
-            Check "${name}: the publish workflow also runs by hand or from the Release workflow, with a tag input, and checks out that tag" ($workflow -match '(?m)^  workflow_dispatch:\r?\n    inputs:\r?\n      tag:\r?$' -and $workflow.Contains('TAG: ${{ github.event.release.tag_name || inputs.tag }}') -and $workflow.Contains('ref: refs/tags/${{ steps.version.outputs.tag }}')) $workflow
+            Check "${name}: the publish workflow also runs by hand or from the Tag and publish release workflow, with a tag input, and checks out that tag" ($workflow -match '(?m)^  workflow_dispatch:\r?\n    inputs:\r?\n      tag:\r?$' -and $workflow.Contains('TAG: ${{ github.event.release.tag_name || inputs.tag }}') -and $workflow.Contains('ref: refs/tags/${{ steps.version.outputs.tag }}')) $workflow
             Check "${name}: the publish workflow installs .NET with the install-dotnet action once the tagged commit is checked, before testing, and counts only a 404 as unpublished" ($workflow.Contains('      - uses: ./.github/actions/install-dotnet') -and $workflow.IndexOf('git merge-base --is-ancestor') -lt $workflow.IndexOf('./.github/actions/install-dotnet') -and $workflow.IndexOf('./.github/actions/install-dotnet') -lt $workflow.IndexOf('dotnet test') -and -not $workflow.Contains('actions/setup-dotnet') -and -not $workflow.Contains('Get-TestRuntimes') -and $workflow.Contains('-SkipHttpErrorCheck -StatusCodeVariable status') -and $workflow.Contains('$status -eq 404') -and -not $workflow.Contains('catch { $versions = @() }')) $workflow
         }
     }
@@ -875,7 +889,7 @@ $m += @(Get-MissingText $shipFiles ('Stop when `pre-release` is `invalid`', 'the
 $m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('as ADR-0015 says'))
 $m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- pre-release: {{ pre_release }}', '`pre-release`: `untracked` keeps the project pre-release'))
 $m += @(Get-MissingText 'template\.github\instructions\project-template.instructions.md.jinja' ('says `pre-release: untracked`', 'In a pre-release project, the changelog describes the product as it is instead'))
-$m += @(Get-MissingText 'template\docs\decisions\project-template\0015-a-pre-release-project-describes-the-product-as-it-is.md' ('pre-release: untracked'))
+$m += @(Get-MissingText 'template\docs\decisions\project-template\0015-a-pre-release-project-describes-the-product-as-it-is.md.jinja' ('pre-release: untracked'))
 Check 'workflow: a pre-release project keeps its changelog as a catalog of the product and releases from it, and AGENTS.md documents the pre-release key' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('<other-conflicts> Commit note:', 'stage only `<changelog>` and the files this step resolved', 'a renumber or merge step''s merge', 'the merge a renumber or merge step made'))
 Check 'workflow: the renumber step resolves the other files that conflict, and a merge step''s merge keeps the empty commits' (-not $m) ($m -join '; ')

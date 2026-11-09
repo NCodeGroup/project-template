@@ -20,8 +20,8 @@
     pre-commit; then it leaves them as they are and warns, naming the command that runs the template's hooks.
 
     When the repository keeps its own .github/workflows/publish.yml without a workflow_dispatch trigger and gets
-    .github/workflows/tag-release.yml, it prints the warning .\.template\Update-Project.ps1 prints: the Release
-    workflow starts publish.yml through that trigger, so until it has one, a release ships no packages.
+    .github/workflows/tag-release.yml, it prints the warning .\.template\Update-Project.ps1 prints: the Tag and publish
+    release workflow starts publish.yml through that trigger, so until it has one, a release ships no packages.
 
 .EXAMPLE
     .\Adopt-Project.ps1 -Path C:\src\buffers
@@ -238,7 +238,7 @@ try {
     # tests/Test-AdoptEdgeCases.ps1 keeps the two equal.
     if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
         ''
-        '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (ADR-0137).'
+        '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
 
     # A GitHub repository's default branch should take changes only through pull requests. The baseline script changes the

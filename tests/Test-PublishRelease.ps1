@@ -1,24 +1,29 @@
 <#
 .SYNOPSIS
-    Test template\.template\Publish-Release.ps1, which .github\workflows\release.yml runs to tag and publish a release when it merges.
+    Test template\.template\Publish-Release.ps1, which this repository's .github\workflows\release.yml and a project's
+    .github\workflows\tag-release.yml, the Tag and publish release workflow, run to tag and publish a release when it
+    merges.
 
 .DESCRIPTION
-    Runs the script in a clone of a temporary bare repository, with a stand-in for gh that keeps each release it publishes
-    as a file. Checks that it tags the commit with the changelog's newest version and publishes that version's section as
-    the release notes; that a second run changes nothing; that a run after a tag without a release publishes only the
-    release; that it tags nothing when the remote has a newer version tag, publishes no release with release: tag, and
-    does nothing with release: none; that it drops the v when the remote's version tags have
-    none; that a release lookup failing other than with a 404 stops it with gh's message; and that -WhatIf pushes and
-    publishes nothing. Also checks that the version comes from the merged pull request's Release: line: with pre-release:
+    Runs the script in a clone of a temporary bare repository, with a stand-in for gh that keeps each release it
+    publishes as a file. Checks that it tags the commit with the changelog's newest version and publishes that version's
+    section as the release notes; that a second run changes nothing; that a run after a tag without a release publishes
+    only the release; that it tags nothing when the remote has a newer version tag, publishes no release with release:
+    tag, and does nothing with release: none; that it drops the v when the remote's version tags have none; that a
+    release lookup failing other than with a 404 stops it with gh's message; and that -WhatIf pushes and publishes
+    nothing. Also checks that the version comes from the merged pull request's Release: line: with pre-release:
     untracked and no release heading it tags the merged commit with that version and publishes the [Unreleased] section,
     it does nothing for another commit's pull request or a description without the line, it accepts a line that agrees
     with the changelog and fails on one that disagrees, and it stops with gh's message when the pull request lookup
-    fails. The stand-in also accepts the call that starts publish.yml. Also checks that it starts publish.yml once, on the tag, after
-    publishing the release when publish.yml has a workflow_dispatch trigger, starts nothing on a second run or without a
-    publish.yml, and fails naming the trigger when publish.yml has none, and fails naming publish.yml and the tag when starting it fails. Also checks that with
-    pre-release: untracked the release notes stop at the link reference definitions and at the next ## heading. Also checks that release.yml runs the script on a push to main
-    that changes CHANGELOG.md, with contents: write and the merged commit. Prints PASS or FAIL per check and exits 1 on
-    any failure.
+    fails. The stand-in also accepts the call that starts publish.yml. Also checks that it starts publish.yml once, on
+    the tag, after publishing the release when publish.yml has a workflow_dispatch trigger, starts nothing on a second
+    run or without a publish.yml, and fails naming the trigger when publish.yml has none, and fails naming publish.yml
+    and the tag when starting it fails. Also checks that with pre-release: untracked the release notes stop at the link
+    reference definitions and at the next ## heading. Also checks that release.yml runs the script on a push to main
+    that changes CHANGELOG.md, with contents: write and the merged commit. Also checks that -Policy prints the release
+    policy and does nothing else, and that tag-release.yml is named Tag and publish release, reads the policy in a
+    read-only job and runs its write job only for release: tag or tag+release. Prints PASS or FAIL per check and exits 1
+    on any failure.
 
 .EXAMPLE
     .\tests\Test-PublishRelease.ps1
@@ -43,6 +48,10 @@ $templateWorkflow = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template
 Check 'tag-release.yml runs on every push to main and by hand' ($templateWorkflow -match '(?m)^  push:\r?\n    branches: \[main\]\r?\n  workflow_dispatch:')
 Check 'tag-release.yml gives its job contents: write, actions: write and pull-requests: read' ($templateWorkflow -match '(?m)^    permissions:\r?\n      contents: write\r?\n      actions: write\r?\n      pull-requests: read\r?$')
 Check 'tag-release.yml runs the template''s script on the merged commit and names no nuget push' ($templateWorkflow.Contains('run: ./.template/Publish-Release.ps1 -Commit $env:GITHUB_SHA') -and $templateWorkflow -notmatch '(?i)\bnuget(?:\.exe)?\s+push\b')
+Check 'tag-release.yml is named Tag and publish release, not Release' ($templateWorkflow -match '(?m)^name: Tag and publish release\r?$')
+$policyJob = [regex]::Match($templateWorkflow, '(?ms)^  policy:\r?\n.*?(?=^  release:\r?$)').Value
+Check 'tag-release.yml reads the release policy on main in a job with no permission of its own and no persisted token' ($policyJob -and $policyJob.Contains("if: github.ref == 'refs/heads/main'") -and $policyJob -notmatch 'permissions:' -and $policyJob.Contains('persist-credentials: false') -and $policyJob.Contains('./.template/Publish-Release.ps1 -Policy') -and $policyJob.Contains('release: ${{ steps.policy.outputs.release }}')) $policyJob
+Check 'tag-release.yml runs its one write job after the policy job, only for release: tag or tag+release' ($templateWorkflow -match '(?m)^    needs: policy\r?\n    if: needs\.policy\.outputs\.release == ''tag'' \|\| needs\.policy\.outputs\.release == ''tag\+release''\r?$' -and [regex]::Matches($templateWorkflow, '(?m)^\s+contents: write\r?$').Count -eq 1)
 
 $temp = Join-Path ([IO.Path]::GetTempPath()) "publish-release-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $temp | Out-Null
@@ -198,6 +207,25 @@ try {
     $work = New-Clone 'bad-policy' '- release: always'
     $run = Invoke-Publish $work
     Check 'an unknown release value: it fails and names it' ($run.Code -ne 0 -and $run.Output -match 'release: always') $run.Output
+
+    $policyCases = @(
+        @{ Landing = '- release: tag+release'; Want = 'tag+release' },
+        @{ Landing = '- release: tag'; Want = 'tag' },
+        @{ Landing = '- release: none'; Want = 'none' },
+        @{ Landing = '- integrate: pull-request'; Want = 'none' })
+    for ($i = 0; $i -lt $policyCases.Count; $i++) {
+        $case = $policyCases[$i]
+        $work = New-Clone "policy-$i" $case.Landing
+        $run = Invoke-Publish $work @('-Policy')
+        Check "-Policy prints $($case.Want) for '$($case.Landing)', tags nothing and calls no gh" ($run.Code -eq 0 -and $run.Output.Trim() -ceq $case.Want -and -not (Get-OriginTag $work).Count -and -not (Get-Calls).Count) $run.Output
+    }
+    $work = New-Clone 'policy-no-agents' '- release: tag+release'
+    Remove-Item -LiteralPath (Join-Path $work 'AGENTS.md')
+    $run = Invoke-Publish $work @('-Policy')
+    Check '-Policy prints none without AGENTS.md' ($run.Code -eq 0 -and $run.Output.Trim() -ceq 'none') $run.Output
+    $work = New-Clone 'policy-bad' '- release: always'
+    $run = Invoke-Publish $work @('-Policy')
+    Check '-Policy fails on an unknown release value and names it' ($run.Code -ne 0 -and $run.Output -match 'release: always') $run.Output
 
     $untrackedLanding = "- release: tag+release`n- pre-release: untracked"
     $untrackedChangelog = "# Changelog`n`n## [Unreleased]`n`n### Added`n`n- The product does a thing.`n"

@@ -33,7 +33,7 @@ project, test projects included:
   test projects and unless the project publishes packages.
 - Analyzers turn two more mistakes into warnings, and so into errors: the null-forgiving operator `!` outside test
   projects ([ADR-0118](0118-the-null-forgiving-operator-is-banned-outside-tests.md)), and, in a project that publishes
-  packages, a public API change its `PublicAPI.*.txt` files do not record (ADR-0131).
+  packages, a public API change its `PublicAPI.*.txt` files do not record{% if nuget_package %} (ADR-0131){% endif %}.
 - NuGet advisories are errors when `CI` is `true`. A local build reports them as warnings, so an advisory published
   overnight does not stop a person or an agent from building unchanged code, while CI refuses to merge it.
 
