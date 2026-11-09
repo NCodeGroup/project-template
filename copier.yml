@@ -67,6 +67,7 @@ _exclude:
     .template/Initialize-Nvs.ps1
     .template/Use-Node.ps1
     .template/use-node.sh
+    .claude/hooks/ensure-nvs.sh
     docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md
     {% endif %}
   - |-
