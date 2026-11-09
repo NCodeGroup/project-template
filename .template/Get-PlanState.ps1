@@ -8,7 +8,7 @@
     pr, pr-branch-state, merge, tag, renumber, conflicts, changelog-format, changelog-version, changelog-backfill, changelog-duplicates, published, issue-state, issue-states, unfiled, dirty, plans and next. A fact that does not apply prints
     "-". With an origin remote, the script fetches it, ignoring a failure, unless -NoFetch is given. The calls that wait on the network start together, each in a runspace of its own: the fetch, git ls-remote for origin's tags, and, through gh's REST API (gh api, which works where GitHub's GraphQL API is refused, as in a Claude Code cloud session) or glab, the pull request or merge request list, the branch protection, each issue's state and the release. The release check starts with them only when the clone already has the Release: tag, and otherwise once the fetch shows origin has it. The script waits for the fetch before it reads origin's refs, and for each other call where it uses the answer. landed is
     yes when HEAD is on the default branch, or when any of the branch's merged pull requests or merge requests has its
-    merge commit there and its head holds HEAD or has HEAD's tree. pr names that request, or else the newest one.
+    merge commit there and its head holds HEAD, or has HEAD's tree while HEAD changes a file since it left the default branch, so a new plan's empty commits on top of an earlier request's merge don't count. pr names that request, or else the newest one.
     merge is the commit that request merged as, when it merged. issue is the plan's Issue: line, which names one
     issue or up to three separated by spaces; issue-states gives each one's state as <reference>=<state>, and
     issue-state is OPEN while any of them is open, CLOSED when all are closed, and unknown otherwise. refs is the plan's Refs: line, the issues it relates to without resolving them; the script reads no state for them. feedback is the number on the plan's Pull request: line above its first ## heading, written #<number> on GitHub and !<number> on GitLab, in ASCII digits: the pull request whose feedback an /address-feedback run's plan answers, or -. For such a plan, pr names that pull request and its state, read by its number (gh api repos/{owner}/{repo}/pulls/<number>, or glab mr view <number>) in place of the branch's own, and conflicts is -. Its next names the stage to run, then address-feedback <number> once its steps are done and reviewed, which pushes the fixes to that pull request's branch and replies, never ship-plan, wait or finish-plan; once that pull request is merged or closed, next is none pull request #<number> is merged (or closed): address-feedback <number> discards this run.
@@ -202,7 +202,10 @@ function Test-RequestLanded([string]$Merge, [string]$Head, [string]$Default) {
     $headInPr = ($LASTEXITCODE -eq 0)
     $prTree = (& git rev-parse -q --verify "${Head}^{tree}" 2>$null | Out-String).Trim()
     $headTreeNow = (& git rev-parse -q --verify 'HEAD^{tree}' 2>$null | Out-String).Trim()
-    $mergeOnDefault -and ($headInPr -or ($prTree -and $headTreeNow -and $prTree -eq $headTreeNow))
+    # HEAD's tree counts only when HEAD changes a file since it left the default branch: a new plan's empty commits on top of an earlier request's merge have that request's tree too.
+    $base = (& git merge-base HEAD "origin/$Default" 2>$null | Out-String).Trim()
+    $baseTree = if ($base) { (& git rev-parse -q --verify "${base}^{tree}" 2>$null | Out-String).Trim() } else { '' }
+    $mergeOnDefault -and ($headInPr -or ($prTree -and $headTreeNow -and $prTree -eq $headTreeNow -and $headTreeNow -ne $baseTree))
 }
 
 # Calls the host's API and returns the HTTP status and the body. The status comes from the response's own status line

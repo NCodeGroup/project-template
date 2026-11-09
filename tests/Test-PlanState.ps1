@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md and its prelude, valid or not, a push to the default
-    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, with a gh that refuses GitHub's GraphQL API, as a Claude Code cloud session's does, and answers only the REST paths, then a published release and one gh api doesn't find, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open, then the plan an /address-feedback run leaves, which names its pull request on a Pull request: line, on GitHub and GitLab, then a plan pushed through a session's push branch: the clone's plan.pushBranch setting, valid or not, the pull request found through that branch and through the branch the plan was pushed to, other plans' pull requests from it left out, and whether that branch is new, the plan's, landed, busy with another pull request, other work or unknown. After each move it runs
+    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, with a gh that refuses GitHub's GraphQL API, as a Claude Code cloud session's does, and answers only the REST paths, then a published release and one gh api doesn't find, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open, then the plan an /address-feedback run leaves, which names its pull request on a Pull request: line, on GitHub and GitLab, then a plan pushed through a session's push branch: the clone's plan.pushBranch setting, valid or not, the pull request found through that branch and through the branch the plan was pushed to, other plans' pull requests from it left out, and whether that branch is new, the plan's, landed, busy with another pull request, other work or unknown, then a new plan's empty Plan: commit on an earlier plan's pull request from that branch, merged with a merge commit or by squashing, and the plan's own pull request from it, merged with a merge commit, by squashing or by rebasing. After each move it runs
     Get-PlanState.ps1, in a runspace of its own in this process that a check compares once with a pwsh of its own, and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -1209,6 +1209,64 @@ try {
     Push-Location $pRepo
     try { Invoke-Git remote set-url origin $pOrigin }
     finally { Pop-Location }
+
+    # A new plan right after an earlier plan's pull request from the push branch merged: its empty Plan: commit has that pull request's tree, but none of its work.
+    Remove-Item -LiteralPath $pPlan
+    Push-Location $pRepo
+    try {
+        Invoke-Git push -q -f origin "${pHead}:refs/heads/claude/test-abc1"
+        Invoke-Git switch -q --no-track -c worktree-third origin/main
+        Invoke-Git commit -q --allow-empty -m 'Plan: Third'
+    }
+    finally { Pop-Location }
+    Set-PushRequests @((New-PushRequest 4 'closed' $pHead $pMerge4))
+    $r = Test-State (Get-State $pRepo) @{ landed = 'no'; pr = '-'; merge = '-'; 'pr-branch-state' = 'landed'; next = 'none no plan in this folder' }
+    Check 'push: a new plan''s empty Plan: commit on the merge commit of a pull request from the push branch is not landed' $r.Ok $r.Detail
+
+    Push-Location $pRepo
+    try { Invoke-Git switch -q --no-track -c worktree-fourth origin/main }
+    finally { Pop-Location }
+    Add-Commit $pRepo 'fourth.txt' 'Plan step 1: Fourth'
+    $pFourth = Get-Head $pRepo
+    Push-Location $pRepo
+    try {
+        $pSquash = (Invoke-Git commit-tree "${pFourth}^{tree}" -p origin/main -m 'Fourth (#9)' | Out-String).Trim()
+        Invoke-Git push -q origin "${pSquash}:refs/heads/main"
+        Invoke-Git push -q -f origin "${pFourth}:refs/heads/claude/test-abc1"
+        Invoke-Git switch -q --no-track -c worktree-fifth $pSquash
+    }
+    finally { Pop-Location }
+    Set-PushRequests @((New-PushRequest 9 'closed' $pFourth $pSquash), (New-PushRequest 4 'closed' $pHead $pMerge4))
+    $r = Test-State (Get-State $pRepo) @{ landed = 'yes'; pr = '-'; merge = '-' }
+    Check 'push: a new plan''s branch at the squash commit of a pull request from the push branch names no pull request' $r.Ok $r.Detail
+
+    Push-Location $pRepo
+    try { Invoke-Git commit -q --allow-empty -m 'Plan: Fifth' }
+    finally { Pop-Location }
+    $r = Test-State (Get-State $pRepo) @{ landed = 'no'; pr = '-'; merge = '-'; 'pr-branch-state' = 'landed'; next = 'none no plan in this folder' }
+    Check 'push: a new plan''s empty Plan: commit on the squash commit of a pull request from the push branch is not landed' $r.Ok $r.Detail
+
+    # The plan's own pull request from the push branch still lands, whichever way it merged.
+    Add-Commit $pRepo 'fifth.txt' 'Plan step 1: Fifth'
+    $pFifth = Get-Head $pRepo
+    Push-Location $pRepo
+    try {
+        Invoke-Git push -q -f origin "${pFifth}:refs/heads/claude/test-abc1"
+        $pLandings = [ordered]@{
+            'with a merge commit' = (Invoke-Git commit-tree "${pFifth}^{tree}" -p $pSquash -p $pFifth -m 'Merge pull request #10' | Out-String).Trim()
+            'by squashing'        = (Invoke-Git commit-tree "${pFifth}^{tree}" -p $pSquash -m 'Fifth (#10)' | Out-String).Trim()
+            'by rebasing'         = (Invoke-Git commit-tree "${pFifth}^{tree}" -p $pSquash -m 'Plan step 1: Fifth' | Out-String).Trim()
+        }
+    }
+    finally { Pop-Location }
+    foreach ($how in $pLandings.Keys) {
+        Push-Location $pRepo
+        try { Invoke-Git push -q -f origin "$($pLandings[$how]):refs/heads/main" }
+        finally { Pop-Location }
+        Set-PushRequests @((New-PushRequest 10 'closed' $pFifth $pLandings[$how]), (New-PushRequest 9 'closed' $pFourth $pSquash), (New-PushRequest 4 'closed' $pHead $pMerge4))
+        $r = Test-State (Get-State $pRepo) @{ landed = 'yes'; pr = '10 MERGED'; merge = $pLandings[$how]; next = 'finish-plan' }
+        Check "push: a plan whose pull request from the push branch merged $how is landed" $r.Ok $r.Detail
+    }
 }
 finally { $env:PATH = $savedPath }
 
