@@ -502,32 +502,46 @@ function Read-EventPolicies([string]$Path) {
     [pscustomobject]@{ Policies = @($policies); Why = $null; Status = $list.Status }
 }
 
+# Whether a policy's condition (repository_name or workflow_path) covers $Value: a missing condition covers everything,
+# and ~ALL every repository.
+function Test-ConditionCovers($Condition, [string]$Value) {
+    if ($null -eq $Condition) { return $true }
+    $include = @($Condition.include | Where-Object { $_ })
+    $exclude = @($Condition.exclude | Where-Object { $_ })
+    if ($Value -eq '~ALL') { return ($include -contains '~ALL' -and -not $exclude.Count) }
+    [bool](@($include | Where-Object { $_ -eq '~ALL' -or $Value -like $_ }).Count -and -not @($exclude | Where-Object { $Value -like $_ }).Count)
+}
+
 # Whether an Actions policy is active and allows pull_request_target for each workflow file in $Paths and, when $Repo is
-# set, for that repository. A missing condition covers everything; ~ALL covers every repository.
+# set, for that repository. See Test-ConditionCovers for the conditions.
 function Test-AllowsPullRequestTarget($Policy, [string[]]$Paths, [string]$Repo = '') {
     if ($Policy.enforcement -ne 'active') { return $false }
     $allows = @($Policy.rules | Where-Object { $_.type -eq 'restrict_action_events' -and @($_.parameters.allowed_events) -contains 'pull_request_target' })
     if (-not $allows.Count) { return $false }
-    $covers = {
-        param($Condition, [string]$Value)
-        if ($null -eq $Condition) { return $true }
-        $include = @($Condition.include | Where-Object { $_ })
-        $exclude = @($Condition.exclude | Where-Object { $_ })
-        if ($Value -eq '~ALL') { return ($include -contains '~ALL' -and -not $exclude.Count) }
-        [bool](@($include | Where-Object { $_ -eq '~ALL' -or $Value -like $_ }).Count -and -not @($exclude | Where-Object { $Value -like $_ }).Count)
-    }
-    if ($Repo -and -not (& $covers $Policy.conditions.repository_name $Repo)) { return $false }
+    if ($Repo -and -not (Test-ConditionCovers $Policy.conditions.repository_name $Repo)) { return $false }
     foreach ($path in $Paths) {
-        if (-not (& $covers $Policy.conditions.workflow_path $path)) { return $false }
+        if (-not (Test-ConditionCovers $Policy.conditions.workflow_path $path)) { return $false }
     }
     $true
 }
 
-# The body of the event policy to create: the two code-review workflows, and with -Organization every repository.
-function New-EventPolicyBody([switch]$Organization) {
+# The body of the event policy to create or update: the two code-review workflows, $Events, and with -Organization every
+# repository.
+function New-EventPolicyBody([string[]]$Events = $codeReviewEvents, [switch]$Organization) {
     $conditions = [ordered]@{ workflow_path = @{ include = $codeReviewWorkflows; exclude = @() } }
     if ($Organization) { $conditions.repository_name = @{ include = @('~ALL'); exclude = @() } }
-    @{ name = $eventPolicyName; enforcement = 'active'; conditions = $conditions; rules = @(@{ type = 'restrict_action_events'; parameters = @{ allowed_events = $codeReviewEvents } }) }
+    @{ name = $eventPolicyName; enforcement = 'active'; conditions = $conditions; rules = @(@{ type = 'restrict_action_events'; parameters = @{ allowed_events = $Events } }) }
+}
+
+# What keeps the baseline's own event policy from doing its job, one phrase per gap: not active, an event of $Events
+# it doesn't allow, or a code-review workflow it doesn't cover. None when it does its job.
+function Get-EventPolicyGaps($Policy, [string[]]$Events) {
+    if ($Policy.enforcement -ne 'active') { "its enforcement is $($Policy.enforcement)" }
+    $allowed = @($Policy.rules | Where-Object { $_.type -eq 'restrict_action_events' } | ForEach-Object { @($_.parameters.allowed_events) })
+    $missing = @($Events | Where-Object { $allowed -notcontains $_ })
+    if ($missing.Count) { "it doesn't allow $($missing -join ', ')" }
+    $uncovered = @($codeReviewWorkflows | Where-Object { -not (Test-ConditionCovers $Policy.conditions.workflow_path $_) })
+    if ($uncovered.Count) { "it doesn't cover $($uncovered -join ', ')" }
 }
 
 # Sets one security setting where Get-SettingState read it as off, and prints the outcome on one line. A refusal is
