@@ -75,11 +75,18 @@
     GitHub Free doesn't offer organization rulesets, so this applies them to each repository. New-Project.ps1 runs it
     for a repository it creates; Adopt-Project.ps1 prints the command to run.
 
+    -OrganizationPolicy, with -Owner alone, creates the same policy once for the organization, on every repository
+    (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
+    auth refresh -h github.com -s admin:org). It reads the organization's policies first and leaves alone one of that
+    name or an active one that already allows the event for both files on every repository; -WhatIf prints the body it
+    would post. It exits 1 when it can't read the policies or the API refuses the policy.
+
 .EXAMPLE
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -WhatIf     # shows what it would do, and each setting's state
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks 'build-and-test,Commit attribution'
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks auto -WhatIf   # lists the checks it would require
     .\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup
+    .\tools\Set-RepositoryBaseline.ps1 -OrganizationPolicy -Owner NCodeGroup -WhatIf   # prints the organization's policy it would create
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Owner', Justification = 'Get-Targets and Set-Baseline, nested functions, use it.')]
 [CmdletBinding(SupportsShouldProcess)]
@@ -90,11 +97,15 @@ param(
     # one value for a parameter, so a list has to arrive as one string). Only with -Repo. Or auto, alone, which reads them
     # from each repository's latest merged pull request, and works with -All too.
     [string[]]$RequireChecks = @(),
+    # Creates the organization's Actions event policy for the code-review workflows of every repository, instead of each
+    # repository's own. Only with -Owner; an organization owner runs it, with the admin:org scope.
+    [switch]$OrganizationPolicy,
     # The owner of the repositories: an organization or a user.
     [Alias('Org')][string]$Owner = 'NCodeGroup'
 )
 $ErrorActionPreference = 'Stop'
-if (-not $Repo -and -not $All) { throw 'Pass -Repo <name> or -All.' }
+if ($OrganizationPolicy -and ($Repo -or $All -or $RequireChecks.Count)) { throw '-OrganizationPolicy sets the organization''s policy alone: pass it with -Owner only.' }
+if (-not $Repo -and -not $All -and -not $OrganizationPolicy) { throw 'Pass -Repo <name> or -All, or -OrganizationPolicy.' }
 if ($Repo -and $All) { throw 'Pass -Repo or -All, not both.' }
 $RequireChecks = @($RequireChecks | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $autoChecks = $RequireChecks -contains 'auto'
@@ -605,6 +616,37 @@ function Set-EventPolicy {
     else { Write-Host "${prefix}not available ($(Get-FailureReason $result))" }
 }
 
+# The same policy once for the organization, on every repository (~ALL). Returns $true unless it can't read the policies
+# or the API refuses the policy. It writes only its report lines (and, with -WhatIf, the body) to the host.
+function Set-OrganizationEventPolicy {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+    $prefix = "$Owner (organization): ${eventPolicyLabel}: "
+    $read = Read-EventPolicies "orgs/$Owner/actions/policies"
+    if ($read.Why) {
+        Write-Host "${prefix}not available ($($read.Why)); run it as an owner of the organization, with a token that has the admin:org scope"
+        return $false
+    }
+    if (@($read.Policies | Where-Object { $_.name -eq $eventPolicyName }).Count) {
+        Write-Host "${prefix}left alone (already has '$eventPolicyName')"
+        return $true
+    }
+    $allowing = @($read.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $codeReviewWorkflows '~ALL' })
+    if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)"; return $true }
+
+    $body = New-EventPolicyBody -Organization
+    if (-not $PSCmdlet.ShouldProcess($Owner, "create Actions policy '$eventPolicyName'")) {
+        Write-Host "${prefix}would set (POST orgs/$Owner/actions/policies with this body)"
+        Write-Host ($body | ConvertTo-Json -Depth 10)
+        return $true
+    }
+    $result = Invoke-HostWrite POST "orgs/$Owner/actions/policies" $body
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')"; return $true }
+    Write-Host "${prefix}not available ($(Get-FailureReason $result))"
+    return $false
+}
+
+if ($OrganizationPolicy) { if (Set-OrganizationEventPolicy) { exit 0 } else { exit 1 } }
 foreach ($name in Get-Targets) {
     try { Set-Baseline $name } catch { Write-Host "${name}: FAILED: $($_.Exception.Message)" -ForegroundColor Red }
 }
