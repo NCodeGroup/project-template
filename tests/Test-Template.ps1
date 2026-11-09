@@ -732,6 +732,12 @@ $rulesJinja = 'template\.github\instructions\project-template.instructions.md.ji
 $m = @(Get-MissingText $rulesJinja ('`git log --stat origin/<branch>..` when `origin` has the branch you push to', '`git log --stat origin/<default branch>..` when it doesn''t yet', 'Compare with `origin`, not the branch''s upstream'))
 $m += @(if ([IO.File]::ReadAllText((Join-Path $repoRoot $rulesJinja)).Contains('@{u}')) { "${rulesJinja}: still lists the unpushed commits against the upstream" })
 Check 'workflow: the project rules list the unpushed commits against origin, not the upstream' (-not $m) ($m -join '; ')
+# .claude/settings.json lets git push run without asking since v0.69.0, and a Copilot run without approvals doesn't ask either.
+$pushPromptDirs = 'workflow\templates', 'template\.claude', 'template\.github', '.claude\commands', '.claude\agents', '.github\agents', '.github\prompts', '.github\skills'
+$m = @(Get-ChildItem -LiteralPath ($pushPromptDirs | ForEach-Object { Join-Path $repoRoot $_ }) -Recurse -File | Where-Object { [IO.File]::ReadAllText($_.FullName) -match '`git push` (always asks for approval|may still ask for its own approval)' } | ForEach-Object { $_.FullName.Substring($repoRoot.Length + 1) })
+$m += @(Get-MissingText $rulesJinja 'Don''t count on an approval prompt to stop a push')
+$m += @(Get-MissingText ('workflow\templates\ship-plan.md', 'workflow\templates\run-issues.md', 'workflow\templates\run-issues-copilot.md', 'workflow\templates\address-feedback-copilot.md') 'no prompt stops the')
+Check 'workflow: no rule or command says git push asks for approval, which .claude/settings.json allows without asking' (-not $m) ($m -join '; ')
 $m = @(foreach ($p in 'template\.claude\agents\plan-executor.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\agents\copilot-implementer.agent.md', 'template\.github\agents\local-implementer.agent.md', 'template\.github\skills\execute-step\SKILL.md', 'template\.github\prompts\execute-step.prompt.md', 'template\.github\prompts\execute-step-local.prompt.md') { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); if ($t.Contains('gh issue') -or $t.Contains('glab issue')) { $p } })
 Check 'workflow: no executor calls gh or glab on the issue' (-not $m) ($m -join ', ')
 $issuePlanFiles = 'template\.claude\commands\plan-issue.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-issue\SKILL.md'
