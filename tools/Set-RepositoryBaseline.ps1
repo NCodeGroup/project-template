@@ -24,7 +24,13 @@
       - turns on "Allow auto-merge" where it is off, so the template's code-review-auto-merge.yml workflow can turn on
         auto-merge for a Dependabot pull request that only moves the NCode Review pin. Allowing it merges nothing by
         itself: a pull request merges itself only once someone, or that workflow, turns it on, and still waits for what
-        the ruleset requires and merges only as it allows.
+        the ruleset requires and merges only as it allows;
+      - for a public repository that has .github/workflows/code-review.yml or code-review-auto-merge.yml on its default
+        branch, creates the Actions event policy "Allow pull_request_target for code review", which allows
+        pull_request_target and issue_comment for those two files alone, unless a policy of that name exists or an
+        active one, of the repository or of its organization when this account may read those, already allows the event
+        for them. GitHub's default policy blocks pull_request_target on a public repository without one from
+        December 2, 2026.
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
@@ -69,11 +75,18 @@
     GitHub Free doesn't offer organization rulesets, so this applies them to each repository. New-Project.ps1 runs it
     for a repository it creates; Adopt-Project.ps1 prints the command to run.
 
+    -OrganizationPolicy, with -Owner alone, creates the same policy once for the organization, on every repository
+    (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
+    auth refresh -h github.com -s admin:org). It reads the organization's policies first and leaves alone one of that
+    name or an active one that already allows the event for both files on every repository; -WhatIf prints the body it
+    would post. It exits 1 when it can't read the policies or the API refuses the policy.
+
 .EXAMPLE
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -WhatIf     # shows what it would do, and each setting's state
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks 'build-and-test,Commit attribution'
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks auto -WhatIf   # lists the checks it would require
     .\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup
+    .\tools\Set-RepositoryBaseline.ps1 -OrganizationPolicy -Owner NCodeGroup -WhatIf   # prints the organization's policy it would create
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Owner', Justification = 'Get-Targets and Set-Baseline, nested functions, use it.')]
 [CmdletBinding(SupportsShouldProcess)]
@@ -84,11 +97,15 @@ param(
     # one value for a parameter, so a list has to arrive as one string). Only with -Repo. Or auto, alone, which reads them
     # from each repository's latest merged pull request, and works with -All too.
     [string[]]$RequireChecks = @(),
+    # Creates the organization's Actions event policy for the code-review workflows of every repository, instead of each
+    # repository's own. Only with -Owner; an organization owner runs it, with the admin:org scope.
+    [switch]$OrganizationPolicy,
     # The owner of the repositories: an organization or a user.
     [Alias('Org')][string]$Owner = 'NCodeGroup'
 )
 $ErrorActionPreference = 'Stop'
-if (-not $Repo -and -not $All) { throw 'Pass -Repo <name> or -All.' }
+if ($OrganizationPolicy -and ($Repo -or $All -or $RequireChecks.Count)) { throw '-OrganizationPolicy sets the organization''s policy alone: pass it with -Owner only.' }
+if (-not $Repo -and -not $All -and -not $OrganizationPolicy) { throw 'Pass -Repo <name> or -All, or -OrganizationPolicy.' }
 if ($Repo -and $All) { throw 'Pass -Repo or -All, not both.' }
 $RequireChecks = @($RequireChecks | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $autoChecks = $RequireChecks -contains 'auto'
@@ -107,6 +124,12 @@ $excludedChecks = [ordered]@{
     'CodeQL' = 'the code-scanning rule covers it'
     'Analyze (*)' = 'the code-scanning rule covers it'
 }
+# The Actions event policy that lets the template's code-review workflows start on pull_request_target (Set-EventPolicy).
+# An event rule allows only the events it lists, for the workflows it targets: these two files and the events they use.
+$eventPolicyName = 'Allow pull_request_target for code review'
+$eventPolicyLabel = 'allow pull_request_target for the code-review workflows'
+$codeReviewWorkflows = @('.github/workflows/code-review.yml', '.github/workflows/code-review-auto-merge.yml')
+$codeReviewEvents = @('pull_request_target', 'issue_comment')
 
 function Invoke-GhJson([string[]]$GhArgs) {
     $out = & gh @GhArgs
@@ -232,6 +255,7 @@ function Set-Baseline([string]$Name) {
     Set-TagRuleset $Name $rulesets
     Set-SecuritySettings $Name $info
     Set-AutoMerge $Name $info
+    Set-EventPolicy $Name $info
 }
 
 # Reads CodeQL's default setup. Status is the HTTP status, or $null for no response; Answer the parsed answer, or $null;
@@ -446,6 +470,63 @@ function Set-TagRuleset {
     Write-Host "done: $summary"
 }
 
+# Reads the Actions policies at $Path (a repository's or an organization's). GitHub may answer a bare array or an object
+# whose policies property holds them, and a list item may leave out its rules, which a read by its id gives. Why is the
+# reason a policy couldn't be read, or $null.
+function Read-EventPolicies([string]$Path) {
+    $list = Invoke-HostApi gh "${Path}?per_page=100"
+    $answer = $null
+    if ($list.Status -eq 200) { try { $answer = $list.Body | ConvertFrom-Json -NoEnumerate -ErrorAction Stop } catch { $answer = $null } }
+    if ($list.Status -ne 200 -or $null -eq $answer) {
+        $reason = if ($list.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $list }
+        return [pscustomobject]@{ Policies = @(); Why = "couldn't read its Actions policies: $reason" }
+    }
+    $policies = [Collections.Generic.List[object]]::new()
+    foreach ($item in @(if ($answer -is [array]) { $answer } else { $answer.policies })) {
+        if ($null -eq $item) { continue }
+        if ($null -eq $item.rules) {
+            $one = Invoke-HostApi gh "$Path/$($item.id)"
+            $full = $null
+            if ($one.Status -eq 200) { try { $full = $one.Body | ConvertFrom-Json -ErrorAction Stop } catch { $full = $null } }
+            if ($null -eq $full) {
+                $reason = if ($one.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $one }
+                return [pscustomobject]@{ Policies = @(); Why = "couldn't read Actions policy $($item.id): $reason" }
+            }
+            $item = $full
+        }
+        $policies.Add($item)
+    }
+    [pscustomobject]@{ Policies = @($policies); Why = $null }
+}
+
+# Whether an Actions policy is active and allows pull_request_target for each workflow file in $Paths and, when $Repo is
+# set, for that repository. A missing condition covers everything; ~ALL covers every repository.
+function Test-AllowsPullRequestTarget($Policy, [string[]]$Paths, [string]$Repo = '') {
+    if ($Policy.enforcement -ne 'active') { return $false }
+    $allows = @($Policy.rules | Where-Object { $_.type -eq 'restrict_action_events' -and @($_.parameters.allowed_events) -contains 'pull_request_target' })
+    if (-not $allows.Count) { return $false }
+    $covers = {
+        param($Condition, [string]$Value)
+        if ($null -eq $Condition) { return $true }
+        $include = @($Condition.include | Where-Object { $_ })
+        $exclude = @($Condition.exclude | Where-Object { $_ })
+        if ($Value -eq '~ALL') { return ($include -contains '~ALL' -and -not $exclude.Count) }
+        [bool](@($include | Where-Object { $_ -eq '~ALL' -or $Value -like $_ }).Count -and -not @($exclude | Where-Object { $Value -like $_ }).Count)
+    }
+    if ($Repo -and -not (& $covers $Policy.conditions.repository_name $Repo)) { return $false }
+    foreach ($path in $Paths) {
+        if (-not (& $covers $Policy.conditions.workflow_path $path)) { return $false }
+    }
+    $true
+}
+
+# The body of the event policy to create: the two code-review workflows, and with -Organization every repository.
+function New-EventPolicyBody([switch]$Organization) {
+    $conditions = [ordered]@{ workflow_path = @{ include = $codeReviewWorkflows; exclude = @() } }
+    if ($Organization) { $conditions.repository_name = @{ include = @('~ALL'); exclude = @() } }
+    @{ name = $eventPolicyName; enforcement = 'active'; conditions = $conditions; rules = @(@{ type = 'restrict_action_events'; parameters = @{ allowed_events = $codeReviewEvents } }) }
+}
+
 # Sets one security setting where Get-SettingState read it as off, and prints the outcome on one line. A refusal is
 # reported, not thrown: each setting stands on its own, so the next one is still tried.
 function Set-SecuritySetting {
@@ -493,6 +574,79 @@ function Set-AutoMerge([string]$Name, $Info) {
     Set-SecuritySetting $Name 'allow auto-merge' $state PATCH "repos/$Owner/$Name" @{ allow_auto_merge = $true }
 }
 
+# GitHub's default Actions policy blocks pull_request_target from December 2, 2026 on a public repository without an event
+# policy allowing it. The two code-review workflows run from the default branch and check out nothing, so they keep the
+# event; every other workflow keeps the default.
+function Set-EventPolicy {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$Name, $Info)
+    $prefix = "${Name}: ${eventPolicyLabel}: "
+    if ($Info.private) {
+        Write-Host "${prefix}not needed (the repository isn't public, and GitHub's default policy blocks the event only on a public one)"
+        return
+    }
+    $present = @(foreach ($file in $codeReviewWorkflows) {
+        $read = Invoke-HostApi gh "repos/$Owner/$Name/contents/${file}?ref=$($Info.default_branch)"
+        if ($read.Status -eq 200) { $file; continue }
+        if ($read.Status -eq 404) { continue }
+        Write-Host "${prefix}not available (couldn't read ${file}: $(Get-FailureReason $read))"
+        return
+    })
+    if (-not $present.Count) { Write-Host "${prefix}not needed (it has no code-review workflow)"; return }
+
+    $own = Read-EventPolicies "repos/$Owner/$Name/actions/policies"
+    if ($own.Why) { Write-Host "${prefix}not available ($($own.Why))"; return }
+    if (@($own.Policies | Where-Object { $_.name -eq $eventPolicyName }).Count) {
+        Write-Host "${prefix}left alone (already has '$eventPolicyName')"
+        return
+    }
+    $allowing = @($own.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present })
+    if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)"; return }
+
+    $org = Read-EventPolicies "orgs/$Owner/actions/policies"
+    $allowing = @($org.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present $Name })
+    if ($allowing.Count) { Write-Host "${prefix}already set (the organization's '$($allowing[0].name)' allows it)"; return }
+
+    if (-not $PSCmdlet.ShouldProcess($Name, "create Actions policy '$eventPolicyName'")) {
+        Write-Host "${prefix}would set (create '$eventPolicyName' for $($codeReviewWorkflows -join ' and '), allowing $($codeReviewEvents -join ' and '))"
+        return
+    }
+    $result = Invoke-HostWrite POST "repos/$Owner/$Name/actions/policies" (New-EventPolicyBody)
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')" }
+    else { Write-Host "${prefix}not available ($(Get-FailureReason $result))" }
+}
+
+# The same policy once for the organization, on every repository (~ALL). Returns $true unless it can't read the policies
+# or the API refuses the policy. It writes only its report lines (and, with -WhatIf, the body) to the host.
+function Set-OrganizationEventPolicy {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+    $prefix = "$Owner (organization): ${eventPolicyLabel}: "
+    $read = Read-EventPolicies "orgs/$Owner/actions/policies"
+    if ($read.Why) {
+        Write-Host "${prefix}not available ($($read.Why)); run it as an owner of the organization, with a token that has the admin:org scope"
+        return $false
+    }
+    if (@($read.Policies | Where-Object { $_.name -eq $eventPolicyName }).Count) {
+        Write-Host "${prefix}left alone (already has '$eventPolicyName')"
+        return $true
+    }
+    $allowing = @($read.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $codeReviewWorkflows '~ALL' })
+    if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)"; return $true }
+
+    $body = New-EventPolicyBody -Organization
+    if (-not $PSCmdlet.ShouldProcess($Owner, "create Actions policy '$eventPolicyName'")) {
+        Write-Host "${prefix}would set (POST orgs/$Owner/actions/policies with this body)"
+        Write-Host ($body | ConvertTo-Json -Depth 10)
+        return $true
+    }
+    $result = Invoke-HostWrite POST "orgs/$Owner/actions/policies" $body
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')"; return $true }
+    Write-Host "${prefix}not available ($(Get-FailureReason $result))"
+    return $false
+}
+
+if ($OrganizationPolicy) { if (Set-OrganizationEventPolicy) { exit 0 } else { exit 1 } }
 foreach ($name in Get-Targets) {
     try { Set-Baseline $name } catch { Write-Host "${name}: FAILED: $($_.Exception.Message)" -ForegroundColor Red }
 }

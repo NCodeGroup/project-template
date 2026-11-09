@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.77.0] - 2026-11-09
+
+### Added
+
+- `tools/Set-RepositoryBaseline.ps1` gives a public repository that has `.github/workflows/code-review.yml` or `code-review-auto-merge.yml` the Actions event policy "Allow pull_request_target for code review", which allows `pull_request_target` and `issue_comment` for those two workflows alone, unless a policy of the repository or its organization allows the event already. From December 2, 2026, GitHub's default policy blocks `pull_request_target` in a public repository without one, which would stop every automatic review and every NCode Review pin bump's auto-merge. `-OrganizationPolicy -Owner <organization>`, run once by an organization owner with the `admin:org` scope, creates the same policy for every repository of the organization instead, and `-WhatIf` prints the policy it would post. A public project that answers `code_review` reruns `tools/Set-RepositoryBaseline.ps1 -Repo <name>` from a clone of the template, has an organization owner run `-OrganizationPolicy`, or allows `pull_request_target` for the two workflows by hand, before December 2, 2026 ([#317](https://github.com/NCodeGroup/project-template/issues/317)).
+
 ## [0.76.1] - 2026-11-09
 
 ### Added
@@ -1246,7 +1252,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.76.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.77.0...HEAD
+[0.77.0]: https://github.com/NCodeGroup/project-template/compare/v0.76.1...v0.77.0
 [0.76.1]: https://github.com/NCodeGroup/project-template/compare/v0.76.0...v0.76.1
 [0.76.0]: https://github.com/NCodeGroup/project-template/compare/v0.75.6...v0.76.0
 [0.75.6]: https://github.com/NCodeGroup/project-template/compare/v0.75.5...v0.75.6
