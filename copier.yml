@@ -138,6 +138,14 @@ _exclude:
     {% if stack is defined and nuget_package is defined and package_icon is defined and not (stack == 'dotnet' and nuget_package and package_icon == 'NCodeGroup.png') %}
     /NCodeGroup.png
     {% endif %}
+  - |-
+    {% if stack is defined and stack != 'dotnet' %}
+    docs/metrics.md
+    .claude/rules/csharp.md
+    .claude/rules/csharp-tests.md
+    .github/instructions/csharp.instructions.md
+    .github/instructions/csharp-tests.instructions.md
+    {% endif %}
 
 project_name:
   type: str
