@@ -107,6 +107,11 @@ $excludedChecks = [ordered]@{
     'CodeQL' = 'the code-scanning rule covers it'
     'Analyze (*)' = 'the code-scanning rule covers it'
 }
+# The Actions event policy that lets the template's code-review workflows start on pull_request_target (Set-EventPolicy).
+# An event rule allows only the events it lists, for the workflows it targets: these two files and the events they use.
+$eventPolicyName = 'Allow pull_request_target for code review'
+$codeReviewWorkflows = @('.github/workflows/code-review.yml', '.github/workflows/code-review-auto-merge.yml')
+$codeReviewEvents = @('pull_request_target', 'issue_comment')
 
 function Invoke-GhJson([string[]]$GhArgs) {
     $out = & gh @GhArgs
@@ -444,6 +449,63 @@ function Set-TagRuleset {
     $result = Invoke-HostWrite POST "repos/$Owner/$Name/rulesets" $body
     if ($result.Status -lt 200 -or $result.Status -ge 300) { throw "Couldn't create the '$tagRulesetName' ruleset on ${Name}: $(Get-FailureReason $result)." }
     Write-Host "done: $summary"
+}
+
+# Reads the Actions policies at $Path (a repository's or an organization's). GitHub may answer a bare array or an object
+# whose policies property holds them, and a list item may leave out its rules, which a read by its id gives. Why is the
+# reason a policy couldn't be read, or $null.
+function Read-EventPolicies([string]$Path) {
+    $list = Invoke-HostApi gh "${Path}?per_page=100"
+    $answer = $null
+    if ($list.Status -eq 200) { try { $answer = $list.Body | ConvertFrom-Json -NoEnumerate -ErrorAction Stop } catch { $answer = $null } }
+    if ($list.Status -ne 200 -or $null -eq $answer) {
+        $reason = if ($list.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $list }
+        return [pscustomobject]@{ Policies = @(); Why = "couldn't read its Actions policies: $reason" }
+    }
+    $policies = [Collections.Generic.List[object]]::new()
+    foreach ($item in @(if ($answer -is [array]) { $answer } else { $answer.policies })) {
+        if ($null -eq $item) { continue }
+        if ($null -eq $item.rules) {
+            $one = Invoke-HostApi gh "$Path/$($item.id)"
+            $full = $null
+            if ($one.Status -eq 200) { try { $full = $one.Body | ConvertFrom-Json -ErrorAction Stop } catch { $full = $null } }
+            if ($null -eq $full) {
+                $reason = if ($one.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $one }
+                return [pscustomobject]@{ Policies = @(); Why = "couldn't read Actions policy $($item.id): $reason" }
+            }
+            $item = $full
+        }
+        $policies.Add($item)
+    }
+    [pscustomobject]@{ Policies = @($policies); Why = $null }
+}
+
+# Whether an Actions policy is active and allows pull_request_target for each workflow file in $Paths and, when $Repo is
+# set, for that repository. A missing condition covers everything; ~ALL covers every repository.
+function Test-AllowsPullRequestTarget($Policy, [string[]]$Paths, [string]$Repo = '') {
+    if ($Policy.enforcement -ne 'active') { return $false }
+    $allows = @($Policy.rules | Where-Object { $_.type -eq 'restrict_action_events' -and @($_.parameters.allowed_events) -contains 'pull_request_target' })
+    if (-not $allows.Count) { return $false }
+    $covers = {
+        param($Condition, [string]$Value)
+        if ($null -eq $Condition) { return $true }
+        $include = @($Condition.include | Where-Object { $_ })
+        $exclude = @($Condition.exclude | Where-Object { $_ })
+        if ($Value -eq '~ALL') { return ($include -contains '~ALL' -and -not $exclude.Count) }
+        [bool](@($include | Where-Object { $_ -eq '~ALL' -or $Value -like $_ }).Count -and -not @($exclude | Where-Object { $Value -like $_ }).Count)
+    }
+    if ($Repo -and -not (& $covers $Policy.conditions.repository_name $Repo)) { return $false }
+    foreach ($path in $Paths) {
+        if (-not (& $covers $Policy.conditions.workflow_path $path)) { return $false }
+    }
+    $true
+}
+
+# The body of the event policy to create: the two code-review workflows, and with -Organization every repository.
+function New-EventPolicyBody([switch]$Organization) {
+    $conditions = [ordered]@{ workflow_path = @{ include = $codeReviewWorkflows; exclude = @() } }
+    if ($Organization) { $conditions.repository_name = @{ include = @('~ALL'); exclude = @() } }
+    @{ name = $eventPolicyName; enforcement = 'active'; conditions = $conditions; rules = @(@{ type = 'restrict_action_events'; parameters = @{ allowed_events = $codeReviewEvents } }) }
 }
 
 # Sets one security setting where Get-SettingState read it as off, and prints the outcome on one line. A refusal is
