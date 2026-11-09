@@ -36,7 +36,9 @@
     policy it can't read, or a refusal, is reported without failing the run, and an organization read that fails
     other than with HTTP 403 or 404 is named in the policy's line; that
     -OrganizationPolicy posts the same policy, on every repository, to the organization alone, prints its body with
-    -WhatIf, leaves alone one of that name or one that already covers every repository, exits 1 when it can't read the
+    -WhatIf, updates one of that name in place, keeping its other events, when it isn't active, misses an event or
+    doesn't cover both files on every repository, says why, also with -WhatIf and when refused, and leaves alone one
+    that does or one that already allows both events on every repository, exits 1 when it can't read the
     policies or is refused, says for a refusal that asks to upgrade the organization's plan that it needs GitHub Team or
     above and to run it per repository, and otherwise names the admin:org scope, takes no -Repo, -All or -RequireChecks;
     that -All skips archived repositories and forks;
