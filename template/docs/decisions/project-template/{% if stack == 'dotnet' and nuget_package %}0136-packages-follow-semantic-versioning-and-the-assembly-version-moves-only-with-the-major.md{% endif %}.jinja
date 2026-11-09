@@ -22,8 +22,8 @@ A library's packages follow Semantic Versioning 2.0, and their assembly version 
 
 ### The version number
 
-- The version comes from the release tag, `v1.2.3`, or `v1.2.3-rc.1` for a prerelease. On GitHub,
-  `.github/workflows/publish.yml` packs the tag's version (ADR-0135).
+- The version comes from the release tag, `v1.2.3`, or `v1.2.3-rc.1` for a prerelease.{% if git_host == 'github' %} On GitHub,
+  `.github/workflows/publish.yml` packs the tag's version (ADR-0135).{% endif %}
 - A breaking change is a major version. So is a change to validation or security behavior that a consumer can observe,
   even when no signature changes.
 - An addition is a minor version; a fix is a patch.
