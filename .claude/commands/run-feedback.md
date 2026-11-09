@@ -1,6 +1,6 @@
 ---
 description: "Run address-feedback on one pull request round after round until it merges or closes — fix, push, comment /review so NCode Review reviews the new commits, wait for its review and new comments, and recommend the merge"
-argument-hint: "[The pull request, such as #42, owner/repo#42 or its URL, optionally only:<login> or exclude:<login>, and wait:<hours> to change the 24-hour wait with nothing to answer]"
+argument-hint: "[The pull request, such as #42, owner/repo#42 or its URL, optionally only:<login> or exclude:<login>, wait:<hours> to change the 24-hour wait with nothing to answer, and push-branch:<name> for a session's designated branch]"
 model: opus
 effort: high
 disable-model-invocation: true

@@ -6,11 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.78.0] - 2026-11-09
+## [0.79.0] - 2026-11-09
 
 ### Added
 
 - `/run-issues` offers a third answer for the follow-ups at its start, complete them immediately, beside filing them and filing none, as `/ship-plan` offers to act on them next: each landed entry's follow-ups are filed marked ` — next`, and once `/finish-plan` has run for the entry, each filed issue joins the run's queue as an entry of its own and lands like any other, while the run has taken fewer than five entries; the report names the rest with the commands that plan them. It is offered with `follow-ups: issues` ([#321](https://github.com/NCodeGroup/project-template/issues/321)).
+
+## [0.78.0] - 2026-11-09
+
+### Added
+
+- A session whose host made a branch for it and limits its pushes to that branch, such as a Claude Code cloud session's `claude/<words>-<id>` branch, lands plans through it: `/ship-plan` pushes the plan's own branch to it with `git push -u origin "HEAD:refs/heads/<branch>"` and opens the pull request from it, `/run-issues` lands its entries through it one open pull request at a time, and `/address-feedback` and `/run-feedback` work only on a pull request from it. Plans keep their own branch names, `worktree-<name>`, `worktree-issue-<number>` and `issue-<number>`, which stay the default. The session takes the branch from its own instructions or from a `push-branch:<name>` word in the request, never from a branch's name or a `claude/` prefix, and records it in the clone's Git config as `plan.pushBranch`; `push-branch:none` clears it ([#320](https://github.com/NCodeGroup/project-template/issues/320), [ADR-0004](template/docs/decisions/project-template/0004-trunk-based-development-on-the-default-branch.md)).
+- `.template/Get-PlanState.ps1` prints `push-branch`, the clone's `plan.pushBranch` setting or `invalid`; `pr-branch`, the branch on `origin` the plan's pull request comes from: its upstream once pushed, else the push branch, else the plan's branch; and `pr-branch-state`, which says whether that branch can take the plan: `new`, `ours`, `landed`, `busy <number>`, `other` or `unknown` ([#320](https://github.com/NCodeGroup/project-template/issues/320)).
+
+### Changed
+
+- `.template/Get-PlanState.ps1` reads the plan's pull request from the branch it was pushed to, not only from the local branch's name, so `/ship-plan`, `/continue-plan` and `/finish-plan` find it after a push to a push branch, and leaves out the pull requests other plans opened from that branch ([#320](https://github.com/NCodeGroup/project-template/issues/320)).
+- When a push branch on `origin` still holds a merged pull request's work, because the host didn't delete it, `/ship-plan` deletes it there before it pushes the next plan, so each pull request starts from the default branch; it stops, pushing nothing, when the branch carries another open pull request or work that hasn't landed, and under `integrate: direct`. `/finish-plan` never deletes the session's push branch ([#320](https://github.com/NCodeGroup/project-template/issues/320), [ADR-0004](template/docs/decisions/project-template/0004-trunk-based-development-on-the-default-branch.md)).
 
 ## [0.77.0] - 2026-11-09
 
@@ -1258,7 +1270,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.78.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.79.0...HEAD
+[0.79.0]: https://github.com/NCodeGroup/project-template/compare/v0.78.0...v0.79.0
 [0.78.0]: https://github.com/NCodeGroup/project-template/compare/v0.77.0...v0.78.0
 [0.77.0]: https://github.com/NCodeGroup/project-template/compare/v0.76.1...v0.77.0
 [0.76.1]: https://github.com/NCodeGroup/project-template/compare/v0.76.0...v0.76.1
