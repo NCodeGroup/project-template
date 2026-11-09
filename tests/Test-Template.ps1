@@ -506,8 +506,7 @@ foreach ($case in $cases) {
         if ($usesNode) { Check "${name}: GitLab CI selects the .node-version Node.js through the pinned nvs before the build" ($ci.Contains('--branch v1.7.1 https://github.com/jasongin/nvs') -and $ci.Contains('= b87ae9593cd20e7b667e9099240c9befeb50659f') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf("`n  script:")) $ci }
         else { Check "${name}: GitLab CI installs no nvs without uses_node" (-not $ci.Contains('jasongin/nvs')) $ci }
         if ($case.Stack -eq 'powershell') {
-            $apt = $ci.IndexOf('apt-get install -qq -y --no-install-recommends git curl')
-            Check "${name}: GitLab CI installs Git and curl in the PowerShell image exactly when nvs needs them" ((($apt -ge 0) -eq $usesNode) -and (-not $usesNode -or $apt -lt $ci.IndexOf('git clone --quiet --depth 1 --branch v1.7.1'))) $ci
+            Check "${name}: GitLab CI runs the PowerShell job in the .NET SDK image, which has Git and curl, and installs nothing with apt-get" ($ci -match 'build-and-test:\r?\n(?:  #.*\r?\n)*  image: mcr\.microsoft\.com/dotnet/sdk:10\.0\r?\n' -and -not $ci.Contains('mcr.microsoft.com/powershell') -and -not $ci.Contains('apt-get')) $ci
         }
     }
     $wanted = @($tools | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique)
