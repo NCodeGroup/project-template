@@ -1182,6 +1182,20 @@ try {
     Set-PushRequests @((New-PushRequest 6 'open' $pSecond), (New-PushRequest 5 'closed' $pOther $pMerge4))
     $r = Test-State (Get-State $pRepo) @{ pr = '6 OPEN'; 'pr-branch-state' = 'ours'; next = 'wait pull request #6 is open: run ship-plan again once it merges' }
     Check 'push-state: a push branch that holds the plan''s commits is ours' $r.Ok $r.Detail
+
+    Set-PushRequests @((New-PushRequest 7 'open' ('f' * 40)))
+    $r = Test-State (Get-State $pRepo -NoFetch) @{ pr = '-' }
+    Check 'push: a pull request from the push branch whose head is not in the clone is not this plan''s' $r.Ok $r.Detail
+
+    Push-Location $pRepo
+    try {
+        $pAhead = (Invoke-Git commit-tree 'HEAD^{tree}' -p HEAD -m 'Plan step 2: Ahead' | Out-String).Trim()
+        Invoke-Git push -q -f origin "${pAhead}:refs/heads/claude/test-abc1"
+    }
+    finally { Pop-Location }
+    Set-PushRequests @((New-PushRequest 6 'open' $pAhead), (New-PushRequest 5 'closed' $pOther $pMerge4))
+    $r = Test-State (Get-State $pRepo) @{ pr = '6 OPEN'; 'pr-branch-state' = 'ours' }
+    Check 'push-state: a push branch one commit ahead of HEAD with the plan''s pull request is ours' $r.Ok $r.Detail
 }
 finally { $env:PATH = $savedPath }
 
