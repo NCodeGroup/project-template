@@ -23,6 +23,7 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
 
+# Test-WindowsName in template/.template/Update-Project.ps1 applies the same rules, and tests/Test-UpdateWindowsCheckout.ps1 checks that the two agree: change both together.
 function Get-WindowsNameProblem([string]$Name) {
     if ($Name -match '[\x00-\x1F]') { return 'has a control character' }
     if ($Name -match '[<>:"|?*\\]') { return "has '$($Matches[0])', a character Windows forbids in file names" }
