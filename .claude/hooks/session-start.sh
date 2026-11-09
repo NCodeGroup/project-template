@@ -17,6 +17,6 @@
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 0
 for script in "$dir"/ensure-*.sh; do
     [ -f "$script" ] || continue
-    bash "$script" || echo "session-start: $(basename "$script") exited $?"
+    bash "$script" || echo "session-start: ${script##*/} exited $?"
 done
 exit 0
