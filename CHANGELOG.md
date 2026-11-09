@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- No change for projects made from the template. The help text of `tests/Test-WindowsFileNames.ps1` wraps its description at 100 characters instead of uneven widths past 120, and its `Get-WindowsNameProblem` names `Test-WindowsName` in `template/.template/Update-Project.ps1` as the copy of its rules to change with it, as that function already names it ([#306](https://github.com/NCodeGroup/project-template/issues/306)).
+- No change for projects made from the template. The help text of `tests/Test-WindowsFileNames.ps1` wraps its description at 100 characters instead of uneven widths past 120, and its `Get-WindowsNameProblem` names `Test-WindowsName` in `template/.template/Update-Project.ps1` as the copy of its rules to change with it; `Test-WindowsName` already pointed back to it ([#306](https://github.com/NCodeGroup/project-template/issues/306)).
 
 ## [0.75.2] - 2026-11-09
 
