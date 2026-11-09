@@ -1,6 +1,6 @@
-# Publish packages: when a GitHub release is published, or when the Release workflow (tag-release.yml) starts it for
-# the release it published, packs every packable project with the version its tag names and pushes the packages,
-# with their symbol packages, to nuget.org. docs/decisions/project-template/ says why.
+# Publish packages: when a GitHub release is published, or when the Tag and publish release workflow (tag-release.yml)
+# starts it for the release it published, packs every packable project with the version its tag names and pushes the
+# packages, with their symbol packages, to nuget.org. docs/decisions/project-template/ says why.
 #
 # Two jobs, so the job that builds the code never holds a publishing credential:
 #   - pack checks the tag is a version (v1.2.3 or v1.2.3-rc.1) and names a commit the default branch holds, so a tag on

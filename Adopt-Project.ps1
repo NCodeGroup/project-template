@@ -20,8 +20,8 @@
     pre-commit; then it leaves them as they are and warns, naming the command that runs the template's hooks.
 
     When the repository keeps its own .github/workflows/publish.yml without a workflow_dispatch trigger and gets
-    .github/workflows/tag-release.yml, it prints the warning .\.template\Update-Project.ps1 prints: the Release
-    workflow starts publish.yml through that trigger, so until it has one, a release ships no packages.
+    .github/workflows/tag-release.yml, it prints the warning .\.template\Update-Project.ps1 prints: the Tag and publish
+    release workflow starts publish.yml through that trigger, so until it has one, a release ships no packages.
 
 .EXAMPLE
     .\Adopt-Project.ps1 -Path C:\src\buffers
