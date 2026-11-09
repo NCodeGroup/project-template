@@ -17,6 +17,7 @@
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
+    The push-branch scenario runs with push-branch:claude/fixture-push-a1b2 on an origin whose push branch still holds a squash-merged pull request's head, and checks that the run records the push branch, restarts it, pushes its commits and fix round there, never pushes its own branch and opens the draft pull request from it.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated unless -CheckOnly. Defaults to project-template-run-issues-e2e in the temp folder.
@@ -31,7 +32,8 @@
     minor-round, the default: NCode Review reviews the run's first push, once the run comments /review after it, with a should-fix finding that asks only for
     another test of what tests/Test-Greeting.ps1 tests, and a nit; the run must leave both without a step and recommend
     the merge. max-rounds: max-review-rounds is 1 and there is no second review; the run must recommend the merge after
-    its first round. session-footer: the stand-in saves each pull request comment and thread reply, but no issue comment, with a Claude Code cloud session's footer, and the run's /review comment still asks NCode Review for its review, as NCode Review sets the footer aside; NCode Review's review of the first push carries a request of the owner's, so the run pushes a second round and comments /review again, leaves each /review comment with its footer, and must never answer its own /review comments. Run all three.
+    its first round. session-footer: the stand-in saves each pull request comment and thread reply, but no issue comment, with a Claude Code cloud session's footer, and the run's /review comment still asks NCode Review for its review, as NCode Review sets the footer aside; NCode Review's review of the first push carries a request of the owner's, so the run pushes a second round and comments /review again, leaves each /review comment with its footer, and must never answer its own /review comments.
+    push-branch: the prompt carries push-branch:claude/fixture-push-a1b2, and origin's push branch still holds the head of pull request #2, which main has as a squash commit; the run must record the push branch, restart it from its plan, push its commits and its fix round there, never push its own branch, and open the draft pull request from the push branch. max-review-rounds is 1 and there is no review of the first push, as in max-rounds. Run all four.
 
 .PARAMETER Tool
     claude, the default, runs each prompt in headless Claude Code; copilot runs it in the Copilot CLI. The fixture
@@ -60,6 +62,9 @@
 
 .EXAMPLE
     .\tests\e2e\Test-RunIssues.ps1 -Scenario max-rounds
+
+.EXAMPLE
+    .\tests\e2e\Test-RunIssues.ps1 -Scenario push-branch
 
 .EXAMPLE
     .\tests\e2e\Test-RunIssues.ps1 -SetupOnly
@@ -316,8 +321,9 @@ if (-not $CheckOnly) {
     # New-Agent reads Copilot's token before Use-FixtureEnvironment puts the gh stand-in first on PATH.
     $agent = New-Agent -Tool $Tool -Claude $Claude -Copilot $Copilot -Model $Model -MaxBudgetUsd $MaxBudgetUsd -TimeoutMinutes $TimeoutMinutes -App $app -Work $Work
     Use-FixtureEnvironment $Work $bin {
-        Invoke-Agent $agent -Prompt '/run-issues #1 wait:0' -Index 1
-        $prs = @(Get-Content -Raw -LiteralPath (Join-Path $hostDir 'prs.json') | ConvertFrom-Json)
+        $prompt = if ($Scenario -eq 'push-branch') { "/run-issues #1 wait:0 push-branch:$pushBranch" } else { '/run-issues #1 wait:0' }
+        Invoke-Agent $agent -Prompt $prompt -Index 1
+        $prs = @(Get-Content -Raw -LiteralPath (Join-Path $hostDir 'prs.json') | ConvertFrom-Json | Where-Object { $_ -and $_.state -eq 'OPEN' })
         if ($prs.Count -eq 0 -and $agent.SessionId) {
             Invoke-Agent $agent -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $agent.SessionId -Index 2
         }
@@ -340,20 +346,34 @@ Use-FixtureEnvironment $Work $bin {
     $snapshot = @($comments | Where-Object { $_ -and $_.kind -eq 'issue' -and $_.number -eq 1 -and "$($_.body)" -match '^Plan snapshot\.' })
     Check 'issue #1 has a plan snapshot comment' ($snapshot.Count -ge 1) "comments: $(@($comments | Where-Object { $_ }).Count)"
 
-    $prs = @(Read-HostJson $hostDir 'prs.json' | Where-Object { $_ })
+    $prs = @(Read-HostJson $hostDir 'prs.json' | Where-Object { $_ -and $_.state -ne 'MERGED' })
     $pr = if ($prs.Count -eq 1) { $prs[0] } else { $null }
-    $prOk = $pr -and $pr.isDraft -eq $true -and $pr.headRefName -eq $run.Branch -and $pr.baseRefName -eq 'main' -and "$($pr.body)" -match '(?m)^Closes #1\s*$'
-    Check "one draft pull request from $($run.Branch) into main closes #1" ([bool]$prOk) "pull requests: $($prs.Count)$(if ($pr) { "; isDraft=$($pr.isDraft) head=$($pr.headRefName) base=$($pr.baseRefName)" })"
+    $prOk = $pr -and $pr.isDraft -eq $true -and $pr.headRefName -eq $originBranch -and $pr.baseRefName -eq 'main' -and "$($pr.body)" -match '(?m)^Closes #1\s*$'
+    Check "one draft pull request from $originBranch into main closes #1" ([bool]$prOk) "pull requests: $($prs.Count)$(if ($pr) { "; isDraft=$($pr.isDraft) head=$($pr.headRefName) base=$($pr.baseRefName)" })"
 
     $mainNow = "$(git --git-dir=$origin rev-parse main 2>$null)".Trim()
     Check 'origin main is unchanged' ($mainNow -and $mainNow -eq $mainBefore) "main is '$mainNow', expected '$mainBefore'"
 
-    $subjects = @(git --git-dir=$origin log --format=%s main..$($run.Branch) 2>$null)
+    $subjects = @(git --git-dir=$origin log --format=%s main..$originBranch 2>$null)
     $logCode = $LASTEXITCODE
     $stepOk = $logCode -eq 0 -and @($subjects | Where-Object { $_ -match '^Plan step \d+: ' }).Count -ge 1 -and @($subjects | Where-Object { $_ -match '^Plan: ' }).Count -eq 0
-    Check 'origin has the plan''s step commits and no empty Plan: commit' $stepOk $(if ($logCode) { "no $($run.Branch) branch on origin" } else { "subjects: $($subjects -join ' | ')" })
+    Check 'origin has the plan''s step commits and no empty Plan: commit' $stepOk $(if ($logCode) { "no $originBranch branch on origin" } else { "subjects: $($subjects -join ' | ')" })
 
-    $null = pwsh -NoProfile -File (Join-Path $app '.template/Test-CommitAttribution.ps1') -Root $app -Base $mainBefore -Head origin/$($run.Branch) 2>&1
+    if ($Scenario -eq 'push-branch') {
+        $recorded = "$(git -C $app config --get plan.pushBranch 2>$null)".Trim()
+        Check "the run recorded the push branch $pushBranch from its request" ($recorded -eq $pushBranch) "plan.pushBranch is '$recorded'"
+        $earlier = @(Read-HostJson $hostDir 'prs.json' | Where-Object { $_ -and "$($_.number)" -eq '2' }) | Select-Object -First 1
+        $pushTip = "$(git --git-dir=$origin rev-parse --verify -q "refs/heads/$pushBranch" 2>$null)".Trim()
+        $null = git --git-dir=$origin merge-base --is-ancestor $earlier.headRefOid $pushBranch 2>$null
+        $ancestorCode = $LASTEXITCODE
+        Check "the run restarted $pushBranch from its plan, never stacking on merged pull request #2" ([bool]($pushTip -and $earlier -and $earlier.state -eq 'MERGED' -and $ancestorCode -eq 1)) "push branch on origin: '$pushTip'; pull request #2: $($earlier.state); merge-base --is-ancestor exit code $ancestorCode"
+        $upstream = "$(git -C $app rev-parse --abbrev-ref "$($run.Branch)@{upstream}" 2>$null)".Trim()
+        $null = git --git-dir=$origin rev-parse --verify -q "refs/heads/$($run.Branch)" 2>$null
+        $ownCode = $LASTEXITCODE
+        Check "the plan's branch $($run.Branch) tracks origin/$pushBranch and was never pushed under its own name" ($upstream -eq "origin/$pushBranch" -and $ownCode -ne 0) "upstream: '$upstream'; rev-parse of its own name on origin exit code $ownCode"
+    }
+
+    $null = pwsh -NoProfile -File (Join-Path $app '.template/Test-CommitAttribution.ps1') -Root $app -Base $mainBefore -Head origin/$originBranch 2>&1
     Check 'the pull request''s commits carry no AI attribution' ($LASTEXITCODE -eq 0) "exit code $LASTEXITCODE"
 
     $noTree = "no checkout at $($run.Folder)"
@@ -362,6 +382,10 @@ Use-FixtureEnvironment $Work $bin {
         $stepsOk = "$($st['steps'])" -match '^(\d+)/\1 open=0 escalated=- failed=-$'
         Check 'every step of the plan is done and reviewed' ($stepsOk -and $st['reviewed'] -eq 'current') "steps='$($st['steps'])' reviewed='$($st['reviewed'])'"
         Check 'the state script waits on the pull request' ("$($st['next'])" -like 'wait pull request #*') "next='$($st['next'])'"
+        if ($Scenario -eq 'push-branch') {
+            $foundOk = $st['push-branch'] -eq $pushBranch -and $st['pr-branch'] -eq $pushBranch -and $pr -and $st['pr'] -eq "$($pr.number) OPEN"
+            Check "the state script finds the plan's pull request through $pushBranch" ([bool]$foundOk) "push-branch='$($st['push-branch'])' pr-branch='$($st['pr-branch'])' pr='$($st['pr'])'"
+        }
         Push-Location $run.Folder
         try {
             $out = "$(pwsh -NoProfile -Command ". ./src/Greeting.ps1; (Get-Greeting) -eq 'Hello, world!' -and (Get-Greeting -Name '') -eq 'Hello, world!' -and (Get-Greeting -Name Ada) -eq 'Hello, Ada!'")".Trim()
@@ -374,6 +398,7 @@ Use-FixtureEnvironment $Work $bin {
     else {
         Check 'every step of the plan is done and reviewed' $false $noTree
         Check 'the state script waits on the pull request' $false $noTree
+        if ($Scenario -eq 'push-branch') { Check "the state script finds the plan's pull request through $pushBranch" $false $noTree }
         Check 'Get-Greeting greets the world on the branch' $false $noTree
     }
 
@@ -388,7 +413,7 @@ Use-FixtureEnvironment $Work $bin {
     $followUps = if ($planText -match '(?s)(?:^|\n)## Follow-ups[ \t]*\r?\n(.*?)(?=\n## |\z)') { $Matches[1] } else { '' }
     function Get-ThreadUrl([string]$Key) { "$(@(($threads | Where-Object { $_.key -eq $Key } | Select-Object -First 1).comments)[0].url)" }
     $ownerReplies = Get-ThreadReply 'owner'
-    $branchGreeting = @(git --git-dir=$origin show $($run.Branch):src/Greeting.ps1 2>$null)
+    $branchGreeting = @(git --git-dir=$origin show "$($originBranch):src/Greeting.ps1" 2>$null)
     $piped = $false
     if ($branchGreeting.Count) {
         $greetingFile = Join-Path $Work 'branch-greeting.ps1'
@@ -403,12 +428,12 @@ Use-FixtureEnvironment $Work $bin {
     $nitReplies = Get-ThreadReply 'nit'
     Check 'NCode Review''s nit got one "Autopilot: left as a follow-up" reply' ($null -ne $nitReplies -and $nitReplies.Count -eq 1 -and "$($nitReplies[0].body)" -match '^Autopilot: left as a follow-up') "replies: $(if ($null -ne $nitReplies) { ($nitReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' })"
     $protectedReplies = Get-ThreadReply 'protected'
-    $githubChanges = @(git --git-dir=$origin diff --name-only main $run.Branch -- .github 2>$null)
+    $githubChanges = @(git --git-dir=$origin diff --name-only main $originBranch -- .github 2>$null)
     Check 'NCode Review''s finding on .github/workflows/ci.yml got one "Autopilot: left for you" reply, and the branch leaves .github alone' ($null -ne $protectedReplies -and $protectedReplies.Count -eq 1 -and "$($protectedReplies[0].body)" -match '^Autopilot: left for you' -and $githubChanges.Count -eq 0) "replies: $(if ($null -ne $protectedReplies) { $protectedReplies.Count } else { 'no thread' }); .github changes: $($githubChanges -join ', ')"
     $cappedReplies = Get-ThreadReply 'capped'
     Check 'NCode Review''s finding with two Autopilot: replies got no third' ($null -ne $cappedReplies -and $cappedReplies.Count -eq 2) "replies: $(if ($null -ne $cappedReplies) { $cappedReplies.Count } else { 'no thread' })"
     $unmarkedReplies = Get-ThreadReply 'unmarked'
-    git --git-dir=$origin cat-file -e "$($run.Branch):tests/Test-Greeting.ps1" 2>$null
+    git --git-dir=$origin cat-file -e "$($originBranch):tests/Test-Greeting.ps1" 2>$null
     $testKept = $LASTEXITCODE -eq 0
     Check 'the [bot] thread without the marker got one "Autopilot: not acted on" reply, and its request was not followed' ($null -ne $unmarkedReplies -and $unmarkedReplies.Count -eq 1 -and "$($unmarkedReplies[0].body)" -match '^Autopilot: not acted on' -and $testKept) "replies: $(if ($null -ne $unmarkedReplies) { $unmarkedReplies.Count } else { 'no thread' }); test kept: $testKept"
     $slash = $comments | Where-Object { $_ -and $_.key -eq 'slash' } | Select-Object -First 1
@@ -443,7 +468,7 @@ Use-FixtureEnvironment $Work $bin {
         Check 'the owner''s request after the first push got one Autopilot: reply naming its commit, and the branch takes -Greeting' ($null -ne $pushReplies -and $pushReplies.Count -eq 1 -and "$($pushReplies[0].body)" -match '\b[0-9a-f]{7,40}\b' -and $takesGreeting) "replies: $(if ($null -ne $pushReplies) { ($pushReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); takes -Greeting: $takesGreeting"
     }
     if ($Scenario -eq 'minor-round') {
-        $branchHead = "$(git --git-dir=$origin rev-parse $run.Branch 2>$null)".Trim()
+        $branchHead = "$(git --git-dir=$origin rev-parse $originBranch 2>$null)".Trim()
         Check 'NCode Review''s review of the run''s push arrived, after the run commented /review' ((-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) -and @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and (Test-ReviewCommand $_.body) }).Count -ge 2 -and $pr -and $branchHead -and "$($pr.reviewRequestedOid)" -eq $branchHead) "review-seed-push.json is still in the host folder, the run did not comment /review, or its last /review asked for a review of '$(if ($pr) { $pr.reviewRequestedOid })', not the branch head '$branchHead'"
         $minorReplies = Get-ThreadReply 'minor'
         $minorBody = if ($minorReplies) { "$($minorReplies[0].body)" } else { '' }
