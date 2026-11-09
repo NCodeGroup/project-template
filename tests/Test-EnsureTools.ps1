@@ -6,8 +6,8 @@
     Checks .claude\hooks\session-start.sh, which the template's and this repository's .claude\settings.json run on
     SessionStart: that both copies are identical, LF and parse as bash, that both settings files run it from
     $CLAUDE_PROJECT_DIR with a timeout of at least 600 seconds, and, with bash, that it does nothing outside a cloud
-    session, and in one runs every ensure-*.sh beside it in name order, goes on past one that fails and names it, skips
-    other files, and exits 0. Then checks template\.claude\hooks\ensure-nvs.sh with a stub nvs home: that it does nothing
+    session, and in one runs every ensure-*.sh beside it in name order, goes on past one that fails and names it, stops
+    one that runs past ENSURE_SCRIPT_TIMEOUT seconds, skips other files, and exits 0. Then checks template\.claude\hooks\ensure-nvs.sh with a stub nvs home: that it does nothing
     outside a cloud session or without a .node-version, leaves an nvs home without nvs.sh alone, links the .node-version
     Node.js, adding it first when linking fails, writes NVS_HOME and the PATH to CLAUDE_ENV_FILE, and exits 0 with one
     line when nvs fails. Cloning nvs needs the network, so it is not run here. Prints PASS, FAIL or SKIP per check and
@@ -77,16 +77,26 @@ if (-not $bash) {
         [IO.File]::WriteAllText((Join-Path $hooks 'other.sh'), "echo other ran`n")
         $dispatcher = Join-Path $hooks 'session-start.sh'
 
-        $r = Invoke-Hook @{ CLAUDE_CODE_REMOTE = $null } $dispatcher
+        $r = Invoke-Hook @{ CLAUDE_CODE_REMOTE = $null; ENSURE_SCRIPT_TIMEOUT = $null } $dispatcher
         Check 'outside a cloud session the dispatcher exits 0 and prints nothing' ($r.Code -eq 0 -and $r.Output -eq '') "exit $($r.Code): $($r.Output)"
-        $r = Invoke-Hook @{ CLAUDE_CODE_REMOTE = 'true' } $dispatcher
+        $r = Invoke-Hook @{ CLAUDE_CODE_REMOTE = 'true'; ENSURE_SCRIPT_TIMEOUT = $null } $dispatcher
         Check 'in a cloud session it runs each ensure-*.sh in name order, names the one that failed, and exits 0' ($r.Code -eq 0 -and $r.Output -eq "a ran`nb ran`nsession-start: ensure-b.sh exited 3`nc ran") "exit $($r.Code): $($r.Output)"
 
         $empty = Join-Path $work 'empty'
         New-Item -ItemType Directory -Force $empty | Out-Null
         Copy-Item -LiteralPath $script -Destination (Join-Path $empty 'session-start.sh')
-        $r = Invoke-Hook @{ CLAUDE_CODE_REMOTE = 'true' } (Join-Path $empty 'session-start.sh')
+        $r = Invoke-Hook @{ CLAUDE_CODE_REMOTE = 'true'; ENSURE_SCRIPT_TIMEOUT = $null } (Join-Path $empty 'session-start.sh')
         Check 'with no ensure-*.sh it exits 0 and prints nothing' ($r.Code -eq 0 -and $r.Output -eq '') "exit $($r.Code): $($r.Output)"
+
+        $slow = Join-Path $work 'slow'
+        New-Item -ItemType Directory -Force $slow | Out-Null
+        Copy-Item -LiteralPath $script -Destination (Join-Path $slow 'session-start.sh')
+        [IO.File]::WriteAllText((Join-Path $slow 'ensure-a.sh'), "while :; do :; done`n")
+        [IO.File]::WriteAllText((Join-Path $slow 'ensure-b.sh'), "echo b ran`n")
+        $watch = [Diagnostics.Stopwatch]::StartNew()
+        $r = Invoke-Hook @{ CLAUDE_CODE_REMOTE = 'true'; ENSURE_SCRIPT_TIMEOUT = '1' } (Join-Path $slow 'session-start.sh')
+        $watch.Stop()
+        Check 'it stops a script that runs past ENSURE_SCRIPT_TIMEOUT, names it, and runs the next' ($r.Code -eq 0 -and $r.Output -eq "session-start: ensure-a.sh timed out after 1 seconds`nb ran" -and $watch.Elapsed.TotalSeconds -lt 10) "exit $($r.Code) after $($watch.Elapsed.TotalSeconds) s: $($r.Output)"
 
         # --- ensure-nvs.sh, with a stub nvs ---
         $nvsScript = Join-Path $repoRoot 'template/.claude/hooks/ensure-nvs.sh'
