@@ -889,7 +889,7 @@ $m += @(Get-MissingText $shipFiles ('Stop when `pre-release` is `invalid`', 'the
 $m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\prompts\review-plan-diff.prompt.md', 'template\.github\skills\review-plan-diff\SKILL.md') ('as ADR-0015 says'))
 $m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- pre-release: {{ pre_release }}', '`pre-release`: `untracked` keeps the project pre-release'))
 $m += @(Get-MissingText 'template\.github\instructions\project-template.instructions.md.jinja' ('says `pre-release: untracked`', 'In a pre-release project, the changelog describes the product as it is instead'))
-$m += @(Get-MissingText 'template\docs\decisions\project-template\0015-a-pre-release-project-describes-the-product-as-it-is.md' ('pre-release: untracked'))
+$m += @(Get-MissingText 'template\docs\decisions\project-template\0015-a-pre-release-project-describes-the-product-as-it-is.md.jinja' ('pre-release: untracked'))
 Check 'workflow: a pre-release project keeps its changelog as a catalog of the product and releases from it, and AGENTS.md documents the pre-release key' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('<other-conflicts> Commit note:', 'stage only `<changelog>` and the files this step resolved', 'a renumber or merge step''s merge', 'the merge a renumber or merge step made'))
 Check 'workflow: the renumber step resolves the other files that conflict, and a merge step''s merge keeps the empty commits' (-not $m) ($m -join '; ')
