@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-    Test template\.template\Publish-Release.ps1, which .github\workflows\release.yml runs to tag and publish a release
-    when it merges.
+    Test template\.template\Publish-Release.ps1, which this repository's .github\workflows\release.yml and a project's
+    .github\workflows\tag-release.yml, the Tag and publish release workflow, run to tag and publish a release when it
+    merges.
 
 .DESCRIPTION
     Runs the script in a clone of a temporary bare repository, with a stand-in for gh that keeps each release it
