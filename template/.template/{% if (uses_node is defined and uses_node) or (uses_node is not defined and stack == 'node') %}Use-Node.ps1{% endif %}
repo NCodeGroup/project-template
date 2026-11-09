@@ -25,29 +25,44 @@ if (-not (Test-Path -LiteralPath $nodeVersionFile)) { throw "No .node-version at
 $nodeVersion = ([IO.File]::ReadAllLines($nodeVersionFile) | Select-Object -First 1).Trim()
 if (-not $nodeVersion) { throw "$nodeVersionFile is empty; it must name a Node.js version." }
 
-if (-not (Get-Command nvs -ErrorAction Ignore)) {
+$nodeHasNvs = [bool](Get-Command nvs -ErrorAction Ignore)
+if (-not $nodeHasNvs) {
     $nodeNvsHome = if ($env:NVS_HOME) { $env:NVS_HOME }
     elseif ($IsWindows) { Join-Path $env:LOCALAPPDATA 'nvs' }
     else { Join-Path $HOME '.nvs' }
     $nodeNvsScript = Join-Path $nodeNvsHome 'nvs.ps1'
-    if (-not (Test-Path -LiteralPath $nodeNvsScript)) {
-        $nodeInstall = if ($IsWindows) { 'winget install --id jasongin.nvs -e' } else { 'git clone https://github.com/jasongin/nvs "$HOME/.nvs"; . "$HOME/.nvs/nvs.sh" install' }
-        throw "nvs is not installed: $nodeNvsScript does not exist. Install it with: $nodeInstall"
+    if (Test-Path -LiteralPath $nodeNvsScript) {
+        $env:NVS_HOME = $nodeNvsHome
+        . $nodeNvsScript
+        $nodeHasNvs = $true
     }
-    $env:NVS_HOME = $nodeNvsHome
-    . $nodeNvsScript
 }
 
-$global:LASTEXITCODE = 0
-nvs use $nodeVersion
-if (-not $? -or $LASTEXITCODE) {
+if ($nodeHasNvs) {
     $global:LASTEXITCODE = 0
-    nvs add $nodeVersion
     nvs use $nodeVersion
+    if (-not $? -or $LASTEXITCODE) {
+        $global:LASTEXITCODE = 0
+        nvs add $nodeVersion
+        nvs use $nodeVersion
+    }
+    if (-not (Get-Command node -ErrorAction Ignore)) {
+        throw "Node.js $nodeVersion is not on PATH after nvs use; run ./.template/Initialize-Nvs.ps1"
+    }
+}
+else {
+    # No nvs, as in CI and cloud sessions that install Node.js another way: accept the node on PATH when it matches.
+    $nodeWanted = $nodeVersion -replace '^v', ''
+    $nodeActual = ''
+    if (Get-Command node -ErrorAction Ignore) {
+        try { $nodeActual = "$(node --version 2>$null | Select-Object -First 1)".Trim() -replace '^v', '' } catch { $nodeActual = '' }
+        $global:LASTEXITCODE = 0
+    }
+    if (-not $nodeActual -or ($nodeActual -ne $nodeWanted -and -not $nodeActual.StartsWith("$nodeWanted."))) {
+        $nodeFound = if ($nodeActual) { $nodeActual } else { 'none' }
+        $nodeInstall = if ($IsWindows) { 'winget install --id jasongin.nvs -e' } else { 'git clone https://github.com/jasongin/nvs "$HOME/.nvs"; . "$HOME/.nvs/nvs.sh" install' }
+        throw "nvs is not installed: $nodeNvsScript does not exist, and the node on PATH ($nodeFound) is not the $nodeVersion that .node-version names. Install it with: $nodeInstall"
+    }
 }
 
-if (-not (Get-Command node -ErrorAction Ignore)) {
-    throw "Node.js $nodeVersion is not on PATH after nvs use; run ./.template/Initialize-Nvs.ps1"
-}
-
-Remove-Variable -Name nodeVersionFile, nodeVersion, nodeNvsHome, nodeNvsScript, nodeInstall -ErrorAction Ignore
+Remove-Variable -Name nodeVersionFile, nodeVersion, nodeNvsHome, nodeNvsScript, nodeInstall, nodeHasNvs, nodeWanted, nodeActual, nodeFound -ErrorAction Ignore
