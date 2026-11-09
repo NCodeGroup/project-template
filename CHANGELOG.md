@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - No change for projects made from the template. `tests/e2e/Test-RunIssues.ps1 -Scenario push-branch` runs `/run-issues` with a `push-branch:<name>` word on an `origin` whose push branch still holds the head of a pull request merged by squashing, which the `gh` stand-in serves, and checks that the run records the push branch, restarts it from its plan, pushes its commits and its fix round there, never pushes the plan's own branch, and opens its draft pull request from it; the stand-in's `gh pr view <branch>` picks a branch's open pull request over a merged one, and `gh pr list` without `--state` lists only open ones, as `gh` does; CI runs the scenario's fixture setup ([#327](https://github.com/NCodeGroup/project-template/issues/327)).
 
+### Fixed
+
+- `.template/Get-PlanState.ps1` no longer reads a new plan as landed right after an earlier plan's pull request from the same branch, such as a session's push branch, merged: the new plan's empty `Plan:` commit has that pull request's tree, so the script printed `landed: yes`, that pull request on its `pr` line and `next: finish-plan` until the plan's first step changed a file. A merged pull request or merge request whose head doesn't hold `HEAD` now counts by its tree only when `HEAD` changes a file since it left the default branch. Projects get it with `.\.template\Update-Project.ps1` ([#327](https://github.com/NCodeGroup/project-template/issues/327)).
+
 ## [0.79.1] - 2026-11-09
 
 ### Fixed
