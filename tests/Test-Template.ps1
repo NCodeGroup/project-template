@@ -227,6 +227,9 @@ foreach ($case in $cases) {
     $nodePresent = @($nodeOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -Force -ErrorAction SilentlyContinue) })
     if ($usesNode) { Check "${name}: Node.js files present" ($nodePresent.Count -eq $nodeOnly.Count) ((@($nodeOnly | Where-Object { $_ -notin $nodePresent })) -join ', ') }
     else { Check "${name}: no Node.js files" ($nodePresent.Count -eq 0) ($nodePresent -join ', ') }
+    $hasClaude = -not $case.Tools -or 'claude' -in $case.Tools
+    Check "${name}: .claude/hooks/session-start.sh present exactly when the project uses Claude Code" ((Test-Path (Join-Path $dest '.claude\hooks\session-start.sh')) -eq $hasClaude)
+    Check "${name}: .claude/hooks/ensure-nvs.sh present exactly when the project uses Node.js and Claude Code" ((Test-Path (Join-Path $dest '.claude\hooks\ensure-nvs.sh')) -eq ($usesNode -and $hasClaude))
     $agentsPrelude = @(Select-String -LiteralPath (Join-Path $dest 'AGENTS.md') -Pattern '^- prelude: (.*)$' | ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() })
     $wantPrelude = if ($usesNode) { './.template/Use-Node.ps1' } else { 'none' }
     Check "${name}: AGENTS.md sets the prelude to Use-Node.ps1 exactly when the project uses Node.js" ($agentsPrelude.Count -eq 1 -and $agentsPrelude[0] -eq $wantPrelude) "prelude=$($agentsPrelude -join '|') want=$wantPrelude"
