@@ -16,8 +16,8 @@ publishes therefore never starts `publish.yml` by the event alone.
 `publish.yml` also runs on `workflow_dispatch` with a required `tag` input, and the Tag and publish release workflow
 starts it.
 
-- `tag-release.yml` starts `publish.yml` on the tag's ref, with the tag as input, through the REST API.
-  Its release job holds `actions: write` for that call, and it starts the run only when it published the release.
+- `tag-release.yml` starts `publish.yml` on the tag's ref, with the tag as input, through the REST API. Its release job
+  holds `actions: write` for that call, and it starts the run only when it published the release.
 - `publish.yml` reads the version from the release tag or the `tag` input, and checks out `refs/tags/<tag>`, so a run
   started from another branch still packs the tagged commit. `pack` still refuses a tag that is not a version or whose
   commit the default branch does not hold.
