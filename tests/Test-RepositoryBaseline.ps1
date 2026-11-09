@@ -347,6 +347,7 @@ $orgs = @{
     orgOurs = @{ policies = @((New-EventPolicy 'Allow pull_request_target for code review' -Enforcement 'disabled')) }
     orgOthers = @{ policies = @((New-EventPolicy 'some repositories' -Repos @('someone-else'))) }
     orgUnreadable = @{ policies = 'fail:403' }
+    orgBroken = @{ policies = 'fail:500' }
     orgRefuses = @{ policies = @(); writeFail = 403 }
     orgFreeRead = @{ policies = 'fail:403'; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgFreeWrite = @{ policies = @(); writeFail = 403; message = 'Upgrade to GitHub Team to enable this feature.' }
@@ -716,6 +717,14 @@ try {
     }
     $r = Invoke-Baseline @('-Repo', 'reviewedRefused')
     Check 'events: a refusal is reported as not available and does not fail the run' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match [regex]::Escape("reviewedRefused: ${label}: not available (HTTP 403: Stand-in refused actions/policies)")) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'reviewed', '-Owner', 'orgBroken')
+    Check 'events: an organization read that fails otherwise is named in the line, and the policy is still created' ($r.ExitCode -eq 0 -and @($r.Changes | Where-Object { $_ -like 'BODY POST repos/*/actions/policies' }).Count -eq 1 -and $r.Output -match [regex]::Escape("reviewed: ${label}: set ('$policyName') (the organization's policies weren't checked: couldn't read its Actions policies: HTTP 500: Stand-in refused to read them)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewed', '-Owner', 'orgBroken', '-WhatIf')
+    Check 'events: -WhatIf names a failed organization read too' ($r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("reviewed: ${label}: would set (create '$policyName' for") -and $r.Output -match [regex]::Escape("(the organization's policies weren't checked: couldn't read its Actions policies: HTTP 500")) $r.Output
+    foreach ($extra in @('-Repo', 'reviewed', '-Owner', 'orgUnreadable'), @('-Repo', 'reviewed')) {
+        $r = Invoke-Baseline $extra
+        Check "events: $($extra -join ' ') stays quiet about an organization read refused with 403 or 404" ($r.Output -match [regex]::Escape("reviewed: ${label}: set ('$policyName')") -and $r.Output -notmatch "weren't checked") $r.Output
+    }
 
     # 7f. -OrganizationPolicy: the same policy once, on every repository of the organization.
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgEmpty', '-WhatIf')

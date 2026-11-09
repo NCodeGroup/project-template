@@ -475,14 +475,14 @@ function Set-TagRuleset {
 
 # Reads the Actions policies at $Path (a repository's or an organization's). A repository's list is an object,
 # { total_count, policies }, whose items leave out their conditions and rules, which a read by its id gives; a bare array
-# is read too. Why is the reason a policy couldn't be read, or $null.
+# is read too. Why is the reason a policy couldn't be read, or $null. Status is the HTTP status of the read that failed, or of the list when none did, and $null when a call got no response.
 function Read-EventPolicies([string]$Path) {
     $list = Invoke-HostApi gh "${Path}?per_page=100"
     $answer = $null
     if ($list.Status -eq 200) { try { $answer = $list.Body | ConvertFrom-Json -NoEnumerate -ErrorAction Stop } catch { $answer = $null } }
     if ($list.Status -ne 200 -or $null -eq $answer) {
         $reason = if ($list.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $list }
-        return [pscustomobject]@{ Policies = @(); Why = "couldn't read its Actions policies: $reason" }
+        return [pscustomobject]@{ Policies = @(); Why = "couldn't read its Actions policies: $reason"; Status = $list.Status }
     }
     $policies = [Collections.Generic.List[object]]::new()
     foreach ($item in @(if ($answer -is [array]) { $answer } else { $answer.policies })) {
@@ -493,13 +493,13 @@ function Read-EventPolicies([string]$Path) {
             if ($one.Status -eq 200) { try { $full = $one.Body | ConvertFrom-Json -ErrorAction Stop } catch { $full = $null } }
             if ($null -eq $full) {
                 $reason = if ($one.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $one }
-                return [pscustomobject]@{ Policies = @(); Why = "couldn't read Actions policy $($item.id): $reason" }
+                return [pscustomobject]@{ Policies = @(); Why = "couldn't read Actions policy $($item.id): $reason"; Status = $one.Status }
             }
             $item = $full
         }
         $policies.Add($item)
     }
-    [pscustomobject]@{ Policies = @($policies); Why = $null }
+    [pscustomobject]@{ Policies = @($policies); Why = $null; Status = $list.Status }
 }
 
 # Whether an Actions policy is active and allows pull_request_target for each workflow file in $Paths and, when $Repo is
@@ -607,16 +607,18 @@ function Set-EventPolicy {
     if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)"; return }
 
     $org = Read-EventPolicies "orgs/$Owner/actions/policies"
+    # HTTP 403 or 404 is what an account that may not read them, or an owner that is a user, gets: nothing to report.
+    $orgNote = if ($org.Why -and $org.Status -notin @(403, 404)) { " (the organization's policies weren't checked: $($org.Why))" } else { '' }
     $allowing = @($org.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present $Name })
     if ($allowing.Count) { Write-Host "${prefix}already set (the organization's '$($allowing[0].name)' allows it)"; return }
 
     if (-not $PSCmdlet.ShouldProcess($Name, "create Actions policy '$eventPolicyName'")) {
-        Write-Host "${prefix}would set (create '$eventPolicyName' for $($codeReviewWorkflows -join ' and '), allowing $($codeReviewEvents -join ' and '))"
+        Write-Host "${prefix}would set (create '$eventPolicyName' for $($codeReviewWorkflows -join ' and '), allowing $($codeReviewEvents -join ' and '))$orgNote"
         return
     }
     $result = Invoke-HostWrite POST "repos/$Owner/$Name/actions/policies" (New-EventPolicyBody)
-    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')" }
-    else { Write-Host "${prefix}not available ($(Get-FailureReason $result))" }
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')$orgNote" }
+    else { Write-Host "${prefix}not available ($(Get-FailureReason $result))$orgNote" }
 }
 
 # GitHub offers organization event policies only on GitHub Team and above, and refuses them on another plan with a
