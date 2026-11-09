@@ -14,8 +14,8 @@
     Initialize-Nvs.ps1 when neither works, with the same rule: the major version, an exact version, 26.1 refusing
     26.10.0, and a case-sensitive v. The bash checks run under -eo pipefail as GitHub Actions does, so a refusal still
     prints its message. Also checks that both report an empty and a missing .node-version, that install-nvs.sh does
-    nothing when the nvs home has nvs.sh and refuses an nvs home that exists without it, and that install-nvs.sh and
-    Initialize-Nvs.ps1 pin the same nvs release.
+    nothing when the nvs home has nvs.sh and refuses an nvs home that exists without it, and that install-nvs.sh,
+    Initialize-Nvs.ps1 and USAGE.md pin the same nvs release.
     Every check passes -HomeDirectory and -ProfilePath or sets NVS_HOME itself, so nothing touches the real home folder or
     profile. The Use-Node.ps1 and use-node.sh checks run with a PATH of the system folders alone (System32 on Windows,
     /usr/bin:/bin elsewhere), so an nvs or node the PC has can't stand in for the stubs; the use-node.sh and
@@ -289,7 +289,8 @@ $installText = [IO.File]::ReadAllText($installNvs)
 $initText = [IO.File]::ReadAllText((Get-TemplateFile 'Initialize-Nvs.ps1'))
 $tagMatch = [regex]::Match($installText, '(?m)^NVS_TAG=v(\d+\.\d+\.\d+)$')
 $wingetMatch = [regex]::Match($initText, '--version (\d+\.\d+\.\d+)')
-Check 'install-nvs.sh and Initialize-Nvs.ps1 pin the same nvs release' ($tagMatch.Success -and $wingetMatch.Success -and $tagMatch.Groups[1].Value -eq $wingetMatch.Groups[1].Value -and $installText -cmatch '(?m)^NVS_COMMIT=[0-9a-f]{40}$') "tag $($tagMatch.Groups[1].Value), winget $($wingetMatch.Groups[1].Value)"
+$usageMatch = [regex]::Match([IO.File]::ReadAllText((Join-Path $repoRoot 'USAGE.md')), 'jasongin\.nvs -e --version (\d+\.\d+\.\d+)')
+Check 'install-nvs.sh, Initialize-Nvs.ps1 and USAGE.md pin the same nvs release' ($tagMatch.Success -and $wingetMatch.Success -and $tagMatch.Groups[1].Value -eq $wingetMatch.Groups[1].Value -and $usageMatch.Success -and $usageMatch.Groups[1].Value -eq $tagMatch.Groups[1].Value -and $installText -cmatch '(?m)^NVS_COMMIT=[0-9a-f]{40}$') "tag $($tagMatch.Groups[1].Value), winget $($wingetMatch.Groups[1].Value), USAGE.md $($usageMatch.Groups[1].Value)"
 
 if ($failures.Count) { "Kept the work folder: $Work"; "Node.js setup tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }

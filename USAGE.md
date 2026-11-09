@@ -50,7 +50,7 @@ Once per PC, in PowerShell 7, not elevated:
 For Node.js, install the version manager nvs rather than Node.js itself. It works in both PowerShell and Git Bash:
 
 ```powershell
-winget install --id jasongin.nvs -e
+winget install --id jasongin.nvs -e --version 1.7.1
 ```
 
 Then, in any Node.js project, run:
