@@ -146,6 +146,20 @@ _exclude:
     .github/instructions/csharp.instructions.md
     .github/instructions/csharp-tests.instructions.md
     {% endif %}
+  - |-
+    {% if git_host is defined and git_host != 'github' %}
+    .github/workflows/code-review-auto-merge.yml
+    .github/workflows/tag-release.yml
+    .github/workflows/template-update.yml
+    {% endif %}
+  - |-
+    {% if git_host is defined and not (git_host == 'github' and (workflow_tools is not defined or 'copilot' in workflow_tools)) %}
+    .github/workflows/copilot-setup-steps.yml
+    {% endif %}
+  - |-
+    {% if git_host is defined and stack is defined and nuget_package is defined and not (git_host == 'github' and stack == 'dotnet' and nuget_package) %}
+    .github/workflows/publish.yml
+    {% endif %}
 
 project_name:
   type: str
