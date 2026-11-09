@@ -27,10 +27,12 @@
         the ruleset requires and merges only as it allows;
       - for a public repository that has .github/workflows/code-review.yml or code-review-auto-merge.yml on its default
         branch, creates the Actions event policy "Allow pull_request_target for code review", which allows
-        pull_request_target and issue_comment for those two files alone, unless a policy of that name exists or an
-        active one, of the repository or of its organization when this account may read those, already allows the event
-        for them. GitHub's default policy blocks pull_request_target on a public repository without one from
-        December 2, 2026.
+        pull_request_target, issue_comment and every other event the two files' top-level on: keys name, for those two
+        files alone, unless an active policy, of the repository or of its organization when this account may read those,
+        already allows each of those events for them. A policy of that name is updated in place, keeping the other events it
+        allows, when it isn't active, misses one of those events or doesn't cover both files, and left alone otherwise.
+        An organization read that fails other than with HTTP 403 or 404 is named in the policy's line. GitHub's
+        default policy blocks pull_request_target on a public repository without one from December 2, 2026.
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
@@ -77,8 +79,8 @@
 
     -OrganizationPolicy, with -Owner alone, creates the same policy once for the organization, on every repository
     (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
-    auth refresh -h github.com -s admin:org). It reads the organization's policies first and leaves alone one of that
-    name or an active one that already allows the event for both files on every repository; -WhatIf prints the body it
+    auth refresh -h github.com -s admin:org). It reads the organization's policies first and updates one of that
+    name in place, keeping the other events it allows, when it isn't active, misses one of those events or doesn't cover both files on every repository, and leaves alone one that does, or an active one that already allows pull_request_target and issue_comment for both files on every repository; -WhatIf prints the body it
     would post. It exits 1 when it can't read the policies or the API refuses the policy.
     It needs GitHub Team or above, the plans GitHub offers organization event policies on: when GitHub refuses them for
     the organization's plan, with an answer that asks to upgrade, such as "Upgrade to GitHub Team to enable this
@@ -473,16 +475,59 @@ function Set-TagRuleset {
     Write-Host "done: $summary"
 }
 
+# The text of a file as the contents API answers it: base64, with line breaks. $null when the answer isn't JSON, holds no
+# base64 content, such as for a file over 1 MB, or isn't UTF-8 text.
+function Get-ContentText([string]$Body) {
+    try {
+        $answer = $Body | ConvertFrom-Json -ErrorAction Stop
+        if ($answer.encoding -ne 'base64' -or $null -eq $answer.content) { return $null }
+        [Text.UTF8Encoding]::new($false, $true).GetString([Convert]::FromBase64String(($answer.content -replace '\s', '')))
+    }
+    catch { $null }
+}
+
+# The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, the keys or items
+# indented below it, or - items at its own indent, with quotes, comments and blank lines allowed. A mapping in braces, or
+# no on: key, gives none.
+function Get-WorkflowEvents([string]$Text) {
+    $lines = @($Text -split '\r?\n')
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -notmatch '^(on|"on"|''on''):(.*)$') { continue }
+        $rest = ($Matches[2] -replace '(^|\s)#.*$', '').Trim()
+        $names = if ($rest.StartsWith('[')) { $rest.Trim('[', ']') -split ',' }
+        elseif ($rest.StartsWith('{')) { @() }
+        elseif ($rest) { @($rest) }
+        else {
+            $indent = -1
+            @(for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                $line = $lines[$j]
+                if ($line -match '^\s*(#.*)?$') { continue }
+                $null = $line -match '^(\s*)(.*)$'
+                $lead = $Matches[1].Length
+                $item = $Matches[2]
+                # A line at column 0 ends the block, unless it is a - item of a sequence at the key's own indent.
+                if (-not $lead -and -not ($indent -le 0 -and $item -match '^-(\s|$)')) { break }
+                if ($indent -lt 0) { $indent = $lead }
+                if ($lead -ne $indent) { continue }
+                if ($item -match '^-\s*([^\s#]+)') { $Matches[1] }
+                elseif ($item -match '^([^\s:#]+)\s*:') { $Matches[1] }
+            })
+        }
+        return @($names | ForEach-Object { $_.Trim().Trim('"', "'") } | Where-Object { $_ -match '^[A-Za-z_]+$' })
+    }
+    @()
+}
+
 # Reads the Actions policies at $Path (a repository's or an organization's). A repository's list is an object,
 # { total_count, policies }, whose items leave out their conditions and rules, which a read by its id gives; a bare array
-# is read too. Why is the reason a policy couldn't be read, or $null.
+# is read too. Why is the reason a policy couldn't be read, or $null. Status is the HTTP status of the read that failed, or of the list when none did, and $null when a call got no response.
 function Read-EventPolicies([string]$Path) {
     $list = Invoke-HostApi gh "${Path}?per_page=100"
     $answer = $null
     if ($list.Status -eq 200) { try { $answer = $list.Body | ConvertFrom-Json -NoEnumerate -ErrorAction Stop } catch { $answer = $null } }
     if ($list.Status -ne 200 -or $null -eq $answer) {
         $reason = if ($list.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $list }
-        return [pscustomobject]@{ Policies = @(); Why = "couldn't read its Actions policies: $reason" }
+        return [pscustomobject]@{ Policies = @(); Why = "couldn't read its Actions policies: $reason"; Status = $list.Status }
     }
     $policies = [Collections.Generic.List[object]]::new()
     foreach ($item in @(if ($answer -is [array]) { $answer } else { $answer.policies })) {
@@ -493,41 +538,55 @@ function Read-EventPolicies([string]$Path) {
             if ($one.Status -eq 200) { try { $full = $one.Body | ConvertFrom-Json -ErrorAction Stop } catch { $full = $null } }
             if ($null -eq $full) {
                 $reason = if ($one.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $one }
-                return [pscustomobject]@{ Policies = @(); Why = "couldn't read Actions policy $($item.id): $reason" }
+                return [pscustomobject]@{ Policies = @(); Why = "couldn't read Actions policy $($item.id): $reason"; Status = $one.Status }
             }
             $item = $full
         }
         $policies.Add($item)
     }
-    [pscustomobject]@{ Policies = @($policies); Why = $null }
+    [pscustomobject]@{ Policies = @($policies); Why = $null; Status = $list.Status }
 }
 
-# Whether an Actions policy is active and allows pull_request_target for each workflow file in $Paths and, when $Repo is
-# set, for that repository. A missing condition covers everything; ~ALL covers every repository.
-function Test-AllowsPullRequestTarget($Policy, [string[]]$Paths, [string]$Repo = '') {
+# Whether a policy's condition (repository_name or workflow_path) covers $Value: a missing condition covers everything,
+# and ~ALL every repository.
+function Test-ConditionCovers($Condition, [string]$Value) {
+    if ($null -eq $Condition) { return $true }
+    $include = @($Condition.include | Where-Object { $_ })
+    $exclude = @($Condition.exclude | Where-Object { $_ })
+    if ($Value -eq '~ALL') { return ($include -contains '~ALL' -and -not $exclude.Count) }
+    [bool](@($include | Where-Object { $_ -eq '~ALL' -or $Value -like $_ }).Count -and -not @($exclude | Where-Object { $Value -like $_ }).Count)
+}
+
+# Whether an Actions policy is active and allows every event of $Events for each workflow file in $Paths and, when $Repo
+# is set, for that repository. See Test-ConditionCovers for the conditions.
+function Test-AllowsEvents($Policy, [string[]]$Paths, [string[]]$Events, [string]$Repo = '') {
     if ($Policy.enforcement -ne 'active') { return $false }
-    $allows = @($Policy.rules | Where-Object { $_.type -eq 'restrict_action_events' -and @($_.parameters.allowed_events) -contains 'pull_request_target' })
-    if (-not $allows.Count) { return $false }
-    $covers = {
-        param($Condition, [string]$Value)
-        if ($null -eq $Condition) { return $true }
-        $include = @($Condition.include | Where-Object { $_ })
-        $exclude = @($Condition.exclude | Where-Object { $_ })
-        if ($Value -eq '~ALL') { return ($include -contains '~ALL' -and -not $exclude.Count) }
-        [bool](@($include | Where-Object { $_ -eq '~ALL' -or $Value -like $_ }).Count -and -not @($exclude | Where-Object { $Value -like $_ }).Count)
-    }
-    if ($Repo -and -not (& $covers $Policy.conditions.repository_name $Repo)) { return $false }
+    $allowed = @($Policy.rules | Where-Object { $_.type -eq 'restrict_action_events' } | ForEach-Object { @($_.parameters.allowed_events) })
+    if (-not $Events.Count -or @($Events | Where-Object { $allowed -notcontains $_ }).Count) { return $false }
+    if ($Repo -and -not (Test-ConditionCovers $Policy.conditions.repository_name $Repo)) { return $false }
     foreach ($path in $Paths) {
-        if (-not (& $covers $Policy.conditions.workflow_path $path)) { return $false }
+        if (-not (Test-ConditionCovers $Policy.conditions.workflow_path $path)) { return $false }
     }
     $true
 }
 
-# The body of the event policy to create: the two code-review workflows, and with -Organization every repository.
-function New-EventPolicyBody([switch]$Organization) {
+# The body of the event policy to create or update: the two code-review workflows, $Events, and with -Organization every
+# repository.
+function New-EventPolicyBody([string[]]$Events = $codeReviewEvents, [switch]$Organization) {
     $conditions = [ordered]@{ workflow_path = @{ include = $codeReviewWorkflows; exclude = @() } }
     if ($Organization) { $conditions.repository_name = @{ include = @('~ALL'); exclude = @() } }
-    @{ name = $eventPolicyName; enforcement = 'active'; conditions = $conditions; rules = @(@{ type = 'restrict_action_events'; parameters = @{ allowed_events = $codeReviewEvents } }) }
+    @{ name = $eventPolicyName; enforcement = 'active'; conditions = $conditions; rules = @(@{ type = 'restrict_action_events'; parameters = @{ allowed_events = $Events } }) }
+}
+
+# What keeps the baseline's own event policy from doing its job, one phrase per gap: not active, an event of $Events
+# it doesn't allow, or a code-review workflow it doesn't cover. None when it does its job.
+function Get-EventPolicyGaps($Policy, [string[]]$Events) {
+    if ($Policy.enforcement -ne 'active') { "its enforcement is $($Policy.enforcement)" }
+    $allowed = @($Policy.rules | Where-Object { $_.type -eq 'restrict_action_events' } | ForEach-Object { @($_.parameters.allowed_events) })
+    $missing = @($Events | Where-Object { $allowed -notcontains $_ })
+    if ($missing.Count) { "it doesn't allow $($missing -join ', ')" }
+    $uncovered = @($codeReviewWorkflows | Where-Object { -not (Test-ConditionCovers $Policy.conditions.workflow_path $_) })
+    if ($uncovered.Count) { "it doesn't cover $($uncovered -join ', ')" }
 }
 
 # Sets one security setting where Get-SettingState read it as off, and prints the outcome on one line. A refusal is
@@ -579,7 +638,9 @@ function Set-AutoMerge([string]$Name, $Info) {
 
 # GitHub's default Actions policy blocks pull_request_target from December 2, 2026 on a public repository without an event
 # policy allowing it. The two code-review workflows run from the default branch and check out nothing, so they keep the
-# event; every other workflow keeps the default.
+# event; every other workflow keeps the default. Its own policy, by name, is updated in place when it isn't active, misses
+# an event or doesn't cover both files. It allows pull_request_target, issue_comment and every other event the two files'
+# top-level on: keys name.
 function Set-EventPolicy {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Name, $Info)
@@ -588,35 +649,58 @@ function Set-EventPolicy {
         Write-Host "${prefix}not needed (the repository isn't public, and GitHub's default policy blocks the event only on a public one)"
         return
     }
-    $present = @(foreach ($file in $codeReviewWorkflows) {
+    $present = [Collections.Generic.List[string]]::new()
+    $started = [Collections.Generic.List[string]]::new()
+    $unread = [Collections.Generic.List[string]]::new()
+    foreach ($file in $codeReviewWorkflows) {
         $read = Invoke-HostApi gh "repos/$Owner/$Name/contents/${file}?ref=$($Info.default_branch)"
-        if ($read.Status -eq 200) { $file; continue }
         if ($read.Status -eq 404) { continue }
-        Write-Host "${prefix}not available (couldn't read ${file}: $(Get-FailureReason $read))"
-        return
-    })
+        if ($read.Status -ne 200) {
+            Write-Host "${prefix}not available (couldn't read ${file}: $(Get-FailureReason $read))"
+            return
+        }
+        $present.Add($file)
+        $text = Get-ContentText $read.Body
+        if ($null -eq $text) { $unread.Add($file) } else { foreach ($trigger in Get-WorkflowEvents $text) { $started.Add($trigger) } }
+    }
     if (-not $present.Count) { Write-Host "${prefix}not needed (it has no code-review workflow)"; return }
+    $events = @(@($codeReviewEvents) + @($started) | Select-Object -Unique)
+    $triggerNote = if ($unread.Count) { " (the on: key of $($unread -join ' and ') wasn't read: the contents API sent no base64 UTF-8 text, such as for a file over 1 MB)" } else { '' }
 
     $own = Read-EventPolicies "repos/$Owner/$Name/actions/policies"
-    if ($own.Why) { Write-Host "${prefix}not available ($($own.Why))"; return }
-    if (@($own.Policies | Where-Object { $_.name -eq $eventPolicyName }).Count) {
-        Write-Host "${prefix}left alone (already has '$eventPolicyName')"
+    if ($own.Why) { Write-Host "${prefix}not available ($($own.Why))$triggerNote"; return }
+    $ours = @($own.Policies | Where-Object { $_.name -eq $eventPolicyName }) | Select-Object -First 1
+    if ($ours) {
+        $gaps = @(Get-EventPolicyGaps $ours $events)
+        if (-not $gaps.Count) { Write-Host "${prefix}already set ('$eventPolicyName' allows it)$triggerNote"; return }
+        $why = $gaps -join '; '
+        $kept = @($ours.rules | Where-Object { $_.type -eq 'restrict_action_events' } | ForEach-Object { @($_.parameters.allowed_events) })
+        $allowed = @(@($events) + $kept | Where-Object { $_ } | Select-Object -Unique)
+        if (-not $PSCmdlet.ShouldProcess($Name, "update Actions policy '$eventPolicyName'")) {
+            Write-Host "${prefix}would set (update '$eventPolicyName', as $why, for $($codeReviewWorkflows -join ' and '), allowing $($allowed -join ', '))$triggerNote"
+            return
+        }
+        $result = Invoke-HostWrite PUT "repos/$Owner/$Name/actions/policies/$($ours.id)" (New-EventPolicyBody $allowed)
+        if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set (updated '$eventPolicyName', as $why)$triggerNote" }
+        else { Write-Host "${prefix}not available (couldn't update '$eventPolicyName', as ${why}: $(Get-FailureReason $result))$triggerNote" }
         return
     }
-    $allowing = @($own.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present })
-    if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)"; return }
+    $allowing = @($own.Policies | Where-Object { Test-AllowsEvents $_ $present $events })
+    if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)$triggerNote"; return }
 
     $org = Read-EventPolicies "orgs/$Owner/actions/policies"
-    $allowing = @($org.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present $Name })
-    if ($allowing.Count) { Write-Host "${prefix}already set (the organization's '$($allowing[0].name)' allows it)"; return }
+    # HTTP 403 or 404 is what an account that may not read them, or an owner that is a user, gets: nothing to report.
+    $orgNote = if ($org.Why -and $org.Status -notin @(403, 404)) { " (the organization's policies weren't checked: $($org.Why))" } else { '' }
+    $allowing = @($org.Policies | Where-Object { Test-AllowsEvents $_ $present $events $Name })
+    if ($allowing.Count) { Write-Host "${prefix}already set (the organization's '$($allowing[0].name)' allows it)$triggerNote"; return }
 
     if (-not $PSCmdlet.ShouldProcess($Name, "create Actions policy '$eventPolicyName'")) {
-        Write-Host "${prefix}would set (create '$eventPolicyName' for $($codeReviewWorkflows -join ' and '), allowing $($codeReviewEvents -join ' and '))"
+        Write-Host "${prefix}would set (create '$eventPolicyName' for $($codeReviewWorkflows -join ' and '), allowing $($events -join ', '))$orgNote$triggerNote"
         return
     }
-    $result = Invoke-HostWrite POST "repos/$Owner/$Name/actions/policies" (New-EventPolicyBody)
-    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')" }
-    else { Write-Host "${prefix}not available ($(Get-FailureReason $result))" }
+    $result = Invoke-HostWrite POST "repos/$Owner/$Name/actions/policies" (New-EventPolicyBody $events)
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')$orgNote$triggerNote" }
+    else { Write-Host "${prefix}not available ($(Get-FailureReason $result))$orgNote$triggerNote" }
 }
 
 # GitHub offers organization event policies only on GitHub Team and above, and refuses them on another plan with a
@@ -627,8 +711,9 @@ function Get-PlanRefusalHint([string]$Reason) {
     'organization event policies need GitHub Team or above: run it for each repository instead, with -Repo <name>, or with -All once its -WhatIf looks right'
 }
 
-# The same policy once for the organization, on every repository (~ALL). Returns $true unless it can't read the policies
-# or the API refuses the policy. It writes only its report lines (and, with -WhatIf, the body) to the host.
+# The same policy once for the organization, on every repository (~ALL). Its own policy, by name, is updated in place
+# when it isn't active, misses an event or doesn't cover both files on every repository. Returns $true unless it can't
+# read the policies or the API refuses the policy. It writes only its report lines (and, with -WhatIf, the body) to the host.
 function Set-OrganizationEventPolicy {
     [CmdletBinding(SupportsShouldProcess)]
     param()
@@ -640,11 +725,28 @@ function Set-OrganizationEventPolicy {
         Write-Host "${prefix}not available ($($read.Why)); $hint"
         return $false
     }
-    if (@($read.Policies | Where-Object { $_.name -eq $eventPolicyName }).Count) {
-        Write-Host "${prefix}left alone (already has '$eventPolicyName')"
-        return $true
+    $ours = @($read.Policies | Where-Object { $_.name -eq $eventPolicyName }) | Select-Object -First 1
+    if ($ours) {
+        $gaps = @(Get-EventPolicyGaps $ours $codeReviewEvents)
+        if (-not (Test-ConditionCovers $ours.conditions.repository_name '~ALL')) { $gaps += "it doesn't cover every repository" }
+        if (-not $gaps.Count) { Write-Host "${prefix}already set ('$eventPolicyName' allows it)"; return $true }
+        $why = $gaps -join '; '
+        $kept = @($ours.rules | Where-Object { $_.type -eq 'restrict_action_events' } | ForEach-Object { @($_.parameters.allowed_events) })
+        $allowed = @(@($codeReviewEvents) + $kept | Where-Object { $_ } | Select-Object -Unique)
+        $body = New-EventPolicyBody $allowed -Organization
+        if (-not $PSCmdlet.ShouldProcess($Owner, "update Actions policy '$eventPolicyName'")) {
+            Write-Host "${prefix}would set (update '$eventPolicyName', as ${why}: PUT orgs/$Owner/actions/policies/$($ours.id) with this body)"
+            Write-Host ($body | ConvertTo-Json -Depth 10)
+            return $true
+        }
+        $result = Invoke-HostWrite PUT "orgs/$Owner/actions/policies/$($ours.id)" $body
+        if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set (updated '$eventPolicyName', as $why)"; return $true }
+        $reason = Get-FailureReason $result
+        $hint = Get-PlanRefusalHint $reason
+        Write-Host "${prefix}not available (couldn't update '$eventPolicyName', as ${why}: $reason)$(if ($hint) { "; $hint" })"
+        return $false
     }
-    $allowing = @($read.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $codeReviewWorkflows '~ALL' })
+    $allowing = @($read.Policies | Where-Object { Test-AllowsEvents $_ $codeReviewWorkflows $codeReviewEvents '~ALL' })
     if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)"; return $true }
 
     $body = New-EventPolicyBody -Organization
