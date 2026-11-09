@@ -6,9 +6,9 @@
     Loads Test-WindowsName and Get-WindowsCheckoutProblem from template/.template/Update-Project.ps1, checks names
     Windows refuses and accepts, and that they match Get-WindowsNameProblem in tests/Test-WindowsFileNames.ps1,
     builds a Git repository whose tag v0.1.0 holds only names Windows accepts and whose v0.2.0 adds a uses_node name
-    with a |, written to Git's index only so it runs on any OS, checks what the function finds at each, then checks
-    that the script calls it under $IsWindows after the hand-over and before its first Copier call. Prints PASS or
-    FAIL per check and exits 1 on any failure.
+    with a |, written to Git's index only so it runs on any OS, checks what the function finds at each, runs the
+    script's $IsWindows guard body on it at both tags, then checks that the script calls it under $IsWindows after
+    the hand-over and before its first Copier call. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-windows-test-<process ID> in the
@@ -83,6 +83,17 @@ if (@($functions | Where-Object { $_ }).Count -eq 2) {
     Check 'checkout: finds the uses_node path at a version that has it' ((Get-WindowsCheckoutProblem $repo v0.2.0) -eq $bad)
     Check 'checkout: finds it at a git describe version' (($described -match '^v0\.2\.0-1-g[0-9a-f]+$') -and ((Get-WindowsCheckoutProblem $repo $described) -eq $bad)) $described
     Check 'checkout: finds nothing at a version the repository lacks' (-not (Get-WindowsCheckoutProblem $repo v9.9.9))
+
+    $guardIf = $ast.FindAll({ param($n) $n -is [Management.Automation.Language.IfStatementAst] -and $n.Clauses[0].Item1.Extent.Text -eq '$IsWindows' -and $n.Clauses[0].Item2.Extent.Text.Contains('Get-WindowsCheckoutProblem') }, $true) | Select-Object -First 1
+    Check 'guard: the update script has an $IsWindows block that calls Get-WindowsCheckoutProblem' ([bool]$guardIf)
+    if ($guardIf) {
+        $body = $guardIf.Clauses[0].Item2.Extent.Text
+        $guardRun = [scriptblock]::Create("param([string]`$TemplateClone, [string]`$from)`n" + $body.Substring(1, $body.Length - 2))
+        $stop = try { & $guardRun $repo v0.2.0; '' } catch { $_.Exception.Message }
+        Check 'guard: stops at a version Windows can''t check out, naming the path and saying to update from Linux, macOS or WSL' ($stop.Contains($bad) -and $stop.Contains('Linux, macOS or WSL')) $stop
+        $pass = try { & $guardRun $repo v0.1.0; '' } catch { $_.Exception.Message }
+        Check 'guard: lets a version Windows can check out through' (-not $pass) $pass
+    }
 }
 
 $text = [IO.File]::ReadAllText($script)
