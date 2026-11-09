@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-11-09
+
+### Added
+
+- `tools/Set-RepositoryBaseline.ps1` allows, in the event policy "Allow pull_request_target for code review", every event the code-review workflows' top-level `on:` keys name, besides `pull_request_target` and `issue_comment`, so a trigger a project adds to its `.github/workflows/code-review.yml`, such as `workflow_dispatch`, isn't blocked by the policy. Another active policy, the repository's or the organization's, counts as already allowing them only when it allows every one of those events for both files, so one that allows only `pull_request_target` no longer stops the script from creating its own; `-OrganizationPolicy` checks an organization's other policies for `pull_request_target` and `issue_comment` the same way. A file whose content it can't read, such as one over 1 MB, is named in the policy's line. A project that adds one reruns `tools/Set-RepositoryBaseline.ps1 -Repo <name>` from a clone of the template, which updates the policy ([#323](https://github.com/NCodeGroup/project-template/issues/323)).
+
+### Fixed
+
+- `tools/Set-RepositoryBaseline.ps1` updates its own event policy, "Allow pull_request_target for code review", in place when it is disabled or in evaluate mode, doesn't allow an event the code-review workflows start on, or doesn't cover both workflows, keeping any other event it allows, and says what was wrong, also when GitHub refuses the update. It left such a policy alone and reported "left alone", so a disabled one kept a public repository's automatic reviews blocked from December 2, 2026. One that does its job is reported as already set, and `-OrganizationPolicy` does the same for the organization's policy of that name, which must also cover every repository ([#324](https://github.com/NCodeGroup/project-template/issues/324)).
+- `tools/Set-RepositoryBaseline.ps1` says in a repository's event policy line when it couldn't read the organization's Actions policies for a reason other than HTTP 403 or 404, such as a server error, no response or an answer that isn't JSON. It took every such failure for "no organization policy" and created a repository policy without saying why ([#325](https://github.com/NCodeGroup/project-template/issues/325)).
+
 ## [0.79.1] - 2026-11-09
 
 ### Fixed
@@ -1276,7 +1287,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.79.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.80.0...HEAD
+[0.80.0]: https://github.com/NCodeGroup/project-template/compare/v0.79.1...v0.80.0
 [0.79.1]: https://github.com/NCodeGroup/project-template/compare/v0.79.0...v0.79.1
 [0.79.0]: https://github.com/NCodeGroup/project-template/compare/v0.78.0...v0.79.0
 [0.78.0]: https://github.com/NCodeGroup/project-template/compare/v0.77.0...v0.78.0

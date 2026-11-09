@@ -27,12 +27,18 @@
     that isn't public, and reports a setting the API won't read or refuses without failing the run; that it allows
     auto-merge, with a PATCH that changes nothing else, where it is off, on a repository whose default branch it leaves
     alone too, and reports an answer without it or a refusal; that a public repository with either code-review workflow
-    gets, last, an active Actions event policy allowing pull_request_target and issue_comment for those two files alone,
-    which -WhatIf shows, unless it isn't public, has neither file, or has a policy of that name or an active one, its own
-    or its organization's, that already allows the event for its files, read by its id when the list leaves its rules
-    out, and that a file or policy it can't read, or a refusal, is reported without failing the run; that
+    gets, last, an active Actions event policy for those two files alone allowing pull_request_target, issue_comment
+    and every other event their top-level on: keys name, which Get-WorkflowEvents reads in each form on: takes, which
+    -WhatIf shows, unless it isn't public, has neither file, or has an active policy, its own or its organization's,
+    that already allows each of those events for its files, read by its id when the list leaves its rules out; that a policy of
+    that name is updated in place, keeping its other events, when it isn't active, misses an event or doesn't cover
+    both files, says why, also with -WhatIf and when refused, and is left alone when it does its job; that a file or
+    policy it can't read, or a refusal, is reported without failing the run, and an organization read that fails
+    other than with HTTP 403 or 404 is named in the policy's line; that
     -OrganizationPolicy posts the same policy, on every repository, to the organization alone, prints its body with
-    -WhatIf, leaves alone one of that name or one that already covers every repository, exits 1 when it can't read the
+    -WhatIf, updates one of that name in place, keeping its other events, when it isn't active, misses an event or
+    doesn't cover both files on every repository, says why, also with -WhatIf and when refused, and leaves alone one
+    that does or one that already allows both events on every repository, exits 1 when it can't read the
     policies or is refused, says for a refusal that asks to upgrade the organization's plan that it needs GitHub Team or
     above and to run it per repository, and otherwise names the admin:org scope, takes no -Repo, -All or -RequireChecks;
     that -All skips archived repositories and forks;
@@ -132,11 +138,17 @@ if ($path -match '^repos/[^/]+/([^/]+)/(actions/permissions/workflow|vulnerabili
     }
 }
 # A file on the default branch: 200 when the repository's workflows list names it, 404 when it doesn't, or, for a
-# list of fail:<code>, that status for every file.
+# list of fail:<code>, that status for every file. A file with text in workflowText comes as base64 with line breaks, as
+# GitHub sends it. A file workflowText maps to $null comes without content, as a file over 1 MB does, and any other file as on: pull_request_target.
 if ($path -match '^repos/[^/]+/([^/]+)/contents/([^?]+)') {
     $files = @($data.repos[$Matches[1]].workflows | Where-Object { $_ }); $file = $Matches[2]
+    $texts = $data.repos[$Matches[1]].workflowText
     if ($files.Count -and "$($files[0])".StartsWith('fail:')) { Out-Answer ([int]"$($files[0])".Substring(5)) '{"message":"Stand-in refused to read it"}' }
-    if ($files -contains $file) { Out-Answer 200 '{"type":"file"}' } else { Out-Answer 404 '{"message":"Not Found"}' }
+    if ($files -contains $file) {
+        if ($texts -and $texts.ContainsKey($file) -and $null -eq $texts[$file]) { Out-Answer 200 '{"type":"file"}' }
+        $text = if ($texts -and $texts.ContainsKey($file)) { $texts[$file] } else { "on:`n  pull_request_target:`n" }
+        Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ type = 'file'; encoding = 'base64'; content = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text), [Base64FormattingOptions]::InsertLineBreaks) })
+    } else { Out-Answer 404 '{"message":"Not Found"}' }
 }
 # Actions policies: a repository's list is an object whose policies holds them, an organization's a bare array, the
 # two shapes the script reads. A policy marked summaryOnly is listed without its conditions and rules, which a read by
@@ -205,9 +217,9 @@ function New-EventPolicy([string]$Name, [string[]]$Events = @('pull_request_targ
 # stand-in). Secret scanning and its push protection are read from the repository itself, as GitHub reports them, and
 # so is auto-merge: $AutoMerge $null leaves it out of the answer, as GitHub does for someone who can't change it.
 # $Workflows lists the files on the default branch, or fail:<code>; $Policies the repository's Actions policies
-# (New-EventPolicy), or fail:<code>.
+# (New-EventPolicy), or fail:<code>. $WorkflowText maps a workflow file to its text, which the contents API answers as base64.
 function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
-    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), $Policies = @()) {
+    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), [hashtable]$WorkflowText = @{}, $Policies = @()) {
     $full = @{}
     $summaries = @()
     $id = 100
@@ -221,7 +233,7 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
     @{ info = $info
         rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; switchFails = $SwitchFails
         pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails
-        workflows = @($Workflows); policies = if ($Policies -is [string]) { $Policies } else { @($Policies) } }
+        workflows = @($Workflows); workflowText = $WorkflowText; policies = if ($Policies -is [string]) { $Policies } else { @($Policies) } }
 }
 $allSecurityOn = @{ 'actions/permissions/workflow' = 'on'; 'vulnerability-alerts' = 'on'; 'automated-security-fixes' = 'on'; 'private-vulnerability-reporting' = 'on' }
 function New-Pull([int]$Number, [string]$Sha, [string]$MergedAt) { @{ number = $Number; head = @{ sha = $Sha }; merged_at = if ($MergedAt) { $MergedAt } else { $null } } }
@@ -267,6 +279,7 @@ $looseRuleset.rules += @{ type = 'code_scanning'; parameters = @{ code_scanning_
 $bareRuleset = New-Ruleset 'owner rules' -Threads $false
 $bareRuleset.rules[2].Remove('parameters')
 $reviewWorkflows = @('.github/workflows/code-review.yml', '.github/workflows/code-review-auto-merge.yml')
+$dispatchYaml = "name: Code review`n`non:`n  pull_request_target:`n    types: [opened, reopened, ready_for_review, closed]`n  issue_comment:`n    types: [created]`n  workflow_dispatch:`n`npermissions: {}`n`njobs:`n  review:`n    runs-on: ubuntu-latest`n"
 $repos = @{
     fresh = New-Repo
     extendedAlready = New-Repo -Suite 'extended'
@@ -334,9 +347,18 @@ $repos = @{
     reviewedAllowed = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'review workflows' -Paths @('.github/workflows/*')))
     reviewedAllowedAll = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'every workflow' -SummaryOnly $true))
     reviewedOurs = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'Allow pull_request_target for code review' -Enforcement 'disabled'))
+    reviewedOursActive = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'Allow pull_request_target for code review' -Paths $reviewWorkflows))
+    reviewedOursEvaluate = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'Allow pull_request_target for code review' -Paths @('.github/workflows/code-review.yml') -Events @('pull_request_target', 'push') -Enforcement 'evaluate'))
+    reviewedOursRefused = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'Allow pull_request_target for code review' -Enforcement 'disabled')) -WriteFails @{ 'actions/policies/201' = 403 }
+    reviewedDispatch = New-Repo -Workflows $reviewWorkflows -WorkflowText @{ '.github/workflows/code-review.yml' = $dispatchYaml }
+    reviewedOursDispatch = New-Repo -Workflows $reviewWorkflows -WorkflowText @{ '.github/workflows/code-review.yml' = $dispatchYaml } -Policies @((New-EventPolicy 'Allow pull_request_target for code review' -Paths $reviewWorkflows))
+    reviewedTemplate = New-Repo -Workflows $reviewWorkflows -WorkflowText @{ '.github/workflows/code-review.yml' = (Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/code-review.yml')); '.github/workflows/code-review-auto-merge.yml' = (Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/code-review-auto-merge.yml')) }
+    reviewedNoContent = New-Repo -Workflows $reviewWorkflows -WorkflowText @{ '.github/workflows/code-review.yml' = $null }
     reviewedNarrow = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'one file' -Paths @('.github/workflows/code-review.yml')))
     reviewedInactive = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'review workflows' -Paths @('.github/workflows/*') -Enforcement 'evaluate'))
     reviewedOtherEvents = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'push only' -Events @('push')))
+    reviewedPullOnly = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'pull only' -Paths @('.github/workflows/*') -Events @('pull_request_target')))
+    reviewedPartial = New-Repo -Workflows $reviewWorkflows -WorkflowText @{ '.github/workflows/code-review.yml' = $dispatchYaml } -Policies @((New-EventPolicy 'review workflows' -Paths @('.github/workflows/*')))
     reviewedUnreadable = New-Repo -Workflows $reviewWorkflows -Policies 'fail:403'
     reviewedRefused = New-Repo -Workflows $reviewWorkflows -WriteFails @{ 'actions/policies' = 403 }
     workflowsUnreadable = New-Repo -Workflows @('fail:500')
@@ -345,9 +367,14 @@ $orgs = @{
     orgEmpty = @{ policies = @() }
     orgAllows = @{ policies = @((New-EventPolicy 'review everywhere' -Paths @('.github/workflows/*') -Repos @('~ALL'))) }
     orgOurs = @{ policies = @((New-EventPolicy 'Allow pull_request_target for code review' -Enforcement 'disabled')) }
+    orgOursActive = @{ policies = @((New-EventPolicy 'Allow pull_request_target for code review' -Paths @('.github/workflows/code-review.yml', '.github/workflows/code-review-auto-merge.yml') -Repos @('~ALL'))) }
+    orgOursNarrow = @{ policies = @((New-EventPolicy 'Allow pull_request_target for code review' -Events @('pull_request_target', 'push') -Repos @('some-repo'))) }
+    orgOursRefused = @{ policies = @((New-EventPolicy 'Allow pull_request_target for code review' -Enforcement 'disabled')); writeFail = 403 }
     orgOthers = @{ policies = @((New-EventPolicy 'some repositories' -Repos @('someone-else'))) }
     orgUnreadable = @{ policies = 'fail:403' }
+    orgBroken = @{ policies = 'fail:500' }
     orgRefuses = @{ policies = @(); writeFail = 403 }
+    orgPullOnly = @{ policies = @((New-EventPolicy 'pull only everywhere' -Paths @('.github/workflows/*') -Repos @('~ALL') -Events @('pull_request_target'))) }
     orgFreeRead = @{ policies = 'fail:403'; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgFreeWrite = @{ policies = @(); writeFail = 403; message = 'Upgrade to GitHub Team to enable this feature.' }
 }
@@ -701,7 +728,7 @@ try {
         @{ Args = @('-Repo', 'reviewedPrivate'); Says = "reviewedPrivate: ${label}: not needed (the repository isn't public" }
         @{ Args = @('-Repo', 'reviewedAllowed'); Says = "reviewedAllowed: ${label}: already set ('review workflows' allows it)" }
         @{ Args = @('-Repo', 'reviewedAllowedAll'); Says = "reviewedAllowedAll: ${label}: already set ('every workflow' allows it)" }
-        @{ Args = @('-Repo', 'reviewedOurs'); Says = "reviewedOurs: ${label}: left alone (already has '$policyName')" }
+        @{ Args = @('-Repo', 'reviewedOursActive'); Says = "reviewedOursActive: ${label}: already set ('$policyName' allows it)" }
         @{ Args = @('-Repo', 'reviewedUnreadable'); Says = "reviewedUnreadable: ${label}: not available (couldn't read its Actions policies: HTTP 403" }
         @{ Args = @('-Repo', 'workflowsUnreadable'); Says = "workflowsUnreadable: ${label}: not available (couldn't read .github/workflows/code-review.yml: HTTP 500" }
         @{ Args = @('-Repo', 'reviewed', '-Owner', 'orgAllows'); Says = "reviewed: ${label}: already set (the organization's 'review everywhere' allows it)" })
@@ -716,6 +743,81 @@ try {
     }
     $r = Invoke-Baseline @('-Repo', 'reviewedRefused')
     Check 'events: a refusal is reported as not available and does not fail the run' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match [regex]::Escape("reviewedRefused: ${label}: not available (HTTP 403: Stand-in refused actions/policies)")) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'reviewed', '-Owner', 'orgBroken')
+    Check 'events: an organization read that fails otherwise is named in the line, and the policy is still created' ($r.ExitCode -eq 0 -and @($r.Changes | Where-Object { $_ -like 'BODY POST repos/*/actions/policies' }).Count -eq 1 -and $r.Output -match [regex]::Escape("reviewed: ${label}: set ('$policyName') (the organization's policies weren't checked: couldn't read its Actions policies: HTTP 500: Stand-in refused to read them)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewed', '-Owner', 'orgBroken', '-WhatIf')
+    Check 'events: -WhatIf names a failed organization read too' ($r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("reviewed: ${label}: would set (create '$policyName' for") -and $r.Output -match [regex]::Escape("(the organization's policies weren't checked: couldn't read its Actions policies: HTTP 500")) $r.Output
+    foreach ($extra in @('-Repo', 'reviewed', '-Owner', 'orgUnreadable'), @('-Repo', 'reviewed')) {
+        $r = Invoke-Baseline $extra
+        Check "events: $($extra -join ' ') stays quiet about an organization read refused with 403 or 404" ($r.Output -match [regex]::Escape("reviewed: ${label}: set ('$policyName')") -and $r.Output -notmatch "weren't checked") $r.Output
+    }
+    $r = Invoke-Baseline @('-Repo', 'reviewedOurs')
+    $put = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: a disabled policy of that name is updated in place, and the run says why' ($put.Count -eq 1 -and $put[0].method -eq 'PUT' -and $put[0].path -eq 'repos/NCodeGroup/reviewedOurs/actions/policies/201' -and $put[0].body.enforcement -eq 'active' -and $put[0].body.name -eq $policyName -and (@($put[0].body.conditions.workflow_path.include) -join ',') -eq ($reviewWorkflows -join ',') -and (@($put[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment' -and $r.Output -match [regex]::Escape("reviewedOurs: ${label}: set (updated '$policyName', as its enforcement is disabled)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedOursEvaluate', '-WhatIf')
+    Check 'events: -WhatIf names every gap of a policy of that name and writes nothing' ($r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("reviewedOursEvaluate: ${label}: would set (update '$policyName', as its enforcement is evaluate; it doesn't allow issue_comment; it doesn't cover .github/workflows/code-review-auto-merge.yml, for .github/workflows/code-review.yml and .github/workflows/code-review-auto-merge.yml, allowing pull_request_target, issue_comment, push)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedOursEvaluate')
+    $put = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: the update keeps an event the policy already allowed' ($put.Count -eq 1 -and $put[0].method -eq 'PUT' -and (@($put[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment,push') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedOursRefused')
+    Check 'events: a refused update is reported with its gaps and does not fail the run' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match [regex]::Escape("reviewedOursRefused: ${label}: not available (couldn't update '$policyName', as its enforcement is disabled: HTTP 403: Stand-in refused actions/policies/201)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedDispatch')
+    $post = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: a trigger the project added to code-review.yml is allowed too' ($post.Count -eq 1 -and $post[0].method -eq 'POST' -and $post[0].path -eq 'repos/NCodeGroup/reviewedDispatch/actions/policies' -and (@($post[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment,workflow_dispatch') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedDispatch', '-WhatIf')
+    Check 'events: -WhatIf names every event it would allow' ($r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("reviewedDispatch: ${label}: would set (create '$policyName' for .github/workflows/code-review.yml and .github/workflows/code-review-auto-merge.yml, allowing pull_request_target, issue_comment, workflow_dispatch)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedOursDispatch')
+    $put = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: a policy of that name missing a trigger is updated with it' ($put.Count -eq 1 -and $put[0].method -eq 'PUT' -and $put[0].path -eq 'repos/NCodeGroup/reviewedOursDispatch/actions/policies/201' -and (@($put[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment,workflow_dispatch' -and $r.Output -match [regex]::Escape("reviewedOursDispatch: ${label}: set (updated '$policyName', as it doesn't allow workflow_dispatch)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedTemplate')
+    $post = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check "events: the template's own workflows add no event" ($post.Count -eq 1 -and $post[0].method -eq 'POST' -and (@($post[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedNoContent')
+    $post = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: a workflow file whose triggers could not be read is named in the line' ($r.ExitCode -eq 0 -and $post.Count -eq 1 -and (@($post[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment' -and $r.Output -match [regex]::Escape("reviewedNoContent: ${label}: set ('$policyName') (the on: key of .github/workflows/code-review.yml wasn't read: the contents API sent no base64 UTF-8 text, such as for a file over 1 MB)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewed')
+    Check 'events: files whose triggers were read add no note' ($r.Output -match [regex]::Escape("reviewed: ${label}: set ('$policyName')") -and $r.Output -notmatch "wasn't read") "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedPullOnly')
+    $post = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: another policy that allows only pull_request_target does not count' ($post.Count -eq 1 -and $post[0].method -eq 'POST' -and (@($post[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment' -and $r.Output -match [regex]::Escape("reviewedPullOnly: ${label}: set ('$policyName')")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedPartial')
+    $post = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: another policy missing a trigger the project added does not count' ($post.Count -eq 1 -and $post[0].method -eq 'POST' -and (@($post[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment,workflow_dispatch' -and $r.Output -match [regex]::Escape("reviewedPartial: ${label}: set ('$policyName')")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewed', '-Owner', 'orgPullOnly')
+    $post = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check "events: an organization policy that allows only pull_request_target does not count" ($post.Count -eq 1 -and $post[0].method -eq 'POST' -and $post[0].path -like 'repos/*/reviewed/actions/policies' -and $r.Output -match [regex]::Escape("reviewed: ${label}: set ('$policyName')")) "$($r.Changes -join '|') $($r.Output)"
+
+    # Get-ContentText and Get-WorkflowEvents are read from the script with the AST, as in section 3c.
+    $scriptAst = [Management.Automation.Language.Parser]::ParseFile($script, [ref]$null, [ref]$null)
+    foreach ($fnName in 'Get-ContentText', 'Get-WorkflowEvents') {
+        $fn = $scriptAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        if ($fn) { . ([scriptblock]::Create($fn.Extent.Text)) }
+    }
+    $triggerCases = [ordered]@{
+        'a block mapping, with comments, blank lines and the next top-level key' = @("name: x`n# on: push`non:`n  pull_request_target:`n    types: [opened]`n  # a comment`n`n  issue_comment:`n    types: [created]`n  workflow_dispatch:`n`npermissions: {}`njobs:`n  review:`n    runs-on: x`n", 'pull_request_target,issue_comment,workflow_dispatch')
+        'a list in brackets, with a quoted name' = @("on: [push, 'pull_request']`n", 'push,pull_request')
+        'one event, with a comment and CRLF line ends' = @("on: workflow_dispatch  # by hand`r`njobs: {}`r`n", 'workflow_dispatch')
+        'a block sequence' = @("on:`n  - push`n  - `"issue_comment`"`njobs:`n  a:`n    b: c`n", 'push,issue_comment')
+        "a quoted 'on' key" = @("'on':`n  issue_comment:`n", 'issue_comment')
+        'an on: key that is not top-level' = @("name: none`njobs:`n  x:`n    on: push`n", '')
+        'a mapping in braces gives none' = @("on: { push: {} }`n", '')
+        'a block sequence at the same indent as on:' = @("on:`n- push`n- 'workflow_dispatch'`njobs:`n  a: b`n", 'push,workflow_dispatch')
+        'a block mapping ends at a key at column 0' = @("on:`n  push:`n- x`njobs:`n  a: b`n", 'push')
+        "the template's code-review.yml" = @((Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/code-review.yml')), 'pull_request_target,issue_comment')
+        "the template's code-review-auto-merge.yml" = @((Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/code-review-auto-merge.yml')), 'pull_request_target')
+    }
+    foreach ($caseName in $triggerCases.Keys) {
+        $text = $triggerCases[$caseName][0]
+        $got = @(Get-WorkflowEvents $text) -join ','
+        Check "triggers: $caseName" ($got -eq $triggerCases[$caseName][1]) "got '$got'"
+    }
+    $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(('on: push' + "`n") * 20), [Base64FormattingOptions]::InsertLineBreaks)
+    Check 'content: base64 with line breaks is decoded' ((Get-ContentText (ConvertTo-Json -Compress -InputObject @{ type = 'file'; encoding = 'base64'; content = $b64 })) -eq (('on: push' + "`n") * 20)) 'the text differs'
+    Check 'content: an answer without content gives no text' ($null -eq (Get-ContentText '{"type":"file"}')) 'got text'
+    Check 'content: an answer that is not JSON gives no text' ($null -eq (Get-ContentText '<html>')) 'got text'
+    Check 'content: content that is not UTF-8 gives no text' ($null -eq (Get-ContentText (ConvertTo-Json -Compress -InputObject @{ type = 'file'; encoding = 'base64'; content = [Convert]::ToBase64String([byte[]](0xC3, 0x28)) }))) 'got text'
+    $e = Get-ContentText '{"type":"file","encoding":"base64","content":""}'
+    Check 'content: an empty file gives empty text' ($null -ne $e -and $e -eq '') 'got none'
 
     # 7f. -OrganizationPolicy: the same policy once, on every repository of the organization.
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgEmpty', '-WhatIf')
@@ -729,15 +831,24 @@ try {
     Check 'org: the policy covers every repository and the two files, and allows pull_request_target and issue_comment' ($policy.name -eq $policyName -and $policy.enforcement -eq 'active' -and (@($policy.conditions.repository_name.include) -join ',') -eq '~ALL' -and @($policy.conditions.repository_name.exclude).Count -eq 0 -and (@($policy.conditions.workflow_path.include) -join ',') -eq ($reviewWorkflows -join ',') -and $rules.Count -eq 1 -and $rules[0].type -eq 'restrict_action_events' -and (@($rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment') ($policy | ConvertTo-Json -Depth 8 -Compress)
     $cases = @(
         @{ Owner = 'orgAllows'; Exit = 0; Says = "orgAllows (organization): ${label}: already set ('review everywhere' allows it)" }
-        @{ Owner = 'orgOurs'; Exit = 0; Says = "orgOurs (organization): ${label}: left alone (already has '$policyName')" }
+        @{ Owner = 'orgOursActive'; Exit = 0; Says = "orgOursActive (organization): ${label}: already set ('$policyName' allows it)" }
         @{ Owner = 'orgUnreadable'; Exit = 1; Says = "orgUnreadable (organization): ${label}: not available (couldn't read its Actions policies: HTTP 403" }
         @{ Owner = 'NCodeGroup'; Exit = 1; Says = "NCodeGroup (organization): ${label}: not available (couldn't read its Actions policies: HTTP 404" })
     foreach ($case in $cases) {
         $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', $case.Owner)
         Check "org: $($case.Owner) exits $($case.Exit), writes nothing and says so" ($r.ExitCode -eq $case.Exit -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape($case.Says)) "$($r.Changes -join '|') $($r.Output)"
     }
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgOurs')
+    $put = @($r.Bodies | Where-Object { $_.path -like 'orgs/orgOurs/actions/policies/*' })
+    Check 'org: a disabled policy of that name is updated in place, and the run says why' ($r.ExitCode -eq 0 -and $put.Count -eq 1 -and $put[0].method -eq 'PUT' -and $put[0].body.enforcement -eq 'active' -and (@($put[0].body.conditions.repository_name.include) -join ',') -eq '~ALL' -and (@($put[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment' -and $r.Output -match [regex]::Escape("orgOurs (organization): ${label}: set (updated '$policyName', as its enforcement is disabled)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgOursNarrow', '-WhatIf')
+    Check 'org: -WhatIf names every gap of a policy of that name, prints the body and writes nothing' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("orgOursNarrow (organization): ${label}: would set (update '$policyName', as it doesn't allow issue_comment; it doesn't cover every repository: PUT orgs/orgOursNarrow/actions/policies/") -and $r.Output -match [regex]::Escape('"push"')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgOursRefused')
+    Check 'org: a refused update of a policy of that name is reported with its gaps and fails the run' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("orgOursRefused (organization): ${label}: not available (couldn't update '$policyName', as its enforcement is disabled: HTTP 403")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgOthers')
     Check 'org: a policy for some repositories does not count' ($r.ExitCode -eq 0 -and ($r.Changes -join '|') -eq 'BODY POST orgs/orgOthers/actions/policies') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgPullOnly', '-WhatIf')
+    Check 'org: an organization policy that allows only pull_request_target does not count' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("orgPullOnly (organization): ${label}: would set (POST orgs/orgPullOnly/actions/policies with this body)")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgRefuses')
     Check 'org: a refusal is reported and fails the run' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("orgRefuses (organization): ${label}: not available (HTTP 403") -and $r.Output -notmatch 'GitHub Team') $r.Output
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgUnreadable')
