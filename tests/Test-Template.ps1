@@ -669,7 +669,7 @@ $ownSecurity = [regex]::Matches($ownDependabot, '(?m)^      [\w-]+-security:\r?\
 Check 'repository: every entry in .github/dependabot.yml waits a three-day cooldown and gives security updates a group of its own' ($ownEcosystems -gt 0 -and $ownCooldowns -eq $ownEcosystems -and $ownGrouped -eq $ownEcosystems -and $ownSecurity -eq $ownEcosystems) $ownDependabot
 $excludeCheck = 'import sys, yaml, jinja2; c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); e = jinja2.Environment(); bad = [p for p in c["_exclude"] if e.from_string(p).render().strip()]; print("; ".join(bad)); sys.exit(1 if bad else 0)'
 $excludeOutput = uv run --quiet --no-project --with $pyyamlPin --with $jinja2Pin python -c $excludeCheck (Join-Path $repoRoot 'copier.yml') 2>&1 | Out-String
-Check 'copier.yml: _exclude patterns exclude nothing when workflow_tools is missing' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()
+Check 'copier.yml: _exclude patterns exclude nothing without the answers' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()
 $executorChecks = @(
     @{ Path = 'template\.github\agents\copilot-implementer.agent.md'; Text = "model: 'Claude Sonnet 5.5 (copilot)'" }
     @{ Path = 'template\.github\agents\plan-executor.agent.md'; Text = 'model: claude-sonnet-5.5' }

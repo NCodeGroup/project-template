@@ -46,7 +46,8 @@ _merged_files:
   - global.json
   - nuget.config
 
-# The workflow files of tools the project doesn't use; an empty pattern excludes nothing.
+# The files a project doesn't get: the workflow files of tools it doesn't use, and each file that depends on an answer. A template
+# file's name never holds a condition, so every path checks out on any OS. An empty line excludes nothing; an entry can list several paths, one per line.
 # Each pattern reads its answer through a default or an `is defined` test, because an update renders the old version's files with these patterns before the project has that answer.
 _exclude:
   - "{% if (code_review is defined and not code_review) or (git_host is defined and git_host != 'github') %}.github/workflows/code-review.yml{% endif %}"
