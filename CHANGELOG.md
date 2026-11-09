@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.76.1] - 2026-11-09
+
+### Added
+
+- `.template/install-nvs.sh`, for a project that answers `uses_node`, is the one nvs installer outside Windows: it clones nvs at the v1.7.1 tag and checks its commit, does nothing when nvs is already there, and edits no profile. `Initialize-Nvs.ps1`, GitLab CI and `.claude/hooks/ensure-nvs.sh` run it, in place of the three pinned clones and the unpinned install command they carried ([#307](https://github.com/NCodeGroup/project-template/issues/307), [ADR-0200](template/docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md)).
+
+### Changed
+
+- `.template/Use-Node.ps1`, the `prelude` of a project that uses Node.js, and `.template/use-node.sh` check the `node` on `PATH` first and accept it when `node --version`, without its leading `v`, is the version `.node-version` names or starts with it and a dot, so `26` accepts 26.1.0 and `26.1` accepts 26.1.4 but not 26.10.0. Only otherwise do they select it through nvs, and when that fails too they stop with one message naming `Initialize-Nvs.ps1`. `Initialize-Nvs.ps1` installs nvs through `install-nvs.sh` on Linux and macOS, and on Windows names `winget install --id jasongin.nvs -e --version 1.7.1`. `.claude/hooks/ensure-nvs.sh` installs nvs only when the session's Node.js is another release, and GitLab CI only when the job image's is. ADR-0200 and the Node.js rules say that every environment installs the `.node-version` release its own way and the selector checks it ([#307](https://github.com/NCodeGroup/project-template/issues/307), [ADR-0200](template/docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md)).
+
+### Fixed
+
+- The prelude no longer stops every Done-when command and gate in Copilot's cloud agent, which installs Node.js with `actions/setup-node` and has no nvs: `Use-Node.ps1` threw "nvs is not installed" even when the `.node-version` release was on `PATH`. `Use-Node.ps1` reports an empty `.node-version` as such instead of "You cannot call a method on a null-valued expression", and `use-node.sh` no longer ends a `set -eo pipefail` shell, such as GitHub Actions' bash, before it prints why it stopped. `tests/Test-NodeSetup.ps1` runs both selectors against stub nvs and node binaries with a `PATH` of the system folders alone ([#307](https://github.com/NCodeGroup/project-template/issues/307)).
+
 ## [0.76.0] - 2026-11-09
 
 ### Added
@@ -1232,7 +1246,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.76.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.76.1...HEAD
+[0.76.1]: https://github.com/NCodeGroup/project-template/compare/v0.76.0...v0.76.1
 [0.76.0]: https://github.com/NCodeGroup/project-template/compare/v0.75.6...v0.76.0
 [0.75.6]: https://github.com/NCodeGroup/project-template/compare/v0.75.5...v0.75.6
 [0.75.5]: https://github.com/NCodeGroup/project-template/compare/v0.75.4...v0.75.5
