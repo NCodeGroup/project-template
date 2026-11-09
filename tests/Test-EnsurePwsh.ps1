@@ -4,11 +4,11 @@
 
 .DESCRIPTION
     Checks template\.claude\hooks\ensure-pwsh.sh, which .claude\hooks\session-start.sh runs in a cloud session, and this
-    repository's own copy in .claude\hooks\. Checks that both copies are identical and parse as bash, and, with bash, that
-    the script exits 0 and prints nothing outside a
-    cloud session and when pwsh is already on the PATH, and that on a system it has no pinned package for it prints one line
-    and still exits 0. The install itself downloads a package from Microsoft, so it is not run here. Prints PASS or FAIL per
-    check and exits 1 on any failure; the bash checks are skipped, with a SKIP line, when bash is not on the PATH.
+    repository's own copy in .claude\hooks\. Checks that both copies are identical and parse as bash, and, with bash,
+    that the script exits 0 and prints nothing outside a cloud session and when pwsh is already on the PATH, and that
+    on a system it has no pinned package for it prints one line and still exits 0. The install itself downloads a
+    package from Microsoft, so it is not run here. Prints PASS or FAIL per check and exits 1 on any failure; the bash
+    checks are skipped, with a SKIP line, when bash is not on the PATH.
 
 .EXAMPLE
     .\tests\Test-EnsurePwsh.ps1
