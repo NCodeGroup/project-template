@@ -1,24 +1,28 @@
 <#
 .SYNOPSIS
-    Test template\.template\Publish-Release.ps1, which .github\workflows\release.yml runs to tag and publish a release when it merges.
+    Test template\.template\Publish-Release.ps1, which .github\workflows\release.yml runs to tag and publish a release
+    when it merges.
 
 .DESCRIPTION
-    Runs the script in a clone of a temporary bare repository, with a stand-in for gh that keeps each release it publishes
-    as a file. Checks that it tags the commit with the changelog's newest version and publishes that version's section as
-    the release notes; that a second run changes nothing; that a run after a tag without a release publishes only the
-    release; that it tags nothing when the remote has a newer version tag, publishes no release with release: tag, and
-    does nothing with release: none; that it drops the v when the remote's version tags have
-    none; that a release lookup failing other than with a 404 stops it with gh's message; and that -WhatIf pushes and
-    publishes nothing. Also checks that the version comes from the merged pull request's Release: line: with pre-release:
+    Runs the script in a clone of a temporary bare repository, with a stand-in for gh that keeps each release it
+    publishes as a file. Checks that it tags the commit with the changelog's newest version and publishes that version's
+    section as the release notes; that a second run changes nothing; that a run after a tag without a release publishes
+    only the release; that it tags nothing when the remote has a newer version tag, publishes no release with release:
+    tag, and does nothing with release: none; that it drops the v when the remote's version tags have none; that a
+    release lookup failing other than with a 404 stops it with gh's message; and that -WhatIf pushes and publishes
+    nothing. Also checks that the version comes from the merged pull request's Release: line: with pre-release:
     untracked and no release heading it tags the merged commit with that version and publishes the [Unreleased] section,
     it does nothing for another commit's pull request or a description without the line, it accepts a line that agrees
     with the changelog and fails on one that disagrees, and it stops with gh's message when the pull request lookup
-    fails. The stand-in also accepts the call that starts publish.yml. Also checks that it starts publish.yml once, on the tag, after
-    publishing the release when publish.yml has a workflow_dispatch trigger, starts nothing on a second run or without a
-    publish.yml, and fails naming the trigger when publish.yml has none, and fails naming publish.yml and the tag when starting it fails. Also checks that with
-    pre-release: untracked the release notes stop at the link reference definitions and at the next ## heading. Also checks that release.yml runs the script on a push to main
-    that changes CHANGELOG.md, with contents: write and the merged commit. Also checks that -Policy prints the release policy and does nothing else, and that tag-release.yml is named Tag and publish release, reads the policy in a read-only job and runs its write job only for release: tag or tag+release. Prints PASS or FAIL per check and exits 1 on
-    any failure.
+    fails. The stand-in also accepts the call that starts publish.yml. Also checks that it starts publish.yml once, on
+    the tag, after publishing the release when publish.yml has a workflow_dispatch trigger, starts nothing on a second
+    run or without a publish.yml, and fails naming the trigger when publish.yml has none, and fails naming publish.yml
+    and the tag when starting it fails. Also checks that with pre-release: untracked the release notes stop at the link
+    reference definitions and at the next ## heading. Also checks that release.yml runs the script on a push to main
+    that changes CHANGELOG.md, with contents: write and the merged commit. Also checks that -Policy prints the release
+    policy and does nothing else, and that tag-release.yml is named Tag and publish release, reads the policy in a
+    read-only job and runs its write job only for release: tag or tag+release. Prints PASS or FAIL per check and exits 1
+    on any failure.
 
 .EXAMPLE
     .\tests\Test-PublishRelease.ps1
