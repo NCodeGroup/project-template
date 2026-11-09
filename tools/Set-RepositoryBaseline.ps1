@@ -24,7 +24,13 @@
       - turns on "Allow auto-merge" where it is off, so the template's code-review-auto-merge.yml workflow can turn on
         auto-merge for a Dependabot pull request that only moves the NCode Review pin. Allowing it merges nothing by
         itself: a pull request merges itself only once someone, or that workflow, turns it on, and still waits for what
-        the ruleset requires and merges only as it allows.
+        the ruleset requires and merges only as it allows;
+      - for a public repository that has .github/workflows/code-review.yml or code-review-auto-merge.yml on its default
+        branch, creates the Actions event policy "Allow pull_request_target for code review", which allows
+        pull_request_target and issue_comment for those two files alone, unless a policy of that name exists or an
+        active one, of the repository or of its organization when this account may read those, already allows the event
+        for them. GitHub's default policy blocks pull_request_target on a public repository without one from
+        December 2, 2026.
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
@@ -110,6 +116,7 @@ $excludedChecks = [ordered]@{
 # The Actions event policy that lets the template's code-review workflows start on pull_request_target (Set-EventPolicy).
 # An event rule allows only the events it lists, for the workflows it targets: these two files and the events they use.
 $eventPolicyName = 'Allow pull_request_target for code review'
+$eventPolicyLabel = 'allow pull_request_target for the code-review workflows'
 $codeReviewWorkflows = @('.github/workflows/code-review.yml', '.github/workflows/code-review-auto-merge.yml')
 $codeReviewEvents = @('pull_request_target', 'issue_comment')
 
@@ -237,6 +244,7 @@ function Set-Baseline([string]$Name) {
     Set-TagRuleset $Name $rulesets
     Set-SecuritySettings $Name $info
     Set-AutoMerge $Name $info
+    Set-EventPolicy $Name $info
 }
 
 # Reads CodeQL's default setup. Status is the HTTP status, or $null for no response; Answer the parsed answer, or $null;
@@ -553,6 +561,48 @@ function Set-SecuritySettings([string]$Name, $Info) {
 function Set-AutoMerge([string]$Name, $Info) {
     $state = if ($null -eq $Info.allow_auto_merge) { "couldn't read it: the repository's answer doesn't include it" } else { [bool]$Info.allow_auto_merge }
     Set-SecuritySetting $Name 'allow auto-merge' $state PATCH "repos/$Owner/$Name" @{ allow_auto_merge = $true }
+}
+
+# GitHub's default Actions policy blocks pull_request_target from December 2, 2026 on a public repository without an event
+# policy allowing it. The two code-review workflows run from the default branch and check out nothing, so they keep the
+# event; every other workflow keeps the default.
+function Set-EventPolicy {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$Name, $Info)
+    $prefix = "${Name}: ${eventPolicyLabel}: "
+    if ($Info.private) {
+        Write-Host "${prefix}not needed (the repository isn't public, and GitHub's default policy blocks the event only on a public one)"
+        return
+    }
+    $present = @(foreach ($file in $codeReviewWorkflows) {
+        $read = Invoke-HostApi gh "repos/$Owner/$Name/contents/${file}?ref=$($Info.default_branch)"
+        if ($read.Status -eq 200) { $file; continue }
+        if ($read.Status -eq 404) { continue }
+        Write-Host "${prefix}not available (couldn't read ${file}: $(Get-FailureReason $read))"
+        return
+    })
+    if (-not $present.Count) { Write-Host "${prefix}not needed (it has no code-review workflow)"; return }
+
+    $own = Read-EventPolicies "repos/$Owner/$Name/actions/policies"
+    if ($own.Why) { Write-Host "${prefix}not available ($($own.Why))"; return }
+    if (@($own.Policies | Where-Object { $_.name -eq $eventPolicyName }).Count) {
+        Write-Host "${prefix}left alone (already has '$eventPolicyName')"
+        return
+    }
+    $allowing = @($own.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present })
+    if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)"; return }
+
+    $org = Read-EventPolicies "orgs/$Owner/actions/policies"
+    $allowing = @($org.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present $Name })
+    if ($allowing.Count) { Write-Host "${prefix}already set (the organization's '$($allowing[0].name)' allows it)"; return }
+
+    if (-not $PSCmdlet.ShouldProcess($Name, "create Actions policy '$eventPolicyName'")) {
+        Write-Host "${prefix}would set (create '$eventPolicyName' for $($codeReviewWorkflows -join ' and '), allowing $($codeReviewEvents -join ' and '))"
+        return
+    }
+    $result = Invoke-HostWrite POST "repos/$Owner/$Name/actions/policies" (New-EventPolicyBody)
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')" }
+    else { Write-Host "${prefix}not available ($(Get-FailureReason $result))" }
 }
 
 foreach ($name in Get-Targets) {
