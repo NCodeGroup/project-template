@@ -27,10 +27,12 @@
         the ruleset requires and merges only as it allows;
       - for a public repository that has .github/workflows/code-review.yml or code-review-auto-merge.yml on its default
         branch, creates the Actions event policy "Allow pull_request_target for code review", which allows
-        pull_request_target and issue_comment for those two files alone, unless a policy of that name exists or an
-        active one, of the repository or of its organization when this account may read those, already allows the event
-        for them. GitHub's default policy blocks pull_request_target on a public repository without one from
-        December 2, 2026.
+        pull_request_target, issue_comment and every other event the two files' top-level on: keys name, for those two
+        files alone, unless an active policy, of the repository or of its organization when this account may read those,
+        already allows the event for them. A policy of that name is updated in place, keeping the other events it
+        allows, when it isn't active, misses one of those events or doesn't cover both files, and left alone otherwise.
+        An organization read that fails other than with HTTP 403 or 404 is named in the policy's line. GitHub's
+        default policy blocks pull_request_target on a public repository without one from December 2, 2026.
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect

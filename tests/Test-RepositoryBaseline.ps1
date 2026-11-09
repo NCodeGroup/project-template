@@ -27,10 +27,14 @@
     that isn't public, and reports a setting the API won't read or refuses without failing the run; that it allows
     auto-merge, with a PATCH that changes nothing else, where it is off, on a repository whose default branch it leaves
     alone too, and reports an answer without it or a refusal; that a public repository with either code-review workflow
-    gets, last, an active Actions event policy allowing pull_request_target and issue_comment for those two files alone,
-    which -WhatIf shows, unless it isn't public, has neither file, or has a policy of that name or an active one, its own
-    or its organization's, that already allows the event for its files, read by its id when the list leaves its rules
-    out, and that a file or policy it can't read, or a refusal, is reported without failing the run; that
+    gets, last, an active Actions event policy for those two files alone allowing pull_request_target, issue_comment
+    and every other event their top-level on: keys name, which Get-WorkflowEvents reads in each form on: takes, which
+    -WhatIf shows, unless it isn't public, has neither file, or has an active policy, its own or its organization's,
+    that already allows the event for its files, read by its id when the list leaves its rules out; that a policy of
+    that name is updated in place, keeping its other events, when it isn't active, misses an event or doesn't cover
+    both files, says why, also with -WhatIf and when refused, and is left alone when it does its job; that a file or
+    policy it can't read, or a refusal, is reported without failing the run, and an organization read that fails
+    other than with HTTP 403 or 404 is named in the policy's line; that
     -OrganizationPolicy posts the same policy, on every repository, to the organization alone, prints its body with
     -WhatIf, leaves alone one of that name or one that already covers every repository, exits 1 when it can't read the
     policies or is refused, says for a refusal that asks to upgrade the organization's plan that it needs GitHub Team or
