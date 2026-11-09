@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.75.6] - 2026-11-09
+
+### Fixed
+
+- `.template/Use-Node.ps1`, the `prelude` a new Node.js project's `AGENTS.md` names, and `.template/use-node.sh` no longer fail where nvs isn't installed, as in GitHub CI, Copilot's cloud agent and a Claude Code cloud session, which stopped every Done-when command and gate there: they accept the `node` already on `PATH` when `node --version`, without its leading `v`, is the version `.node-version` names or starts with it and a dot, so `26` accepts 26.1.0 and `26.1` accepts 26.1.4 but not 26.10.0, and fail with the nvs install command only when `node` is missing or another version. `tests/Test-NodeSetup.ps1` checks both with a stand-in `node` on `PATH` and no nvs home, runs its checks with a `PATH` of the system folders alone, so a PC's own nvs or node no longer fails them, and runs its `use-node.sh` checks only on Linux and macOS, as in CI ([#307](https://github.com/NCodeGroup/project-template/issues/307), [ADR-0200](template/docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md)).
+
 ## [0.75.5] - 2026-11-09
 
 ### Fixed
@@ -1220,7 +1226,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.5...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.6...HEAD
+[0.75.6]: https://github.com/NCodeGroup/project-template/compare/v0.75.5...v0.75.6
 [0.75.5]: https://github.com/NCodeGroup/project-template/compare/v0.75.4...v0.75.5
 [0.75.4]: https://github.com/NCodeGroup/project-template/compare/v0.75.3...v0.75.4
 [0.75.3]: https://github.com/NCodeGroup/project-template/compare/v0.75.2...v0.75.3
