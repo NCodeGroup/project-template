@@ -6,11 +6,13 @@
     Checks .claude\hooks\session-start.sh, which the template's and this repository's .claude\settings.json run on
     SessionStart: that both copies are identical, LF and parse as bash, that both settings files run it from
     $CLAUDE_PROJECT_DIR with a timeout of at least 600 seconds, and, with bash, that it does nothing outside a cloud
-    session, and in one runs every ensure-*.sh beside it in name order, goes on past one that fails and names it, stops
-    one that runs past ENSURE_SCRIPT_TIMEOUT seconds, skips other files, and exits 0. Then checks template\.claude\hooks\ensure-nvs.sh with a stub nvs home: that it does nothing
-    outside a cloud session or without a .node-version, leaves an nvs home without nvs.sh alone, links the .node-version
-    Node.js, adding it first when linking fails, writes NVS_HOME and the PATH to CLAUDE_ENV_FILE, and exits 0 with one
-    line when nvs fails. Cloning nvs needs the network, so it is not run here. Prints PASS, FAIL or SKIP per check and
+    session, and in one runs every ensure-*.sh beside it in name order, goes on past one that fails and names it,
+    stops one that runs past ENSURE_SCRIPT_TIMEOUT seconds, skips other files, and exits 0. Then checks
+    template\.claude\hooks\ensure-nvs.sh with stub nvs, install-nvs.sh and node files: that it does nothing outside
+    a cloud session or without a .node-version, accepts the image's matching node without installing nvs, installs
+    nvs and selects the .node-version Node.js through use-node.sh when the node on PATH is another release, appends
+    the node's folder to CLAUDE_ENV_FILE, uses an nvs already there, and exits 0 with one line when installing or
+    selecting fails. Cloning nvs needs the network, so it is not run here. Prints PASS, FAIL or SKIP per check and
     exits 1 on any failure.
 
 .EXAMPLE
@@ -104,61 +106,96 @@ if (-not $bash) {
         & $bash.Source -n $nvsScript
         Check 'ensure-nvs.sh parses as bash' ($LASTEXITCODE -eq 0)
 
-        $project = Join-Path $work 'project'
-        New-Item -ItemType Directory -Force $project | Out-Null
-        [IO.File]::WriteAllText((Join-Path $project '.node-version'), "22`n")
-        $noVersion = Join-Path $work 'noversion'
-        New-Item -ItemType Directory -Force $noVersion | Out-Null
-        $nvsEmpty = Join-Path $work 'nvs-empty'
-        New-Item -ItemType Directory -Force $nvsEmpty | Out-Null
-        $nvsNone = Join-Path $work 'nvs-none'
+        $nvsSource = Join-Path $work 'nvs-source'
+        New-Item -ItemType Directory -Force (Join-Path $nvsSource 'bin') | Out-Null
+        $stubNvs = @'
+nvs() {
+    echo "$*" >> "$NVS_HOME/calls"
+    case "$1" in
+        use) [ -f "$NVS_HOME/added" ] || return 1; PATH="$NVS_HOME/bin:$PATH" ;;
+        add) [ -z "$NVS_STUB_FAIL" ] || return 1; touch "$NVS_HOME/added" ;;
+    esac
+}
+'@
+        [IO.File]::WriteAllText((Join-Path $nvsSource 'nvs.sh'), $stubNvs.Replace("`r`n", "`n") + "`n")
+        $sourceNode = Join-Path $nvsSource 'bin/node'
+        [IO.File]::WriteAllText($sourceNode, "#!/bin/sh`necho v22.1.0`n")
+        & chmod +x $sourceNode
 
-        function New-StubNvs([string]$Name, [switch]$Added) {
-            $stubHome = Join-Path $work $Name
-            $nodeDir = Join-Path $stubHome 'default/bin'
-            New-Item -ItemType Directory -Force $nodeDir | Out-Null
-            $stub = 'nvs() { echo "$*" >> "$NVS_HOME/calls"; case "$1" in link) [ -f "$NVS_HOME/added" ] ;; add) [ -z "$NVS_STUB_FAIL" ] && touch "$NVS_HOME/added" ;; esac; }'
-            [IO.File]::WriteAllText((Join-Path $stubHome 'nvs.sh'), "$stub`ntrue`n")
-            $node = Join-Path $nodeDir 'node'
-            [IO.File]::WriteAllText($node, "#!/bin/sh`necho v22.1.0`n")
-            & chmod +x $node
-            if ($Added) { [IO.File]::WriteAllText((Join-Path $stubHome 'added'), '') }
-            $stubHome
+        function New-NvsCase([string]$Name, [string]$Have) {
+            $case = Join-Path $work $Name
+            $templateFolder = Join-Path $case 'project/.template'
+            New-Item -ItemType Directory -Force $templateFolder | Out-Null
+            [IO.File]::WriteAllText((Join-Path $case 'project/.node-version'), "22`n")
+            Copy-Item -LiteralPath (Join-Path $repoRoot 'template/.template/use-node.sh') -Destination $templateFolder
+            $install = "touch `"`$NVS_HOME.install-ran`"`n" +
+                "if [ -n `"`$STUB_INSTALL_FAIL`" ]; then echo `"install-nvs: stub failure`" >&2; exit 1; fi`n" +
+                "cp -R `"`$STUB_NVS_SOURCE`" `"`$NVS_HOME`"`n"
+            [IO.File]::WriteAllText((Join-Path $templateFolder 'install-nvs.sh'), $install)
+            if ($Have) {
+                $stubDir = Join-Path $case 'stub'
+                New-Item -ItemType Directory -Force $stubDir | Out-Null
+                $node = Join-Path $stubDir 'node'
+                [IO.File]::WriteAllText($node, "#!/bin/sh`necho $Have`n")
+                & chmod +x $node
+            }
+            $case
         }
 
-        function Invoke-Nvs([string]$Remote, [string]$ProjectDir, [string]$NvsHome, [string]$EnvFile, [string]$StubFail) {
+        function Invoke-Ensure([string]$Case, [string]$Remote = 'true', [string]$InstallFail, [string]$NvsFail) {
+            $path = if (Test-Path -LiteralPath (Join-Path $Case 'stub')) { "$Case/stub:/usr/bin:/bin" } else { '/usr/bin:/bin' }
             Invoke-Hook @{
-                CLAUDE_CODE_REMOTE = $Remote
-                CLAUDE_PROJECT_DIR = $ProjectDir
-                NVS_HOME = $NvsHome
-                CLAUDE_ENV_FILE = $EnvFile
-                NVS_STUB_FAIL = $StubFail
+                CLAUDE_CODE_REMOTE = $(if ($Remote) { $Remote } else { $null })
+                CLAUDE_PROJECT_DIR = Join-Path $Case 'project'
+                NVS_HOME = Join-Path $Case 'nvs'
+                CLAUDE_ENV_FILE = Join-Path $Case 'env'
+                STUB_NVS_SOURCE = $nvsSource
+                STUB_INSTALL_FAIL = $(if ($InstallFail) { $InstallFail } else { $null })
+                NVS_STUB_FAIL = $(if ($NvsFail) { $NvsFail } else { $null })
+                PATH = $path
             } $nvsScript
         }
 
-        $r = Invoke-Nvs $null $project $nvsNone $null $null
-        Check 'ensure-nvs.sh outside a cloud session exits 0, prints nothing and clones nothing' ($r.Code -eq 0 -and $r.Output -eq '' -and -not (Test-Path $nvsNone)) "exit $($r.Code): $($r.Output)"
-        $r = Invoke-Nvs 'true' $noVersion $nvsNone $null $null
-        Check 'ensure-nvs.sh without a .node-version exits 0, prints nothing and clones nothing' ($r.Code -eq 0 -and $r.Output -eq '' -and -not (Test-Path $nvsNone)) "exit $($r.Code): $($r.Output)"
-        $r = Invoke-Nvs 'true' $project $nvsEmpty $null $null
-        Check 'ensure-nvs.sh leaves an nvs home without nvs.sh alone' ($r.Code -eq 0 -and $r.Output -match '^ensure-nvs: [^\n]*exists without nvs\.sh[^\n]*$' -and @(Get-ChildItem -LiteralPath $nvsEmpty -Force).Count -eq 0) "exit $($r.Code): $($r.Output)"
+        function Read-CaseFile([string]$Path) {
+            if (Test-Path -LiteralPath $Path) { [IO.File]::ReadAllText($Path) } else { '' }
+        }
 
-        $linked = New-StubNvs 'nvs-linked' -Added
-        $envFile = Join-Path $work 'env-linked'
-        $r = Invoke-Nvs 'true' $project $linked $envFile $null
-        $calls = [IO.File]::ReadAllText((Join-Path $linked 'calls')).Trim()
-        Check 'ensure-nvs.sh links an installed Node.js without adding it' ($r.Code -eq 0 -and $calls -eq 'link 22' -and $r.Output -eq 'ensure-nvs: Node.js v22.1.0 from .node-version is linked through nvs.') "exit $($r.Code): $($r.Output) calls: $calls"
-        $envText = if (Test-Path -LiteralPath $envFile) { [IO.File]::ReadAllText($envFile) } else { '' }
-        Check 'ensure-nvs.sh puts the linked Node.js first on PATH through CLAUDE_ENV_FILE' ($envText -eq ('export NVS_HOME="{0}"' -f $linked) + "`n" + ('export PATH="{0}/default/bin:$PATH"' -f $linked) + "`n") $envText
+        $case = New-NvsCase 'outside' 'v24.0.0'
+        $r = Invoke-Ensure $case -Remote ''
+        Check 'ensure-nvs.sh outside a cloud session exits 0, prints nothing and installs nothing' ($r.Code -eq 0 -and $r.Output -eq '' -and -not (Test-Path "$case/nvs.install-ran") -and -not (Test-Path "$case/env")) "exit $($r.Code): $($r.Output)"
 
-        $fresh = New-StubNvs 'nvs-new'
-        $r = Invoke-Nvs 'true' $project $fresh $null $null
-        $calls = @([IO.File]::ReadAllText((Join-Path $fresh 'calls')).Trim() -split "`n")
-        Check 'ensure-nvs.sh adds the .node-version Node.js when linking fails, then links it' ($r.Code -eq 0 -and ($calls -join '|') -eq 'link 22|add 22|link 22') "exit $($r.Code): $($r.Output) calls: $($calls -join '|')"
+        $case = New-NvsCase 'noversion' 'v24.0.0'
+        [IO.File]::WriteAllText((Join-Path $case 'project/.node-version'), '')
+        $r = Invoke-Ensure $case
+        Check 'ensure-nvs.sh without a .node-version exits 0, prints nothing and installs nothing' ($r.Code -eq 0 -and $r.Output -eq '' -and -not (Test-Path "$case/nvs.install-ran") -and -not (Test-Path "$case/env")) "exit $($r.Code): $($r.Output)"
 
-        $failing = New-StubNvs 'nvs-fail'
-        $r = Invoke-Nvs 'true' $project $failing $null '1'
-        Check 'ensure-nvs.sh exits 0 with one line when nvs cannot install Node.js' ($r.Code -eq 0 -and $r.Output -eq 'ensure-nvs: nvs could not install Node.js 22.') "exit $($r.Code): $($r.Output)"
+        $case = New-NvsCase 'matches' 'v22.4.0'
+        $r = Invoke-Ensure $case
+        Check "ensure-nvs.sh accepts the image's matching node without installing nvs" ($r.Code -eq 0 -and $r.Output -eq '' -and -not (Test-Path "$case/nvs.install-ran")) "exit $($r.Code): $($r.Output)"
+        $envText = Read-CaseFile "$case/env"
+        Check "ensure-nvs.sh puts the matching node's folder on PATH through CLAUDE_ENV_FILE" ($envText -eq ('export PATH="{0}/stub:$PATH"' -f $case) + "`n") $envText
+
+        $case = New-NvsCase 'installs' 'v24.0.0'
+        $r = Invoke-Ensure $case
+        $calls = (Read-CaseFile "$case/nvs/calls").Trim().Replace("`n", '|')
+        $envText = Read-CaseFile "$case/env"
+        Check 'ensure-nvs.sh installs nvs and selects the .node-version Node.js when the node on PATH is another release' ($r.Code -eq 0 -and $r.Output -eq 'ensure-nvs: Node.js v22.1.0 from .node-version is on PATH through nvs.' -and $calls -eq 'use 22|add 22|use 22' -and $envText -eq ('export PATH="{0}/nvs/bin:$PATH"' -f $case) + "`n") "exit $($r.Code): $($r.Output) calls: $calls env: $envText"
+
+        $case = New-NvsCase 'install-fails' 'v24.0.0'
+        $r = Invoke-Ensure $case -InstallFail '1'
+        Check "ensure-nvs.sh exits 0 with install-nvs.sh's line when it cannot install nvs" ($r.Code -eq 0 -and $r.Output -eq 'install-nvs: stub failure' -and -not (Test-Path "$case/env")) "exit $($r.Code): $($r.Output)"
+
+        $case = New-NvsCase 'nvs-fails' 'v24.0.0'
+        $r = Invoke-Ensure $case -NvsFail '1'
+        Check 'ensure-nvs.sh exits 0 with one line when nvs cannot select Node.js' ($r.Code -eq 0 -and $r.Output -eq 'ensure-nvs: nvs could not put the .node-version Node.js on PATH.') "exit $($r.Code): $($r.Output)"
+
+        $case = New-NvsCase 'resumed' 'v24.0.0'
+        & cp -R $nvsSource "$case/nvs"
+        [IO.File]::WriteAllText((Join-Path $case 'nvs/added'), '')
+        $r = Invoke-Ensure $case
+        $calls = (Read-CaseFile "$case/nvs/calls").Trim().Replace("`n", '|')
+        $envText = Read-CaseFile "$case/env"
+        Check 'ensure-nvs.sh uses an nvs already there without installing it' ($r.Code -eq 0 -and $r.Output -eq '' -and -not (Test-Path "$case/nvs.install-ran") -and $calls -eq 'use 22' -and $envText -eq ('export PATH="{0}/nvs/bin:$PATH"' -f $case) + "`n") "exit $($r.Code): $($r.Output) calls: $calls env: $envText"
     } finally {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
     }
