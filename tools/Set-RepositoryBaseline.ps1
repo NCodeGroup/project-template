@@ -29,7 +29,7 @@
         branch, creates the Actions event policy "Allow pull_request_target for code review", which allows
         pull_request_target, issue_comment and every other event the two files' top-level on: keys name, for those two
         files alone, unless an active policy, of the repository or of its organization when this account may read those,
-        already allows the event for them. A policy of that name is updated in place, keeping the other events it
+        already allows each of those events for them. A policy of that name is updated in place, keeping the other events it
         allows, when it isn't active, misses one of those events or doesn't cover both files, and left alone otherwise.
         An organization read that fails other than with HTTP 403 or 404 is named in the policy's line. GitHub's
         default policy blocks pull_request_target on a public repository without one from December 2, 2026.
@@ -80,7 +80,7 @@
     -OrganizationPolicy, with -Owner alone, creates the same policy once for the organization, on every repository
     (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
     auth refresh -h github.com -s admin:org). It reads the organization's policies first and leaves alone one of that
-    name or an active one that already allows the event for both files on every repository; -WhatIf prints the body it
+    name or an active one that already allows pull_request_target and issue_comment for both files on every repository; -WhatIf prints the body it
     would post. It exits 1 when it can't read the policies or the API refuses the policy.
     It needs GitHub Team or above, the plans GitHub offers organization event policies on: when GitHub refuses them for
     the organization's plan, with an answer that asks to upgrade, such as "Upgrade to GitHub Team to enable this
@@ -557,12 +557,12 @@ function Test-ConditionCovers($Condition, [string]$Value) {
     [bool](@($include | Where-Object { $_ -eq '~ALL' -or $Value -like $_ }).Count -and -not @($exclude | Where-Object { $Value -like $_ }).Count)
 }
 
-# Whether an Actions policy is active and allows pull_request_target for each workflow file in $Paths and, when $Repo is
-# set, for that repository. See Test-ConditionCovers for the conditions.
-function Test-AllowsPullRequestTarget($Policy, [string[]]$Paths, [string]$Repo = '') {
+# Whether an Actions policy is active and allows every event of $Events for each workflow file in $Paths and, when $Repo
+# is set, for that repository. See Test-ConditionCovers for the conditions.
+function Test-AllowsEvents($Policy, [string[]]$Paths, [string[]]$Events, [string]$Repo = '') {
     if ($Policy.enforcement -ne 'active') { return $false }
-    $allows = @($Policy.rules | Where-Object { $_.type -eq 'restrict_action_events' -and @($_.parameters.allowed_events) -contains 'pull_request_target' })
-    if (-not $allows.Count) { return $false }
+    $allowed = @($Policy.rules | Where-Object { $_.type -eq 'restrict_action_events' } | ForEach-Object { @($_.parameters.allowed_events) })
+    if (-not $Events.Count -or @($Events | Where-Object { $allowed -notcontains $_ }).Count) { return $false }
     if ($Repo -and -not (Test-ConditionCovers $Policy.conditions.repository_name $Repo)) { return $false }
     foreach ($path in $Paths) {
         if (-not (Test-ConditionCovers $Policy.conditions.workflow_path $path)) { return $false }
@@ -685,13 +685,13 @@ function Set-EventPolicy {
         else { Write-Host "${prefix}not available (couldn't update '$eventPolicyName', as ${why}: $(Get-FailureReason $result))$triggerNote" }
         return
     }
-    $allowing = @($own.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present })
+    $allowing = @($own.Policies | Where-Object { Test-AllowsEvents $_ $present $events })
     if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)$triggerNote"; return }
 
     $org = Read-EventPolicies "orgs/$Owner/actions/policies"
     # HTTP 403 or 404 is what an account that may not read them, or an owner that is a user, gets: nothing to report.
     $orgNote = if ($org.Why -and $org.Status -notin @(403, 404)) { " (the organization's policies weren't checked: $($org.Why))" } else { '' }
-    $allowing = @($org.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present $Name })
+    $allowing = @($org.Policies | Where-Object { Test-AllowsEvents $_ $present $events $Name })
     if ($allowing.Count) { Write-Host "${prefix}already set (the organization's '$($allowing[0].name)' allows it)$triggerNote"; return }
 
     if (-not $PSCmdlet.ShouldProcess($Name, "create Actions policy '$eventPolicyName'")) {
@@ -728,7 +728,7 @@ function Set-OrganizationEventPolicy {
         Write-Host "${prefix}left alone (already has '$eventPolicyName')"
         return $true
     }
-    $allowing = @($read.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $codeReviewWorkflows '~ALL' })
+    $allowing = @($read.Policies | Where-Object { Test-AllowsEvents $_ $codeReviewWorkflows $codeReviewEvents '~ALL' })
     if ($allowing.Count) { Write-Host "${prefix}already set ('$($allowing[0].name)' allows it)"; return $true }
 
     $body = New-EventPolicyBody -Organization

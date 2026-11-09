@@ -30,7 +30,7 @@
     gets, last, an active Actions event policy for those two files alone allowing pull_request_target, issue_comment
     and every other event their top-level on: keys name, which Get-WorkflowEvents reads in each form on: takes, which
     -WhatIf shows, unless it isn't public, has neither file, or has an active policy, its own or its organization's,
-    that already allows the event for its files, read by its id when the list leaves its rules out; that a policy of
+    that already allows each of those events for its files, read by its id when the list leaves its rules out; that a policy of
     that name is updated in place, keeping its other events, when it isn't active, misses an event or doesn't cover
     both files, says why, also with -WhatIf and when refused, and is left alone when it does its job; that a file or
     policy it can't read, or a refusal, is reported without failing the run, and an organization read that fails
@@ -355,6 +355,8 @@ $repos = @{
     reviewedNarrow = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'one file' -Paths @('.github/workflows/code-review.yml')))
     reviewedInactive = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'review workflows' -Paths @('.github/workflows/*') -Enforcement 'evaluate'))
     reviewedOtherEvents = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'push only' -Events @('push')))
+    reviewedPullOnly = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'pull only' -Paths @('.github/workflows/*') -Events @('pull_request_target')))
+    reviewedPartial = New-Repo -Workflows $reviewWorkflows -WorkflowText @{ '.github/workflows/code-review.yml' = $dispatchYaml } -Policies @((New-EventPolicy 'review workflows' -Paths @('.github/workflows/*')))
     reviewedUnreadable = New-Repo -Workflows $reviewWorkflows -Policies 'fail:403'
     reviewedRefused = New-Repo -Workflows $reviewWorkflows -WriteFails @{ 'actions/policies' = 403 }
     workflowsUnreadable = New-Repo -Workflows @('fail:500')
@@ -367,6 +369,7 @@ $orgs = @{
     orgUnreadable = @{ policies = 'fail:403' }
     orgBroken = @{ policies = 'fail:500' }
     orgRefuses = @{ policies = @(); writeFail = 403 }
+    orgPullOnly = @{ policies = @((New-EventPolicy 'pull only everywhere' -Paths @('.github/workflows/*') -Repos @('~ALL') -Events @('pull_request_target'))) }
     orgFreeRead = @{ policies = 'fail:403'; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgFreeWrite = @{ policies = @(); writeFail = 403; message = 'Upgrade to GitHub Team to enable this feature.' }
 }
@@ -769,6 +772,15 @@ try {
     Check 'events: a workflow file whose triggers could not be read is named in the line' ($r.ExitCode -eq 0 -and $post.Count -eq 1 -and (@($post[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment' -and $r.Output -match [regex]::Escape("reviewedNoContent: ${label}: set ('$policyName') (the on: key of .github/workflows/code-review.yml wasn't read: the contents API sent no base64 UTF-8 text, such as for a file over 1 MB)")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'reviewed')
     Check 'events: files whose triggers were read add no note' ($r.Output -match [regex]::Escape("reviewed: ${label}: set ('$policyName')") -and $r.Output -notmatch "wasn't read") "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedPullOnly')
+    $post = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: another policy that allows only pull_request_target does not count' ($post.Count -eq 1 -and $post[0].method -eq 'POST' -and (@($post[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment' -and $r.Output -match [regex]::Escape("reviewedPullOnly: ${label}: set ('$policyName')")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedPartial')
+    $post = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: another policy missing a trigger the project added does not count' ($post.Count -eq 1 -and $post[0].method -eq 'POST' -and (@($post[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment,workflow_dispatch' -and $r.Output -match [regex]::Escape("reviewedPartial: ${label}: set ('$policyName')")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewed', '-Owner', 'orgPullOnly')
+    $post = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check "events: an organization policy that allows only pull_request_target does not count" ($post.Count -eq 1 -and $post[0].method -eq 'POST' -and $post[0].path -like 'repos/*/reviewed/actions/policies' -and $r.Output -match [regex]::Escape("reviewed: ${label}: set ('$policyName')")) "$($r.Changes -join '|') $($r.Output)"
 
     # Get-ContentText and Get-WorkflowEvents are read from the script with the AST, as in section 3c.
     $scriptAst = [Management.Automation.Language.Parser]::ParseFile($script, [ref]$null, [ref]$null)
@@ -823,6 +835,8 @@ try {
     }
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgOthers')
     Check 'org: a policy for some repositories does not count' ($r.ExitCode -eq 0 -and ($r.Changes -join '|') -eq 'BODY POST orgs/orgOthers/actions/policies') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgPullOnly', '-WhatIf')
+    Check 'org: an organization policy that allows only pull_request_target does not count' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("orgPullOnly (organization): ${label}: would set (POST orgs/orgPullOnly/actions/policies with this body)")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgRefuses')
     Check 'org: a refusal is reported and fails the run' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("orgRefuses (organization): ${label}: not available (HTTP 403") -and $r.Output -notmatch 'GitHub Team') $r.Output
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgUnreadable')
