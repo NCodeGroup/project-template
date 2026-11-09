@@ -26,8 +26,12 @@
     is off, reports each as set, already set, would set or not available, leaves secret scanning out of a repository
     that isn't public, and reports a setting the API won't read or refuses without failing the run; that it allows
     auto-merge, with a PATCH that changes nothing else, where it is off, on a repository whose default branch it leaves
-    alone too, and reports an answer without it or a refusal; that -All skips archived repositories and forks; and that
-    bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
+    alone too, and reports an answer without it or a refusal; that a public repository with either code-review workflow
+    gets, last, an active Actions event policy allowing pull_request_target and issue_comment for those two files alone,
+    which -WhatIf shows, unless it isn't public, has neither file, or has a policy of that name or an active one, its own
+    or its organization's, that already allows the event for its files, read by its id when the list leaves its rules
+    out, and that a file or policy it can't read, or a refusal, is reported without failing the run; that -All skips
+    archived repositories and forks; and that bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-baseline-test-<process ID> in the
@@ -254,6 +258,7 @@ $looseRuleset = New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pu
 $looseRuleset.rules += @{ type = 'code_scanning'; parameters = @{ code_scanning_tools = @(@{ tool = 'CodeQL'; alerts_threshold = 'errors'; security_alerts_threshold = 'high_or_higher' }) } }
 $bareRuleset = New-Ruleset 'owner rules' -Threads $false
 $bareRuleset.rules[2].Remove('parameters')
+$reviewWorkflows = @('.github/workflows/code-review.yml', '.github/workflows/code-review-auto-merge.yml')
 $repos = @{
     fresh = New-Repo
     extendedAlready = New-Repo -Suite 'extended'
@@ -314,9 +319,33 @@ $repos = @{
     # Auto-merge: an answer that leaves allow_auto_merge out, as GitHub's does for someone who can't change it.
     autoMergeUnread = New-Repo -AutoMerge $null
     autoPaged = New-Repo -Pulls @((New-Pull 21 'sha21' '2026-10-01T10:00:00Z'), (New-Pull 22 'sha22' '2026-10-02T10:00:00Z'), (New-Pull 23 'sha23' ''), (New-Pull 24 'sha24' '2026-10-03T10:00:00Z'), (New-Pull 25 'sha25' '2026-10-04T10:00:00Z'), (New-Pull 26 'sha26' ''), (New-Pull 30 'sha30' '2026-10-25T10:00:00Z')) -CheckRuns @{ sha25 = @((New-CheckRun 1 'first-page-job')); sha30 = @((New-CheckRun 1 'paged-build')) } -WorkflowRuns @{ sha25 = $prWorkflowRuns; sha30 = $prWorkflowRuns }
+    # The code-review workflows and Actions event policies.
+    reviewed = New-Repo -Workflows $reviewWorkflows
+    autoMergeOnly = New-Repo -Workflows @('.github/workflows/code-review-auto-merge.yml')
+    reviewedPrivate = New-Repo -Visibility 'private' -Workflows $reviewWorkflows
+    reviewedAllowed = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'review workflows' -Paths @('.github/workflows/*')))
+    reviewedAllowedAll = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'every workflow' -SummaryOnly $true))
+    reviewedOurs = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'Allow pull_request_target for code review' -Enforcement 'disabled'))
+    reviewedNarrow = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'one file' -Paths @('.github/workflows/code-review.yml')))
+    reviewedInactive = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'review workflows' -Paths @('.github/workflows/*') -Enforcement 'evaluate'))
+    reviewedOtherEvents = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'push only' -Events @('push')))
+    reviewedUnreadable = New-Repo -Workflows $reviewWorkflows -Policies 'fail:403'
+    reviewedRefused = New-Repo -Workflows $reviewWorkflows -WriteFails @{ 'actions/policies' = 403 }
+    workflowsUnreadable = New-Repo -Workflows @('fail:500')
 }
+$orgs = @{
+    orgEmpty = @{ policies = @() }
+    orgAllows = @{ policies = @((New-EventPolicy 'review everywhere' -Paths @('.github/workflows/*') -Repos @('~ALL'))) }
+    orgOurs = @{ policies = @((New-EventPolicy 'Allow pull_request_target for code review' -Enforcement 'disabled')) }
+    orgOthers = @{ policies = @((New-EventPolicy 'some repositories' -Repos @('someone-else'))) }
+    orgUnreadable = @{ policies = 'fail:403' }
+    orgRefuses = @{ policies = @(); writeFail = 403 }
+}
+$orgPolicyId = 300
+foreach ($org in $orgs.Values) { if ($org.policies -isnot [string]) { foreach ($policy in $org.policies) { $orgPolicyId++; $policy.id = $orgPolicyId } } }
 Write-Text (Join-Path $bin 'repos.json') (ConvertTo-Json -Depth 12 -InputObject @{
     repos = $repos
+    orgs = $orgs
     list = @(
         foreach ($name in 'fresh', 'old', 'forked', 'owned', 'autoChecks', 'autoOther') {
             @{ name = $name; isArchived = $repos[$name].info.archived; isFork = $repos[$name].info.fork }
@@ -642,6 +671,41 @@ try {
     Check 'auto-merge: an answer that leaves it out is reported and not written' ($r.Output -match [regex]::Escape("autoMergeUnread: allow auto-merge: not available (couldn't read it: the repository's answer doesn't include it)") -and -not @($r.Bodies | Where-Object { $null -ne $_.body.allow_auto_merge }).Count) $r.Output
     $r = Invoke-Baseline @('-Repo', 'refused')
     Check 'auto-merge: a change the API refuses is reported as not available, with its answer, and does not fail the run' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match [regex]::Escape('refused: allow auto-merge: not available (HTTP 403: Stand-in refused allow_auto_merge)')) $r.Output
+
+    # 7e. The Actions event policy that allows pull_request_target for the code-review workflows.
+    $label = 'allow pull_request_target for the code-review workflows'
+    $policyName = 'Allow pull_request_target for code review'
+    $r = Invoke-Baseline @('-Repo', 'reviewed')
+    $posts = @($r.Bodies | Where-Object { $_.path -eq 'repos/NCodeGroup/reviewed/actions/policies' })
+    Check 'events: a public repository with both code-review workflows gets one policy, and the run says so' ($posts.Count -eq 1 -and $posts[0].method -eq 'POST' -and $r.Changes[-1] -eq 'BODY POST repos/NCodeGroup/reviewed/actions/policies' -and $r.Output -match [regex]::Escape("reviewed: ${label}: set ('$policyName')")) "$($r.Changes -join '|') $($r.Output)"
+    $policy = $posts[0].body
+    $rules = @($policy.rules)
+    Check 'events: the policy is active, targets the two files alone and allows pull_request_target and issue_comment' ($policy.name -eq $policyName -and $policy.enforcement -eq 'active' -and (@($policy.conditions.workflow_path.include) -join ',') -eq ($reviewWorkflows -join ',') -and @($policy.conditions.workflow_path.exclude).Count -eq 0 -and $null -eq $policy.conditions.repository_name -and $rules.Count -eq 1 -and $rules[0].type -eq 'restrict_action_events' -and (@($rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment') ($policy | ConvertTo-Json -Depth 8 -Compress)
+    $r = Invoke-Baseline @('-Repo', 'autoMergeOnly')
+    $posts = @($r.Bodies | Where-Object { $_.path -eq 'repos/NCodeGroup/autoMergeOnly/actions/policies' })
+    Check 'events: a repository with one of the two files gets the policy for both' ($posts.Count -eq 1 -and $posts[0].method -eq 'POST' -and (@($posts[0].body.conditions.workflow_path.include) -join ',') -eq ($reviewWorkflows -join ',')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewed', '-WhatIf')
+    Check 'events: -WhatIf says what it would create and writes nothing' ($r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("reviewed: ${label}: would set (create '$policyName'")) "$($r.Changes -join '|') $($r.Output)"
+    $cases = @(
+        @{ Args = @('-Repo', 'fresh'); Says = "fresh: ${label}: not needed (it has no code-review workflow)" }
+        @{ Args = @('-Repo', 'reviewedPrivate'); Says = "reviewedPrivate: ${label}: not needed (the repository isn't public" }
+        @{ Args = @('-Repo', 'reviewedAllowed'); Says = "reviewedAllowed: ${label}: already set ('review workflows' allows it)" }
+        @{ Args = @('-Repo', 'reviewedAllowedAll'); Says = "reviewedAllowedAll: ${label}: already set ('every workflow' allows it)" }
+        @{ Args = @('-Repo', 'reviewedOurs'); Says = "reviewedOurs: ${label}: left alone (already has '$policyName')" }
+        @{ Args = @('-Repo', 'reviewedUnreadable'); Says = "reviewedUnreadable: ${label}: not available (couldn't read its Actions policies: HTTP 403" }
+        @{ Args = @('-Repo', 'workflowsUnreadable'); Says = "workflowsUnreadable: ${label}: not available (couldn't read .github/workflows/code-review.yml: HTTP 500" }
+        @{ Args = @('-Repo', 'reviewed', '-Owner', 'orgAllows'); Says = "reviewed: ${label}: already set (the organization's 'review everywhere' allows it)" })
+    foreach ($case in $cases) {
+        $r = Invoke-Baseline $case.Args
+        Check "events: $($case.Args -join ' ') needs no policy and says so" ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and -not @($r.Changes | Where-Object { $_ -like '*actions/policies*' }).Count -and $r.Output -match [regex]::Escape($case.Says)) "$($r.Changes -join '|') $($r.Output)"
+    }
+    foreach ($extra in @('-Repo', 'reviewedNarrow'), @('-Repo', 'reviewedInactive'), @('-Repo', 'reviewedOtherEvents'), @('-Repo', 'reviewed', '-Owner', 'orgOthers')) {
+        $r = Invoke-Baseline $extra
+        $posted = @($r.Changes | Where-Object { $_ -like 'BODY POST repos/*/actions/policies' })
+        Check "events: $($extra -join ' ') still gets the policy, as the one it has doesn't count" ($posted.Count -eq 1) "$($r.Changes -join '|') $($r.Output)"
+    }
+    $r = Invoke-Baseline @('-Repo', 'reviewedRefused')
+    Check 'events: a refusal is reported as not available and does not fail the run' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match [regex]::Escape("reviewedRefused: ${label}: not available (HTTP 403: Stand-in refused actions/policies)")) $r.Output
 
     # 8. Bad parameters.
     $r = Invoke-Baseline @()
