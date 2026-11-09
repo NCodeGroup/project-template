@@ -331,12 +331,12 @@ Write-Text (Join-Path $repo 'scratch.txt') "scratch`n"
 $state = Get-State $repo
 Check 'next: uncommitted changes stop everything' (($state['dirty'] -eq 'yes') -and ($state['next'] -like 'none *')) "dirty='$($state['dirty'])' next='$($state['next'])' expected dirty 'yes' and next 'none *'"
 
-# Stand-ins for gh and glab. glab prints pr.json for 'mr list', and its entry with that iid for 'mr view'; gh refuses pr, issue and release as a Claude Code cloud session's proxy does, and answers the REST paths the state script calls.
+# Stand-ins for gh and glab. glab prints pr.json for 'mr list', and its entry with that iid for 'mr view'; gh refuses pr, issue and release as a Claude Code cloud session's proxy does, and answers the REST paths the state script calls. glab records the arguments of 'mr list' in mr-list-args.txt.
 $bin = Join-Path $Work 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 foreach ($cli in 'gh', 'glab') {
     Write-Text (Join-Path $bin "$cli.ps1") @'
-if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1' -and $args[1] -eq 'list' -and $args[0] -eq 'mr') { [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0 }
+if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1' -and $args[1] -eq 'list' -and $args[0] -eq 'mr') { [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'mr-list-args.txt'), ($args -join ' ')); [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0 }
 if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1' -and $args[0] -eq 'mr' -and $args[1] -eq 'view') {
     $number = "$($args[2])".TrimStart('!')
     $item = @([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')) | ConvertFrom-Json) | Where-Object { "$($_.iid)" -eq $number } | Select-Object -First 1
@@ -1196,6 +1196,19 @@ try {
     Set-PushRequests @((New-PushRequest 6 'open' $pAhead), (New-PushRequest 5 'closed' $pOther $pMerge4))
     $r = Test-State (Get-State $pRepo) @{ pr = '6 OPEN'; 'pr-branch-state' = 'ours' }
     Check 'push-state: a push branch one commit ahead of HEAD with the plan''s pull request is ours' $r.Ok $r.Detail
+
+    $glOrigin = Join-Path $Work 'push/gitlab.com/origin.git'
+    Copy-Item -LiteralPath $pOrigin -Destination $glOrigin -Recurse
+    Push-Location $pRepo
+    try { Invoke-Git remote set-url origin $glOrigin }
+    finally { Pop-Location }
+    Set-PushRequests @()
+    $r = Test-State (Get-State $pRepo) @{ host = 'gitlab'; 'push-branch' = 'claude/test-abc1'; 'pr-branch' = 'claude/test-abc1' }
+    $mrArgs = [IO.File]::ReadAllText((Join-Path $bin 'mr-list-args.txt'))
+    Check 'push: on GitLab the merge request list asks for the push branch' ($r.Ok -and $mrArgs -match '--source-branch claude/test-abc1( |$)') "$($r.Detail) args: $mrArgs"
+    Push-Location $pRepo
+    try { Invoke-Git remote set-url origin $pOrigin }
+    finally { Pop-Location }
 }
 finally { $env:PATH = $savedPath }
 
