@@ -739,6 +739,33 @@ try {
     $r = Invoke-Baseline @('-Repo', 'reviewedOursRefused')
     Check 'events: a refused update is reported with its gaps and does not fail the run' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match [regex]::Escape("reviewedOursRefused: ${label}: not available (couldn't update '$policyName', as its enforcement is disabled: HTTP 403: Stand-in refused actions/policies/201)")) "$($r.Changes -join '|') $($r.Output)"
 
+    # Get-ContentText and Get-WorkflowEvents are read from the script with the AST, as in section 3c.
+    $scriptAst = [Management.Automation.Language.Parser]::ParseFile($script, [ref]$null, [ref]$null)
+    foreach ($fnName in 'Get-ContentText', 'Get-WorkflowEvents') {
+        $fn = $scriptAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        if ($fn) { . ([scriptblock]::Create($fn.Extent.Text)) }
+    }
+    $triggerCases = [ordered]@{
+        'a block mapping, with comments, blank lines and the next top-level key' = @("name: x`n# on: push`non:`n  pull_request_target:`n    types: [opened]`n  # a comment`n`n  issue_comment:`n    types: [created]`n  workflow_dispatch:`n`npermissions: {}`njobs:`n  review:`n    runs-on: x`n", 'pull_request_target,issue_comment,workflow_dispatch')
+        'a list in brackets, with a quoted name' = @("on: [push, 'pull_request']`n", 'push,pull_request')
+        'one event, with a comment and CRLF line ends' = @("on: workflow_dispatch  # by hand`r`njobs: {}`r`n", 'workflow_dispatch')
+        'a block sequence' = @("on:`n  - push`n  - `"issue_comment`"`njobs:`n  a:`n    b: c`n", 'push,issue_comment')
+        "a quoted 'on' key" = @("'on':`n  issue_comment:`n", 'issue_comment')
+        'an on: key that is not top-level' = @("name: none`njobs:`n  x:`n    on: push`n", '')
+        'a mapping in braces gives none' = @("on: { push: {} }`n", '')
+        "the template's code-review.yml" = @((Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/code-review.yml')), 'pull_request_target,issue_comment')
+        "the template's code-review-auto-merge.yml" = @((Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/code-review-auto-merge.yml')), 'pull_request_target')
+    }
+    foreach ($caseName in $triggerCases.Keys) {
+        $text = $triggerCases[$caseName][0]
+        $got = @(Get-WorkflowEvents $text) -join ','
+        Check "triggers: $caseName" ($got -eq $triggerCases[$caseName][1]) "got '$got'"
+    }
+    $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(('on: push' + "`n") * 20), [Base64FormattingOptions]::InsertLineBreaks)
+    Check 'content: base64 with line breaks is decoded' ((Get-ContentText (ConvertTo-Json -Compress -InputObject @{ type = 'file'; encoding = 'base64'; content = $b64 })) -eq (('on: push' + "`n") * 20)) 'the text differs'
+    Check 'content: an answer without content gives no text' ((Get-ContentText '{"type":"file"}') -eq '') 'got text'
+    Check 'content: an answer that is not JSON gives no text' ((Get-ContentText '<html>') -eq '') 'got text'
+
     # 7f. -OrganizationPolicy: the same policy once, on every repository of the organization.
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgEmpty', '-WhatIf')
     Check 'org: -WhatIf prints the body it would post and writes nothing' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("orgEmpty (organization): ${label}: would set (POST orgs/orgEmpty/actions/policies with this body)") -and $r.Output -match [regex]::Escape('"restrict_action_events"')) "$($r.Changes -join '|') $($r.Output)"

@@ -473,6 +473,44 @@ function Set-TagRuleset {
     Write-Host "done: $summary"
 }
 
+# The text of a file as the contents API answers it: base64, with line breaks. '' when the answer isn't JSON or holds
+# no base64 content, such as for a file over 1 MB.
+function Get-ContentText([string]$Body) {
+    try {
+        $answer = $Body | ConvertFrom-Json -ErrorAction Stop
+        if ($answer.encoding -ne 'base64' -or -not $answer.content) { return '' }
+        [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($answer.content -replace '\s', '')))
+    }
+    catch { '' }
+}
+
+# The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, or the keys or
+# items indented below it, with quotes, comments and blank lines allowed. A mapping in braces, or no on: key, gives none.
+function Get-WorkflowEvents([string]$Text) {
+    $lines = @($Text -split '\r?\n')
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -notmatch '^(on|"on"|''on''):(.*)$') { continue }
+        $rest = ($Matches[2] -replace '(^|\s)#.*$', '').Trim()
+        $names = if ($rest.StartsWith('[')) { $rest.Trim('[', ']') -split ',' }
+        elseif ($rest.StartsWith('{')) { @() }
+        elseif ($rest) { @($rest) }
+        else {
+            $indent = -1
+            @(for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                $line = $lines[$j]
+                if ($line -match '^\s*(#.*)?$') { continue }
+                if ($line -notmatch '^(\s+)(.*)$') { break }
+                if ($indent -lt 0) { $indent = $Matches[1].Length }
+                if ($Matches[1].Length -ne $indent) { continue }
+                if ($Matches[2] -match '^-\s*([^\s#]+)') { $Matches[1] }
+                elseif ($Matches[2] -match '^([^\s:#]+)\s*:') { $Matches[1] }
+            })
+        }
+        return @($names | ForEach-Object { $_.Trim().Trim('"', "'") } | Where-Object { $_ -match '^[A-Za-z_]+$' })
+    }
+    @()
+}
+
 # Reads the Actions policies at $Path (a repository's or an organization's). A repository's list is an object,
 # { total_count, policies }, whose items leave out their conditions and rules, which a read by its id gives; a bare array
 # is read too. Why is the reason a policy couldn't be read, or $null. Status is the HTTP status of the read that failed, or of the list when none did, and $null when a call got no response.
