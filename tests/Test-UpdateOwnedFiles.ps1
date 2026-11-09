@@ -64,7 +64,7 @@ finally { Pop-Location }
 
 Push-Location (Join-Path $tpl 'template')
 try {
-    Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "    runs-on: ubuntu-latest`n    timeout-minutes: 30`n    defaults:" "    runs-on: ubuntu-latest`n    timeout-minutes: 45`n    defaults:"
+    Edit-File '.github/workflows/ci.yml.jinja' "    runs-on: ubuntu-latest`n    timeout-minutes: 30`n    defaults:" "    runs-on: ubuntu-latest`n    timeout-minutes: 45`n    defaults:"
     Edit-File .gitignore.jinja "`n/secrets/`n" "`n/secrets/`n/owned-test/`n"
 }
 finally { Pop-Location }

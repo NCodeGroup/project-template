@@ -160,6 +160,10 @@ _exclude:
     {% if git_host is defined and stack is defined and nuget_package is defined and not (git_host == 'github' and stack == 'dotnet' and nuget_package) %}
     .github/workflows/publish.yml
     {% endif %}
+  - |-
+    {% if git_host is defined and git_host != 'github' %}
+    .github/workflows/ci.yml
+    {% endif %}
 
 project_name:
   type: str

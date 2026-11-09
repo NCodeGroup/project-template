@@ -62,7 +62,7 @@ try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Re
 finally { Pop-Location }
 
 Push-Location (Join-Path $tpl 'template')
-try { Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "    runs-on: ubuntu-latest`n    timeout-minutes: 30`n    defaults:" "    runs-on: ubuntu-latest`n    timeout-minutes: 45`n    defaults:" }
+try { Edit-File '.github/workflows/ci.yml.jinja' "    runs-on: ubuntu-latest`n    timeout-minutes: 30`n    defaults:" "    runs-on: ubuntu-latest`n    timeout-minutes: 45`n    defaults:" }
 finally { Pop-Location }
 Push-Location $tpl
 try { Invoke-Git commit -q -am 'Change ci.yml'; Invoke-Git tag v0.2.0 }
@@ -98,7 +98,7 @@ try {
     Invoke-Git commit -q -am 'Own CI'
 
     Push-Location (Join-Path $tpl 'template')
-    try { Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "  workflow_dispatch:`n" "  workflow_dispatch:`n  schedule:`n    - cron: '0 6 * * 1'`n" }
+    try { Edit-File '.github/workflows/ci.yml.jinja' "  workflow_dispatch:`n" "  workflow_dispatch:`n  schedule:`n    - cron: '0 6 * * 1'`n" }
     finally { Pop-Location }
     $validator = 'validator: "{% if not project_name.strip() %}Required{% endif %}"'
     $strictValidator = 'validator: "{% if not project_name.strip() %}Required{% elif project_name == ''Renamed'' %}Not yet{% endif %}"'
@@ -118,7 +118,7 @@ try {
     try { Edit-File 'copier.yml' $strictValidator $validator; Invoke-Git commit -q -am 'Accept the name again' }
     finally { Pop-Location }
     Push-Location (Join-Path $tpl 'template')
-    try { Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "    - cron: '0 6 * * 1'`n" "    - cron: '0 7 * * 1'`n" }
+    try { Edit-File '.github/workflows/ci.yml.jinja' "    - cron: '0 6 * * 1'`n" "    - cron: '0 7 * * 1'`n" }
     finally { Pop-Location }
     Push-Location $tpl
     try { Invoke-Git commit -q -am 'Move the ci.yml schedule'; Invoke-Git tag v0.4.0 }
@@ -133,7 +133,7 @@ try {
     # v0.5.0's Update-Project.ps1, which the update hands over to, fails while it looks for rewritten files.
     Push-Location (Join-Path $tpl 'template')
     try {
-        Edit-File ".github/workflows/{% if git_host == 'github' %}ci.yml{% endif %}.jinja" "    - cron: '0 7 * * 1'`n" "    - cron: '0 8 * * 1'`n"
+        Edit-File '.github/workflows/ci.yml.jinja' "    - cron: '0 7 * * 1'`n" "    - cron: '0 8 * * 1'`n"
         Edit-File '.template/Update-Project.ps1' 'function Get-RewrittenFile([string[]]$Files, [string]$Folder) {' 'function Get-RewrittenFile([string[]]$Files, [string]$Folder) { throw ''Injected rewritten-file failure'''
     }
     finally { Pop-Location }
