@@ -46,3 +46,5 @@ available without a profile.
   `node:lts`, the Node.js job's image, in place of `alpine:3`, which has no bash and can't run the Node.js builds nvs
   downloads. A Bun project keeps the `oven/bun` image and gets no nvs.
 - A new PC runs `Initialize-Nvs.ps1` once after installing nvs.
+- A Claude Code cloud session gets nvs and the `.node-version` Node.js from `.claude/hooks/ensure-nvs.sh` when it
+  starts ([ADR-0017](0017-cloud-sessions-bootstrap-their-tools-through-ensure-scripts.md)), so the prelude works there.

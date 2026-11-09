@@ -111,6 +111,8 @@ jobs:
             run: ./tests/Test-DecisionIndex.ps1
           - name: Test the hook that makes pwsh available in a cloud session
             run: ./tests/Test-EnsurePwsh.ps1
+          - name: Test the hooks that bootstrap a cloud session's tools
+            run: ./tests/Test-EnsureTools.ps1
           - name: Test the release workflow's script
             run: ./tests/Test-PublishRelease.ps1
           - name: Test the GitLab baseline script

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-11-09
+
+### Added
+
+- A project decides which tools its Claude Code cloud sessions bootstrap, through scripts in `.claude/hooks/`: the `SessionStart` hook in `.claude/settings.json` runs `.claude/hooks/session-start.sh`, with a timeout of 600 seconds, which in a cloud session runs every `.claude/hooks/ensure-*.sh` in name order, each for at most `ENSURE_SCRIPT_TIMEOUT` seconds (240 by default), goes on past one that fails or times out and names it, and never fails the session. A project adds a tool by adding `.claude/hooks/ensure-<tool>.sh`, which template updates leave alone. The template ships `ensure-pwsh.sh`, as before, and, for a project that answers `uses_node`, `ensure-nvs.sh`, which clones nvs pinned to the v1.7.1 tag's commit, installs and links the `.node-version` Node.js, and puts it first on `PATH` for the session's later commands, so the `Use-Node.ps1` prelude selects it there as on a developer's PC. `tests/Test-EnsureTools.ps1` checks both scripts with stand-ins. Projects get them with `.\.template\Update-Project.ps1`, which merges the new hook command into the project's `.claude/settings.json` ([ADR-0017](template/docs/decisions/project-template/0017-cloud-sessions-bootstrap-their-tools-through-ensure-scripts.md)).
+
 ## [0.75.6] - 2026-11-09
 
 ### Changed
@@ -1226,7 +1232,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.6...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.76.0...HEAD
+[0.76.0]: https://github.com/NCodeGroup/project-template/compare/v0.75.6...v0.76.0
 [0.75.6]: https://github.com/NCodeGroup/project-template/compare/v0.75.5...v0.75.6
 [0.75.5]: https://github.com/NCodeGroup/project-template/compare/v0.75.4...v0.75.5
 [0.75.4]: https://github.com/NCodeGroup/project-template/compare/v0.75.3...v0.75.4

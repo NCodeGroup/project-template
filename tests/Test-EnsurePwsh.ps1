@@ -3,12 +3,12 @@
     Test the SessionStart hook that makes pwsh available in a Claude Code cloud session.
 
 .DESCRIPTION
-    Checks template\.claude\hooks\ensure-pwsh.sh, which the template's .claude\settings.json runs on SessionStart, and this
-    repository's own copy in .claude\hooks\. Checks that both copies are identical and parse as bash, that both settings files
-    run the hook from $CLAUDE_PROJECT_DIR with a timeout, and, with bash, that the script exits 0 and prints nothing outside a
-    cloud session and when pwsh is already on the PATH, and that on a system it has no pinned package for it prints one line
-    and still exits 0. The install itself downloads a package from Microsoft, so it is not run here. Prints PASS or FAIL per
-    check and exits 1 on any failure; the bash checks are skipped, with a SKIP line, when bash is not on the PATH.
+    Checks template\.claude\hooks\ensure-pwsh.sh, which .claude\hooks\session-start.sh runs in a cloud session, and this
+    repository's own copy in .claude\hooks\. Checks that both copies are identical and parse as bash, and, with bash,
+    that the script exits 0 and prints nothing outside a cloud session and when pwsh is already on the PATH, and that
+    on a system it has no pinned package for it prints one line and still exits 0. The install itself downloads a
+    package from Microsoft, so it is not run here. Prints PASS or FAIL per check and exits 1 on any failure; the bash
+    checks are skipped, with a SKIP line, when bash is not on the PATH.
 
 .EXAMPLE
     .\tests\Test-EnsurePwsh.ps1
@@ -35,13 +35,6 @@ if (-not ((Test-Path -LiteralPath $copies['template']) -and (Test-Path -LiteralP
 $script = $copies['template']
 Check 'both copies of ensure-pwsh.sh are identical' ((Get-FileHash $copies['template']).Hash -eq (Get-FileHash $copies['repository']).Hash)
 Check 'ensure-pwsh.sh has LF line endings' (-not ((Get-Content -Raw -LiteralPath $script) -match "`r"))
-
-foreach ($settings in 'template/.claude/settings.json', '.claude/settings.json') {
-    $json = Get-Content -Raw -LiteralPath (Join-Path $repoRoot $settings) | ConvertFrom-Json
-    $entry = @($json.hooks.SessionStart.hooks) | Select-Object -First 1
-    Check "$settings runs ensure-pwsh.sh on SessionStart" ($entry.type -eq 'command' -and $entry.command -eq 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/ensure-pwsh.sh"') "$($entry.command)"
-    Check "$settings gives the hook a timeout" ($entry.timeout -ge 120)
-}
 
 $bash = Get-Command bash -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $bash) {
