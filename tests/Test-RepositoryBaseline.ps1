@@ -102,7 +102,7 @@ if ($method -ne 'GET') {
         elseif ($sent.ContainsKey('allow_auto_merge')) { $key = 'allow_auto_merge' }
     }
     if ($key -eq 'code-scanning/default-setup' -and $repo.switchFails) { exit 1 }
-    $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] }
+    $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] } elseif ($path -match '^orgs/([^/]+)/' -and $data.orgs[$Matches[1]]) { $data.orgs[$Matches[1]].writeFail }
     if ($refused) { Out-Answer ([int]$refused) "{""message"":""Stand-in refused $key""}" }
     if ($rest -contains '--input') { Out-Answer 200 '{}' } else { Out-Answer 204 '' }
 }
@@ -119,6 +119,26 @@ if ($path -match '^repos/[^/]+/([^/]+)/(actions/permissions/workflow|vulnerabili
         'automated-security-fixes' { if ($on) { Out-Answer 200 '{"enabled":true,"paused":false}' } else { Out-Answer 404 '{"message":"Not Found"}' } }
         default { Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ enabled = $on }) }
     }
+}
+# A file on the default branch: 200 when the repository's workflows list names it, 404 when it doesn't, or, for a
+# list of fail:<code>, that status for every file.
+if ($path -match '^repos/[^/]+/([^/]+)/contents/([^?]+)') {
+    $files = @($data.repos[$Matches[1]].workflows | Where-Object { $_ }); $file = $Matches[2]
+    if ($files.Count -and "$($files[0])".StartsWith('fail:')) { Out-Answer ([int]"$($files[0])".Substring(5)) '{"message":"Stand-in refused to read it"}' }
+    if ($files -contains $file) { Out-Answer 200 '{"type":"file"}' } else { Out-Answer 404 '{"message":"Not Found"}' }
+}
+# Actions policies: a repository's list is an object whose policies holds them, an organization's a bare array, the
+# two shapes the script reads. A policy marked summaryOnly is listed without its conditions and rules, which a read by
+# its id gives. fail:<code> refuses the read; an organization not in orgs answers 404.
+if ($path -match '^(repos/[^/]+/([^/]+)|orgs/([^/]+))/actions/policies(/(\d+))?(\?.*)?$') {
+    $isOrg = [bool]$Matches[3]; $id = $Matches[5]
+    $owner = if ($isOrg) { $data.orgs[$Matches[3]] } else { $data.repos[$Matches[2]] }
+    if (-not $owner) { Out-Answer 404 '{"message":"Not Found"}' }
+    if ($owner.policies -is [string]) { Out-Answer ([int]$owner.policies.Substring(5)) '{"message":"Stand-in refused to read them"}' }
+    $all = @($owner.policies | Where-Object { $_ } | ForEach-Object { $c = $_.Clone(); $c.Remove('summaryOnly'); @{ full = $c; summary = [bool]$_.summaryOnly } })
+    if ($id) { $one = $all | Where-Object { "$($_.full.id)" -eq $id } | Select-Object -First 1; if (-not $one) { Out-Answer 404 '{"message":"Not Found"}' }; Out-Answer 200 (ConvertTo-Json -InputObject $one.full -Depth 10 -Compress) }
+    $listed = @($all | ForEach-Object { if ($_.summary) { @{ id = $_.full.id; name = $_.full.name; enforcement = $_.full.enforcement } } else { $_.full } })
+    if ($isOrg) { Out-Answer 200 (ConvertTo-Json -InputObject $listed -Depth 10 -Compress) } else { Out-Answer 200 (ConvertTo-Json -InputObject @{ total_count = $listed.Count; policies = $listed } -Depth 10 -Compress) }
 }
 if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
     # codeql is a state, 404 for not found, fail:<code> for another status, fail:none for no response at all, or
@@ -161,16 +181,26 @@ function New-TagRuleset([string]$Name, [string[]]$Types = @('deletion', 'update'
         conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
         rules = @($Types | ForEach-Object { @{ type = $_ } }) }
 }
+function New-EventPolicy([string]$Name, [string[]]$Events = @('pull_request_target', 'issue_comment'), [string[]]$Paths = @(), [string[]]$Repos = @(), [string]$Enforcement = 'active', [bool]$SummaryOnly = $false) {
+    $conditions = @{}
+    if ($Paths.Count) { $conditions.workflow_path = @{ include = @($Paths); exclude = @() } }
+    if ($Repos.Count) { $conditions.repository_name = @{ include = @($Repos); exclude = @() } }
+    @{ name = $Name; enforcement = $Enforcement; conditions = $conditions
+        rules = @(@{ type = 'restrict_action_events'; parameters = @{ allowed_events = @($Events) } }); summaryOnly = $SummaryOnly }
+}
 # $Security sets the state the stand-in reads for a setting, by its path after the repository's (on, off, readApproves
 # or fail:<code>): every one is off unless it says otherwise. $WriteFails refuses a change with a status (see the
 # stand-in). Secret scanning and its push protection are read from the repository itself, as GitHub reports them, and
 # so is auto-merge: $AutoMerge $null leaves it out of the answer, as GitHub does for someone who can't change it.
+# $Workflows lists the files on the default branch, or fail:<code>; $Policies the repository's Actions policies
+# (New-EventPolicy), or fail:<code>.
 function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
-    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false) {
+    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), $Policies = @()) {
     $full = @{}
     $summaries = @()
     $id = 100
     foreach ($ruleset in $Rulesets) { $id++; $ruleset.id = $id; $full["$id"] = $ruleset; $summaries += @{ id = $id; name = $ruleset.name } }
+    if ($Policies -isnot [string]) { $policyId = 200; foreach ($policy in $Policies) { $policyId++; $policy.id = $policyId } }
     $settings = @{ 'actions/permissions/workflow' = 'off'; 'vulnerability-alerts' = 'off'; 'automated-security-fixes' = 'off'; 'private-vulnerability-reporting' = 'off' }
     foreach ($key in $Security.Keys) { $settings[$key] = $Security[$key] }
     $analysis = @{ secret_scanning = @{ status = $SecretScanning }; secret_scanning_push_protection = @{ status = $PushProtection } }
@@ -178,7 +208,8 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
     if ($null -ne $AutoMerge) { $info.allow_auto_merge = $AutoMerge }
     @{ info = $info
         rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; switchFails = $SwitchFails
-        pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails }
+        pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails
+        workflows = @($Workflows); policies = if ($Policies -is [string]) { $Policies } else { @($Policies) } }
 }
 $allSecurityOn = @{ 'actions/permissions/workflow' = 'on'; 'vulnerability-alerts' = 'on'; 'automated-security-fixes' = 'on'; 'private-vulnerability-reporting' = 'on' }
 function New-Pull([int]$Number, [string]$Sha, [string]$MergedAt) { @{ number = $Number; head = @{ sha = $Sha }; merged_at = if ($MergedAt) { $MergedAt } else { $null } } }
