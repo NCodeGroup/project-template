@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Render the template for every stack and check the result: expected files, LF line endings, valid JSON, no leftover Jinja and no Markdown line that joins two list items, no citation of a template decision record the project doesn't have. tests\Test-TemplateDotnet.ps1 builds the .NET layer. tests\Test-ProjectUpdate.ps1 and tests\Test-ProjectUpdateHooks.ps1 test a rendered project's update.
+    Render the template for every stack and check the result: expected files, LF line endings, valid JSON, no leftover Jinja, no Markdown line that joins two list items and no citation of a template decision record the project doesn't have. tests\Test-TemplateDotnet.ps1 builds the .NET layer. tests\Test-ProjectUpdate.ps1 and tests\Test-ProjectUpdateHooks.ps1 test a rendered project's update.
 
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
