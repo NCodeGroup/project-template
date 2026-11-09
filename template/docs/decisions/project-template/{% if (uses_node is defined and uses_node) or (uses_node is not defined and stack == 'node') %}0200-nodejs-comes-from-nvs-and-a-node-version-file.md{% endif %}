@@ -23,7 +23,9 @@ available without a profile.
    release `.node-version` names.
 4. `.template/Use-Node.ps1` and `.template/use-node.sh` put that release on `PATH` without a profile. The Landing
    `prelude` in `AGENTS.md` runs the first before every gate and Done-when command; the second is sourced in a Bash
-   call.
+   call. Where nvs isn't installed, as in GitHub CI, Copilot's cloud agent and a Claude Code cloud session, they
+   accept the `node` already on `PATH` when its version is the one `.node-version` names (`26` accepts any 26.x.y,
+   `26.1` any 26.1.y), and fail with the nvs install command when `node` is missing or another version.
 5. The project's instructions tell an agent to run the selector before it reports that Node.js is missing, and to tell
    the user to run `Initialize-Nvs.ps1` when the selector fails.
 
@@ -40,6 +42,9 @@ available without a profile.
 - One file moves the Node.js version for people, agents and CI.
 - GitHub CI and the Copilot setup workflow install the `.node-version` Node.js with `actions/setup-node` for every
   stack that answers `uses_node`.
+- Copilot's cloud agent, which runs in the environment the Copilot setup workflow builds, and a Claude Code cloud
+  session, which has Node.js in its image, have no nvs: the prelude checks the `node` on `PATH` against
+  `.node-version` there instead of selecting it.
 - GitLab CI installs nvs, pinned to a release's commit, and selects the `.node-version` Node.js with `use-node.sh` for
   a Node.js project and for every other stack that answers `uses_node`. The .NET and PowerShell jobs run in the .NET
   SDK image and the Python job in `python:3`, which have bash, Git and curl; the `other` stack's job runs in
