@@ -72,7 +72,7 @@ param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-run-issues-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
-    [ValidateSet('minor-round', 'max-rounds', 'session-footer')][string]$Scenario = 'minor-round',
+    [ValidateSet('minor-round', 'max-rounds', 'session-footer', 'push-branch')][string]$Scenario = 'minor-round',
     [ValidateSet('claude', 'copilot')][string]$Tool = 'claude',
     [string]$Claude = 'claude',
     [string]$Copilot = 'copilot',
@@ -93,9 +93,11 @@ $hostDir = Join-Path $bin 'host'
 # Without -Tool, -CheckOnly checks the run of the tool the fixture ran, which New-Agent writes to tool.txt.
 if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Tool')) { $Tool = Get-RunTool $Work $Tool }
 $run = Get-RunCheckout $Tool $app 'issue-1'
+$pushBranch = 'claude/fixture-push-a1b2'
+$originBranch = if ($Scenario -eq 'push-branch') { $pushBranch } else { $run.Branch }
 
 if (-not $CheckOnly) {
-    New-FixtureProject -RepoRoot $repoRoot -Work $Work -App $app -Origin $origin -Bin $bin -Data @{ code_review = $true } -Landing $(if ($Scenario -eq 'max-rounds') { @{ 'max-review-rounds' = '1' } } else { @{} })
+    New-FixtureProject -RepoRoot $repoRoot -Work $Work -App $app -Origin $origin -Bin $bin -Data @{ code_review = $true } -Landing $(if ($Scenario -in 'max-rounds', 'push-branch') { @{ 'max-review-rounds' = '1' } } else { @{} })
     $issueBody = @'
 ## What
 `Get-Greeting` in `src/Greeting.ps1` returns `Hello, !` when `-Name` is empty or missing. It should return `Hello, world!`.
@@ -119,6 +121,36 @@ if (-not $CheckOnly) {
     }
     Write-Text (Join-Path $hostDir 'issues.json') (ConvertTo-Json -InputObject $issues -Depth 10)
     Write-Text (Join-Path $hostDir 'prs.json') '[]'
+    if ($Scenario -eq 'push-branch') {
+        # An earlier plan's pull request #2 from the push branch, merged by squashing: origin's push branch still holds its head.
+        Invoke-Git -C $app switch -q -c earlier-plan main
+        Write-Text (Join-Path $app 'src/Farewell.ps1') "function Get-Farewell {`n    'Goodbye!'`n}`n"
+        Invoke-Git -C $app add src/Farewell.ps1
+        Invoke-Git -C $app commit -q -m 'Plan step 1: Add Get-Farewell'
+        $earlierHead = "$(git -C $app rev-parse HEAD)".Trim()
+        Invoke-Git -C $app switch -q main
+        Invoke-Git -C $app checkout -q earlier-plan -- src/Farewell.ps1
+        Invoke-Git -C $app commit -q -m 'Add Get-Farewell (#2)'
+        $squash = "$(git -C $app rev-parse HEAD)".Trim()
+        Invoke-Git --git-dir=$origin fetch -q $app main:main "earlier-plan:refs/heads/$pushBranch"
+        Invoke-Git -C $app branch -q -D earlier-plan
+        Invoke-Git -C $app fetch -q origin
+        [IO.File]::WriteAllText((Join-Path $hostDir 'main.txt'), (git --git-dir=$origin rev-parse main))
+        $earlierPr = [pscustomobject]@{
+            number            = 2
+            title             = 'Add Get-Farewell'
+            body              = 'Adds `Get-Farewell` in `src/Farewell.ps1`.'
+            state             = 'MERGED'
+            isDraft           = $false
+            headRefName       = $pushBranch
+            baseRefName       = 'main'
+            isCrossRepository = $false
+            headRefOid        = $earlierHead
+            mergeCommit       = @{ oid = $squash }
+            url               = 'https://github.com/fixture/app/pull/2'
+        }
+        Write-Text (Join-Path $hostDir 'prs.json') (ConvertTo-Json -InputObject @($earlierPr) -Depth 10)
+    }
     Write-Text (Join-Path $hostDir 'comments.json') '[]'
     # The review a pull request gets when it opens: the owner's request (a fix step, so the run pushes a round),
     # NCode Review's blocker on behavior main already had that the issue doesn't name (a follow-up), its nit (a reply,
@@ -187,12 +219,39 @@ if (-not $CheckOnly) {
         Test-InstalledCommand $app 'run-issues' 'the thread reply mutation the stand-in serves' @('mutation($threadId: ID!, $body: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $threadId, body: $body}) { comment { url } } }')
         $missing = @(foreach ($f in '.github/workflows/code-review.yml', '.github/workflows/ci.yml') { git --git-dir=$origin cat-file -e "main:$f" 2>$null; if ($LASTEXITCODE) { $f } })
         Check 'fixture: origin main runs NCode Review and has the CI workflow its protected finding names' ($missing.Count -eq 0 -and $st['landing'] -like '*review-bots=ncode-review*') "missing: $($missing -join ', '); landing='$($st['landing'])'"
-        $rounds = if ($Scenario -eq 'max-rounds') { '1' } else { '3' }
+        $rounds = if ($Scenario -in 'max-rounds', 'push-branch') { '1' } else { '3' }
         Check "fixture: the Landing section's max-review-rounds is $rounds, and only minor-round and session-footer have a review of the first push" ("$($st['landing'])" -match "(^| )max-review-rounds=$rounds( |$)" -and (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json')) -eq ($Scenario -in 'minor-round', 'session-footer')) "landing='$($st['landing'])'"
         if ($Scenario -eq 'session-footer') {
             $pushThreads = @((Get-Content -Raw -LiteralPath (Join-Path $hostDir 'review-seed-push.json') | ConvertFrom-Json).threads)
             $sfOk = (Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt')) -and (Test-Path -LiteralPath (Join-Path $hostDir 'footer-pr-only.txt')) -and $pushThreads.Count -eq 1 -and $pushThreads[0].key -eq 'owner-push' -and $pushThreads[0].authorAssociation -eq 'OWNER' -and $pushThreads[0].author.login -eq 'fixture-owner'
             Check 'fixture: the session-footer scenario has footer.txt and footer-pr-only.txt, and its push review is a request of the owner''s' ([bool]$sfOk) "push threads: $($pushThreads.Count)"
+        }
+        if ($Scenario -eq 'push-branch') {
+            $earlier = @(Read-HostJson $hostDir 'prs.json' | Where-Object { $_ -and "$($_.number)" -eq '2' })[0]
+            $tip = "$(git --git-dir=$origin rev-parse --verify -q "refs/heads/$pushBranch")".Trim()
+            git --git-dir=$origin merge-base --is-ancestor $tip main
+            $isAncestor = $LASTEXITCODE
+            $tipTree = "$(git --git-dir=$origin rev-parse "$tip^{tree}")".Trim()
+            $mainTree = "$(git --git-dir=$origin rev-parse 'main^{tree}')".Trim()
+            $configured = "$(git -C $app config --get plan.pushBranch)".Trim()
+            $pbOk = $earlier -and $earlier.state -eq 'MERGED' -and $tip -and $tip -eq $earlier.headRefOid -and $isAncestor -eq 1 -and $tipTree -eq $mainTree -and -not $configured
+            Check 'fixture: origin''s push branch holds only the head of merged pull request #2, which main has as a squash commit, and the clone has no plan.pushBranch yet' ([bool]$pbOk) "tip=$tip; head=$($earlier.headRefOid); is-ancestor exit $isAncestor; tree $tipTree vs main $mainTree; plan.pushBranch='$configured'"
+            $probeTree = Join-Path $Work 'push-probe'
+            Invoke-Git -C $app worktree add -q --no-track $probeTree -b push-probe origin/main
+            Invoke-Git -C $app config plan.pushBranch $pushBranch
+            try {
+                Write-Text (Join-Path $probeTree 'probe.txt') "probe`n"
+                Invoke-Git -C $probeTree add probe.txt
+                Invoke-Git -C $probeTree commit -q -m 'Probe change'
+                $pst = Get-State $app $probeTree
+            }
+            finally {
+                Invoke-Git -C $app config --unset plan.pushBranch
+                Invoke-Git -C $app worktree remove --force $probeTree
+                Invoke-Git -C $app branch -q -D push-probe
+            }
+            $landedOk = $pst['push-branch'] -eq $pushBranch -and $pst['pr-branch'] -eq $pushBranch -and $pst['pr'] -eq '-' -and $pst['pr-branch-state'] -eq 'landed'
+            Check 'fixture: from a plan''s worktree, the state script reads the push branch as landed, with no pull request of the plan''s' $landedOk "push-branch='$($pst['push-branch'])' pr-branch='$($pst['pr-branch'])' pr='$($pst['pr'])' pr-branch-state='$($pst['pr-branch-state'])'"
         }
     }
 
