@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md and its prelude, valid or not, a push to the default
-    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, with a gh that refuses GitHub's GraphQL API, as a Claude Code cloud session's does, and answers only the REST paths, then a published release and one gh api doesn't find, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open, then the plan an /address-feedback run leaves, which names its pull request on a Pull request: line, on GitHub and GitLab. After each move it runs
+    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, with a gh that refuses GitHub's GraphQL API, as a Claude Code cloud session's does, and answers only the REST paths, then a published release and one gh api doesn't find, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open, then the plan an /address-feedback run leaves, which names its pull request on a Pull request: line, on GitHub and GitLab, then a plan pushed through a session's push branch: the clone's plan.pushBranch setting, valid or not, the pull request found through that branch and through the branch the plan was pushed to, other plans' pull requests from it left out, and whether that branch is new, the plan's, landed, busy with another pull request, other work or unknown. After each move it runs
     Get-PlanState.ps1, in a runspace of its own in this process that a check compares once with a pwsh of its own, and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -1048,6 +1048,93 @@ try {
     Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject @(@{ iid = 5; state = 'merged'; merge_commit_sha = $null; squash_commit_sha = $glFeedback.Squash; sha = $glFeedback.Head; target_branch = 'main' }) -Depth 3)
     $r = Test-State (Get-State $glFeedback.Repo) @{ pr = '5 MERGED'; next = 'none pull request #5 is merged: address-feedback 5 discards this run' }
     Check 'feedback: on GitLab a feedback plan whose merge request merged is discarded through address-feedback' $r.Ok $r.Detail
+}
+finally { $env:PATH = $savedPath }
+
+# 23. A plan pushed through a session's push branch, the clone's plan.pushBranch setting.
+$pOrigin = Join-Path $Work 'push/github.com/origin.git'
+$pRepo = Join-Path $Work 'push/repo'
+Push-Location $Work
+try {
+    Invoke-Git init -q --bare -b main $pOrigin
+    Invoke-Git clone -q $pOrigin $pRepo
+}
+finally { Pop-Location }
+[IO.File]::AppendAllText((Join-Path $pRepo '.git/info/exclude'), "PLAN.md`n")
+Add-Commit $pRepo 'README.md' 'Add README'
+Push-Location $pRepo
+try { Invoke-Git push -q origin HEAD:refs/heads/main; Invoke-Git switch -q -c worktree-earlier }
+finally { Pop-Location }
+Add-Commit $pRepo 'earlier.txt' 'Plan step 1: Earlier'
+$pEarlier = Get-Head $pRepo
+Push-Location $pRepo
+try {
+    Invoke-Git push -q origin HEAD:refs/heads/claude/test-abc1
+    Invoke-Git switch -q main
+    Invoke-Git merge -q --no-ff -m 'Merge pull request #3' worktree-earlier
+    Invoke-Git push -q origin HEAD:refs/heads/main
+    Invoke-Git switch -q --no-track -c worktree-push origin/main
+}
+finally { Pop-Location }
+$pMerge = Get-Head $pRepo
+Add-Commit $pRepo 'push.txt' 'Plan step 1: Push'
+$pHead = Get-Head $pRepo
+$pPlan = Join-Path $pRepo 'PLAN.md'
+Write-Text $pPlan (New-PlanText 'x' $pHead)
+function Set-PushRequests([object[]]$Items) { Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject @($Items) -Depth 3) }
+function New-PushRequest([int]$Number, [string]$State, [string]$Head, [string]$Merge = '') {
+    $mergedAt = if ($Merge) { '2026-01-01T00:00:00Z' } else { $null }
+    $mergeSha = if ($Merge) { $Merge } else { $null }
+    @{ number = $Number; state = $State; merged_at = $mergedAt; merge_commit_sha = $mergeSha; head = @{ sha = $Head; ref = 'claude/test-abc1' }; base = @{ ref = 'main' } }
+}
+$pEarlierRequest = New-PushRequest 3 'closed' $pEarlier $pMerge
+$savedPath = $env:PATH
+$env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+try {
+    Set-HostApi @{}
+    Set-IssueStates @{ '7' = 'CLOSED' }
+    Set-PushRequests @()
+    $r = Test-State (Get-State $pRepo) @{ host = 'github'; branch = 'worktree-push'; 'push-branch' = '-'; 'pr-branch' = 'worktree-push'; pr = '-' }
+    Check 'push: without a push branch the pull request comes from the branch itself' $r.Ok $r.Detail
+
+    Push-Location $pRepo
+    try { Invoke-Git config plan.pushBranch claude/test-abc1 }
+    finally { Pop-Location }
+    Set-PushRequests @($pEarlierRequest)
+    $r = Test-State (Get-State $pRepo) @{ 'push-branch' = 'claude/test-abc1'; 'pr-branch' = 'claude/test-abc1'; pr = '-'; landed = 'no'; next = 'ship-plan' }
+    Check 'push: a plan not yet pushed looks up the push branch and leaves out the earlier plan merged from it' $r.Ok $r.Detail
+    $pullsPath = [IO.File]::ReadAllText((Join-Path $bin 'pulls-path.txt'))
+    Check 'push: the pull request list asks for the push branch, with its slash escaped' ($pullsPath -ceq 'repos/{owner}/{repo}/pulls?head={owner}%3Aclaude%2Ftest-abc1&state=all&per_page=100') "path: $pullsPath"
+
+    foreach ($bad in 'main', 'bad..name') {
+        Push-Location $pRepo
+        try { Invoke-Git config plan.pushBranch $bad }
+        finally { Pop-Location }
+        $r = Test-State (Get-State $pRepo -NoFetch) @{ 'push-branch' = 'invalid'; 'pr-branch' = 'worktree-push' }
+        Check "push: a push branch of '$bad' is invalid, and the pull request comes from the branch itself" $r.Ok $r.Detail
+    }
+
+    Push-Location $pRepo
+    try {
+        Invoke-Git config plan.pushBranch claude/test-abc1
+        Invoke-Git push -q -u origin HEAD:refs/heads/claude/test-abc1
+        Invoke-Git config --unset plan.pushBranch
+    }
+    finally { Pop-Location }
+    Set-PushRequests @((New-PushRequest 4 'open' $pHead), $pEarlierRequest)
+    $r = Test-State (Get-State $pRepo) @{ 'push-branch' = '-'; 'pr-branch' = 'claude/test-abc1'; pr = '4 OPEN'; landed = 'no' }
+    Check 'push: once pushed, the pull request comes from the branch it was pushed to, without the setting' $r.Ok $r.Detail
+
+    Push-Location $pRepo
+    try { Invoke-Git switch -q main; Invoke-Git merge -q --no-ff -m 'Merge pull request #4' worktree-push; Invoke-Git push -q origin HEAD:refs/heads/main }
+    finally { Pop-Location }
+    $pMerge4 = Get-Head $pRepo
+    Push-Location $pRepo
+    try { Invoke-Git push -q origin --delete claude/test-abc1; Invoke-Git switch -q worktree-push }
+    finally { Pop-Location }
+    Set-PushRequests @((New-PushRequest 4 'closed' $pHead $pMerge4), $pEarlierRequest)
+    $r = Test-State (Get-State $pRepo) @{ 'pr-branch' = 'claude/test-abc1'; pr = '4 MERGED'; merge = $pMerge4; landed = 'yes'; next = 'finish-plan' }
+    Check 'push: a landed plan finds its merged pull request through the branch it was pushed to' $r.Ok $r.Detail
 }
 finally { $env:PATH = $savedPath }
 
