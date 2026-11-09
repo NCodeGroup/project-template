@@ -632,7 +632,8 @@ function Set-AutoMerge([string]$Name, $Info) {
 # GitHub's default Actions policy blocks pull_request_target from December 2, 2026 on a public repository without an event
 # policy allowing it. The two code-review workflows run from the default branch and check out nothing, so they keep the
 # event; every other workflow keeps the default. Its own policy, by name, is updated in place when it isn't active, misses
-# an event or doesn't cover both files.
+# an event or doesn't cover both files. It allows pull_request_target, issue_comment and every other event the two files'
+# top-level on: keys name.
 function Set-EventPolicy {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Name, $Info)
@@ -641,15 +642,20 @@ function Set-EventPolicy {
         Write-Host "${prefix}not needed (the repository isn't public, and GitHub's default policy blocks the event only on a public one)"
         return
     }
-    $present = @(foreach ($file in $codeReviewWorkflows) {
+    $present = [Collections.Generic.List[string]]::new()
+    $started = [Collections.Generic.List[string]]::new()
+    foreach ($file in $codeReviewWorkflows) {
         $read = Invoke-HostApi gh "repos/$Owner/$Name/contents/${file}?ref=$($Info.default_branch)"
-        if ($read.Status -eq 200) { $file; continue }
         if ($read.Status -eq 404) { continue }
-        Write-Host "${prefix}not available (couldn't read ${file}: $(Get-FailureReason $read))"
-        return
-    })
+        if ($read.Status -ne 200) {
+            Write-Host "${prefix}not available (couldn't read ${file}: $(Get-FailureReason $read))"
+            return
+        }
+        $present.Add($file)
+        foreach ($trigger in Get-WorkflowEvents (Get-ContentText $read.Body)) { $started.Add($trigger) }
+    }
     if (-not $present.Count) { Write-Host "${prefix}not needed (it has no code-review workflow)"; return }
-    $events = @($codeReviewEvents)
+    $events = @(@($codeReviewEvents) + @($started) | Select-Object -Unique)
 
     $own = Read-EventPolicies "repos/$Owner/$Name/actions/policies"
     if ($own.Why) { Write-Host "${prefix}not available ($($own.Why))"; return }
