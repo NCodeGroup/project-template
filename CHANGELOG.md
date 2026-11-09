@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.75.0] - 2026-11-09
+
+### Changed
+
+- GitLab CI for a PowerShell project runs in the `mcr.microsoft.com/dotnet/sdk:10.0` image, which the `Commit attribution` job also uses and which has a supported PowerShell, Git and curl, instead of `mcr.microsoft.com/powershell:lts`, last built with PowerShell 7.2, past its end of support; with `uses_node` it installs nothing with `apt-get` before nvs ([#297](https://github.com/NCodeGroup/project-template/issues/297), [ADR-0200](template/docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md)).
+
+- GitLab CI for the `other` stack with `uses_node` runs in the `node:lts` image instead of `alpine:3`, installs nvs v1.7.1, pinned to its commit, and selects the Node.js `.node-version` names before the build, as for every other stack; without `uses_node` it keeps `alpine:3` ([#298](https://github.com/NCodeGroup/project-template/issues/298), [ADR-0200](template/docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md)).
+
+- The warning `Update-Project.ps1` and `Adopt-Project.ps1` print for a `.github/workflows/publish.yml` without a `workflow_dispatch` trigger points at the `publish.yml` the template gives a .NET library on GitHub and at ADR-0137, not at one release's changelog section ([#299](https://github.com/NCodeGroup/project-template/issues/299)).
+
 ## [0.74.0] - 2026-11-08
 
 ### Added
@@ -1176,7 +1186,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.74.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.0...HEAD
+[0.75.0]: https://github.com/NCodeGroup/project-template/compare/v0.74.0...v0.75.0
 [0.74.0]: https://github.com/NCodeGroup/project-template/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/NCodeGroup/project-template/compare/v0.72.0...v0.73.0
 [0.72.0]: https://github.com/NCodeGroup/project-template/compare/v0.71.0...v0.72.0
