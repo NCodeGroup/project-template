@@ -8,6 +8,9 @@
     not twice, leaves a profile that already names nvs.ps1 alone, and throws the install text when nvs.ps1 is missing. Then
     checks, with a stub nvs that puts a stub node on PATH, that Use-Node.ps1 and use-node.sh put that node on PATH, and,
     with a stub nvs that does nothing and a PATH holding no node, that both fail with a message naming Initialize-Nvs.ps1.
+    Then checks, with no nvs and a stub node on PATH that prints a version, that both accept that node when it is the
+    version .node-version names or starts with it and a dot, and refuse it, with the nvs install text, when it is another
+    version or missing.
     Every check passes -HomeDirectory and -ProfilePath or sets NVS_HOME itself, so nothing touches the real home folder or
     profile. The Use-Node.ps1 and use-node.sh checks run with a PATH of the system folders alone (System32 on Windows,
     /usr/bin:/bin elsewhere), so an nvs or node the PC has can't stand in for the stubs; the use-node.sh checks run only
@@ -141,6 +144,36 @@ if (-not $baseHasNode) {
 else {
     Skip 'Use-Node.ps1 fails naming Initialize-Nvs.ps1 when no node appears' "$basePath holds a node"
     Skip 'use-node.sh fails naming Initialize-Nvs.ps1 when no node appears' "$basePath holds a node"
+}
+
+# --- Without nvs, both accept the node on PATH only when it is the version .node-version names ---
+$noNvsCases = @(
+    @{ Name = 'accepts the node on PATH whose major version .node-version names'; Want = '26'; Have = 'v26.1.0'; Ok = $true }
+    @{ Name = 'accepts the node on PATH whose exact version .node-version names'; Want = 'v26.1.0'; Have = 'v26.1.0'; Ok = $true }
+    @{ Name = 'refuses a node on PATH of another major version'; Want = '26'; Have = 'v24.3.0'; Ok = $false }
+    @{ Name = 'refuses 26.10.0 when .node-version names 26.1'; Want = '26.1'; Have = 'v26.10.0'; Ok = $false }
+    @{ Name = 'refuses when no node is on PATH'; Want = '26'; Have = ''; Ok = $false }
+)
+for ($i = 0; $i -lt $noNvsCases.Count; $i++) {
+    $case = $noNvsCases[$i]
+    if (-not $case.Have -and $baseHasNode) { Skip "Use-Node.ps1 without nvs $($case.Name)" "$basePath holds a node"; Skip "use-node.sh without nvs $($case.Name)" "$basePath holds a node"; continue }
+    $root = New-Fixture "nonvs-$i" '' ''
+    Set-Content (Join-Path $root '.node-version') $case.Want
+    $stubDir = Join-Path $root 'stub'
+    $stubNode = Join-Path $stubDir $(if ($IsWindows) { 'node.cmd' } else { 'node' })
+    Set-Content $stubNode $(if ($IsWindows) { "@echo $($case.Have)" } else { '#!/bin/sh', "echo $($case.Have)" })
+    if (-not $IsWindows) { chmod +x $stubNode }
+    $noNvsEnv = @{ NVS_HOME = (Join-Path $root 'nvs'); PATH = $(if ($case.Have) { "$stubDir$([IO.Path]::PathSeparator)$basePath" } else { $basePath }) }
+    # The child prints the exception message itself, so PowerShell's error view can't wrap the text the check looks for.
+    $out = Invoke-WithEnv $noNvsEnv { Invoke-Child $pwshPath -NoProfile -NonInteractive -Command "try { . '$(Join-Path $root '.template/Use-Node.ps1')'; (Get-Command node -ErrorAction Ignore).Source } catch { `$_.Exception.Message; exit 1 }" }
+    $ok = if ($case.Ok) { $LASTEXITCODE -eq 0 -and $out.Trim() -eq $stubNode } else { $LASTEXITCODE -ne 0 -and $out -like '*nvs is not installed*Install it with*' }
+    Check "Use-Node.ps1 without nvs $($case.Name)" $ok $out
+    if ($bash) {
+        $out = Invoke-WithEnv $noNvsEnv { Invoke-Child $bash.Source -c ". '$(Join-Path $root '.template/use-node.sh')' && command -v node" }
+        $ok = if ($case.Ok) { $LASTEXITCODE -eq 0 -and $out.Trim() -eq $stubNode } else { $LASTEXITCODE -ne 0 -and $out -like '*nvs is not installed*Install it with*' }
+        Check "use-node.sh without nvs $($case.Name)" $ok $out
+    }
+    else { Skip "use-node.sh without nvs $($case.Name)" $noBash }
 }
 
 if ($failures.Count) { "Kept the work folder: $Work"; "Node.js setup tests: FAILED ($($failures.Count))"; exit 1 }
