@@ -6,7 +6,8 @@
     Builds a template repository whose v0.1.0 holds the template files (copier.yml, .gitattributes and template/) of
     the commit -Base and whose v0.2.0 holds those of the working tree. For each of six answer sets it renders a
     project from both versions and checks that they hold the same files with the same bytes, apart from
-    .copier-answers.yml and .template-version. Prints PASS or FAIL per check and exits 1 on any failure.
+    .copier-answers.yml and .template-version. It then updates each v0.1.0 render to v0.2.0 and checks that the result
+    matches the v0.2.0 render in every file but .copier-answers.yml. Prints PASS or FAIL per check and exits 1 on any failure.
 
     It is not named Test-*.ps1, so tests/Invoke-AllTests.ps1 doesn't run it: it needs a base commit to compare with.
     It is a tool for refactors that must not change what a project gets.
@@ -99,6 +100,18 @@ foreach ($name in $cases.Keys) {
 
     $different = @($beforeHash.Keys | Where-Object { $afterHash.ContainsKey($_) -and $_ -notin '.copier-answers.yml', '.template-version' -and $beforeHash[$_] -ne $afterHash[$_] } | Sort-Object)
     Check "${name}: every file holds the same bytes" (-not $different) "different: $($different -join ', ')"
+
+    Push-Location $before
+    try {
+        Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m Project
+        Invoke-Copier update --defaults --quiet --vcs-ref v0.2.0
+    }
+    finally { Pop-Location }
+    $updatedHash = Get-RenderedFileHash $before
+    $onlyUpdated = @($updatedHash.Keys | Where-Object { -not $afterHash.ContainsKey($_) } | Sort-Object)
+    $onlyAfter = @($afterHash.Keys | Where-Object { -not $updatedHash.ContainsKey($_) } | Sort-Object)
+    $different = @($updatedHash.Keys | Where-Object { $afterHash.ContainsKey($_) -and $_ -ne '.copier-answers.yml' -and $updatedHash[$_] -ne $afterHash[$_] } | Sort-Object)
+    Check "${name}: copier update from v0.1.0 to v0.2.0 gives the v0.2.0 render" (-not $onlyUpdated -and -not $onlyAfter -and -not $different) "only in the updated project: $($onlyUpdated -join ', '); only in the v0.2.0 render: $($onlyAfter -join ', '); different: $($different -join ', ')"
 }
 
 ''

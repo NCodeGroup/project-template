@@ -620,6 +620,7 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `tests/Test-ScriptAnalyzer.ps1` | Run PSScriptAnalyzer on every script and fail on any warning or error |
 | `tests/Invoke-AllTests.ps1` | Run every test suite and print one line per suite |
 | `tests/Measure-Suites.ps1` | Time the test suites it names, one at a time, against a limit |
+| `tests/Compare-Renders.ps1` | Render the template at a base commit and from the working tree with six answer sets, update each base render to the working tree's, and fail on any difference: the check for a change that must not alter what projects get |
 | `tests/Test-InvokeAllTests.ps1` | Test the runner that runs every test suite |
 | `tests/Test-AgentRunner.ps1` | Test the end-to-end tests' runner against stand-ins for `claude` and `copilot` |
 | `tests/Remove-TestWork.ps1` | Delete a passing run's own work folder, or say it couldn't |
