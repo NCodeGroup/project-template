@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.75.6] - 2026-11-09
+
+### Changed
+
+- No change for projects made from the template. Every file and folder name under `template/` is plain: the 79 names that held a Copier condition, such as `{% if stack == 'dotnet' %}global.json{% endif %}`, lost it, and their conditions are `_exclude` entries in `copier.yml`, so a project gets exactly the files it got before, and an update from an earlier version changes nothing it didn't. No path in the repository holds a Jinja tag, and the longest is 141 characters instead of 200, so the repository checks out the same on Windows, Linux and macOS, with no setting such as `core.longpaths`. `tests/Test-WindowsFileNames.ps1` fails a path that holds a Jinja tag or is longer than 160 characters, and the new `tests/Compare-Renders.ps1 -Base <commit>` checks that the working tree's template renders, and updates a project, exactly as the template at that commit does.
+
 ## [0.75.5] - 2026-11-09
 
 ### Fixed
@@ -1220,7 +1226,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.5...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.6...HEAD
+[0.75.6]: https://github.com/NCodeGroup/project-template/compare/v0.75.5...v0.75.6
 [0.75.5]: https://github.com/NCodeGroup/project-template/compare/v0.75.4...v0.75.5
 [0.75.4]: https://github.com/NCodeGroup/project-template/compare/v0.75.3...v0.75.4
 [0.75.3]: https://github.com/NCodeGroup/project-template/compare/v0.75.2...v0.75.3

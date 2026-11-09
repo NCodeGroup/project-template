@@ -46,7 +46,8 @@ _merged_files:
   - global.json
   - nuget.config
 
-# The workflow files of tools the project doesn't use; an empty pattern excludes nothing.
+# The files a project doesn't get: the workflow files of tools it doesn't use, and each file that depends on an answer. A template
+# file's name never holds a condition, so every path checks out on any OS. An empty line excludes nothing; an entry can list several paths, one per line.
 # Each pattern reads its answer through a default or an `is defined` test, because an update renders the old version's files with these patterns before the project has that answer.
 _exclude:
   - "{% if (code_review is defined and not code_review) or (git_host is defined and git_host != 'github') %}.github/workflows/code-review.yml{% endif %}"
@@ -60,6 +61,130 @@ _exclude:
   - "{% if 'local' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/agents/local-implementer.agent.md{% endif %}"
   - "{% if 'local' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/prompts/execute-step-local.prompt.md{% endif %}"
   - "{% if 'copilot' not in (workflow_tools | default(['claude', 'copilot', 'local'])) and 'local' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/prompts{% endif %}"
+  - |-
+    {% if stack is defined and not ((uses_node is defined and uses_node) or (uses_node is not defined and stack == 'node')) %}
+    /.node-version
+    .template/Initialize-Nvs.ps1
+    .template/Use-Node.ps1
+    .template/use-node.sh
+    docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md
+    {% endif %}
+  - |-
+    {% if stack is defined and stack != 'dotnet' %}
+    docs/decisions/project-template/0100-warnings-are-errors-in-every-project.md
+    docs/decisions/project-template/0101-central-package-management.md
+    docs/decisions/project-template/0102-disallowed-apis-are-banned-at-build-time.md
+    docs/decisions/project-template/0103-behavior-is-a-service-a-strategy-collection-or-a-mediator.md
+    docs/decisions/project-template/0104-no-cross-assembly-internalsvisibleto.md
+    docs/decisions/project-template/0105-the-canonical-implementation-is-named-defaultfoo.md
+    docs/decisions/project-template/0106-configuration-binds-strictly-and-is-validated-at-startup.md
+    docs/decisions/project-template/0107-filtered-reads-push-filtering-to-the-database.md
+    docs/decisions/project-template/0108-persisted-documents-are-versioned-and-additive.md
+    docs/decisions/project-template/0109-a-lost-concurrency-race-is-a-store-neutral-exception.md
+    docs/decisions/project-template/0110-shared-state-is-changed-by-read-modify-write.md
+    docs/decisions/project-template/0111-failures-carry-a-machine-readable-code.md
+    docs/decisions/project-template/0112-binary-data-uses-spans-pooled-buffers-and-cleared-secrets.md
+    docs/decisions/project-template/0113-metrics-have-one-owner-per-signal-and-bounded-dimensions.md
+    docs/decisions/project-template/0114-one-activity-source-named-like-its-meter.md
+    docs/decisions/project-template/0115-a-host-logs-to-standard-output.md
+    docs/decisions/project-template/0116-visibility-starts-at-the-narrowest-that-works.md
+    docs/decisions/project-template/0117-one-definition-of-done-gates-every-change.md
+    docs/decisions/project-template/0118-the-null-forgiving-operator-is-banned-outside-tests.md
+    docs/decisions/project-template/0119-production-refuses-development-only-settings.md
+    docs/decisions/project-template/0120-request-delegates-are-generated-at-compile-time.md
+    docs/decisions/project-template/0121-html-pages-have-a-strict-content-security-policy.md
+    docs/decisions/project-template/0122-strict-transport-security-outside-development.md
+    docs/decisions/project-template/0123-resource-ids-are-server-generated-and-opaque.md
+    docs/decisions/project-template/0124-collection-endpoints-use-keyset-pagination.md
+    docs/decisions/project-template/0125-a-write-that-loses-a-race-is-answered-412.md
+    docs/decisions/project-template/0126-published-urls-come-from-a-configured-origin.md
+    docs/decisions/project-template/0127-the-data-protection-key-ring-is-shared-and-encrypted-at-rest.md
+    docs/decisions/project-template/0128-liveness-never-checks-dependencies-readiness-does.md
+    docs/decisions/project-template/0129-browser-facing-requests-are-safe-by-construction.md
+    docs/decisions/project-template/0140-replicas-converge-through-reconciliation.md
+    docs/decisions/project-template/0141-side-effects-after-a-commit-go-through-an-outbox.md
+    docs/decisions/project-template/0142-data-that-grows-with-use-is-pruned-in-bounded-batches.md
+    docs/decisions/project-template/0143-migrations-run-before-the-rollout-and-only-expand.md
+    docs/decisions/project-template/0144-correctness-guards-fail-closed-capacity-guards-fail-open.md
+    docs/decisions/project-template/0145-outbound-calls-are-bounded-and-caller-supplied-urls-are-guarded.md
+    docs/decisions/project-template/0146-secrets-are-never-logged-compared-in-constant-time-and-shown-once.md
+    {% endif %}
+  - |-
+    {% if stack is defined and nuget_package is defined and not (stack == 'dotnet' and nuget_package) %}
+    docs/decisions/project-template/0130-source-link-and-symbol-packages.md
+    docs/decisions/project-template/0131-public-api-is-tracked-and-evolves-compatibly.md
+    docs/decisions/project-template/0132-implementation-packages-depend-only-on-abstractions.md
+    docs/decisions/project-template/0133-abstractions-are-framework-free-and-tiered.md
+    docs/decisions/project-template/0134-evolving-optional-parameters-are-a-dto.md
+    docs/decisions/project-template/0136-packages-follow-semantic-versioning-and-the-assembly-version-moves-only-with-the-major.md
+    {% endif %}
+  - |-
+    {% if git_host is defined and stack is defined and nuget_package is defined and not (git_host == 'github' and stack == 'dotnet' and nuget_package) %}
+    docs/decisions/project-template/0135-packages-are-published-from-a-github-release-through-trusted-publishing.md
+    docs/decisions/project-template/0137-the-release-workflow-starts-package-publishing.md
+    {% endif %}
+  - |-
+    {% if stack is defined and stack != 'dotnet' %}
+    /build
+    /Directory.Build.props
+    /Directory.Packages.props
+    /global.json
+    /nuget.config
+    {% endif %}
+  - |-
+    {% if stack is defined and nuget_package is defined and not (stack == 'dotnet' and nuget_package) %}
+    build/Update-PublicApi.ps1
+    {% endif %}
+  - |-
+    {% if stack is defined and nuget_package is defined and package_icon is defined and not (stack == 'dotnet' and nuget_package and package_icon == 'NCodeGroup.png') %}
+    /NCodeGroup.png
+    {% endif %}
+  - |-
+    {% if stack is defined and stack != 'dotnet' %}
+    docs/metrics.md
+    .claude/rules/csharp.md
+    .claude/rules/csharp-tests.md
+    .github/instructions/csharp.instructions.md
+    .github/instructions/csharp-tests.instructions.md
+    {% endif %}
+  - |-
+    {% if git_host is defined and git_host != 'github' %}
+    .github/workflows/code-review-auto-merge.yml
+    .github/workflows/tag-release.yml
+    .github/workflows/template-update.yml
+    {% endif %}
+  - |-
+    {% if git_host is defined and not (git_host == 'github' and (workflow_tools is not defined or 'copilot' in workflow_tools)) %}
+    .github/workflows/copilot-setup-steps.yml
+    {% endif %}
+  - |-
+    {% if git_host is defined and stack is defined and nuget_package is defined and not (git_host == 'github' and stack == 'dotnet' and nuget_package) %}
+    .github/workflows/publish.yml
+    {% endif %}
+  - |-
+    {% if git_host is defined and git_host != 'github' %}
+    .github/workflows/ci.yml
+    {% endif %}
+  - |-
+    {% if git_host is defined and git_host != 'github' %}
+    .github/dependabot.yml
+    {% endif %}
+  - |-
+    {% if git_host is defined and stack is defined and not (git_host == 'github' and stack == 'dotnet') %}
+    .github/actions
+    {% endif %}
+  - |-
+    {% if git_host is defined and git_host != 'gitlab' %}
+    /.gitlab-ci.yml
+    {% endif %}
+  - |-
+    {% if license is defined and license not in ['Apache-2.0', 'MIT'] %}
+    /LICENSE.txt
+    {% endif %}
+  - |-
+    {% if license is defined and license != 'Apache-2.0' %}
+    /COPYRIGHT.txt
+    {% endif %}
 
 project_name:
   type: str

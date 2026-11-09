@@ -7,8 +7,10 @@
     git ls-files -z --cached --others --exclude-standard and fails each one with a part Windows
     refuses (a control character, one of <>:"|?*\, a reserved name such as CON, NUL, COM1 or LPT1
     with or without an extension, or a name ending in a dot or a space), because Copier checks out
-    the whole template repository at a tag and Git for Windows refuses such a path. Prints PASS or
-    FAIL per check and exits 1 on any failure.
+    the whole template repository at a tag and Git for Windows refuses such a path. It also fails a
+    path with a Jinja tag ({% or %}) in a name, because a template file's condition belongs in
+    copier.yml's _exclude, and a path longer than 160 characters, which a clone's folder would take
+    past Windows' 260-character limit. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .EXAMPLE
     .\tests\Test-WindowsFileNames.ps1
@@ -89,7 +91,11 @@ if ($LASTEXITCODE) { throw "git ls-files exited with code $LASTEXITCODE." }
 $paths = @($listing -split "`0" | Where-Object { $_ })
 Check 'repository: git lists the repository''s files' ($paths.Count -gt 100) "$($paths.Count) paths"
 $bad = @(Get-WindowsPathProblem $paths)
-Check 'repository: Windows can check out every path (write a file name''s condition with is defined, never a | filter)' (-not $bad) ($bad -join '; ')
+Check 'repository: Windows can check out every path' (-not $bad) ($bad -join '; ')
+$jinja = @($paths | Where-Object { $_.Contains('{%') -or $_.Contains('%}') })
+Check 'repository: no path holds a Jinja tag (a file''s condition goes in copier.yml''s _exclude)' (-not $jinja) ($jinja -join '; ')
+$long = @($paths | Where-Object Length -GT 160)
+Check 'repository: every path is at most 160 characters' (-not $long) ($long -join '; ')
 
 ''
 if ($failures.Count) { "Windows file name tests: FAILED ($($failures.Count))"; exit 1 }
