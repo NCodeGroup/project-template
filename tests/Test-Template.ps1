@@ -125,7 +125,7 @@ $toolFiles = @{
 $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'build\Get-TestRuntimes.ps1', 'build\Install-Dotnet.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
     '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md'
 # Files only a project that needs Node.js gets (stack node, or uses_node answered yes).
-$nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', 'docs\decisions\project-template\0200-*.md'
+$nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', '.template\install-nvs.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
 $hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml'; gitlab = @('.gitlab-ci.yml') }
@@ -515,14 +515,14 @@ foreach ($case in $cases) {
         }
         elseif ($pm -ne 'bun') {
             $useNode = $ci.IndexOf('. ./.template/use-node.sh')
-            Check "${name}: GitLab CI selects the .node-version Node.js through the pinned nvs before it installs anything" ($ci.Contains('--branch v1.7.1 https://github.com/jasongin/nvs') -and $ci.Contains('= b87ae9593cd20e7b667e9099240c9befeb50659f') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf($install) -and ($pm -notin 'pnpm', 'yarn' -or $useNode -lt $ci.IndexOf('corepack'))) $ci
+            Check "${name}: GitLab CI selects the .node-version Node.js through use-node.sh, installing the pinned nvs only when needed, before it installs anything" ($ci.Contains('bash ./.template/install-nvs.sh') -and -not $ci.Contains('jasongin/nvs') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf($install) -and ($pm -notin 'pnpm', 'yarn' -or $useNode -lt $ci.IndexOf('corepack'))) $ci
         }
-        else { Check "${name}: GitLab CI runs Bun without nvs" (-not $ci.Contains('jasongin/nvs')) $ci }
+        else { Check "${name}: GitLab CI runs Bun without nvs" (-not $ci.Contains('install-nvs.sh') -and -not $ci.Contains('use-node.sh')) $ci }
     }
     if ($case.Host -eq 'gitlab' -and $case.Stack -in 'dotnet', 'python', 'powershell', 'other') {
         $useNode = $ci.IndexOf('. ./.template/use-node.sh')
-        if ($usesNode) { Check "${name}: GitLab CI selects the .node-version Node.js through the pinned nvs before the build" ($ci.Contains('--branch v1.7.1 https://github.com/jasongin/nvs') -and $ci.Contains('= b87ae9593cd20e7b667e9099240c9befeb50659f') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf("`n  script:")) $ci }
-        else { Check "${name}: GitLab CI installs no nvs without uses_node" (-not $ci.Contains('jasongin/nvs')) $ci }
+        if ($usesNode) { Check "${name}: GitLab CI selects the .node-version Node.js through use-node.sh, installing the pinned nvs only when needed, before the build" ($ci.Contains('bash ./.template/install-nvs.sh') -and -not $ci.Contains('jasongin/nvs') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf("`n  script:")) $ci }
+        else { Check "${name}: GitLab CI installs no nvs without uses_node" (-not $ci.Contains('install-nvs.sh') -and -not $ci.Contains('use-node.sh')) $ci }
         if ($case.Stack -eq 'powershell') {
             Check "${name}: GitLab CI runs the PowerShell job in the .NET SDK image, which has Git and curl, and installs nothing with apt-get" ($ci -match 'build-and-test:\r?\n(?:  #.*\r?\n)*  image: mcr\.microsoft\.com/dotnet/sdk:10\.0\r?\n' -and -not $ci.Contains('mcr.microsoft.com/powershell') -and -not $ci.Contains('apt-get')) $ci
         }
