@@ -108,6 +108,20 @@ _exclude:
     docs/decisions/project-template/0145-outbound-calls-are-bounded-and-caller-supplied-urls-are-guarded.md
     docs/decisions/project-template/0146-secrets-are-never-logged-compared-in-constant-time-and-shown-once.md
     {% endif %}
+  - |-
+    {% if stack is defined and nuget_package is defined and not (stack == 'dotnet' and nuget_package) %}
+    docs/decisions/project-template/0130-source-link-and-symbol-packages.md
+    docs/decisions/project-template/0131-public-api-is-tracked-and-evolves-compatibly.md
+    docs/decisions/project-template/0132-implementation-packages-depend-only-on-abstractions.md
+    docs/decisions/project-template/0133-abstractions-are-framework-free-and-tiered.md
+    docs/decisions/project-template/0134-evolving-optional-parameters-are-a-dto.md
+    docs/decisions/project-template/0136-packages-follow-semantic-versioning-and-the-assembly-version-moves-only-with-the-major.md
+    {% endif %}
+  - |-
+    {% if git_host is defined and stack is defined and nuget_package is defined and not (git_host == 'github' and stack == 'dotnet' and nuget_package) %}
+    docs/decisions/project-template/0135-packages-are-published-from-a-github-release-through-trusted-publishing.md
+    docs/decisions/project-template/0137-the-release-workflow-starts-package-publishing.md
+    {% endif %}
 
 project_name:
   type: str
