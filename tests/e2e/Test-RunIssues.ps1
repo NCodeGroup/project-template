@@ -234,6 +234,14 @@ if (-not $CheckOnly) {
         $minor = @($nodes | Where-Object { $_.path -eq 'tests/Test-Greeting.ps1' -and "$($_.comments.nodes[0].body)" -match 'severity=should-fix' })
         Check 'fixture: the stand-in gives NCode Review''s review of a push on the first read after a /review comment that follows the push, and not before' (@($again.data.repository.pullRequest.reviewThreads.nodes).Count -eq 6 -and @($unasked.data.repository.pullRequest.reviewThreads.nodes).Count -eq 6 -and $nodes.Count -eq 8 -and $minor.Count -eq 1 -and $minor[0].comments.nodes[0].author.login -eq 'ncode-review' -and -not (Test-Path -LiteralPath (Join-Path $probe 'host/review-seed-push.json'))) "threads after the push: $($nodes.Count)"
     }
+    $probePrs = Join-Path $probe 'host/prs.json'
+    $list = @(Get-Content -Raw -LiteralPath $probePrs | ConvertFrom-Json)
+    $list += [pscustomobject]@{ number = 9; title = 'Earlier'; body = 'Earlier'; state = 'MERGED'; isDraft = $false; headRefName = 'probe'; baseRefName = 'main'; isCrossRepository = $false; headRefOid = ''; mergeCommit = $null; url = 'https://github.com/fixture/app/pull/9' }
+    Write-Text $probePrs (ConvertTo-Json -InputObject $list -Depth 10)
+    $viewed = "$(pwsh -NoProfile -File $probeGh pr view probe --json number --jq .number)".Trim()
+    $openList = @(pwsh -NoProfile -File $probeGh pr list --head probe --json number | Out-String | ConvertFrom-Json)
+    $allList = @(pwsh -NoProfile -File $probeGh pr list --head probe --state all --json number | Out-String | ConvertFrom-Json)
+    Check 'fixture: the stand-in''s gh pr view <branch> picks the branch''s open pull request over a newer merged one, and gh pr list without --state lists only open ones' ($viewed -eq '1' -and $openList.Count -eq 1 -and "$($openList[0].number)" -eq '1' -and $allList.Count -eq 2) "pr view: '$viewed'; open: $($openList.Count); all: $($allList.Count)"
     Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
     Remove-Item -LiteralPath $probe -Recurse -Force
 }

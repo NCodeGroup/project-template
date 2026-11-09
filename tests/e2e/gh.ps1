@@ -8,7 +8,7 @@ Run as `gh <args>`. It keeps its state in JSON files in the `host` folder beside
 summaries, and `origin.txt`), logs each call to `host/calls.log`, and fails on calls it doesn't support (logged as
 UNSUPPORTED) or that the workflow must never make (logged as FORBIDDEN): merging a pull request, marking it ready,
 closing it, and a GraphQL mutation that resolves a thread, dismisses a review, merges, or changes a pull request or
-a branch. `pr view` of a branch with no pull request fails as gh does (logged as NOTFOUND). An optional `forbidden.txt` names more commands to refuse, one `<command> <subcommand>` per line, such as
+a branch. `pr view` of a branch with no pull request fails as gh does (logged as NOTFOUND). `pr view <branch>` picks the branch's open pull request, else its newest, and `pr list` without `--state` lists open pull requests, as gh does. An optional `forbidden.txt` names more commands to refuse, one `<command> <subcommand>` per line, such as
 `pr edit`. An optional `review-seed.json` holds the review threads, review summaries and top-level comments the first
 pull request gets when it is opened. An optional `review-seed-push.json` holds the review a pull request gets on the first
 read of its threads, comments or reviews, GraphQL or REST, after a /review comment posted once its branch on origin has moved past the head it was opened at, as NCode Review reviews a push only when a writer asks.
@@ -589,6 +589,7 @@ switch ("$($args[0]) $($args[1])") {
     }
     'pr list' {
         $state = Get-Option '--state'
+        if (-not $state) { $state = 'open' }
         $head = Get-Option '--head'
         $found = @(@(Read-Json 'prs.json' @()) | Where-Object {
             (-not $state -or $state -eq 'all' -or $_.state -eq $state.ToUpper()) -and (-not $head -or $_.headRefName -eq $head)
@@ -600,7 +601,9 @@ switch ("$($args[0]) $($args[1])") {
     'pr view' {
         $which = "$($args[2])".TrimStart('#')
         if (-not $which -or $which.StartsWith('-')) { $which = (git branch --show-current) }
-        $pr = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $which -or $_.headRefName -eq $which } | Select-Object -First 1
+        # As gh does, a branch's open pull request comes first, then the newest.
+        $candidates = @(Read-Json 'prs.json' @()) | Where-Object { "$($_.number)" -eq $which -or $_.headRefName -eq $which }
+        $pr = @($candidates | Sort-Object -Property @{ Expression = { $_.state -eq 'OPEN' }; Descending = $true }, @{ Expression = { [int]$_.number }; Descending = $true }) | Select-Object -First 1
         # A branch without a pull request fails as gh fails it. Claude Code itself looks up the current branch's pull
         # request this way, so it is not the workflow's call to refuse.
         if (-not $pr -and $which -notmatch '^\d+$') { Stop-Call NOTFOUND "no pull requests found for branch ""$which""" }
