@@ -9,7 +9,9 @@
     checks, with a stub nvs that puts a stub node on PATH, that Use-Node.ps1 and use-node.sh put that node on PATH, and,
     with a stub nvs that does nothing and a PATH holding no node, that both fail with a message naming Initialize-Nvs.ps1.
     Every check passes -HomeDirectory and -ProfilePath or sets NVS_HOME itself, so nothing touches the real home folder or
-    profile. Prints PASS or FAIL per check and exits 1 on any failure.
+    profile. The Use-Node.ps1 and use-node.sh checks run with a PATH of the system folders alone (System32 on Windows,
+    /usr/bin:/bin elsewhere), so an nvs or node the PC has can't stand in for the stubs; the use-node.sh checks run only
+    on Linux and macOS, as in CI. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-node-test-<process ID> in the
@@ -30,6 +32,12 @@ $failures = [Collections.Generic.List[string]]::new()
 $tag = "{% if (uses_node is defined and uses_node) or (uses_node is not defined and stack == 'node') %}"
 $endTag = '{% endif %}'
 $pwshPath = (Get-Process -Id $PID).Path
+# The child processes run with this PATH, so a PC's own nvs or node can't stand in for the fixture's stubs.
+$basePath = if ($IsWindows) { Join-Path $env:SystemRoot 'System32' } else { '/usr/bin:/bin' }
+$baseHasNode = [bool]($basePath -split [IO.Path]::PathSeparator | Where-Object { (Test-Path (Join-Path $_ 'node')) -or (Test-Path (Join-Path $_ 'node.exe')) })
+# The bash checks put Windows paths on a bash PATH, which only Linux and macOS bash can read; CI runs them on Linux.
+$bash = if ($IsWindows) { $null } else { Get-Command bash -ErrorAction Ignore }
+$noBash = if ($IsWindows) { 'the bash checks run on Linux and macOS' } else { 'bash not found' }
 
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
@@ -101,29 +109,23 @@ $stubNvsPs1 = 'function nvs { $env:PATH = "$env:NVS_STUB$([IO.Path]::PathSeparat
 $root = New-Fixture 'use' $stubNvsPs1 'nvs() { PATH="$NVS_STUB:$PATH"; }'
 $stubDir = Join-Path $root 'stub'
 $stubNode = Join-Path $stubDir $(if ($IsWindows) { 'node.cmd' } else { 'node' })
-$useEnv = @{ NVS_HOME = (Join-Path $root 'nvs'); NVS_STUB = $stubDir }
+$useEnv = @{ NVS_HOME = (Join-Path $root 'nvs'); NVS_STUB = $stubDir; PATH = $basePath }
 $out = Invoke-WithEnv $useEnv {
     Invoke-Child $pwshPath -NoProfile -NonInteractive -Command ". '$(Join-Path $root '.template/Use-Node.ps1')'; (Get-Command node -ErrorAction Ignore).Source"
 }
 Check 'Use-Node.ps1 puts the stub node on PATH' ($LASTEXITCODE -eq 0 -and $out.Trim() -eq $stubNode) $out
-$bash = Get-Command bash -ErrorAction Ignore
 if ($bash) {
     $out = Invoke-WithEnv $useEnv {
         Invoke-Child $bash.Source -c ". '$(Join-Path $root '.template/use-node.sh')' && command -v node"
     }
     Check 'use-node.sh puts the stub node on PATH' ($LASTEXITCODE -eq 0 -and $out.Trim() -eq $stubNode) $out
 }
-else { Skip 'use-node.sh puts the stub node on PATH' 'bash not found' }
+else { Skip 'use-node.sh puts the stub node on PATH' $noBash }
 
 # --- Both fail when no node appears ---
 $root = New-Fixture 'nonode' 'function nvs {}' 'nvs() { :; }'
-$noNodeEnv = @{ NVS_HOME = (Join-Path $root 'nvs'); NVS_STUB = (Join-Path $root 'stub') }
-$restricted = $false
-if (-not $IsWindows) {
-    $restricted = -not ((Test-Path /usr/bin/node) -or (Test-Path /bin/node))
-    if ($restricted) { $noNodeEnv['PATH'] = '/usr/bin:/bin' }
-}
-if ($restricted) {
+$noNodeEnv = @{ NVS_HOME = (Join-Path $root 'nvs'); NVS_STUB = (Join-Path $root 'stub'); PATH = $basePath }
+if (-not $baseHasNode) {
     $out = Invoke-WithEnv $noNodeEnv {
         Invoke-Child $pwshPath -NoProfile -NonInteractive -Command ". '$(Join-Path $root '.template/Use-Node.ps1')'"
     }
@@ -134,11 +136,11 @@ if ($restricted) {
         }
         Check 'use-node.sh fails naming Initialize-Nvs.ps1 when no node appears' ($LASTEXITCODE -ne 0 -and $out -like '*Initialize-Nvs.ps1*') $out
     }
-    else { Skip 'use-node.sh fails naming Initialize-Nvs.ps1 when no node appears' 'bash not found' }
+    else { Skip 'use-node.sh fails naming Initialize-Nvs.ps1 when no node appears' $noBash }
 }
 else {
-    Skip 'Use-Node.ps1 fails naming Initialize-Nvs.ps1 when no node appears' 'cannot build a PATH without node here'
-    Skip 'use-node.sh fails naming Initialize-Nvs.ps1 when no node appears' 'cannot build a PATH without node here'
+    Skip 'Use-Node.ps1 fails naming Initialize-Nvs.ps1 when no node appears' "$basePath holds a node"
+    Skip 'use-node.sh fails naming Initialize-Nvs.ps1 when no node appears' "$basePath holds a node"
 }
 
 if ($failures.Count) { "Kept the work folder: $Work"; "Node.js setup tests: FAILED ($($failures.Count))"; exit 1 }
