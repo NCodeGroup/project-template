@@ -593,7 +593,8 @@ function Set-AutoMerge([string]$Name, $Info) {
 
 # GitHub's default Actions policy blocks pull_request_target from December 2, 2026 on a public repository without an event
 # policy allowing it. The two code-review workflows run from the default branch and check out nothing, so they keep the
-# event; every other workflow keeps the default.
+# event; every other workflow keeps the default. Its own policy, by name, is updated in place when it isn't active, misses
+# an event or doesn't cover both files.
 function Set-EventPolicy {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Name, $Info)
@@ -610,11 +611,24 @@ function Set-EventPolicy {
         return
     })
     if (-not $present.Count) { Write-Host "${prefix}not needed (it has no code-review workflow)"; return }
+    $events = @($codeReviewEvents)
 
     $own = Read-EventPolicies "repos/$Owner/$Name/actions/policies"
     if ($own.Why) { Write-Host "${prefix}not available ($($own.Why))"; return }
-    if (@($own.Policies | Where-Object { $_.name -eq $eventPolicyName }).Count) {
-        Write-Host "${prefix}left alone (already has '$eventPolicyName')"
+    $ours = @($own.Policies | Where-Object { $_.name -eq $eventPolicyName }) | Select-Object -First 1
+    if ($ours) {
+        $gaps = @(Get-EventPolicyGaps $ours $events)
+        if (-not $gaps.Count) { Write-Host "${prefix}already set ('$eventPolicyName' allows it)"; return }
+        $why = $gaps -join '; '
+        $kept = @($ours.rules | Where-Object { $_.type -eq 'restrict_action_events' } | ForEach-Object { @($_.parameters.allowed_events) })
+        $allowed = @(@($events) + $kept | Where-Object { $_ } | Select-Object -Unique)
+        if (-not $PSCmdlet.ShouldProcess($Name, "update Actions policy '$eventPolicyName'")) {
+            Write-Host "${prefix}would set (update '$eventPolicyName', as $why, for $($codeReviewWorkflows -join ' and '), allowing $($allowed -join ', '))"
+            return
+        }
+        $result = Invoke-HostWrite PUT "repos/$Owner/$Name/actions/policies/$($ours.id)" (New-EventPolicyBody $allowed)
+        if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set (updated '$eventPolicyName', as $why)" }
+        else { Write-Host "${prefix}not available (couldn't update '$eventPolicyName', as ${why}: $(Get-FailureReason $result))" }
         return
     }
     $allowing = @($own.Policies | Where-Object { Test-AllowsPullRequestTarget $_ $present })
@@ -627,10 +641,10 @@ function Set-EventPolicy {
     if ($allowing.Count) { Write-Host "${prefix}already set (the organization's '$($allowing[0].name)' allows it)"; return }
 
     if (-not $PSCmdlet.ShouldProcess($Name, "create Actions policy '$eventPolicyName'")) {
-        Write-Host "${prefix}would set (create '$eventPolicyName' for $($codeReviewWorkflows -join ' and '), allowing $($codeReviewEvents -join ' and '))$orgNote"
+        Write-Host "${prefix}would set (create '$eventPolicyName' for $($codeReviewWorkflows -join ' and '), allowing $($events -join ', '))$orgNote"
         return
     }
-    $result = Invoke-HostWrite POST "repos/$Owner/$Name/actions/policies" (New-EventPolicyBody)
+    $result = Invoke-HostWrite POST "repos/$Owner/$Name/actions/policies" (New-EventPolicyBody $events)
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')$orgNote" }
     else { Write-Host "${prefix}not available ($(Get-FailureReason $result))$orgNote" }
 }

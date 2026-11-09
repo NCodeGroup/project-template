@@ -334,6 +334,9 @@ $repos = @{
     reviewedAllowed = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'review workflows' -Paths @('.github/workflows/*')))
     reviewedAllowedAll = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'every workflow' -SummaryOnly $true))
     reviewedOurs = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'Allow pull_request_target for code review' -Enforcement 'disabled'))
+    reviewedOursActive = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'Allow pull_request_target for code review' -Paths $reviewWorkflows))
+    reviewedOursEvaluate = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'Allow pull_request_target for code review' -Paths @('.github/workflows/code-review.yml') -Events @('pull_request_target', 'push') -Enforcement 'evaluate'))
+    reviewedOursRefused = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'Allow pull_request_target for code review' -Enforcement 'disabled')) -WriteFails @{ 'actions/policies/201' = 403 }
     reviewedNarrow = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'one file' -Paths @('.github/workflows/code-review.yml')))
     reviewedInactive = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'review workflows' -Paths @('.github/workflows/*') -Enforcement 'evaluate'))
     reviewedOtherEvents = New-Repo -Workflows $reviewWorkflows -Policies @((New-EventPolicy 'push only' -Events @('push')))
@@ -702,7 +705,7 @@ try {
         @{ Args = @('-Repo', 'reviewedPrivate'); Says = "reviewedPrivate: ${label}: not needed (the repository isn't public" }
         @{ Args = @('-Repo', 'reviewedAllowed'); Says = "reviewedAllowed: ${label}: already set ('review workflows' allows it)" }
         @{ Args = @('-Repo', 'reviewedAllowedAll'); Says = "reviewedAllowedAll: ${label}: already set ('every workflow' allows it)" }
-        @{ Args = @('-Repo', 'reviewedOurs'); Says = "reviewedOurs: ${label}: left alone (already has '$policyName')" }
+        @{ Args = @('-Repo', 'reviewedOursActive'); Says = "reviewedOursActive: ${label}: already set ('$policyName' allows it)" }
         @{ Args = @('-Repo', 'reviewedUnreadable'); Says = "reviewedUnreadable: ${label}: not available (couldn't read its Actions policies: HTTP 403" }
         @{ Args = @('-Repo', 'workflowsUnreadable'); Says = "workflowsUnreadable: ${label}: not available (couldn't read .github/workflows/code-review.yml: HTTP 500" }
         @{ Args = @('-Repo', 'reviewed', '-Owner', 'orgAllows'); Says = "reviewed: ${label}: already set (the organization's 'review everywhere' allows it)" })
@@ -725,6 +728,16 @@ try {
         $r = Invoke-Baseline $extra
         Check "events: $($extra -join ' ') stays quiet about an organization read refused with 403 or 404" ($r.Output -match [regex]::Escape("reviewed: ${label}: set ('$policyName')") -and $r.Output -notmatch "weren't checked") $r.Output
     }
+    $r = Invoke-Baseline @('-Repo', 'reviewedOurs')
+    $put = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: a disabled policy of that name is updated in place, and the run says why' ($put.Count -eq 1 -and $put[0].method -eq 'PUT' -and $put[0].path -eq 'repos/NCodeGroup/reviewedOurs/actions/policies/201' -and $put[0].body.enforcement -eq 'active' -and $put[0].body.name -eq $policyName -and (@($put[0].body.conditions.workflow_path.include) -join ',') -eq ($reviewWorkflows -join ',') -and (@($put[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment' -and $r.Output -match [regex]::Escape("reviewedOurs: ${label}: set (updated '$policyName', as its enforcement is disabled)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedOursEvaluate', '-WhatIf')
+    Check 'events: -WhatIf names every gap of a policy of that name and writes nothing' ($r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("reviewedOursEvaluate: ${label}: would set (update '$policyName', as its enforcement is evaluate; it doesn't allow issue_comment; it doesn't cover .github/workflows/code-review-auto-merge.yml, for .github/workflows/code-review.yml and .github/workflows/code-review-auto-merge.yml, allowing pull_request_target, issue_comment, push)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedOursEvaluate')
+    $put = @($r.Bodies | Where-Object { $_.path -like '*/actions/policies*' })
+    Check 'events: the update keeps an event the policy already allowed' ($put.Count -eq 1 -and $put[0].method -eq 'PUT' -and (@($put[0].body.rules[0].parameters.allowed_events) -join ',') -eq 'pull_request_target,issue_comment,push') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'reviewedOursRefused')
+    Check 'events: a refused update is reported with its gaps and does not fail the run' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match [regex]::Escape("reviewedOursRefused: ${label}: not available (couldn't update '$policyName', as its enforcement is disabled: HTTP 403: Stand-in refused actions/policies/201)")) "$($r.Changes -join '|') $($r.Output)"
 
     # 7f. -OrganizationPolicy: the same policy once, on every repository of the organization.
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgEmpty', '-WhatIf')
