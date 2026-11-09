@@ -27,7 +27,7 @@ $ownWork = -not $PSBoundParameters.ContainsKey('Work')
 trap { "Kept the work folder: $Work"; break }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = [Collections.Generic.List[string]]::new()
-$tag = "{% if uses_node | default(stack == 'node') %}"
+$tag = "{% if (uses_node is defined and uses_node) or (uses_node is not defined and stack == 'node') %}"
 $endTag = '{% endif %}'
 $pwshPath = (Get-Process -Id $PID).Path
 
