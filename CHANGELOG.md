@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.75.1] - 2026-11-09
+
+### Fixed
+
+- A project can be made, updated and adopted on Windows again: from v0.69.0 the template's names for the five files a project that answers `uses_node` gets, `.node-version`, `.template/Initialize-Nvs.ps1`, `.template/Use-Node.ps1`, `.template/use-node.sh` and ADR-0200, held a `|`, a character Windows forbids in file names, so Git for Windows refused to check the template out and `New-Project.ps1`, `Update-Project.ps1` and `Adopt-Project.ps1` stopped before changing anything. The files and what they hold are unchanged, and this repository's CI now fails any path Windows can't check out, through `tests/Test-WindowsFileNames.ps1`. A project on v0.69.0 to v0.75.0 still can't update on Windows, because the update checks out the project's own version first: update it once from Linux, macOS or WSL ([#302](https://github.com/NCodeGroup/project-template/issues/302)).
+
 ## [0.75.0] - 2026-11-09
 
 ### Changed
@@ -1186,7 +1192,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.1...HEAD
+[0.75.1]: https://github.com/NCodeGroup/project-template/compare/v0.75.0...v0.75.1
 [0.75.0]: https://github.com/NCodeGroup/project-template/compare/v0.74.0...v0.75.0
 [0.74.0]: https://github.com/NCodeGroup/project-template/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/NCodeGroup/project-template/compare/v0.72.0...v0.73.0
