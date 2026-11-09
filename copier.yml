@@ -68,6 +68,46 @@ _exclude:
     .template/use-node.sh
     docs/decisions/project-template/0200-nodejs-comes-from-nvs-and-a-node-version-file.md
     {% endif %}
+  - |-
+    {% if stack is defined and stack != 'dotnet' %}
+    docs/decisions/project-template/0100-warnings-are-errors-in-every-project.md
+    docs/decisions/project-template/0101-central-package-management.md
+    docs/decisions/project-template/0102-disallowed-apis-are-banned-at-build-time.md
+    docs/decisions/project-template/0103-behavior-is-a-service-a-strategy-collection-or-a-mediator.md
+    docs/decisions/project-template/0104-no-cross-assembly-internalsvisibleto.md
+    docs/decisions/project-template/0105-the-canonical-implementation-is-named-defaultfoo.md
+    docs/decisions/project-template/0106-configuration-binds-strictly-and-is-validated-at-startup.md
+    docs/decisions/project-template/0107-filtered-reads-push-filtering-to-the-database.md
+    docs/decisions/project-template/0108-persisted-documents-are-versioned-and-additive.md
+    docs/decisions/project-template/0109-a-lost-concurrency-race-is-a-store-neutral-exception.md
+    docs/decisions/project-template/0110-shared-state-is-changed-by-read-modify-write.md
+    docs/decisions/project-template/0111-failures-carry-a-machine-readable-code.md
+    docs/decisions/project-template/0112-binary-data-uses-spans-pooled-buffers-and-cleared-secrets.md
+    docs/decisions/project-template/0113-metrics-have-one-owner-per-signal-and-bounded-dimensions.md
+    docs/decisions/project-template/0114-one-activity-source-named-like-its-meter.md
+    docs/decisions/project-template/0115-a-host-logs-to-standard-output.md
+    docs/decisions/project-template/0116-visibility-starts-at-the-narrowest-that-works.md
+    docs/decisions/project-template/0117-one-definition-of-done-gates-every-change.md
+    docs/decisions/project-template/0118-the-null-forgiving-operator-is-banned-outside-tests.md
+    docs/decisions/project-template/0119-production-refuses-development-only-settings.md
+    docs/decisions/project-template/0120-request-delegates-are-generated-at-compile-time.md
+    docs/decisions/project-template/0121-html-pages-have-a-strict-content-security-policy.md
+    docs/decisions/project-template/0122-strict-transport-security-outside-development.md
+    docs/decisions/project-template/0123-resource-ids-are-server-generated-and-opaque.md
+    docs/decisions/project-template/0124-collection-endpoints-use-keyset-pagination.md
+    docs/decisions/project-template/0125-a-write-that-loses-a-race-is-answered-412.md
+    docs/decisions/project-template/0126-published-urls-come-from-a-configured-origin.md
+    docs/decisions/project-template/0127-the-data-protection-key-ring-is-shared-and-encrypted-at-rest.md
+    docs/decisions/project-template/0128-liveness-never-checks-dependencies-readiness-does.md
+    docs/decisions/project-template/0129-browser-facing-requests-are-safe-by-construction.md
+    docs/decisions/project-template/0140-replicas-converge-through-reconciliation.md
+    docs/decisions/project-template/0141-side-effects-after-a-commit-go-through-an-outbox.md
+    docs/decisions/project-template/0142-data-that-grows-with-use-is-pruned-in-bounded-batches.md
+    docs/decisions/project-template/0143-migrations-run-before-the-rollout-and-only-expand.md
+    docs/decisions/project-template/0144-correctness-guards-fail-closed-capacity-guards-fail-open.md
+    docs/decisions/project-template/0145-outbound-calls-are-bounded-and-caller-supplied-urls-are-guarded.md
+    docs/decisions/project-template/0146-secrets-are-never-logged-compared-in-constant-time-and-shown-once.md
+    {% endif %}
 
 project_name:
   type: str
