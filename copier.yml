@@ -122,6 +122,22 @@ _exclude:
     docs/decisions/project-template/0135-packages-are-published-from-a-github-release-through-trusted-publishing.md
     docs/decisions/project-template/0137-the-release-workflow-starts-package-publishing.md
     {% endif %}
+  - |-
+    {% if stack is defined and stack != 'dotnet' %}
+    /build
+    /Directory.Build.props
+    /Directory.Packages.props
+    /global.json
+    /nuget.config
+    {% endif %}
+  - |-
+    {% if stack is defined and nuget_package is defined and not (stack == 'dotnet' and nuget_package) %}
+    build/Update-PublicApi.ps1
+    {% endif %}
+  - |-
+    {% if stack is defined and nuget_package is defined and package_icon is defined and not (stack == 'dotnet' and nuget_package and package_icon == 'NCodeGroup.png') %}
+    /NCodeGroup.png
+    {% endif %}
 
 project_name:
   type: str
