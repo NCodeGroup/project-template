@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.79.2] - 2026-11-09
+
+### Changed
+
+- No change for projects made from the template. `tests/e2e/Test-RunIssues.ps1 -Scenario push-branch` runs `/run-issues` with a `push-branch:<name>` word on an `origin` whose push branch still holds the head of a pull request merged by squashing, which the `gh` stand-in serves, and checks that the run records the push branch, restarts it from its plan, pushes its commits and its fix round there, never pushes the plan's own branch, and opens its draft pull request from it; the stand-in's `gh pr view <branch>` picks a branch's open pull request over a merged one, and `gh pr list` without `--state` lists only open ones, as `gh` does; CI runs the scenario's fixture setup ([#327](https://github.com/NCodeGroup/project-template/issues/327)).
+
 ## [0.79.1] - 2026-11-09
 
 ### Fixed
@@ -1276,7 +1282,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.79.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.79.2...HEAD
+[0.79.2]: https://github.com/NCodeGroup/project-template/compare/v0.79.1...v0.79.2
 [0.79.1]: https://github.com/NCodeGroup/project-template/compare/v0.79.0...v0.79.1
 [0.79.0]: https://github.com/NCodeGroup/project-template/compare/v0.78.0...v0.79.0
 [0.78.0]: https://github.com/NCodeGroup/project-template/compare/v0.77.0...v0.78.0
