@@ -4,10 +4,11 @@
 
 .DESCRIPTION
     Loads Test-WindowsName and Get-WindowsCheckoutProblem from template/.template/Update-Project.ps1, checks names
-    Windows refuses and accepts, builds a Git repository whose tag v0.1.0 holds only names Windows accepts and whose
-    v0.2.0 adds a uses_node name with a |, written to Git's index only so it runs on any OS, checks what the function
-    finds at each, then checks that the script calls it under $IsWindows after the hand-over and before its first
-    Copier call. Prints PASS or FAIL per check and exits 1 on any failure.
+    Windows refuses and accepts, and that they match Get-WindowsNameProblem in tests/Test-WindowsFileNames.ps1,
+    builds a Git repository whose tag v0.1.0 holds only names Windows accepts and whose v0.2.0 adds a uses_node name
+    with a |, written to Git's index only so it runs on any OS, checks what the function finds at each, then checks
+    that the script calls it under $IsWindows after the hand-over and before its first Copier call. Prints PASS or
+    FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-windows-test-<process ID> in the
@@ -33,8 +34,9 @@ function Invoke-Git {
     if ($LASTEXITCODE) { throw "git $($args -join ' ') failed." }
 }
 
+$ast = [Management.Automation.Language.Parser]::ParseFile($script, [ref]$null, [ref]$null)
 $functions = foreach ($name in 'Test-WindowsName', 'Get-WindowsCheckoutProblem') {
-    [Management.Automation.Language.Parser]::ParseFile($script, [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true) | Select-Object -First 1
+    $ast.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true) | Select-Object -First 1
 }
 Check 'update script: defines Test-WindowsName and Get-WindowsCheckoutProblem' (@($functions | Where-Object { $_ }).Count -eq 2)
 
@@ -54,6 +56,13 @@ if (@($functions | Where-Object { $_ }).Count -eq 2) {
         '.node-version', 'console.md', 'COM10', 'LPT', 'README.md.jinja'
     )
     foreach ($n in $accepted) { Check "name: accepts $n" (Test-WindowsName $n) }
+    $fileNames = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-WindowsFileNames.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-WindowsNameProblem' }, $true) | Select-Object -First 1
+    $disagree = @()
+    if ($fileNames) {
+        . ([scriptblock]::Create($fileNames.Extent.Text))
+        $disagree = @(@($refused.Values) + $accepted + 'PRN.md', 'AUX', 'CONTRIBUTING.md' | Where-Object { (Test-WindowsName $_) -ne (-not (Get-WindowsNameProblem $_)) })
+    }
+    Check 'name: agrees with Get-WindowsNameProblem in tests/Test-WindowsFileNames.ps1' ($fileNames -and -not $disagree) ($disagree -join ', ')
 
     if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
     $repo = Join-Path $Work 'template-repo'
