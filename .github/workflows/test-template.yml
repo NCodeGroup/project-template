@@ -121,6 +121,8 @@ jobs:
             run: ./tests/Test-AgentRunner.ps1
           - name: Check that Windows can check out every path
             run: ./tests/Test-WindowsFileNames.ps1
+          - name: Test the update's stop on Windows for a version Windows can't check out
+            run: ./tests/Test-UpdateWindowsCheckout.ps1
     defaults:
       run:
         shell: pwsh
