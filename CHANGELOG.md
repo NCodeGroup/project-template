@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.75.4] - 2026-11-09
+
+### Changed
+
+- On GitHub, the template's `.github/workflows/tag-release.yml` is named Tag and publish release instead of Release, so the Actions tab no longer lists it beside a project's own workflow of that name. A first job with only `contents: read`, whose checkout keeps no token, reads `release` from `AGENTS.md`'s Landing section through the new `-Policy` switch of `.template/Publish-Release.ps1`, and the job that tags and publishes, with `contents: write` and `actions: write`, runs only with `release: tag` or `tag+release`; with `release: none`, no job holds a write permission ([#309](https://github.com/NCodeGroup/project-template/issues/309), [ADR-0016](template/docs/decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md.jinja)).
+
+### Fixed
+
+- A project's decision records cite only records it has: ADR-0016 names ADR-0137 only in a .NET library on GitHub, and says for every project that the release script starts its `.github/workflows/publish.yml` through `workflow_dispatch`; ADR-0008, ADR-0015, ADR-0100, ADR-0116, ADR-0117 and ADR-0136 cite ADR-0108, ADR-0130, ADR-0131, ADR-0135, ADR-0136, ADR-0143 and ADR-0200 only in the projects that have them; and the decision index and ADR-0012 use ADR-0004, which every project has, as their example. The warning `Update-Project.ps1` and `Adopt-Project.ps1` print for a `publish.yml` without a `workflow_dispatch` trigger names ADR-0137 as the template's, which a .NET library on GitHub has ([#311](https://github.com/NCodeGroup/project-template/issues/311)).
+
 ## [0.75.3] - 2026-11-09
 
 ### Changed
@@ -1204,7 +1214,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.3...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.4...HEAD
+[0.75.4]: https://github.com/NCodeGroup/project-template/compare/v0.75.3...v0.75.4
 [0.75.3]: https://github.com/NCodeGroup/project-template/compare/v0.75.2...v0.75.3
 [0.75.2]: https://github.com/NCodeGroup/project-template/compare/v0.75.1...v0.75.2
 [0.75.1]: https://github.com/NCodeGroup/project-template/compare/v0.75.0...v0.75.1
