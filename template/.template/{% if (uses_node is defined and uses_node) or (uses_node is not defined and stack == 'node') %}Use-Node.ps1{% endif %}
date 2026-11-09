@@ -56,13 +56,13 @@ if ($nodeHasNvs) {
 }
 else {
     # No nvs, as in CI and cloud sessions that install Node.js another way: accept the node on PATH when it matches.
-    $nodeWanted = $nodeVersion -replace '^v', ''
+    $nodeWanted = $nodeVersion -creplace '^v', ''
     $nodeActual = ''
     if (Get-Command node -ErrorAction Ignore) {
-        try { $nodeActual = "$(node --version 2>$null | Select-Object -First 1)".Trim() -replace '^v', '' } catch { $nodeActual = '' }
+        try { $nodeActual = "$(node --version 2>$null | Select-Object -First 1)".Trim() -creplace '^v', '' } catch { $nodeActual = '' }
         $global:LASTEXITCODE = 0
     }
-    if (-not $nodeActual -or ($nodeActual -ne $nodeWanted -and -not $nodeActual.StartsWith("$nodeWanted."))) {
+    if (-not $nodeActual -or ($nodeActual -cne $nodeWanted -and -not $nodeActual.StartsWith("$nodeWanted.", [StringComparison]::Ordinal))) {
         $nodeFound = if ($nodeActual) { $nodeActual } else { 'none' }
         $nodeInstall = if ($IsWindows) { 'winget install --id jasongin.nvs -e' } else { 'git clone https://github.com/jasongin/nvs "$HOME/.nvs"; . "$HOME/.nvs/nvs.sh" install' }
         throw "nvs is not installed: $nodeNvsScript does not exist, and the node on PATH ($nodeFound) is not the $nodeVersion that .node-version names. Install it with: $nodeInstall"

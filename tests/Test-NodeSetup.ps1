@@ -154,6 +154,7 @@ $noNvsCases = @(
     @{ Name = 'refuses a node on PATH of another major version'; Want = '26'; Have = 'v24.3.0'; Ok = $false }
     @{ Name = 'refuses 26.10.0 when .node-version names 26.1'; Want = '26.1'; Have = 'v26.10.0'; Ok = $false }
     @{ Name = 'refuses when no node is on PATH'; Want = '26'; Have = ''; Ok = $false }
+    @{ Name = 'refuses a .node-version whose leading V is upper case'; Want = 'V26'; Have = 'v26.1.0'; Ok = $false }
 )
 for ($i = 0; $i -lt $noNvsCases.Count; $i++) {
     $case = $noNvsCases[$i]
