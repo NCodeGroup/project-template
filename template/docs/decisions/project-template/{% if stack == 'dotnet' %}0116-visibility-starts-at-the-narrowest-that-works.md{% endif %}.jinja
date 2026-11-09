@@ -29,7 +29,7 @@ starts at the narrowest visibility that works, `private` and then `internal`, an
   ([ADR-0104](0104-no-cross-assembly-internalsvisibleto.md)).
 - A concrete implementation that consumers reach through dependency injection stays `internal`; the interface is the
   surface ([ADR-0105](0105-the-canonical-implementation-is-named-defaultfoo.md)).
-- A library additionally tracks its public surface in files the build checks (ADR-0131), so every widening shows in the
+- A library additionally tracks its public surface in files the build checks{% if nuget_package %} (ADR-0131){% endif %}, so every widening shows in the
   diff.
 
 ## Options considered
