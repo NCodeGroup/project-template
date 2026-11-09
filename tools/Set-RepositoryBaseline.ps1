@@ -80,6 +80,9 @@
     auth refresh -h github.com -s admin:org). It reads the organization's policies first and leaves alone one of that
     name or an active one that already allows the event for both files on every repository; -WhatIf prints the body it
     would post. It exits 1 when it can't read the policies or the API refuses the policy.
+    It needs GitHub Team or above, the plans GitHub offers organization event policies on: when GitHub refuses them for
+    the organization's plan, with an answer that asks to upgrade, such as "Upgrade to GitHub Team to enable this
+    feature.", it says so and to run it for each repository instead, with -Repo <name> or -All.
 
 .EXAMPLE
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -WhatIf     # shows what it would do, and each setting's state
@@ -98,7 +101,7 @@ param(
     # from each repository's latest merged pull request, and works with -All too.
     [string[]]$RequireChecks = @(),
     # Creates the organization's Actions event policy for the code-review workflows of every repository, instead of each
-    # repository's own. Only with -Owner; an organization owner runs it, with the admin:org scope.
+    # repository's own. Only with -Owner; an organization owner runs it, with the admin:org scope, on GitHub Team or above.
     [switch]$OrganizationPolicy,
     # The owner of the repositories: an organization or a user.
     [Alias('Org')][string]$Owner = 'NCodeGroup'
@@ -470,9 +473,9 @@ function Set-TagRuleset {
     Write-Host "done: $summary"
 }
 
-# Reads the Actions policies at $Path (a repository's or an organization's). GitHub may answer a bare array or an object
-# whose policies property holds them, and a list item may leave out its rules, which a read by its id gives. Why is the
-# reason a policy couldn't be read, or $null.
+# Reads the Actions policies at $Path (a repository's or an organization's). A repository's list is an object,
+# { total_count, policies }, whose items leave out their conditions and rules, which a read by its id gives; a bare array
+# is read too. Why is the reason a policy couldn't be read, or $null.
 function Read-EventPolicies([string]$Path) {
     $list = Invoke-HostApi gh "${Path}?per_page=100"
     $answer = $null
@@ -616,6 +619,14 @@ function Set-EventPolicy {
     else { Write-Host "${prefix}not available ($(Get-FailureReason $result))" }
 }
 
+# GitHub offers organization event policies only on GitHub Team and above, and refuses them on another plan with a
+# message that asks to upgrade, such as "Upgrade to GitHub Team to enable this feature.". Returns what to do instead
+# when $Reason holds such a message, or '' for any other refusal.
+function Get-PlanRefusalHint([string]$Reason) {
+    if ($Reason -notlike '*Upgrade to GitHub*') { return '' }
+    'organization event policies need GitHub Team or above: run it for each repository instead, with -Repo <name>, or with -All once its -WhatIf looks right'
+}
+
 # The same policy once for the organization, on every repository (~ALL). Returns $true unless it can't read the policies
 # or the API refuses the policy. It writes only its report lines (and, with -WhatIf, the body) to the host.
 function Set-OrganizationEventPolicy {
@@ -624,7 +635,9 @@ function Set-OrganizationEventPolicy {
     $prefix = "$Owner (organization): ${eventPolicyLabel}: "
     $read = Read-EventPolicies "orgs/$Owner/actions/policies"
     if ($read.Why) {
-        Write-Host "${prefix}not available ($($read.Why)); run it as an owner of the organization, with a token that has the admin:org scope"
+        $hint = Get-PlanRefusalHint $read.Why
+        if (-not $hint) { $hint = 'run it as an owner of the organization, with a token that has the admin:org scope' }
+        Write-Host "${prefix}not available ($($read.Why)); $hint"
         return $false
     }
     if (@($read.Policies | Where-Object { $_.name -eq $eventPolicyName }).Count) {
@@ -642,7 +655,9 @@ function Set-OrganizationEventPolicy {
     }
     $result = Invoke-HostWrite POST "orgs/$Owner/actions/policies" $body
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${prefix}set ('$eventPolicyName')"; return $true }
-    Write-Host "${prefix}not available ($(Get-FailureReason $result))"
+    $reason = Get-FailureReason $result
+    $hint = Get-PlanRefusalHint $reason
+    Write-Host "${prefix}not available ($reason)$(if ($hint) { "; $hint" })"
     return $false
 }
 

@@ -33,7 +33,9 @@
     out, and that a file or policy it can't read, or a refusal, is reported without failing the run; that
     -OrganizationPolicy posts the same policy, on every repository, to the organization alone, prints its body with
     -WhatIf, leaves alone one of that name or one that already covers every repository, exits 1 when it can't read the
-    policies or is refused, and takes no -Repo, -All or -RequireChecks; that -All skips archived repositories and forks;
+    policies or is refused, says for a refusal that asks to upgrade the organization's plan that it needs GitHub Team or
+    above and to run it per repository, and otherwise names the admin:org scope, takes no -Repo, -All or -RequireChecks;
+    that -All skips archived repositories and forks;
     and that bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -109,8 +111,10 @@ if ($method -ne 'GET') {
         elseif ($sent.ContainsKey('allow_auto_merge')) { $key = 'allow_auto_merge' }
     }
     if ($key -eq 'code-scanning/default-setup' -and $repo.switchFails) { exit 1 }
-    $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] } elseif ($path -match '^orgs/([^/]+)/' -and $data.orgs[$Matches[1]]) { $data.orgs[$Matches[1]].writeFail }
-    if ($refused) { Out-Answer ([int]$refused) "{""message"":""Stand-in refused $key""}" }
+    $org = if ($path -match '^orgs/([^/]+)/') { $data.orgs[$Matches[1]] }
+    $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] } elseif ($org) { $org.writeFail }
+    $message = if ($org.message) { $org.message } else { "Stand-in refused $key" }
+    if ($refused) { Out-Answer ([int]$refused) (ConvertTo-Json -Compress -InputObject @{ message = $message }) }
     if ($rest -contains '--input') { Out-Answer 200 '{}' } else { Out-Answer 204 '' }
 }
 # The security settings' reads: on, off, readApproves (the workflow token read-only, but Actions may approve pull
@@ -136,12 +140,13 @@ if ($path -match '^repos/[^/]+/([^/]+)/contents/([^?]+)') {
 }
 # Actions policies: a repository's list is an object whose policies holds them, an organization's a bare array, the
 # two shapes the script reads. A policy marked summaryOnly is listed without its conditions and rules, which a read by
-# its id gives. fail:<code> refuses the read; an organization not in orgs answers 404.
+# its id gives. fail:<code> refuses the read; an organization not in orgs answers 404. An organization's message, when it has one, is the message of a refused read or write, as GitHub's "Upgrade to GitHub Team" refusal.
 if ($path -match '^(repos/[^/]+/([^/]+)|orgs/([^/]+))/actions/policies(/(\d+))?(\?.*)?$') {
     $isOrg = [bool]$Matches[3]; $id = $Matches[5]
     $owner = if ($isOrg) { $data.orgs[$Matches[3]] } else { $data.repos[$Matches[2]] }
     if (-not $owner) { Out-Answer 404 '{"message":"Not Found"}' }
-    if ($owner.policies -is [string]) { Out-Answer ([int]$owner.policies.Substring(5)) '{"message":"Stand-in refused to read them"}' }
+    $message = if ($owner.message) { $owner.message } else { 'Stand-in refused to read them' }
+    if ($owner.policies -is [string]) { Out-Answer ([int]$owner.policies.Substring(5)) (ConvertTo-Json -Compress -InputObject @{ message = $message }) }
     $all = @($owner.policies | Where-Object { $_ } | ForEach-Object { $c = $_.Clone(); $c.Remove('summaryOnly'); @{ full = $c; summary = [bool]$_.summaryOnly } })
     if ($id) { $one = $all | Where-Object { "$($_.full.id)" -eq $id } | Select-Object -First 1; if (-not $one) { Out-Answer 404 '{"message":"Not Found"}' }; Out-Answer 200 (ConvertTo-Json -InputObject $one.full -Depth 10 -Compress) }
     $listed = @($all | ForEach-Object { if ($_.summary) { @{ id = $_.full.id; name = $_.full.name; enforcement = $_.full.enforcement } } else { $_.full } })
@@ -343,6 +348,8 @@ $orgs = @{
     orgOthers = @{ policies = @((New-EventPolicy 'some repositories' -Repos @('someone-else'))) }
     orgUnreadable = @{ policies = 'fail:403' }
     orgRefuses = @{ policies = @(); writeFail = 403 }
+    orgFreeRead = @{ policies = 'fail:403'; message = 'Upgrade to GitHub Team to enable this feature.' }
+    orgFreeWrite = @{ policies = @(); writeFail = 403; message = 'Upgrade to GitHub Team to enable this feature.' }
 }
 $orgPolicyId = 300
 foreach ($org in $orgs.Values) { if ($org.policies -isnot [string]) { foreach ($policy in $org.policies) { $orgPolicyId++; $policy.id = $orgPolicyId } } }
@@ -702,7 +709,7 @@ try {
         $r = Invoke-Baseline $case.Args
         Check "events: $($case.Args -join ' ') needs no policy and says so" ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and -not @($r.Changes | Where-Object { $_ -like '*actions/policies*' }).Count -and $r.Output -match [regex]::Escape($case.Says)) "$($r.Changes -join '|') $($r.Output)"
     }
-    foreach ($extra in @('-Repo', 'reviewedNarrow'), @('-Repo', 'reviewedInactive'), @('-Repo', 'reviewedOtherEvents'), @('-Repo', 'reviewed', '-Owner', 'orgOthers')) {
+    foreach ($extra in @('-Repo', 'reviewedNarrow'), @('-Repo', 'reviewedInactive'), @('-Repo', 'reviewedOtherEvents'), @('-Repo', 'reviewed', '-Owner', 'orgOthers'), @('-Repo', 'reviewed', '-Owner', 'orgFreeRead')) {
         $r = Invoke-Baseline $extra
         $posted = @($r.Changes | Where-Object { $_ -like 'BODY POST repos/*/actions/policies' })
         Check "events: $($extra -join ' ') still gets the policy, as the one it has doesn't count" ($posted.Count -eq 1) "$($r.Changes -join '|') $($r.Output)"
@@ -732,7 +739,17 @@ try {
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgOthers')
     Check 'org: a policy for some repositories does not count' ($r.ExitCode -eq 0 -and ($r.Changes -join '|') -eq 'BODY POST orgs/orgOthers/actions/policies') "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgRefuses')
-    Check 'org: a refusal is reported and fails the run' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("orgRefuses (organization): ${label}: not available (HTTP 403")) $r.Output
+    Check 'org: a refusal is reported and fails the run' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("orgRefuses (organization): ${label}: not available (HTTP 403") -and $r.Output -notmatch 'GitHub Team') $r.Output
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgUnreadable')
+    Check 'org: another refused read still names the owner role and the admin:org scope' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape('HTTP 403: Stand-in refused to read them); run it as an owner of the organization, with a token that has the admin:org scope') -and $r.Output -notmatch 'GitHub Team') $r.Output
+    $planHint = 'organization event policies need GitHub Team or above: run it for each repository instead, with -Repo <name>, or with -All once its -WhatIf looks right'
+    $cases = @(
+        @{ Owner = 'orgFreeRead'; Changes = ''; Says = "orgFreeRead (organization): ${label}: not available (couldn't read its Actions policies: HTTP 403: Upgrade to GitHub Team to enable this feature.); $planHint" }
+        @{ Owner = 'orgFreeWrite'; Changes = 'BODY POST orgs/orgFreeWrite/actions/policies'; Says = "orgFreeWrite (organization): ${label}: not available (HTTP 403: Upgrade to GitHub Team to enable this feature.); $planHint" })
+    foreach ($case in $cases) {
+        $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', $case.Owner)
+        Check "org: $($case.Owner), refused for its plan, exits 1 and says it needs GitHub Team and to run it per repository" ($r.ExitCode -eq 1 -and ($r.Changes -join '|') -eq $case.Changes -and $r.Output -match [regex]::Escape($case.Says) -and $r.Output -notmatch 'admin:org') "$($r.Changes -join '|') $($r.Output)"
+    }
 
     # 8. Bad parameters.
     $r = Invoke-Baseline @()
