@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.75.3] - 2026-11-09
+
+### Changed
+
+- No change for projects made from the template. The help text of `tests/Test-WindowsFileNames.ps1` wraps its description at 100 characters instead of uneven widths past 120, and its `Get-WindowsNameProblem` names `Test-WindowsName` in `template/.template/Update-Project.ps1` as the copy of its rules to change with it, as that function already names it ([#306](https://github.com/NCodeGroup/project-template/issues/306)).
+
 ## [0.75.2] - 2026-11-09
 
 ### Fixed
@@ -1198,7 +1204,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.75.3...HEAD
+[0.75.3]: https://github.com/NCodeGroup/project-template/compare/v0.75.2...v0.75.3
 [0.75.2]: https://github.com/NCodeGroup/project-template/compare/v0.75.1...v0.75.2
 [0.75.1]: https://github.com/NCodeGroup/project-template/compare/v0.75.0...v0.75.1
 [0.75.0]: https://github.com/NCodeGroup/project-template/compare/v0.74.0...v0.75.0
