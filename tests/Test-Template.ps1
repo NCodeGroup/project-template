@@ -5,7 +5,7 @@
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML with
-    PyYAML through uv, at the version tests/requirements.txt pins. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1 and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, and passes a pull request's title and description to its Commit attribution job through env, that the generated workflow files under template/ and at the repository root
+    PyYAML through uv, at the version tests/requirements.txt pins. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1 and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, that the generated workflow files under template/ and at the repository root
     match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, that address-feedback resumes a stopped run in either tool, moving the other tool's run into its own checkout, and every other command sends its plan there, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. It runs the code review auto-merge workflow's diff check, as rendered, against a stand-in for gh with fixture pages of changed files. It runs its merge-method choice the same way, against a stand-in that answers with fixture repository settings and branch rules. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -111,7 +111,7 @@ $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
     'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
@@ -378,8 +378,7 @@ foreach ($case in $cases) {
     if ($case.Host -eq 'github') {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
         Check "${name}: CI sets up Node.js from .node-version exactly when the project uses Node.js" ($ci.Contains('node-version-file: .node-version') -eq $usesNode -and ([regex]::Matches($ci, 'uses: actions/setup-node@').Count -eq [int]$usesNode)) $ci
-        Check "${name}: CI runs the commit attribution check" ($ci.Contains('./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:HEAD') -and $ci.Contains('merge_group:') -and $ci.Contains('${{ github.event.pull_request.base.sha'))
-        Check "${name}: CI checks the pull request's title and description, also after an edit" ($ci.Contains('PR_TITLE: ${{ github.event.pull_request.title }}') -and $ci.Contains('PR_BODY: ${{ github.event.pull_request.body }}') -and $ci.Contains('-PullRequestTitle $env:PR_TITLE -PullRequestBody $env:PR_BODY') -and $ci.Contains('types: [opened, synchronize, reopened, edited]')) $ci
+        Check "${name}: CI runs no commit attribution check, and not on an edit" (-not $ci.Contains('Test-CommitAttribution') -and -not $ci.Contains('commit-attribution:') -and $ci.Contains('merge_group:') -and $ci.Contains('types: [opened, synchronize, reopened]')) $ci
         $checkouts = [regex]::Matches($ci, '(?m)^\s+- uses: actions/checkout@').Count
         Check "${name}: CI checkouts set persist-credentials false" ($checkouts -gt 0 -and [regex]::Matches($ci, '(?m)^\s+persist-credentials: false\r?$').Count -eq $checkouts) $ci
         $dependabot = Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw
@@ -495,8 +494,7 @@ foreach ($case in $cases) {
     }
     else {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
-        Check "${name}: CI runs the commit attribution check" ($ci.Contains('commit-attribution:') -and $ci.Contains('mcr.microsoft.com/dotnet/sdk:10.0') -and $ci.Contains('GIT_DEPTH: "0"') -and $ci.Contains('.template/Test-CommitAttribution.ps1 -Base'))
-        Check "${name}: CI checks the merge request's title and description" ($ci.Contains('BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" pwsh -NoProfile -Command') -and $ci.Contains('-PullRequestTitle $env:CI_MERGE_REQUEST_TITLE -PullRequestBody $env:CI_MERGE_REQUEST_DESCRIPTION; exit $LASTEXITCODE')) $ci
+        Check "${name}: CI checks the decision index in an always-on job, and runs no commit attribution check" ($ci.Contains('decision-index:') -and $ci.Contains('GIT_DEPTH: "0"') -and $ci.Contains('.template/Test-AdrIndex.ps1 -Base') -and -not $ci.Contains('Test-CommitAttribution') -and -not $ci.Contains('commit-attribution')) $ci
     }
     if ($case.Stack -eq 'node') {
         $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }
@@ -577,9 +575,8 @@ $listProject = Join-Path $Work 'new-project-list'
 $listAnswers = [IO.File]::ReadAllText((Join-Path $listProject '.copier-answers.yml')) -replace "`r`n", "`n"
 Check 'New-Project: a list answer in -Data reaches Copier' (($listAnswers -match '(?m)^workflow_tools:\n- claude\n- copilot\n') -and -not (Test-Path (Join-Path $listProject '.github\agents\hybrid-planner.agent.md'))) $listAnswers
 $hooksPath = (git -C $listProject config core.hooksPath) -join ''
-$hookMode = (git -C $listProject ls-files -s .githooks/commit-msg) -join ''
 $pushMode = (git -C $listProject ls-files -s .githooks/pre-push) -join ''
-Check 'New-Project: enables the hooks with an executable commit-msg and pre-push' (($hooksPath -eq '.githooks') -and $hookMode.StartsWith('100755') -and $pushMode.StartsWith('100755')) "$hooksPath $hookMode $pushMode"
+Check 'New-Project: enables the hooks with an executable pre-push' (($hooksPath -eq '.githooks') -and $pushMode.StartsWith('100755')) "$hooksPath $pushMode"
 # A hooks path Git already has, here from the environment as a global one would be, is kept, with a warning that names the command.
 $keptHooksProject = Join-Path $Work 'new-project-kept-hooks'
 $env:GIT_CONFIG_COUNT = '1'; $env:GIT_CONFIG_KEY_0 = 'core.hooksPath'; $env:GIT_CONFIG_VALUE_0 = Join-Path $Work 'global-hooks'
@@ -591,33 +588,6 @@ $secretsDeny = @((Get-Content -LiteralPath (Join-Path $listProject '.claude\sett
 Check 'project: only the root secrets/ folder is gitignored and denied to Claude Code' (($secretsIgnored -eq '0,1,1') -and ('Read(/secrets/**)' -in $secretsDeny) -and ('Read(./secrets/**)' -notin $secretsDeny)) "check-ignore exit codes $secretsIgnored; deny $($secretsDeny -join ', ')"
 $secretsAsk = @((Get-Content -LiteralPath (Join-Path $listProject '.claude\settings.json') -Raw | ConvertFrom-Json).permissions.ask)
 Check 'project: a Bash or PowerShell command that mentions .env or secrets/ asks, though every command is allowed' (-not (@('Bash(*.env*)', 'PowerShell(*.env*)', 'Bash(*secrets*)', 'PowerShell(*secrets*)') | Where-Object { $_ -notin $secretsAsk })) "ask $($secretsAsk -join ', ')"
-$hookMessage = Join-Path $Work 'hook-message.txt'
-[IO.File]::WriteAllText($hookMessage, "Hook check`n`nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`nClaude-Session: https://claude.ai/code/session_1`n$([char]::ConvertFromUtf32(0x1F916)) Generated with [Claude Code](https://claude.com/claude-code)`nCo-authored-by: Codex <noreply@openai.com>`nGenerated by GitLab Duo`nCo-authored-by: Jane Doe <jane@example.com>`n", [Text.UTF8Encoding]::new($false))
-$proseMessage = Join-Path $Work 'hook-prose-message.txt'
-[IO.File]::WriteAllText($proseMessage, "Prose check`n`nThe hook strips the Generated with Claude Code line.`n", [Text.UTF8Encoding]::new($false))
-# A UTF-8 locale is where a bare pattern failed to strip the emoji line.
-$previousLocale = $env:LC_ALL
-$env:LC_ALL = 'en_US.UTF-8'
-Push-Location $listProject
-try {
-    [IO.File]::WriteAllText((Join-Path $listProject 'hook-check.txt'), "hook check`n", [Text.UTF8Encoding]::new($false))
-    Invoke-Git add hook-check.txt
-    Invoke-Git commit -q -F $hookMessage
-    $hookLog = (git log -1 --format=%B) -join "`n"
-    [IO.File]::WriteAllText((Join-Path $listProject 'hook-prose.txt'), "hook prose`n", [Text.UTF8Encoding]::new($false))
-    Invoke-Git add hook-prose.txt
-    Invoke-Git commit -q -F $proseMessage
-    $proseLog = (git log -1 --format=%B) -join "`n"
-}
-finally {
-    Pop-Location
-    if ($null -eq $previousLocale) { Remove-Item Env:LC_ALL -ErrorAction SilentlyContinue } else { $env:LC_ALL = $previousLocale }
-}
-Check 'hooks: commit-msg strips AI agent attribution and keeps people' ($hookLog.Contains('Jane Doe') -and -not $hookLog.Contains('anthropic.com') -and -not $hookLog.Contains('Copilot@') -and -not $hookLog.Contains('Claude-Session') -and -not $hookLog.Contains('Generated with') -and -not $hookLog.Contains('openai.com') -and -not $hookLog.Contains('GitLab Duo')) $hookLog
-Check 'hooks: commit-msg keeps a prose line that mentions the advertising phrase' ($proseLog.Contains('The hook strips the Generated with Claude Code line.')) $proseLog
-$attributionBase = (git -C $listProject rev-list --max-parents=0 HEAD) -join ''
-$attributionOutput = & pwsh -NoProfile -File (Join-Path $listProject '.template\Test-CommitAttribution.ps1') -Base $attributionBase -Head HEAD 2>&1 | Out-String
-Check 'project: the shipped commit attribution check passes on its own history' (($LASTEXITCODE -eq 0) -and $attributionOutput.Contains('none is attributed to an AI agent')) $attributionOutput
 
 $workflow = Join-Path $repoRoot 'workflow'
 $fresh = Join-Path $Work 'generated'
@@ -661,9 +631,7 @@ $copierPin = if (Test-Path -LiteralPath $copierPinPath) { [IO.File]::ReadAllText
 $ciWorkflow = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\workflows\test-template.yml'))
 $ownDependabot = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\dependabot.yml'))
 Check 'repository: CI installs the Copier version tests/requirements.txt pins, and Dependabot keeps the pin current' ($copierPin -match '(?m)^copier==\d+\.\d+\.\d+\r?$' -and $ciWorkflow -match '(?m)^ +uv tool install --constraints tests/requirements\.txt copier\r?$' -and $ownDependabot -match '(?m)^  - package-ecosystem: pip\r?\n    directory: /tests\r?$') "pin: $($copierPin.Trim()) | install: $(@($ciWorkflow -split '\r?\n' -match 'uv tool install') -join ' / ')"
-# This repository's own Commit attribution job checks a pull request's title and description too, passed through env and never written into a run: line, and runs again when they are edited.
-$ownAttribution = [regex]::Match($ciWorkflow, '(?ms)^  commit-attribution:.*\z').Value
-Check 'repository: CI checks this repository''s pull request title and description through env, also after an edit' ($ciWorkflow.Contains('    types: [opened, synchronize, reopened, edited]') -and $ownAttribution.Contains('PR_TITLE: ${{ github.event.pull_request.title }}') -and $ownAttribution.Contains('PR_BODY: ${{ github.event.pull_request.body }}') -and $ownAttribution.Contains('-PullRequestTitle $env:PR_TITLE -PullRequestBody $env:PR_BODY') -and $ciWorkflow -notmatch '(?m)^\s*run:.*github\.event\.pull_request\.(title|body)') $ownAttribution
+Check 'repository: CI runs no commit attribution check, and not on an edit' (-not $ciWorkflow.Contains('commit-attribution:') -and -not $ciWorkflow.Contains('Test-CommitAttribution') -and $ciWorkflow.Contains('    types: [opened, synchronize, reopened]')) ''
 # This repository's own Dependabot entries wait out the three-day cooldown and give security updates a group of their own, as every project's do.
 $ownEcosystems = [regex]::Matches($ownDependabot, '(?m)^  - package-ecosystem: ').Count
 $ownCooldowns = [regex]::Matches($ownDependabot, '(?m)^    cooldown:\r?\n      default-days: 3\r?$').Count
@@ -846,7 +814,7 @@ $m += @(foreach ($p in $addressFiles + $copilotAddressFiles) { $full = Join-Path
 $m += @(foreach ($p in $copilotAddressFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('git worktree remove --force')) { "${p}: removes a worktree by force" } })
 Check 'workflow: address-feedback in each tool moves the other tool''s stopped run into its own checkout, never by force, and finishes it' (-not $m) ($m -join '; ')
 $slashPattern = '^\s*/[\w-]+([ \t][^\r\n]*)?\s*\z'
-$m = @(Get-MissingText ($runFiles + $copilotRunFiles + $addressFiles + $copilotAddressFiles) ('is more than a slash command', "when it matches ``$slashPattern``", 'it speaks to a bot, not to this run', 'once the agent attribution at its end, as the read-back rule says, is set aside'))
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles + $addressFiles + $copilotAddressFiles) ('is more than a slash command', "when it matches ``$slashPattern``", 'it speaks to a bot, not to this run', 'once the agent attribution at its end is set aside'))
 $m += @(foreach ($body in '/review', "  /review  ", '/review please', "/review`n", "/review`r`n") { if ($body -notmatch $slashPattern) { "'$($body.Replace("`n", '\n').Replace("`r", '\r'))' should be only a slash command" } })
 $m += @(foreach ($body in "/review`nPlease fix the null check", "/review please`r`nand trim the name", 'Please /review', 'review', '/') { if ($body -match $slashPattern) { "'$($body.Replace("`n", '\n').Replace("`r", '\r'))' should be more than a slash command" } })
 Check 'workflow: run-issues and address-feedback leave a comment that is only a slash command, such as /review, unanswered, also when it ends with agent attribution, such as the footer on the run''s own /review comment' (-not $m) ($m -join '; ')
@@ -1033,41 +1001,26 @@ $prAttributionFiles = [ordered]@{
 }
 $prAttributionMissing = @(
     foreach ($f in $prAttributionFiles.Keys) {
-        # The read-back rule names `gh pr edit` as a removal route, and the REST-forms rule names `gh pr create` and `gh pr edit` too; the anchor is the command's own call, so both rules' text is left out of the search.
-        $text = [IO.File]::ReadAllText((Join-Path $repoRoot "template\$f")).Replace((Read-HybridTemplateFile (Join-Path $workflow 'templates\_session-footer.md')).Body.Trim(), '').Replace((Read-HybridTemplateFile (Join-Path $workflow 'templates\_github-rest.md')).Body.Trim(), '')
+        # The REST-forms rule names `gh pr create` and `gh pr edit` too; the anchor is the command's own call, so that rule's text is left out of the search.
+        $text = [IO.File]::ReadAllText((Join-Path $repoRoot "template\$f")).Replace((Read-HybridTemplateFile (Join-Path $workflow 'templates\_github-rest.md')).Body.Trim(), '')
         $at = $text.IndexOf($prAttributionText)
         if ($at -lt 0 -or $at -gt $text.IndexOf($prAttributionFiles[$f])) { $f }
     }
     if (-not ($prAttributionText.Contains('`Co-authored-by:`') -and $prAttributionText.Contains('`Claude-Session:`') -and $prAttributionText.Contains('"Generated with"'))) { 'workflow\templates\_pr-attribution.md' }
 )
 Check 'workflow: ship-plan and run-issues delete agent attribution lines from a pull request''s title and description before they send them' (-not $prAttributionMissing) ($prAttributionMissing -join ', ')
-# The commands that post to GitHub or GitLab read each post back and remove any agent attribution a session's tooling appends, through {{PROMPT:_session-footer}}.
-$sessionFooterText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_session-footer.md')).Body.Trim()
-# The files are every generated copy of each workflow template, command or agent, whose expanded text has the rule, directly or through _plan-format.md or another include.
-$footerTargets = @{ Claude = '.claude\commands\{0}.md'; VSCode = '.github\prompts\{0}.prompt.md'; CopilotCli = '.github\skills\{0}\SKILL.md' }
-$footerTemplates = @(Get-HybridTemplateList | Where-Object { (Get-HybridPromptText -Name $_.Name -Placeholder '$ARGUMENTS').Contains($sessionFooterText) })
-$footerAgents = @(Get-ChildItem -LiteralPath (Join-Path $workflow 'templates') -Filter '*.agent.md' -File | Where-Object { (Expand-HybridInclude (Read-HybridTemplateFile $_.FullName).Body).Contains($sessionFooterText) })
-$sessionFooterFiles = @(foreach ($footerTree in 'template\', '') {
-        foreach ($footerTemplate in $footerTemplates) { foreach ($footerTarget in $footerTemplate.Targets) { $footerTree + ($footerTargets[$footerTarget] -f $footerTemplate.Command) } }
-        foreach ($footerAgent in $footerAgents) {
-            $footerCopies = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "$footerTree.github\agents") -Filter "*-$($footerAgent.Name)" -File | ForEach-Object { "$footerTree.github\agents\$($_.Name)" })
-            if ($footerCopies) { $footerCopies } else { "$footerTree.github\agents\<variant>-$($footerAgent.Name)" }
-        }
-    })
-$m = @(Get-MissingText $sessionFooterFiles $sessionFooterText | ForEach-Object { ($_ -split ': ', 2)[0] + ': the session-footer rule is missing' })
-$m += @(foreach ($footerCommand in 'ship-plan', 'run-issues', 'run-issues-copilot', 'address-feedback', 'address-feedback-copilot', 'run-feedback', 'run-feedback-copilot', 'orchestrate-plan', 'replan-step', 'plan-issue', 'plan-feature', 'plan-template-update') { if ($footerCommand -notin $footerTemplates.Name) { "workflow\templates\${footerCommand}.md: does not include the session-footer rule" } })
-$m += @(foreach ($t in 'on GitHub or GitLab', '`update_pull_request`', '`update_issue_comment`', '`issue_write`', '`gh pr edit <number> --body-file <file>`', '#issuecomment-', '`glab mr view <number> --output json`', '`#note_`', '`glab api --method PUT "projects/:id/merge_requests/<number>/notes/<id>" -F body=@<file>`', '`chatgpt.com/codex/tasks/`', 'read it back once more', 'may fail until a person deletes those lines', 'A `/review` comment is one: it is only a slash command','A reply on a review thread is the other exception') { if (-not $sessionFooterText.Contains($t)) { "workflow\templates\_session-footer.md: missing $t" } })
-$m += @(if ($sessionFooterText.Contains('Never remove it through `gh`')) { 'workflow\templates\_session-footer.md: still forbids every edit through gh' })
+$commandTargets = @{ Claude = '.claude\commands\{0}.md'; VSCode = '.github\prompts\{0}.prompt.md'; CopilotCli = '.github\skills\{0}\SKILL.md' }
+$m = @()
 # The commands that run gh pr, gh issue, gh release or gh api graphql give their REST forms for a session that refuses GitHub's GraphQL API, through {{PROMPT:_github-rest}}.
 $githubRestText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_github-rest.md')).Body.Trim()
 # The files are every generated copy of each workflow template, command or agent, whose expanded text has the rule, directly or through _plan-format.md or another include.
 $restTemplates = @(Get-HybridTemplateList | Where-Object { (Get-HybridPromptText -Name $_.Name -Placeholder '$ARGUMENTS').Contains($githubRestText) })
 $restAgents = @(Get-ChildItem -LiteralPath (Join-Path $workflow 'templates') -Filter '*.agent.md' -File | Where-Object { (Expand-HybridInclude (Read-HybridTemplateFile $_.FullName).Body).Contains($githubRestText) })
-$githubRestFiles = @(foreach ($footerTree in 'template\', '') {
-        foreach ($restTemplate in $restTemplates) { foreach ($restTarget in $restTemplate.Targets) { $footerTree + ($footerTargets[$restTarget] -f $restTemplate.Command) } }
+$githubRestFiles = @(foreach ($commandTree in 'template\', '') {
+        foreach ($restTemplate in $restTemplates) { foreach ($restTarget in $restTemplate.Targets) { $commandTree + ($commandTargets[$restTarget] -f $restTemplate.Command) } }
         foreach ($restAgent in $restAgents) {
-            $restCopies = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "$footerTree.github\agents") -Filter "*-$($restAgent.Name)" -File | ForEach-Object { "$footerTree.github\agents\$($_.Name)" })
-            if ($restCopies) { $restCopies } else { "$footerTree.github\agents\<variant>-$($restAgent.Name)" }
+            $restCopies = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "$commandTree.github\agents") -Filter "*-$($restAgent.Name)" -File | ForEach-Object { "$commandTree.github\agents\$($_.Name)" })
+            if ($restCopies) { $restCopies } else { "$commandTree.github\agents\<variant>-$($restAgent.Name)" }
         }
     })
 $m2 = @(Get-MissingText $githubRestFiles $githubRestText | ForEach-Object { ($_ -split ': ', 2)[0] + ': the GitHub REST forms are missing' })
@@ -1080,8 +1033,8 @@ $reviewKeptTexts = 'whose first line is `/review`', 'sets aside everything from 
 $m += @(Get-MissingText (@('workflow\templates\_review-request.md') + $runFiles + $copilotRunFiles + $feedbackFiles + $copilotFeedbackFiles) $reviewKeptTexts | ForEach-Object { "$_ (how a /review comment is posted and left)" })
 # No workflow text deletes, edits or reads back a /review comment, or asks the maintainer to post one instead.
 $reviewGoneTexts = 'NCode Review acts only on', 'as it was created', 'as it is created', 'post no `/review` comment again', 'comment `/review` on the pull request myself', 'whose delete failed', 'this run couldn''t delete', 'requests no review', 'read back as exactly `/review`', 'my `/review`'
-$m += @(foreach ($p in @('workflow\templates\_review-request.md', 'workflow\templates\_session-footer.md', 'workflow\templates\_run-feedback-body.md', 'workflow\templates\_address-feedback-body.md') + $sessionFooterFiles + $runFiles + $copilotRunFiles + $feedbackFiles + $copilotFeedbackFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in $reviewGoneTexts) { if ($t.Contains($x)) { "${p}: still has '$x'" } } } })
-Check 'workflow: the commands that post to GitHub or GitLab read each post back and remove any agent''s attribution, and leave a /review comment as posted, footer and all' (-not $m) ($m -join '; ')
+$m += @(foreach ($p in @('workflow\templates\_review-request.md', 'workflow\templates\_run-feedback-body.md', 'workflow\templates\_address-feedback-body.md') + $runFiles + $copilotRunFiles + $feedbackFiles + $copilotFeedbackFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in $reviewGoneTexts) { if ($t.Contains($x)) { "${p}: still has '$x'" } } } })
+Check 'workflow: the commands leave a /review comment as posted, footer and all' (-not $m) ($m -join '; ')
 $includeLeft = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.claude'), (Join-Path $repoRoot 'template\.github') -Recurse -File |
     Where-Object { [IO.File]::ReadAllText($_.FullName) -match '\{\{(PROMPT|BODY):' } | ForEach-Object Name)
 Check 'workflow: no generated file keeps an unexpanded {{PROMPT:...}} or {{BODY:...}} include' (-not $includeLeft) ($includeLeft -join ', ')

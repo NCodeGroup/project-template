@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.83.0] - 2026-11-10
+
+### Added
+
+- `.template/Update-Project.ps1`, when its update removes the Commit attribution check, says to drop a required `Commit attribution` check from the default branch's ruleset or branch protection, and names a `.pre-commit-config.yaml` or Git hook that still calls the removed `.githooks/commit-msg` ([ADR-0018](template/docs/decisions/project-template/0018-agent-attribution-is-avoided-not-enforced.md)).
+
+### Changed
+
+- **Breaking:** Agent attribution is avoided, not enforced: the settings, the rules and `/ship-plan` and `/run-issues`, which delete attribution lines from the pull request title and description they write, still keep it out, but nothing checks for it or fails a commit, push, pull request or pipeline over it. A repository whose ruleset or branch protection requires a `Commit attribution` check must drop it from the required checks, or every pull request waits for a check no workflow reports; on GitHub, run `tools/Set-RepositoryBaseline.ps1 -Repo <name> -RequireChecks 'build-and-test'` from the template's clone for a ruleset it made, or edit the ruleset ([ADR-0018](template/docs/decisions/project-template/0018-agent-attribution-is-avoided-not-enforced.md)).
+- On GitLab, the always-on CI job that checks the decision index is named `decision-index`.
+- New projects and adoptions require only the `build-and-test` check, and the template's GitHub CI no longer runs again when a pull request's title or description is edited.
+
+### Removed
+
+- `.githooks/commit-msg`, which stripped agent attribution from commit messages, and the pre-commit hook `Update-Project.ps1` and `Adopt-Project.ps1` suggested for it.
+- `.template/Test-CommitAttribution.ps1` and the `Commit attribution` CI job on GitHub and GitLab.
+- The workflow commands' read-back of each pull request, issue, comment and note they post, which edited out a session's attribution footer and listed what it couldn't remove.
+
 ## [0.82.0] - 2026-11-10
 
 ### Added
@@ -1319,7 +1337,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.82.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.83.0...HEAD
+[0.83.0]: https://github.com/NCodeGroup/project-template/compare/v0.82.0...v0.83.0
 [0.82.0]: https://github.com/NCodeGroup/project-template/compare/v0.81.0...v0.82.0
 [0.81.0]: https://github.com/NCodeGroup/project-template/compare/v0.80.1...v0.81.0
 [0.80.1]: https://github.com/NCodeGroup/project-template/compare/v0.80.0...v0.80.1

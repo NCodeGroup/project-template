@@ -66,13 +66,11 @@
     and that passed (a job that ran more than once counts by its latest run). It leaves out, and lists with the reason,
     the review bot's advisory "Code review" and its pull_request_target job, CodeQL (the code-scanning rule covers it)
     and its Analyze jobs, a check another app reports, and any job that was skipped, neutral, failed or didn't finish,
-    since a skipped required check counts as passing. The template's "Commit attribution" job is required this way
-    wherever it ran on that pull request and passed, so a commit with an AI co-author trailer can't merge. A repository
-    with no merged pull request, or none of whose checks qualify, is skipped with the reason and nothing changed. With
-    -WhatIf it lists the checks and prints the command that names them, to edit and run; a job whose name has a comma is
-    listed apart, since -RequireChecks would split it. The list comes from one pull request: a job whose workflow has
-    paths or branches filters reports nothing on a pull request the filters skip, and that pull request can't merge, so
-    run -WhatIf first and leave such jobs out.
+    since a skipped required check counts as passing. A repository with no merged pull request, or none of whose checks
+    qualify, is skipped with the reason and nothing changed. With -WhatIf it lists the checks and prints the command
+    that names them, to edit and run; a job whose name has a comma is listed apart, since -RequireChecks would split it.
+    The list comes from one pull request: a job whose workflow has paths or branches filters reports nothing on a pull
+    request the filters skip, and that pull request can't merge, so run -WhatIf first and leave such jobs out.
 
     GitHub Free doesn't offer organization rulesets, so this applies them to each repository. New-Project.ps1 runs it
     for a repository it creates; Adopt-Project.ps1 prints the command to run.
@@ -88,7 +86,7 @@
 
 .EXAMPLE
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -WhatIf     # shows what it would do, and each setting's state
-    .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks 'build-and-test,Commit attribution'
+    .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks 'build-and-test'
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks auto -WhatIf   # lists the checks it would require
     .\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup
     .\tools\Set-RepositoryBaseline.ps1 -OrganizationPolicy -Owner NCodeGroup -WhatIf   # prints the organization's policy it would create

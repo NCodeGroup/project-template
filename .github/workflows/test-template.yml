@@ -3,10 +3,8 @@ name: Test template
 on:
   push:
     branches: [main]
-  # edited: Commit attribution reads the pull request's title and description, which a merge commit's message can
-  # include, so it runs again when they change.
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   # A required check must also report in a merge queue.
   merge_group:
     types: [checks_requested]
@@ -15,7 +13,7 @@ on:
 permissions:
   contents: read
 
-# A newer push to a pull request, or an edit of it, cancels its older run. Every other event's group includes its
+# A newer push to a pull request cancels its older run. Every other event's group includes its
 # commit, so a push to main, a merge queue entry and a manual run never cancel or replace another run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
@@ -77,8 +75,6 @@ jobs:
             run: ./tests/Test-GitHooks.ps1
           - name: Test the Node.js setup scripts
             run: ./tests/Test-NodeSetup.ps1
-          - name: Test the commit attribution check
-            run: ./tests/Test-CommitAttribution.ps1
           - name: Test updating a project that ignores a large folder
             run: ./tests/Test-UpdateIgnoredFiles.ps1
           - name: Test updating a project that owns a merged file
@@ -162,21 +158,3 @@ jobs:
         env:
           RESULT: ${{ needs.suite.result }}
         run: test "$RESULT" = success
-
-  commit-attribution:
-    name: Commit attribution
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check commit attribution
-        shell: pwsh
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: ./template/.template/Test-CommitAttribution.ps1 -Root . -Base $env:BASE -Head $env:HEAD -PullRequestTitle $env:PR_TITLE -PullRequestBody $env:PR_BODY

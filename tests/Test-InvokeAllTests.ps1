@@ -229,10 +229,10 @@ $lines = @(& $pwsh -NoProfile -NonInteractive -File (Join-Path $crash 'Test-Cras
 $code = $LASTEXITCODE
 Check 'crash: a suite that stops with an error keeps its folder and prints its path' (($code -ne 0) -and ($lines -contains "Kept the work folder: $crashWork") -and (Test-Path -LiteralPath $crashWork)) ($lines -join "`n")
 
-# Every suite with -Work (but Test-CommitAttribution.ps1, which always deletes its folder) works in a folder of its own
+# Every suite with -Work works in a folder of its own
 # by default, keeps it and says where when a check fails or the suite stops with an error (the trap line), and deletes
 # it through Remove-TestWork.ps1 when all pass.
-$suites = @(Get-ChildItem -LiteralPath $PSScriptRoot -File -Filter 'Test-*.ps1' | Where-Object Name -NE 'Test-CommitAttribution.ps1' | ForEach-Object {
+$suites = @(Get-ChildItem -LiteralPath $PSScriptRoot -File -Filter 'Test-*.ps1' | ForEach-Object {
         $ast = [Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$null)
         $param = $ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Work' }
         if ($param) { [pscustomobject]@{ Name = $_.Name; Default = "$($param.DefaultValue)"; Text = [IO.File]::ReadAllText($_.FullName) } }
@@ -260,9 +260,6 @@ Check 'suites: finds the suites that build a template snapshot' ($snapshotSuites
 foreach ($suite in $snapshotSuites) {
     Check "suites: $($suite.Name) keeps Copier's mirrors in its work folder, not the user's cache" (($suite.Text.Contains($cacheSet) -and $suite.Text.Contains($cacheRestore)) -or $suite.Text.Contains($renderCache))
 }
-$attribution = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-CommitAttribution.ps1'), [ref]$null, [ref]$null)
-$default = "$(($attribution.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Work' }).DefaultValue)"
-Check 'suites: Test-CommitAttribution.ps1 works in a folder named for its process ID by default' ($default -match '-\$PID"\)$') $default
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Runner tests: FAILED ($($failures.Count))"; exit 1 }

@@ -344,8 +344,7 @@ function Get-BuildFileList([string]$Path) {
 }
 
 # How to run the template's .githooks in this clone: HooksPath when core.hooksPath can point at it, otherwise the
-# Note to warn with. A hooks path turns off the hooks in .git/hooks, and pre-commit won't install while one is set, so
-# a clone that uses pre-commit gets a local pre-commit hook to add instead, and no note once its config runs it.
+# Note to warn with. A hooks path turns off the hooks in .git/hooks.
 # A hooks path the clone already has, from any Git config, is never changed: one that names a .githooks folder runs the
 # template's hooks, and any other, such as husky's or a global hooks folder, gets a note naming the command to run.
 # With "- protect: hook" in AGENTS.md's Landing section, it also says how to run .githooks/pre-push until something does.
@@ -373,9 +372,8 @@ function Get-GitHooksSetup {
     $current = git config --get core.hooksPath
     if ($current) {
         if ((Split-Path -Leaf $current.TrimEnd('\', '/')) -eq '.githooks') { return [pscustomobject]@{ HooksPath = $false; Note = $null } }
-        $push = if ($protect -eq 'hook') { ', or .githooks/pre-push, which refuses a push to the default branch as AGENTS.md''s Landing section says (protect: hook)' } else { '' }
-        $call = if ($protect -eq 'hook') { "call .githooks/commit-msg from $current/commit-msg and .githooks/pre-push from $current/pre-push" } else { "call .githooks/commit-msg from $current/commit-msg" }
-        return [pscustomobject]@{ HooksPath = $false; Note = "Git hooks: .githooks not enabled. core.hooksPath is already $current (git config --show-origin core.hooksPath says where it's set), so Git never runs .githooks/commit-msg, which strips AI agent attribution from commit messages$push. To run both, $call. To run the template's hooks instead, run: git config core.hooksPath .githooks" }
+        $push = if ($protect -eq 'hook') { ' as AGENTS.md''s Landing section says (protect: hook)' } else { ' when AGENTS.md''s Landing section says protect: hook' }
+        return [pscustomobject]@{ HooksPath = $false; Note = "Git hooks: .githooks not enabled. core.hooksPath is already $current (git config --show-origin core.hooksPath says where it's set), so Git never runs .githooks/pre-push, which refuses a push to the default branch$push. To run both, call .githooks/pre-push from $current/pre-push. To run the template's hooks instead, run: git config core.hooksPath .githooks" }
     }
 
     # True when the clone's pre-push hook, or the pre-push.legacy that pre-commit runs first, calls .githooks/pre-push.
@@ -386,12 +384,8 @@ function Get-GitHooksSetup {
     }
 
     $parts = @()
-    if ($preCommit -and -not ((Test-Path -LiteralPath $config) -and (Select-String -LiteralPath $config -SimpleMatch '.githooks/commit-msg' -Quiet))) {
-        $parts += @('Git hooks: .githooks not enabled. This clone uses pre-commit, which won''t install its hooks while core.hooksPath is set. To run .githooks/commit-msg through pre-commit, add this hook to the repos list in .pre-commit-config.yaml, then run: pre-commit install --hook-type commit-msg',
-            '  - repo: local', '    hooks:', '      - id: strip-agent-attribution', '        name: strip agent attribution', '        entry: .githooks/commit-msg', '        language: script', '        stages: [commit-msg]') -join "`n"
-    }
-    elseif (-not $preCommit -and $ownHooks) {
-        $parts += "Git hooks: .githooks not enabled. This clone has hooks of its own in .git/hooks ($(($ownHooks | ForEach-Object Name) -join ', ')), and core.hooksPath would turn them off. To run both, call .githooks/commit-msg from your commit-msg hook, or move your hooks into .githooks and run: git config core.hooksPath .githooks"
+    if (-not $preCommit -and $ownHooks) {
+        $parts += "Git hooks: .githooks not enabled. This clone has hooks of its own in .git/hooks ($(($ownHooks | ForEach-Object Name) -join ', ')), and core.hooksPath would turn them off. To run both, call .githooks/pre-push from your pre-push hook, or move your hooks into .githooks and run: git config core.hooksPath .githooks"
     }
     if (($preCommit -or $ownHooks) -and $protect -eq 'hook' -and -not $pushRuns) {
         $pushHook = Join-Path $hooksDir 'pre-push'

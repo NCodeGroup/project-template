@@ -56,7 +56,7 @@ build-and-test:
     - if [ -f package-lock.json ]; then npm ci; fi
 {%- endif %}
 {%- elif stack == 'powershell' %}
-  # The .NET SDK image, which the commit-attribution job also runs in, supplies a supported PowerShell, Git and curl.
+  # The .NET SDK image, which the decision-index job also runs in, supplies a supported PowerShell, Git and curl.
   image: mcr.microsoft.com/dotnet/sdk:10.0
   rules:
     - exists: ["**/*.ps1", "**/*.psm1"]
@@ -94,15 +94,12 @@ build-and-test:
 {%- endfor %}
 {%- endif %}
 
-# The .NET SDK image has git and PowerShell; the check needs the full history. It also checks the decision index,
-# which every project has, code or not, against the merge request's base: a merge request pipeline fetches no
-# default-branch ref.
-# On a merge request it also reads the title and description, passed through the environment so the shell never expands them.
-commit-attribution:
+# The .NET SDK image has git and PowerShell. The job checks the decision index, which every project has, code or not,
+# against the merge request's base: a merge request pipeline fetches no default-branch ref. It runs on every pipeline,
+# so every merge request has one.
+decision-index:
   image: mcr.microsoft.com/dotnet/sdk:10.0
   variables:
     GIT_DEPTH: "0"
   script:
-    - |
-      BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" pwsh -NoProfile -Command '& ./.template/Test-CommitAttribution.ps1 -Base $env:BASE -Head $env:CI_COMMIT_SHA -PullRequestTitle $env:CI_MERGE_REQUEST_TITLE -PullRequestBody $env:CI_MERGE_REQUEST_DESCRIPTION; exit $LASTEXITCODE'
     - pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"

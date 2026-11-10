@@ -58,7 +58,7 @@ Invoke-Git -C $ciExisting config core.hooksPath .husky
 $ciOut = & $adopt -Path $ciExisting -Template $tpl -Ref v0.1.0 -NoVerify 3>&1 | Out-String
 Check 'ci-existing: keeps a hooks path of its own and warns with the command to run' ((((git -C $ciExisting config --local core.hooksPath) -join '') -eq '.husky') -and $ciOut.Contains('core.hooksPath is already .husky') -and $ciOut.Contains('git config core.hooksPath .githooks')) $ciOut
 Check 'ci-existing: no reconcile follow-up when the repository already had ci.yml' (-not $ciOut.Contains('reconcile .github/workflows')) $ciOut
-Check 'ci-existing: asks to add the commit attribution job to the kept ci.yml' ($ciOut.Contains("add the template's commit-attribution job to .github/workflows/ci.yml")) $ciOut
+Check 'ci-existing: asks for no commit attribution job' (-not $ciOut.Contains('commit-attribution job')) $ciOut
 Check 'ci-existing: the baseline command suggests -RequireChecks auto for its own CI' ($ciOut.Contains('-Repo ci-existing -Owner example') -and $ciOut.Contains('keeps its own CI: add -RequireChecks auto')) $ciOut
 Check 'ci-existing: says it left local out and how to add it' ($ciOut.Contains("workflow_tools: [claude, copilot], the template's default") -and $ciOut.Contains("-Data @{ workflow_tools = 'claude', 'copilot', 'local' }")) $ciOut
 Check 'ci-existing: a kept publish.yml with workflow_dispatch gets no warning' (-not $ciOut.Contains('has no workflow_dispatch trigger')) $ciOut

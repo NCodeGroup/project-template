@@ -28,7 +28,7 @@ Issues and {{ pr }}s are welcome. [README.md](README.md) explains the project, a
 
 ## Set Up
 
-Once in each clone, run `git config core.hooksPath .githooks`. It turns on `.githooks/commit-msg`, which strips AI attribution from commit messages, and `.githooks/pre-push`, which refuses a push to the default branch when the Landing section of `AGENTS.md` says `protect: hook`. When the clone already runs another tool's hooks, such as pre-commit, leave its hooks path alone: the rules below still apply, and CI still checks them.
+Once in each clone, run `git config core.hooksPath .githooks`. It turns on `.githooks/pre-push`, which refuses a push to the default branch when the Landing section of `AGENTS.md` says `protect: hook`. When the clone already runs another tool's hooks, such as pre-commit, leave its hooks path alone.
 
 ## Build and Test
 
@@ -61,7 +61,7 @@ There are no commands yet. When the project gets them, add them here, under Comm
 
 ## Commit Attribution
 
-Commits record the people who wrote them. Never add a `Co-authored-by:` trailer naming an AI agent (Copilot, Claude or any other), a `Claude-Session:` trailer or a "Generated with" line; say which tools helped in the {{ pr }} instead. The `commit-msg` hook strips them, and the {% if git_host == 'gitlab' %}`commit-attribution` job{% else %}`Commit attribution` check{% endif %} fails a {{ pr }} with a commit authored, committed or co-authored by an AI agent. To fix one, run the command the check prints, then `git push --force-with-lease`: `git rebase <base> --exec "git commit --amend --no-edit --reset-author"` re-authors a commit by an AI agent account, and `git rebase <base> --exec "git -c core.hooksPath=.githooks commit --amend --no-edit"` runs the `commit-msg` hook on each commit message, which strips the attribution lines `--no-edit` alone keeps. The check also reads the {{ pr }}'s title and description, which a squash merge can copy into the default branch: when it finds such a line there, edit the {{ pr }}{% if git_host == 'gitlab' %} and run its pipeline again{% endif %}. [The decision](docs/decisions/project-template/0002-commits-are-attributed-to-people-not-agents.md) says why.
+Commits record the people who wrote them, so avoid AI agent attribution: don't add a `Co-authored-by:` trailer naming an AI agent (Copilot, Claude or any other), a `Claude-Session:` trailer or a "Generated with" line; say which tools helped in the {{ pr }} instead. Nothing checks for it or blocks a commit, push or {{ pr }} that has it, so one a tool adds anyway needs no fix. [The decision](docs/decisions/project-template/0018-agent-attribution-is-avoided-not-enforced.md) says why.
 {%- if stack == 'dotnet' %}
 
 ## .NET

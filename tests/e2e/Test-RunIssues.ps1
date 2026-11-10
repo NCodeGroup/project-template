@@ -374,9 +374,6 @@ Use-FixtureEnvironment $Work $bin {
         Check "the plan's branch $($run.Branch) tracks origin/$pushBranch and was never pushed under its own name" ($upstream -eq "origin/$pushBranch" -and $ownCode -ne 0) "upstream: '$upstream'; rev-parse of its own name on origin exit code $ownCode"
     }
 
-    $null = pwsh -NoProfile -File (Join-Path $app '.template/Test-CommitAttribution.ps1') -Root $app -Base $mainBefore -Head origin/$originBranch 2>&1
-    Check 'the pull request''s commits carry no AI attribution' ($LASTEXITCODE -eq 0) "exit code $LASTEXITCODE"
-
     $noTree = "no checkout at $($run.Folder)"
     if (Test-Path -LiteralPath $run.Folder) {
         $st = Get-State $app $run.Folder

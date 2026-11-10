@@ -110,7 +110,7 @@ try {
     $env:GIT_CONFIG_VALUE_0 = 'template-test'
     $env:GIT_CONFIG_KEY_1 = 'user.email'
     $env:GIT_CONFIG_VALUE_1 = 'template-test@example.invalid'
-    $checks = 'build-and-test,Commit attribution'
+    $checks = 'build-and-test'
 
     # 1. GitHub.
     $r = Invoke-NewProject 'gh-app' 'github'
