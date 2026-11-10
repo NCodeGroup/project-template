@@ -340,6 +340,22 @@ function Get-GitHooksSetup {
     [pscustomobject]@{ HooksPath = -not $preCommit -and -not $ownHooks; Note = if ($parts) { $parts -join "`n" } else { $null } }
 }
 
+# What a project does after an update removes the Commit attribution check (the template's ADR-0018): a ruleset that still
+# requires the check blocks every pull request, and a config or hook that still calls the removed commit-msg hook fails every commit.
+function Get-AttributionCheckNote([object[]]$Changes) {
+    if (-not ($Changes | Where-Object { $_.Kind -eq 'deleted' -and $_.File -eq '.template/Test-CommitAttribution.ps1' })) { return }
+    ''
+    'The template no longer has the Commit attribution check or the .githooks/commit-msg hook (the template''s ADR-0018). If the default branch''s ruleset or branch protection requires a check named "Commit attribution", remove it from the required checks, or every pull request waits for a check that never reports: on GitHub in Settings > Rules > Rulesets, or for a "Protect main" ruleset tools/Set-RepositoryBaseline.ps1 made, by running it again from the template''s clone with -RequireChecks naming the checks to keep, such as -RequireChecks ''build-and-test''.'
+    $hooksDir = git rev-parse --path-format=absolute --git-path hooks
+    $hooksRel = git rev-parse --git-path hooks
+    $callers = @()
+    if ((Test-Path -LiteralPath .pre-commit-config.yaml) -and (Select-String -LiteralPath .pre-commit-config.yaml -SimpleMatch '.githooks/commit-msg' -Quiet)) { $callers += '.pre-commit-config.yaml' }
+    $callers += @(Get-ChildItem -LiteralPath $hooksDir -File -ErrorAction SilentlyContinue | Where-Object Extension -NE '.sample' |
+            Where-Object { Select-String -LiteralPath $_.FullName -SimpleMatch '.githooks/commit-msg' -Quiet } |
+            ForEach-Object { "$hooksRel/$($_.Name)" })
+    if ($callers) { "These files still call .githooks/commit-msg, which this update removed, so every commit fails until you delete that call: $($callers -join ', ')" }
+}
+
 # The changelog AGENTS.md's Landing section names (CHANGELOG.md by default) as File, and as Range the version tags merged into HEAD
 # that have no release heading in it: <oldest>..<newest>, the tag alone, or -. .template/Get-PlanState.ps1 prints Range as changelog-backfill.
 # With pre-release: untracked in the Landing section, a tag below 1.0.0 needs no section.
@@ -706,6 +722,8 @@ try {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
+
+    Get-AttributionCheckNote $changes
 
     # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).
     $backfill = Get-ChangelogBackfill
