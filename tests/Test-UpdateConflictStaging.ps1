@@ -9,8 +9,10 @@
     acute e (U+00E9), whose first line renders Copier's _folder_name, so the update conflicts on it too, and the
     project edits its second line, so the update's reset commit changes it: it must stay unmerged as well, which
     fails if the restage reads its unmerged list without core.quotePath=false. The .gitignore, which the update
-    leaves as it was, must be neither listed nor staged, and must still end with the kept block. Prints PASS or FAIL
-    per check and exits 1 on any failure.
+    leaves as it was, must be neither listed nor staged, and must still end with the kept block. v0.2.0 also deletes
+    removed-later.txt and changes changed-later.txt, which the project didn't edit: the update must stage both, the
+    deletion included, and leave no change outside the conflicting files unstaged. Prints PASS or FAIL per check and
+    exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-conflict-staging-test-<process ID>
@@ -54,7 +56,7 @@ if (-not $copierCache) { $env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache' 
 $tpl = Join-Path $Work 'template-repo'
 # A template file with a non-ASCII name whose first line renders Copier's _folder_name: Copier renders an update's base in a temporary folder, so the update always conflicts on that line, and the reset restores the project's edit to its second line, so the reset commit changes it too.
 $accented = "caf$([char]0xE9).txt"
-$null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl -BeforeCommit { [IO.File]::WriteAllText((Join-Path (Get-Location) "template/$accented.jinja"), "Rendered in {{ _folder_name }}`nA line the project edits`n") }
+$null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl -BeforeCommit { [IO.File]::WriteAllText((Join-Path (Get-Location) "template/$accented.jinja"), "Rendered in {{ _folder_name }}`nA line the project edits`n"); [IO.File]::WriteAllText((Join-Path (Get-Location) 'template/removed-later.txt'), "removed by v0.2.0`n"); [IO.File]::WriteAllText((Join-Path (Get-Location) 'template/changed-later.txt'), "v0.1.0`n") }
 
 Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
 $marker = "# Kept from this repository's own .gitignore when it adopted the project template"
@@ -77,7 +79,7 @@ Push-Location (Join-Path $tpl 'template')
 try { Edit-File .editorconfig.jinja "indent_style = space`nindent_size = 4`n" "indent_style = space`nindent_size = 8`n" }
 finally { Pop-Location }
 Push-Location $tpl
-try { Invoke-Git commit -q -am 'Indent size 8'; Invoke-Git tag v0.2.0 }
+try { Invoke-Git rm -q template/removed-later.txt; [IO.File]::WriteAllText((Join-Path $tpl 'template/changed-later.txt'), "v0.2.0`n"); Invoke-Git commit -q -am 'Indent size 8'; Invoke-Git tag v0.2.0 }
 finally { Pop-Location }
 
 Push-Location $path
@@ -91,6 +93,11 @@ try {
     Check 'conflict: .editorconfig stays unmerged' ([bool](git ls-files -u -- .editorconfig)) $detail
     Check "conflict: $accented, which the reset changed, stays unmerged" ([bool](git ls-files -u -- $accented)) $detail
     Check 'kept: .gitignore, which the update left as it was, is neither listed nor staged' (($output -notmatch '(?m)^  \S+ +\.gitignore\r?$') -and -not (git status --porcelain -- .gitignore)) $detail
+    Check 'staged: removed-later.txt, which v0.2.0 deletes, is staged as deleted' ((@(git diff --cached --name-only --diff-filter=D) -contains 'removed-later.txt') -and -not (git diff --name-only -- removed-later.txt)) $detail
+    Check 'staged: changed-later.txt, which v0.2.0 changes, is staged as modified' ((@(git diff --cached --name-only --diff-filter=M) -contains 'changed-later.txt') -and -not (git diff --name-only -- changed-later.txt)) $detail
+    $unmerged = @(git -c core.quotePath=false diff --name-only --diff-filter=U)
+    $unstaged = @(git -c core.quotePath=false diff --name-only | Where-Object { $_ -notin $unmerged })
+    Check 'staged: no change outside the conflicting files is left unstaged' ($unstaged.Count -eq 0) ($unstaged -join ', ')
     Check 'kept: .gitignore still ends with the kept block' (([IO.File]::ReadAllText($ignore) -eq $before) -and $before.EndsWith("$marker`n$kept")) $detail
 }
 finally { Pop-Location }
