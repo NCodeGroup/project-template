@@ -569,7 +569,7 @@ exit 0
     Check 'fixture: on the pull request''s branch the test passes and Get-Farewell says "Goodbye, !" without a name, as the writer says' ($result.Output -eq 'Goodbye, !|Goodbye, !|Goodbye, Ada!' -and $result.TestCode -eq 0) "output='$($result.Output)' test exit code $($result.TestCode)"
     $ci = Join-Path $clone '.github/workflows/ci.yml'
     $ciText = if (Test-Path -LiteralPath $ci) { [IO.File]::ReadAllText($ci) } else { '' }
-    $job = if ($ciText -match '(?s)\n  build-and-test:(.*?)\n  [a-z-]+:') { $Matches[1] } else { '' }
+    $job = if ($ciText -match '(?s)\n  build-and-test:(.*?)(\n  [a-z-]+:|\z)') { $Matches[1] } else { '' }
     Check 'fixture: the build-and-test job in ci.yml stops after 30 minutes, as the stranger says' ($job -match '(?m)^    timeout-minutes: 30\r?$') "ci.yml: $(if ($ciText) { 'build-and-test job not found or its timeout-minutes is not 30' } else { 'missing' })"
     Remove-Item -LiteralPath $clone -Recurse -Force
 }
