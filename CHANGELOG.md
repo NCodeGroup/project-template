@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.84.0] - 2026-11-10
+
+### Changed
+
+- No change for projects made from the template. `tests/Invoke-AllTests.ps1` also runs each end-to-end fixture setup that `.github/workflows/test-template.yml` runs, every `run: ./tests/e2e/<script>.ps1 -SetupOnly` line with its arguments, each with a `-Work` folder of its own in the run's folder, and prints their results after the suites', in the workflow's order, so a change that breaks a fixture setup fails the local run as it fails CI ([#338](https://github.com/NCodeGroup/project-template/issues/338)).
+
 ## [0.83.0] - 2026-11-10
 
 ### Added
@@ -1337,7 +1343,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.83.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.84.0...HEAD
+[0.84.0]: https://github.com/NCodeGroup/project-template/compare/v0.83.0...v0.84.0
 [0.83.0]: https://github.com/NCodeGroup/project-template/compare/v0.82.0...v0.83.0
 [0.82.0]: https://github.com/NCodeGroup/project-template/compare/v0.81.0...v0.82.0
 [0.81.0]: https://github.com/NCodeGroup/project-template/compare/v0.80.1...v0.81.0
