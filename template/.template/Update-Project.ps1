@@ -45,8 +45,9 @@
 
     Without conflicts the result is one commit, "Update from project-template <version>"; -NoCommit stages it
     instead. Either way it exits 0, as it does when there is nothing to update. With a conflict it commits nothing,
-    says how to finish or abandon the update, and exits 1; each file without a conflict is then either unstaged or
-    staged as it is in the working tree. On any other failure the project is reset to where it was.
+    says how to finish or abandon the update, and exits 1; every change outside the conflicting files is then staged
+    as it is in the working tree, deletions included, so staging the resolved files stages the whole update. On any
+    other failure the project is reset to where it was.
 
     It stages only what the update changed: the tracked files with git add -u and each file it added by name, never
     with git add -A. From the reset to the end of the run, .git/info/exclude holds a copy of the project's whole
