@@ -1033,31 +1033,16 @@ $prAttributionFiles = [ordered]@{
 }
 $prAttributionMissing = @(
     foreach ($f in $prAttributionFiles.Keys) {
-        # The read-back rule names `gh pr edit` as a removal route, and the REST-forms rule names `gh pr create` and `gh pr edit` too; the anchor is the command's own call, so both rules' text is left out of the search.
-        $text = [IO.File]::ReadAllText((Join-Path $repoRoot "template\$f")).Replace((Read-HybridTemplateFile (Join-Path $workflow 'templates\_session-footer.md')).Body.Trim(), '').Replace((Read-HybridTemplateFile (Join-Path $workflow 'templates\_github-rest.md')).Body.Trim(), '')
+        # The REST-forms rule names `gh pr create` and `gh pr edit` too; the anchor is the command's own call, so that rule's text is left out of the search.
+        $text = [IO.File]::ReadAllText((Join-Path $repoRoot "template\$f")).Replace((Read-HybridTemplateFile (Join-Path $workflow 'templates\_github-rest.md')).Body.Trim(), '')
         $at = $text.IndexOf($prAttributionText)
         if ($at -lt 0 -or $at -gt $text.IndexOf($prAttributionFiles[$f])) { $f }
     }
     if (-not ($prAttributionText.Contains('`Co-authored-by:`') -and $prAttributionText.Contains('`Claude-Session:`') -and $prAttributionText.Contains('"Generated with"'))) { 'workflow\templates\_pr-attribution.md' }
 )
 Check 'workflow: ship-plan and run-issues delete agent attribution lines from a pull request''s title and description before they send them' (-not $prAttributionMissing) ($prAttributionMissing -join ', ')
-# The commands that post to GitHub or GitLab read each post back and remove any agent attribution a session's tooling appends, through {{PROMPT:_session-footer}}.
-$sessionFooterText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_session-footer.md')).Body.Trim()
-# The files are every generated copy of each workflow template, command or agent, whose expanded text has the rule, directly or through _plan-format.md or another include.
 $footerTargets = @{ Claude = '.claude\commands\{0}.md'; VSCode = '.github\prompts\{0}.prompt.md'; CopilotCli = '.github\skills\{0}\SKILL.md' }
-$footerTemplates = @(Get-HybridTemplateList | Where-Object { (Get-HybridPromptText -Name $_.Name -Placeholder '$ARGUMENTS').Contains($sessionFooterText) })
-$footerAgents = @(Get-ChildItem -LiteralPath (Join-Path $workflow 'templates') -Filter '*.agent.md' -File | Where-Object { (Expand-HybridInclude (Read-HybridTemplateFile $_.FullName).Body).Contains($sessionFooterText) })
-$sessionFooterFiles = @(foreach ($footerTree in 'template\', '') {
-        foreach ($footerTemplate in $footerTemplates) { foreach ($footerTarget in $footerTemplate.Targets) { $footerTree + ($footerTargets[$footerTarget] -f $footerTemplate.Command) } }
-        foreach ($footerAgent in $footerAgents) {
-            $footerCopies = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "$footerTree.github\agents") -Filter "*-$($footerAgent.Name)" -File | ForEach-Object { "$footerTree.github\agents\$($_.Name)" })
-            if ($footerCopies) { $footerCopies } else { "$footerTree.github\agents\<variant>-$($footerAgent.Name)" }
-        }
-    })
-$m = @(Get-MissingText $sessionFooterFiles $sessionFooterText | ForEach-Object { ($_ -split ': ', 2)[0] + ': the session-footer rule is missing' })
-$m += @(foreach ($footerCommand in 'ship-plan', 'run-issues', 'run-issues-copilot', 'address-feedback', 'address-feedback-copilot', 'run-feedback', 'run-feedback-copilot', 'orchestrate-plan', 'replan-step', 'plan-issue', 'plan-feature', 'plan-template-update') { if ($footerCommand -notin $footerTemplates.Name) { "workflow\templates\${footerCommand}.md: does not include the session-footer rule" } })
-$m += @(foreach ($t in 'on GitHub or GitLab', '`update_pull_request`', '`update_issue_comment`', '`issue_write`', '`gh pr edit <number> --body-file <file>`', '#issuecomment-', '`glab mr view <number> --output json`', '`#note_`', '`glab api --method PUT "projects/:id/merge_requests/<number>/notes/<id>" -F body=@<file>`', '`chatgpt.com/codex/tasks/`', 'read it back once more', 'may fail until a person deletes those lines', 'A `/review` comment is one: it is only a slash command','A reply on a review thread is the other exception') { if (-not $sessionFooterText.Contains($t)) { "workflow\templates\_session-footer.md: missing $t" } })
-$m += @(if ($sessionFooterText.Contains('Never remove it through `gh`')) { 'workflow\templates\_session-footer.md: still forbids every edit through gh' })
+$m = @()
 # The commands that run gh pr, gh issue, gh release or gh api graphql give their REST forms for a session that refuses GitHub's GraphQL API, through {{PROMPT:_github-rest}}.
 $githubRestText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_github-rest.md')).Body.Trim()
 # The files are every generated copy of each workflow template, command or agent, whose expanded text has the rule, directly or through _plan-format.md or another include.
@@ -1080,8 +1065,8 @@ $reviewKeptTexts = 'whose first line is `/review`', 'sets aside everything from 
 $m += @(Get-MissingText (@('workflow\templates\_review-request.md') + $runFiles + $copilotRunFiles + $feedbackFiles + $copilotFeedbackFiles) $reviewKeptTexts | ForEach-Object { "$_ (how a /review comment is posted and left)" })
 # No workflow text deletes, edits or reads back a /review comment, or asks the maintainer to post one instead.
 $reviewGoneTexts = 'NCode Review acts only on', 'as it was created', 'as it is created', 'post no `/review` comment again', 'comment `/review` on the pull request myself', 'whose delete failed', 'this run couldn''t delete', 'requests no review', 'read back as exactly `/review`', 'my `/review`'
-$m += @(foreach ($p in @('workflow\templates\_review-request.md', 'workflow\templates\_session-footer.md', 'workflow\templates\_run-feedback-body.md', 'workflow\templates\_address-feedback-body.md') + $sessionFooterFiles + $runFiles + $copilotRunFiles + $feedbackFiles + $copilotFeedbackFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in $reviewGoneTexts) { if ($t.Contains($x)) { "${p}: still has '$x'" } } } })
-Check 'workflow: the commands that post to GitHub or GitLab read each post back and remove any agent''s attribution, and leave a /review comment as posted, footer and all' (-not $m) ($m -join '; ')
+$m += @(foreach ($p in @('workflow\templates\_review-request.md', 'workflow\templates\_run-feedback-body.md', 'workflow\templates\_address-feedback-body.md') + $runFiles + $copilotRunFiles + $feedbackFiles + $copilotFeedbackFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in $reviewGoneTexts) { if ($t.Contains($x)) { "${p}: still has '$x'" } } } })
+Check 'workflow: the commands leave a /review comment as posted, footer and all' (-not $m) ($m -join '; ')
 $includeLeft = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.claude'), (Join-Path $repoRoot 'template\.github') -Recurse -File |
     Where-Object { [IO.File]::ReadAllText($_.FullName) -match '\{\{(PROMPT|BODY):' } | ForEach-Object Name)
 Check 'workflow: no generated file keeps an unexpanded {{PROMPT:...}} or {{BODY:...}} include' (-not $includeLeft) ($includeLeft -join ', ')

@@ -22,7 +22,7 @@ This run works in the open folder, on one entry's branch at a time, with `PLAN.m
 - Every change reaches the default branch through a pull request that I merge. Open each one as a draft. Never merge it, mark it ready for review, turn on auto-merge, resolve a review thread, force-push, or push with `--no-verify`.
 - Every discussion on a pull request ends remediated and replied to, as ADR-0014 says: fixed in a commit, or answered with why nothing changed, in a reply that starts with `Autopilot:`. I resolve each thread.
 - Land one entry at a time, in queue order. With a push branch, as The Push Branch says, every entry's pull request comes from it, and this order keeps one open pull request on it. Each entry's branch starts from the default branch after the entry before it has landed, so its plan takes the next free `Release:` version. When a pull request outside the run lands that version, or a later one, while the entry's draft pull request is open, Review the Pull Request item 3 renumbers the entry, by its `Release:` line alone in a pre-release project, and pushes the step it adds, if any, to its pull request.
-- Write every comment and reply to a temporary file outside the repository with your file-writing tool, pass the file to the command, and delete it afterwards. {{PROMPT:_session-footer}} {{PROMPT:_github-rest}}
+- Write every comment and reply to a temporary file outside the repository with your file-writing tool, pass the file to the command, and delete it afterwards. {{PROMPT:_github-rest}}
 - Switch branches only where this command says to. `PLAN.md` is untracked, so a switch carries it along: it belongs to the entry whose branch it was written on.
 
 ## Start
