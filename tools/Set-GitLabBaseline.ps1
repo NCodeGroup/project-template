@@ -9,7 +9,7 @@
         bot or a person can't be merged past;
       - "Pipelines must succeed" (only_allow_merge_if_pipeline_succeeds), so a merge request whose pipeline failed can't
         merge. It also blocks a merge request that has no pipeline at all. The template's .gitlab-ci.yml runs a pipeline
-        on every merge request, with the always-on "Commit attribution" job, so a project made from the template always
+        on every merge request, with the always-on "decision-index" job, so a project made from the template always
         has one; a project whose CI runs none can't merge until it does;
       - "Squash commits when merging" set to "Do not allow" (squash_option never), so a plan's step commits stay on the
         default branch, as a project's ADR-0013 records;
