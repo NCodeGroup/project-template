@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.84.1] - 2026-11-10
+
+### Changed
+
+- No change for projects made from the template. CI also sets up the run-feedback end-to-end fixture with `-Scenario review-with-footer`, so a change that breaks that scenario's `footer.txt` setup fails the pull request, and `tests/Invoke-AllTests.ps1` runs that setup too ([#342](https://github.com/NCodeGroup/project-template/issues/342)).
+
+### Fixed
+
+- `.template/Update-Project.ps1`, when it stops on a conflict, stages every change outside the conflicting files, deletions included, as it does without a conflict. It left the files the template changed or deleted unstaged, so a `/plan-template-update` plan, whose update step runs `git add` only on the files that still exist, committed the update without its deletions. `/plan-template-update` also leaves a deletion an older target's script left unstaged unmarked, so its commit note stages it ([#339](https://github.com/NCodeGroup/project-template/issues/339)).
+- `.template/Update-Project.ps1` leaves a catch-all text rule, such as `* text eol=lf`, out of the lines an adopted project's `.gitattributes` kept at adoption, as `Adopt-Project.ps1` has since 0.41.1, and says so. A project adopted before then kept the rule through every update, and because Git uses the last rule that matches, it overrode the template's binary rules: `git add` dropped the CR of each CR LF pair in an `.ico` or `.pdf` file it staged, corrupting it ([#340](https://github.com/NCodeGroup/project-template/issues/340)).
+
 ## [0.84.0] - 2026-11-10
 
 ### Changed
@@ -1349,7 +1360,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.84.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.84.1...HEAD
+[0.84.1]: https://github.com/NCodeGroup/project-template/compare/v0.84.0...v0.84.1
 [0.84.0]: https://github.com/NCodeGroup/project-template/compare/v0.83.1...v0.84.0
 [0.83.1]: https://github.com/NCodeGroup/project-template/compare/v0.83.0...v0.83.1
 [0.83.0]: https://github.com/NCodeGroup/project-template/compare/v0.82.0...v0.83.0

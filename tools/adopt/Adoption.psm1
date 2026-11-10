@@ -195,6 +195,7 @@ function Merge-AdoptedFile([string]$Name, [string]$Original, [string]$Rendered) 
             # Git uses the last rule that matches, and the kept lines come after the template's. A catch-all text rule of the
             # repository's own, such as "* text eol=lf", would then override the template's "*.png binary" and the rest, so a
             # binary file is committed as text and corrupted. The template's first rule says the same thing, so drop them.
+            # .template/Update-Project.ps1 drops the same rule from a project's kept lines with a copy of this pattern; change both together.
             $catchAll = @($lines -split "`n" | Where-Object { $_ -match '^\*\s+text(?:=auto)?(?:\s+eol=lf)?\s*$' })
             if ($catchAll) {
                 $lines = ($lines -split "`n" | Where-Object { $_ -notin $catchAll }) -join "`n"

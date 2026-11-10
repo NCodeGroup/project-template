@@ -10,8 +10,12 @@
     to finish with git add -u. The update adds the file in the first project and stages it in the second. Both have a
     node_modules/ and a .turbo/ folder that only the kept lines ignore, which neither update may stage or commit, and
     the first must leave .git/info/exclude as it was. The third has a docs/secrets/ file that v0.1.0's secrets/ ignores
-    and v0.2.0's /secrets/ doesn't: its update, with -NoCommit, must leave that file untracked. Prints PASS or FAIL per
-    check and exits 1 on any failure.
+    and v0.2.0's /secrets/ doesn't: its update, with -NoCommit, must leave that file untracked. The fourth, adopted
+    before Adopt-Project.ps1 left a catch-all text rule out, keeps * text=auto and * text eol=lf in its .gitattributes:
+    its update, with -NoCommit, must leave both out of the kept lines, keep its other kept line, stage the change, say
+    so, and leave an .ico file binary (git check-attr text answers unset). The fifth keeps a bare * text and a
+    * text eol=crlf: its update leaves only the bare rule out. The update script's catch-all pattern must also equal
+    Merge-AdoptedFile's, because each is a copy of the other. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-kept-test-<process ID> in the
@@ -162,6 +166,48 @@ try {
     Check 'unignored: fixture: the updated .gitignore does not ignore it, so it is left untracked' ([bool](git ls-files --others --exclude-standard -- docs/secrets)) (git status --porcelain | Out-String)
 }
 finally { Pop-Location }
+
+# A project adopted before Adopt-Project.ps1 left a catch-all text rule out of the lines it keeps (v0.41.1), whose .gitattributes still holds the rule.
+$d = New-AdoptedProject 'adopted-attributes'
+$attributesMarker = "# Kept from this repository's own .gitattributes when it adopted the project template"
+Push-Location $d
+try {
+    $attributes = Join-Path $d '.gitattributes'
+    [IO.File]::WriteAllText($attributes, [IO.File]::ReadAllText($attributes).TrimEnd("`n") + "`n`n$attributesMarker`n* text=auto`n* text eol=lf`n*.cs text diff=csharp`n")
+    Invoke-Git commit -q -am 'Keep the catch-all text rules'
+    Check 'attributes: fixture: the kept catch-all rule makes an icon text' ((git check-attr text -- x.ico) -eq 'x.ico: text: set') (git check-attr text -- x.ico | Out-String)
+    $lines = [Collections.Generic.List[string]]::new()
+    try { & (Join-Path $d '.template\Update-Project.ps1') -NoCommit 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
+    $output = $lines -join "`n"
+    $text = [IO.File]::ReadAllText($attributes)
+    Check 'attributes: the update leaves the catch-all text rules out of the kept lines and keeps the others' (($exitCode -eq 0) -and $text.EndsWith("`n$attributesMarker`n*.cs text diff=csharp`n")) "exit $exitCode`n$text"
+    Check 'attributes: an icon is no longer text' ((git check-attr text -- x.ico) -eq 'x.ico: text: unset') (git check-attr text -- x.ico | Out-String)
+    Check 'attributes: the change to .gitattributes is staged' ((@(git diff --cached --name-only) -contains '.gitattributes') -and -not (git diff --name-only -- .gitattributes)) (git status --porcelain | Out-String)
+    Check 'attributes: the update says which rules it left out' ($output.Contains('catch-all text rule (* text=auto; * text eol=lf)')) $output.Trim()
+}
+finally { Pop-Location }
+
+# The catch-all pattern is narrow on purpose: a bare "* text" is one, while "* text eol=crlf" is not and stays among the kept lines.
+$e = New-AdoptedProject 'adopted-attributes-variants'
+Push-Location $e
+try {
+    $attributes = Join-Path $e '.gitattributes'
+    [IO.File]::WriteAllText($attributes, [IO.File]::ReadAllText($attributes).TrimEnd("`n") + "`n`n$attributesMarker`n* text`n* text eol=crlf`n*.cs text diff=csharp`n")
+    Invoke-Git commit -q -am 'Keep a bare catch-all text rule and a CRLF one'
+    $lines = [Collections.Generic.List[string]]::new()
+    try { & (Join-Path $e '.template\Update-Project.ps1') -NoCommit 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
+    $output = $lines -join "`n"
+    $text = [IO.File]::ReadAllText($attributes)
+    Check 'attributes: a bare catch-all text rule is left out and the near-miss with eol=crlf stays' (($exitCode -eq 0) -and $text.EndsWith("`n$attributesMarker`n* text eol=crlf`n*.cs text diff=csharp`n")) "exit $exitCode`n$text"
+    Check 'attributes: the update names the bare rule it left out' ($output.Contains('catch-all text rule (* text)')) $output.Trim()
+}
+finally { Pop-Location }
+
+# The update script carries a deliberate copy of Merge-AdoptedFile's catch-all pattern, and each file says to change both together: the copies must stay identical.
+$catchAllCopy = "-match '(\^\\\*\\s\+text[^']*)'"
+$updateCopy = [regex]::Match([IO.File]::ReadAllText((Join-Path $repoRoot 'template/.template/Update-Project.ps1')), $catchAllCopy)
+$adoptionCopy = [regex]::Match([IO.File]::ReadAllText((Join-Path $repoRoot 'tools/adopt/Adoption.psm1')), $catchAllCopy)
+Check 'attributes: the update script and Merge-AdoptedFile use the same catch-all text pattern' ($updateCopy.Success -and $adoptionCopy.Success -and $updateCopy.Groups[1].Value -ceq $adoptionCopy.Groups[1].Value) "update: $($updateCopy.Groups[1].Value)`nadoption: $($adoptionCopy.Groups[1].Value)"
 ''
 $env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Update kept-lines tests: FAILED ($($failures.Count))"; exit 1 }

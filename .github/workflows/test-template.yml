@@ -71,6 +71,8 @@ jobs:
             run: ./tests/e2e/Test-AddressFeedbackGitLab.ps1 -SetupOnly
           - name: Set up the run-feedback end-to-end fixture
             run: ./tests/e2e/Test-RunFeedback.ps1 -SetupOnly
+          - name: Set up the run-feedback end-to-end fixture for a /review comment with a footer
+            run: ./tests/e2e/Test-RunFeedback.ps1 -SetupOnly -Scenario review-with-footer
           - name: Test the Git hooks
             run: ./tests/Test-GitHooks.ps1
           - name: Test the Node.js setup scripts
