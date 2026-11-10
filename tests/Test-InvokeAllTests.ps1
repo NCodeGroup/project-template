@@ -9,7 +9,7 @@
     -ThrottleLimit 1 run one at a time, and that two runs at once without -Work log to folders of their own, deleted
     when the run passes. Also checks that the runner runs each -SetupOnly line of the workflow in the parent of -Path
     after the suites, in the workflow's order, fails the run for a setup that fails, skips a line without -SetupOnly,
-    and gives each setup a log and a -Work folder of its own. Also checks that tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that
+    gives each setup a log and a -Work folder of its own, and finds the workflow for a relative -Path. Also checks that tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that
     every suite with -Work defaults to a folder of its own, kept on a failure and deleted through it on a pass, and,
     through a trap line, kept with its path printed when the suite stops with an error, and that every such suite that builds a template snapshot keeps Copier's mirrors in its work folder, not the user's cache. Also checks that
     tests/Measure-Suites.ps1 times a suite, prints the median of -Repeat runs, and fails the run for a suite that
@@ -194,6 +194,8 @@ $okLogs = (Test-Path -LiteralPath $logA) -and (Test-Path -LiteralPath $logB) -an
 ([IO.File]::ReadAllText($logA).Contains("setup: a True $(Join-Path $logs 'e2e-1')")) -and
 ([IO.File]::ReadAllText($logB).Contains("setup: b True $(Join-Path $logs 'e2e-2')"))
 Check 'setups: each setup logs and works in a -Work folder of its own in the run''s folder' $okLogs $r.Text
+Push-Location $setups; try { $rel = Invoke-Runner 'tests' } finally { Pop-Location }
+Check 'setups: a relative -Path finds the workflow in its parent' (($rel.Lines -contains '  FAIL  b broke') -and ($rel.Lines[-1] -eq 'All tests: FAILED (1)')) $rel.Text
 
 # Two runs at once without -Work, as from two worktrees: each must log to a folder of its own and delete it.
 $runs = foreach ($n in 1, 2) {

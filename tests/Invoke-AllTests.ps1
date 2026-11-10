@@ -71,7 +71,7 @@ foreach ($script in $scripts) {
     if ($SkipDotnetBuild -and (Get-Command -Name $script.FullName).Parameters.ContainsKey('SkipDotnetBuild')) { $jobArguments = @('-SkipDotnetBuild') }
     $jobs.Add([pscustomobject]@{ Index = $jobs.Count; Name = $script.Name; File = $script.FullName; Arguments = $jobArguments; Log = $script.BaseName })
 }
-$root = Split-Path -Parent $Path
+$root = Split-Path -Parent (Get-Item -LiteralPath $Path).FullName
 $workflow = Join-Path $root '.github/workflows/test-template.yml'
 if (Test-Path -LiteralPath $workflow -PathType Leaf) {
     $n = 0
