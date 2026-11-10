@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.83.1] - 2026-11-10
+
+### Changed
+
+- No change for projects made from the template. `tests/e2e/Test-RunIssues.ps1` and `tests/e2e/Test-RunFeedback.ps1` rename `-Scenario session-footer` to `-Scenario review-with-footer`, for what it checks: that a `/review` comment the run posts with a Claude Code cloud session's footer still asks NCode Review for a review and stays as posted. The README, CONTRIBUTING and the CI job that sets up its fixture use the new name ([#337](https://github.com/NCodeGroup/project-template/issues/337)).
+
 ## [0.83.0] - 2026-11-10
 
 ### Added
@@ -1337,7 +1343,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.83.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.83.1...HEAD
+[0.83.1]: https://github.com/NCodeGroup/project-template/compare/v0.83.0...v0.83.1
 [0.83.0]: https://github.com/NCodeGroup/project-template/compare/v0.82.0...v0.83.0
 [0.82.0]: https://github.com/NCodeGroup/project-template/compare/v0.81.0...v0.82.0
 [0.81.0]: https://github.com/NCodeGroup/project-template/compare/v0.80.1...v0.81.0
