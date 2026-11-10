@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.81.0] - 2026-11-10
+
+### Added
+
+- `/run-issues` offers at its start to fix the follow-ups in the same pull request before merge, beside filing them as issues and filing none: each entry turns its plan's own follow-ups into fix steps before its draft pull request opens, and, while its rounds of review feedback stay below `max-review-rounds`, every NCode Review finding that holds, nits, minor findings and changes outside the issue included, into fix steps pushed to the draft pull request, replying `Autopilot: fixed in <commit>` and never `Autopilot: left as a follow-up`. A follow-up it can't fix there, because its fix would edit a protected path, lies in another repository or the issue excludes it, or one found after the last round, is still filed and listed in the report, with a reply that says why ([#332](https://github.com/NCodeGroup/project-template/issues/332)).
+- `/ship-plan` offers to fix follow-ups in the plan's pull request before merge, beside filing them, acting on them next and dropping them, while the plan hasn't landed: each one named becomes an escalated step of the plan, which `/replan-step` plans, and nothing is filed for it ([#332](https://github.com/NCodeGroup/project-template/issues/332)).
+
+### Changed
+
+- `/run-issues` words its follow-up answers by where the work lands: file them as issues; fix them in the same pull request before merge; file them and run each as a new entry of this run, which is 0.79.0's "complete them immediately" and works as before; or file none. With `follow-ups: none`, it offers to fix them in the same pull request or to list them in the report ([#332](https://github.com/NCodeGroup/project-template/issues/332)).
+- `tests/e2e/Test-RunIssues.ps1 -Scenario fix-now` answers the run's question with fixing the follow-ups in the same pull request, and checks that the run fixes NCode Review's out-of-scope blocker and its nit in the draft pull request, never replies `Autopilot: left as a follow-up`, and leaves neither in the plan's `## Follow-ups`; CI runs its fixture setup. No change for projects made from the template ([#332](https://github.com/NCodeGroup/project-template/issues/332)).
+
 ## [0.80.1] - 2026-11-09
 
 ### Changed
@@ -1297,7 +1309,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.80.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.81.0...HEAD
+[0.81.0]: https://github.com/NCodeGroup/project-template/compare/v0.80.1...v0.81.0
 [0.80.1]: https://github.com/NCodeGroup/project-template/compare/v0.80.0...v0.80.1
 [0.80.0]: https://github.com/NCodeGroup/project-template/compare/v0.79.1...v0.80.0
 [0.79.1]: https://github.com/NCodeGroup/project-template/compare/v0.79.0...v0.79.1
