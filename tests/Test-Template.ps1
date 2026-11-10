@@ -111,7 +111,7 @@ $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Test-CommitAttribution.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
     'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
@@ -613,9 +613,6 @@ finally {
 }
 Check 'hooks: commit-msg strips AI agent attribution and keeps people' ($hookLog.Contains('Jane Doe') -and -not $hookLog.Contains('anthropic.com') -and -not $hookLog.Contains('Copilot@') -and -not $hookLog.Contains('Claude-Session') -and -not $hookLog.Contains('Generated with') -and -not $hookLog.Contains('openai.com') -and -not $hookLog.Contains('GitLab Duo')) $hookLog
 Check 'hooks: commit-msg keeps a prose line that mentions the advertising phrase' ($proseLog.Contains('The hook strips the Generated with Claude Code line.')) $proseLog
-$attributionBase = (git -C $listProject rev-list --max-parents=0 HEAD) -join ''
-$attributionOutput = & pwsh -NoProfile -File (Join-Path $listProject '.template\Test-CommitAttribution.ps1') -Base $attributionBase -Head HEAD 2>&1 | Out-String
-Check 'project: the shipped commit attribution check passes on its own history' (($LASTEXITCODE -eq 0) -and $attributionOutput.Contains('none is attributed to an AI agent')) $attributionOutput
 
 $workflow = Join-Path $repoRoot 'workflow'
 $fresh = Join-Path $Work 'generated'
