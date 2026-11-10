@@ -91,8 +91,8 @@ jobs:
             run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario max-rounds
           - name: Set up the run-issues end-to-end fixture
             run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly
-          - name: Set up the run-issues end-to-end fixture for the session footer
-            run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario session-footer
+          - name: Set up the run-issues end-to-end fixture for a /review comment with a footer
+            run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario review-with-footer
           - name: Set up the run-issues end-to-end fixture for a session's push branch
             run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario push-branch
           - name: Set up the run-issues end-to-end fixture for fixing follow-ups in the pull request
