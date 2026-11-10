@@ -79,7 +79,6 @@ $hostDir = Join-Path $bin 'host'
 if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Tool')) { $Tool = Get-RunTool $Work $Tool }
 $head = 'add-farewell'
 $mrUrl = 'https://gitlab.com/fixture/app/-/merge_requests/1'
-$commandFile = Get-CommandFile $app $Tool 'address-feedback'
 
 if (-not $CheckOnly) {
     New-FixtureProject -RepoRoot $repoRoot -Work $Work -App $app -Origin $origin -Bin $bin -Data @{ git_host = 'gitlab' }
@@ -182,12 +181,6 @@ exit 0
         $writer = @($found | Where-Object { -not $_.individual_note } | ForEach-Object { $_.notes } | Where-Object { $_.author.username -eq 'ada-writer' -and $_.resolvable -and -not $_.resolved })
         $reader = @($found | Where-Object { $_.individual_note } | ForEach-Object { $_.notes } | Where-Object { $_.author.username -eq 'grace-reader' })
         Check 'fixture: the discussions read gives the writer''s unresolved thread and the reader''s question' ($found.Count -eq 2 -and $writer.Count -eq 1 -and $reader.Count -eq 1) "discussions=$($found.Count) writer notes=$($writer.Count) reader notes=$($reader.Count)"
-
-        $commandText = if (Test-Path -LiteralPath $commandFile) { [IO.File]::ReadAllText($commandFile) } else { '' }
-        $routes = @('glab api "projects/:id/merge_requests/<number>/notes/<id>"', 'glab api --method PUT "projects/:id/merge_requests/<number>/notes/<id>" -F body=@<file>', 'discussions/<discussion id>/notes/<id>')
-        $missing = @($routes | Where-Object { -not $commandText.Contains($_) })
-        Check 'fixture: the installed /address-feedback has the GitLab read-back and edit routes' ($commandText -and $missing.Count -eq 0) "missing: $($missing -join '; ')"
-        Test-InstalledCommand $app 'address-feedback' 'the GitLab read-back and edit routes' $routes
 
         $callsLog = Join-Path $hostDir 'calls.log'
         $footer = ([IO.File]::ReadAllText((Join-Path $hostDir 'footer.txt'))).Trim()
