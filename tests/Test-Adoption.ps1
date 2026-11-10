@@ -327,7 +327,6 @@ if (-not $UnitOnly) {
     $iEntry = $agents.IndexOf('@.github/instructions/project-template.instructions.md')
     Check 'plain: AGENTS.md gains the template rules' ($iEntry -ge 0 -and $iEntry -lt $agents.IndexOf('## Conventions') -and $agents.Contains('Own rules.')) $agents
     Check 'plain: CI file kept' ((Get-Content -Raw -LiteralPath (Join-Path $plain '.gitlab-ci.yml')) -eq "test:`n  script: echo hi`n") ''
-    Check 'plain: asks to add the commit attribution job to the kept .gitlab-ci.yml' ($out.Contains("add the template's commit-attribution job to .gitlab-ci.yml")) $out
 
     $scaffoldRepo = New-Fixture 'scaffold' @{
         'NCode.Demo.slnx'                   = "<Solution>`n  <Project Path=""src/NCode.Demo/NCode.Demo.csproj"" />`n</Solution>`n"
@@ -355,13 +354,13 @@ if (-not $UnitOnly) {
     $props = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'Directory.Build.props')
     $editorconfig = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.editorconfig')
     Check 'scaffold: Directory.Build.props imports the template settings' ($props.Contains('build/ProjectTemplate.props') -and $props.Contains('<LangVersion>latest</LangVersion>') -and @($editorconfig -split "`n" | Where-Object { $_ -match '^\s*root\s*=' }).Count -eq 1) "$props | $editorconfig"
-    Check 'scaffold: a GitHub origin gets the command that protects the default branch' ($out.Contains('Set-RepositoryBaseline.ps1') -and $out.Contains('-Repo Demo -Owner NCodeGroup') -and $out.Contains('-RequireChecks ''build-and-test,Commit attribution''')) $out
+    Check 'scaffold: a GitHub origin gets the command that protects the default branch' ($out.Contains('Set-RepositoryBaseline.ps1') -and $out.Contains('-Repo Demo -Owner NCodeGroup') -and $out.Contains('-RequireChecks ''build-and-test''')) $out
     Check 'scaffold: report lists the follow-ups' ($out.Contains('/plan-migration Finish adopting the project template') -and $out.Contains('.github/copilot-instructions.md') -and $out.Contains('.github/workflows/main.yml')) $out
     Check 'scaffold: its own changelog stays as it is, with a follow-up to convert it' ((Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'CHANGELOG.md')) -eq "# Changes`n`n## 1.0.0`n`n- First.`n" -and $out.Contains('convert CHANGELOG.md to Keep a Changelog 1.1.0')) $out
     Check 'scaffold: asks to backfill the changelog from a tag it has no section for' ($out.Contains('backfill CHANGELOG.md from the releases v0.9.0')) $out
     Check 'scaffold: asks to re-admit the imported build files in .dockerignore' ($out.Contains("re-admit Directory.Build.props and build/ProjectTemplate.props, which it imports, in each list of the build's files: .dockerignore")) $out
     Check 'scaffold: reconciles the C# instructions' ($out.Contains('reconcile .github/instructions/csharp.instructions.md with csharp-production.instructions.md')) $out
-    Check 'scaffold: no commit attribution follow-up when the template added ci.yml' (-not $out.Contains('commit-attribution job')) $out
+    Check 'scaffold: no commit attribution follow-up' (-not $out.Contains('commit-attribution job')) $out
     Check 'scaffold: enables the template hooks' (((git -C $scaffoldRepo config core.hooksPath) -join '') -eq '.githooks') ''
     Check 'scaffold: a library without a license of its own gets the template''s LICENSE.txt and COPYRIGHT.txt' ((Test-Path -LiteralPath (Join-Path $scaffoldRepo 'LICENSE.txt')) -and (Test-Path -LiteralPath (Join-Path $scaffoldRepo 'COPYRIGHT.txt')) -and -not $out.Contains('Skipped LICENSE.txt')) $out
 

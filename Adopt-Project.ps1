@@ -181,12 +181,6 @@ try {
                 $followUps.Add("reconcile .github/workflows/$($f.Name) with ci.yml")
             }
         }
-        # A CI file the repository already had was kept, so it lacks the template's commit-attribution job.
-        foreach ($p in '.github/workflows/ci.yml', '.gitlab-ci.yml') {
-            if ($originals.ContainsKey($p) -and -not [IO.File]::ReadAllText((Join-Path $project $p)).Contains('Test-CommitAttribution.ps1')) {
-                $followUps.Add("add the template's commit-attribution job to $p, so CI rejects commits attributed to an AI agent")
-            }
-        }
         # The repository's own changelog stays as it is; plans keep its style until a plan converts it.
         if ((Test-Path -LiteralPath CHANGELOG.md -PathType Leaf) -and -not (Test-KeepAChangelog ([IO.File]::ReadAllText((Join-Path $project 'CHANGELOG.md'))))) {
             $followUps.Add('convert CHANGELOG.md to Keep a Changelog 1.1.0 (https://keepachangelog.com/en/1.1.0/), keeping every entry')
@@ -249,7 +243,7 @@ try {
         # The next -match overwrites $Matches.
         $owner, $repo = $Matches[1], $Matches[2]
         $ci = if (Test-Path -LiteralPath .github/workflows/ci.yml) { Get-Content -Raw -LiteralPath .github/workflows/ci.yml } else { '' }
-        $checks = if ($ci -match '(?m)^  build-and-test:' -and $ci.Contains('name: Commit attribution')) { " -RequireChecks 'build-and-test,Commit attribution'" } else { '' }
+        $checks = if ($ci -match '(?m)^  build-and-test:' -and $ci.Contains('./.template/Test-AdrIndex.ps1')) { " -RequireChecks 'build-and-test'" } else { '' }
         ''
         "Protect the default branch, so changes reach it only through a pull request. From the template's clone, run:"
         "  $(Join-Path $PSScriptRoot 'tools/Set-RepositoryBaseline.ps1') -Repo $repo -Owner $owner$checks"
