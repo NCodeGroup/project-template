@@ -14,8 +14,8 @@
     before Adopt-Project.ps1 left a catch-all text rule out, keeps * text=auto and * text eol=lf in its .gitattributes:
     its update, with -NoCommit, must leave both out of the kept lines, keep its other kept line, stage the change, say
     so, and leave an .ico file binary (git check-attr text answers unset). The fifth keeps a bare * text and a
-    * text eol=crlf: its update leaves only the bare rule out. Prints PASS or FAIL per check and exits 1 on any
-    failure.
+    * text eol=crlf: its update leaves only the bare rule out. The update script's catch-all pattern must also equal
+    Merge-AdoptedFile's, because each is a copy of the other. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-kept-test-<process ID> in the
@@ -202,6 +202,12 @@ try {
     Check 'attributes: the update names the bare rule it left out' ($output.Contains('catch-all text rule (* text)')) $output.Trim()
 }
 finally { Pop-Location }
+
+# The update script carries a deliberate copy of Merge-AdoptedFile's catch-all pattern, and each file says to change both together: the copies must stay identical.
+$catchAllCopy = "-match '(\^\\\*\\s\+text[^']*)'"
+$updateCopy = [regex]::Match([IO.File]::ReadAllText((Join-Path $repoRoot 'template/.template/Update-Project.ps1')), $catchAllCopy)
+$adoptionCopy = [regex]::Match([IO.File]::ReadAllText((Join-Path $repoRoot 'tools/adopt/Adoption.psm1')), $catchAllCopy)
+Check 'attributes: the update script and Merge-AdoptedFile use the same catch-all text pattern' ($updateCopy.Success -and $adoptionCopy.Success -and $updateCopy.Groups[1].Value -ceq $adoptionCopy.Groups[1].Value) "update: $($updateCopy.Groups[1].Value)`nadoption: $($adoptionCopy.Groups[1].Value)"
 ''
 $env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Update kept-lines tests: FAILED ($($failures.Count))"; exit 1 }
