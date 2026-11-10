@@ -559,7 +559,6 @@ try {
             $keptLines[$file] = $text.Substring($templatePart.Length)
             [IO.File]::WriteAllText((Join-Path $project $file), "$templatePart`n")
         }
-        $resetFiles = @()
         Add-UpdateChange $scratch
         $resetCommitted = [bool](git diff --cached --name-only)
         if ($resetCommitted) { git commit -q --no-verify -m 'Reset template-owned files'; if ($LASTEXITCODE) { throw 'Committing the reset failed.' } }
@@ -583,11 +582,8 @@ try {
             if (Test-Path -LiteralPath $full) { [IO.File]::WriteAllText($full, [IO.File]::ReadAllText($full).TrimEnd("`r", "`n") + $keptLines[$file]) }
         }
 
-        # Drop the reset commit but keep its changes, and any conflict, in the index and the working tree. The index keeps the reset's version of each file it changed, such as a .gitignore without its kept lines, so note them.
-        if ($resetCommitted) {
-            $resetFiles = @(git -c core.quotePath=false diff --name-only --no-renames $head HEAD)
-            git update-ref HEAD $head; if ($LASTEXITCODE) { throw 'Removing the reset commit failed.' }
-        }
+        # Drop the reset commit but keep its changes, and any conflict, in the index and the working tree.
+        if ($resetCommitted) { git update-ref HEAD $head; if ($LASTEXITCODE) { throw 'Removing the reset commit failed.' } }
     }
     catch {
         git reset -q --hard $head; git clean -fdq
@@ -601,10 +597,16 @@ try {
         if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
     }
     else {
-        # git add -A would mark the conflicted files resolved, conflict markers and all, so stage only each file the reset changed that doesn't conflict, as the update left it. Otherwise the index keeps the reset's version: a file the update left as it was is listed as modified, and a commit that doesn't stage it again takes that version.
-        $unmerged = @(git -c core.quotePath=false diff --name-only --diff-filter=U)
-        $restage = @($resetFiles | Where-Object { $_ -notin $unmerged })
-        if ($restage) { git --literal-pathspecs add -u -- $restage }
+        # git add -A or git add -u would mark the conflicted files resolved, conflict markers and all, so stage every other change to a tracked file by name, as the update left it: the files the reset changed, whose index otherwise keeps the reset's version, and the files Copier changed or deleted, whose deletion a commit that stages only the files that still exist would otherwise leave out. A list file, as in Add-NewFile, so a long list can't overflow Windows' command line.
+        $unmerged = @((git -c core.quotePath=false diff --name-only --diff-filter=U -z) -split "`0" | Where-Object { $_ })
+        $restage = @((git -c core.quotePath=false diff --name-only --no-renames -z) -split "`0" | Where-Object { $_ -and $_ -notin $unmerged } | Select-Object -Unique)
+        if ($restage) {
+            New-Item -ItemType Directory -Force $scratch | Out-Null
+            $list = Join-Path $scratch 'restage.txt'
+            [IO.File]::WriteAllText($list, ($restage -join "`0"), [Text.UTF8Encoding]::new($false))
+            git --literal-pathspecs add -u --pathspec-from-file=$list --pathspec-file-nul
+            if ($LASTEXITCODE) { throw 'Staging the update around its conflicts failed.' }
+        }
         # The files the update added are staged too, so git add -u after the conflicts are resolved stages the whole update.
         Add-NewFile $scratch
     }
