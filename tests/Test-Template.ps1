@@ -1009,18 +1009,18 @@ $prAttributionMissing = @(
     if (-not ($prAttributionText.Contains('`Co-authored-by:`') -and $prAttributionText.Contains('`Claude-Session:`') -and $prAttributionText.Contains('"Generated with"'))) { 'workflow\templates\_pr-attribution.md' }
 )
 Check 'workflow: ship-plan and run-issues delete agent attribution lines from a pull request''s title and description before they send them' (-not $prAttributionMissing) ($prAttributionMissing -join ', ')
-$footerTargets = @{ Claude = '.claude\commands\{0}.md'; VSCode = '.github\prompts\{0}.prompt.md'; CopilotCli = '.github\skills\{0}\SKILL.md' }
+$commandTargets = @{ Claude = '.claude\commands\{0}.md'; VSCode = '.github\prompts\{0}.prompt.md'; CopilotCli = '.github\skills\{0}\SKILL.md' }
 $m = @()
 # The commands that run gh pr, gh issue, gh release or gh api graphql give their REST forms for a session that refuses GitHub's GraphQL API, through {{PROMPT:_github-rest}}.
 $githubRestText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_github-rest.md')).Body.Trim()
 # The files are every generated copy of each workflow template, command or agent, whose expanded text has the rule, directly or through _plan-format.md or another include.
 $restTemplates = @(Get-HybridTemplateList | Where-Object { (Get-HybridPromptText -Name $_.Name -Placeholder '$ARGUMENTS').Contains($githubRestText) })
 $restAgents = @(Get-ChildItem -LiteralPath (Join-Path $workflow 'templates') -Filter '*.agent.md' -File | Where-Object { (Expand-HybridInclude (Read-HybridTemplateFile $_.FullName).Body).Contains($githubRestText) })
-$githubRestFiles = @(foreach ($footerTree in 'template\', '') {
-        foreach ($restTemplate in $restTemplates) { foreach ($restTarget in $restTemplate.Targets) { $footerTree + ($footerTargets[$restTarget] -f $restTemplate.Command) } }
+$githubRestFiles = @(foreach ($commandTree in 'template\', '') {
+        foreach ($restTemplate in $restTemplates) { foreach ($restTarget in $restTemplate.Targets) { $commandTree + ($commandTargets[$restTarget] -f $restTemplate.Command) } }
         foreach ($restAgent in $restAgents) {
-            $restCopies = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "$footerTree.github\agents") -Filter "*-$($restAgent.Name)" -File | ForEach-Object { "$footerTree.github\agents\$($_.Name)" })
-            if ($restCopies) { $restCopies } else { "$footerTree.github\agents\<variant>-$($restAgent.Name)" }
+            $restCopies = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "$commandTree.github\agents") -Filter "*-$($restAgent.Name)" -File | ForEach-Object { "$commandTree.github\agents\$($_.Name)" })
+            if ($restCopies) { $restCopies } else { "$commandTree.github\agents\<variant>-$($restAgent.Name)" }
         }
     })
 $m2 = @(Get-MissingText $githubRestFiles $githubRestText | ForEach-Object { ($_ -split ': ', 2)[0] + ': the GitHub REST forms are missing' })
