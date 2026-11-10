@@ -49,6 +49,11 @@ TIGHT = 1.0            # mark across 7/8 of the canvas: icons shown small (favic
 REGULAR = 0.875        # app tiles and avatars shown in a rounded square
 SAFE = 0.8125          # inside the center circle of 80% diameter: circular crops, maskable icons
 
+# The largest file each platform takes, in bytes.
+NUGET_LIMIT = GITHUB_LIMIT = 1024 * 1024   # 1 MB
+GITLAB_LIMIT = 200 * 1024                  # 200 KiB
+MYAPPS_LIMIT = 100 * 1000                  # 100 KB
+
 
 # ---- Geometry: closed contours of lines, circular arcs and Bezier curves ------------------------
 def _num(v: float, digits: int) -> str:
@@ -459,9 +464,13 @@ def mark_for(size: int, fit: float = TIGHT) -> Shape:
 
 
 # ---- The wordmark --------------------------------------------------------------------------------
-# "NCode" set in Inter Display Medium 4.0 (SIL Open Font License 1.1) and converted to outlines, so no
-# file needs the font. Its capitals are as tall as the mark's N (32 units) and stand on the same line
-# (y = 48); its stems are as heavy as the mark's N. It starts 72 units from the lockup's left edge.
+# "NCode" set in Inter Display Medium and converted to outlines, so no file needs the font. The font:
+# InterDisplay-Medium.otf, "Version 4.000;git-a52131595", copyright 2016 The Inter Project Authors, under
+# the SIL Open Font License 1.1; the file's SHA-256, as Debian's fonts-inter 4.0+ds-1 ships it, is
+# cf438d4cd4979fda59150c773af3381d5b18627826672234846722bb6d06b86c. The outlines are its glyphs for N, C,
+# o, d and e at the font's own advances (it kerns none of these pairs), scaled so the capitals are as tall
+# as the mark's N, 32 units, which makes the stems about as heavy too. They stand on the N's line
+# (y = 48) and start 72 units from the lockup's left edge.
 WORDMARK = parse_path(
     "M74.92 48H79.69V30.69C79.69 29.27 79.67 26.5 79.52 22.74C81.64 26.39 83.38 29.29 84.28 30.71L95.22 48"
     "H100.54V16H95.75V35.05C95.75 36.21 95.8 38.94 95.88 41.26C94.59 38.98 93.18 36.55 92.42 35.35L80.2 16"
@@ -512,7 +521,7 @@ def draw_lockup(height: int, ink: str) -> Image.Image:
 
 
 def draw_card(w: int, h: int, card: str) -> Image.Image:
-    """The lockup centerd on a solid card, half the card wide at most."""
+    """The lockup centered on a solid card, half the card wide at most."""
     fill, ink = CARDS[card]
     scale = math.floor(min(0.5 * w / LOCKUP_WIDTH, 0.4 * h / GRID) * 4) / 4
     dx, dy = round((w - LOCKUP_WIDTH * scale) / 2), round((h - GRID * scale) / 2)
@@ -583,7 +592,13 @@ def ico_bytes(images: list[Image.Image], bitmaps_below: int = 0) -> bytes:
     for w, h, data in entries:
         directory += struct.pack("<BBBBHHII", w % 256, h % 256, 0, 0, 1, 32, len(data), offset)
         offset += len(data)
-    return header + directory + b"".join(data for _, _, data in entries)
+    icon = header + directory + b"".join(data for _, _, data in entries)
+    for image in images:                                                    # read each entry back, as png_bytes does
+        entry = Image.open(io.BytesIO(icon))
+        entry.size = image.size
+        if not np.array_equal(np.asarray(entry.convert("RGBA")), np.asarray(image)):
+            raise RuntimeError(f"the icon's {image.width}-pixel entry doesn't decode to the image that was drawn")
+    return icon
 
 
 # ---- The kit -------------------------------------------------------------------------------------
@@ -670,11 +685,10 @@ def build(kit: Kit):
 
     # nuget/: 128 by 128, as NuGet recommends: twice the master, so every stem is on whole pixels, and
     # still is when a client shows the icon at half or a quarter of that.
-    megabyte = 1024 * 1024
     for name in TILES:
-        kit.png(f"nuget/ncode-nuget-tile-{name}.png", draw_tile(128, name, "rounded", TIGHT), limit=megabyte)
+        kit.png(f"nuget/ncode-nuget-tile-{name}.png", draw_tile(128, name, "rounded", TIGHT), limit=NUGET_LIMIT)
     for name in ("blue", "light"):
-        kit.png(f"nuget/ncode-nuget-mark-{name}.png", draw_mark(128, INKS[name]), limit=megabyte)
+        kit.png(f"nuget/ncode-nuget-mark-{name}.png", draw_mark(128, INKS[name]), limit=NUGET_LIMIT)
 
     # profile/: a square that a circle can be cut from (GitHub and GitLab users, Gravatar, X, LinkedIn).
     for name in TILES:
@@ -686,26 +700,26 @@ def build(kit: Kit):
     # preview (1280 by 640, under 1 MB).
     for name in TILES:
         kit.png(f"github/ncode-github-avatar-tile-{name}.png", draw_tile(500, name, "square", REGULAR),
-                limit=megabyte, opaque=True)
+                limit=GITHUB_LIMIT, opaque=True)
     for name in ("blue", "light"):
-        kit.png(f"github/ncode-github-avatar-mark-{name}.png", draw_mark(500, INKS[name], REGULAR), limit=megabyte)
+        kit.png(f"github/ncode-github-avatar-mark-{name}.png", draw_mark(500, INKS[name], REGULAR), limit=GITHUB_LIMIT)
     for name in CARDS:
-        kit.png(f"github/ncode-github-social-{name}.png", draw_card(1280, 640, name), limit=megabyte, opaque=True)
+        kit.png(f"github/ncode-github-social-{name}.png", draw_card(1280, 640, name), limit=GITHUB_LIMIT, opaque=True)
 
     # gitlab/: a group's or project's avatar (192 pixels, 200 KiB at most). A logo.png at a
     # repository's root is the project's avatar until one is uploaded.
     for name in TILES:
         kit.png(f"gitlab/ncode-gitlab-avatar-tile-{name}.png", draw_tile(192, name, "square", REGULAR),
-                limit=200 * 1024, opaque=True)
+                limit=GITLAB_LIMIT, opaque=True)
     for name in ("blue", "light"):
-        kit.png(f"gitlab/ncode-gitlab-avatar-mark-{name}.png", draw_mark(192, INKS[name], REGULAR), limit=200 * 1024)
-    kit.png("gitlab/logo.png", draw_tile(192, "blue", "square", REGULAR), limit=200 * 1024, opaque=True)
+        kit.png(f"gitlab/ncode-gitlab-avatar-mark-{name}.png", draw_mark(192, INKS[name], REGULAR), limit=GITLAB_LIMIT)
+    kit.png("gitlab/logo.png", draw_tile(192, "blue", "square", REGULAR), limit=GITLAB_LIMIT, opaque=True)
 
     # myapps/: Microsoft Entra's My Apps takes exactly 215 by 215 pixels, PNG, 100 KB at most, and
     # asks for a solid background.
     for name in TILES:
         kit.png(f"myapps/ncode-myapps-tile-{name}.png", draw_tile(215, name, "square", REGULAR),
-                limit=100 * 1000, opaque=True)
+                limit=MYAPPS_LIMIT, opaque=True)
 
     # badge/: the mark cropped to its edges, as small a file as it gets, for a badge's logo. The .txt
     # files hold it as the value of Shields.io's logo parameter.
