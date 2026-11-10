@@ -7,7 +7,9 @@
     checks the result lines, the summary line, the exit code, the logs and the -SkipDotnetBuild forwarding, that suites
     run at the same time at -ThrottleLimit 2 and print in name order, not the order they finish, that -Serial and
     -ThrottleLimit 1 run one at a time, and that two runs at once without -Work log to folders of their own, deleted
-    when the run passes. Also checks that tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that
+    when the run passes. Also checks that the runner runs each -SetupOnly line of the workflow in the parent of -Path
+    after the suites, in the workflow's order, fails the run for a setup that fails, skips a line without -SetupOnly,
+    and gives each setup a log and a -Work folder of its own. Also checks that tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that
     every suite with -Work defaults to a folder of its own, kept on a failure and deleted through it on a pass, and,
     through a trap line, kept with its path printed when the suite stops with an error, and that every such suite that builds a template snapshot keeps Copier's mirrors in its work folder, not the user's cache. Also checks that
     tests/Measure-Suites.ps1 times a suite, prints the median of -Repeat runs, and fails the run for a suite that
@@ -150,6 +152,48 @@ Check 'dotnet: -SkipDotnetBuild passes and reaches only the suite that takes it'
 
 $r = Invoke-Runner $empty
 Check 'empty: exits 1 and says no suites were found' (($r.ExitCode -eq 1) -and ($r.Lines -match '^No Test-\*\.ps1 scripts in').Count) $r.Text
+
+# The runner runs the -SetupOnly lines of the workflow in the parent of -Path, after the suites.
+$setups = Join-Path $Work 'setups'
+New-Fixture (Join-Path $setups 'tests') @{ 'Test-Pass.ps1' = $passScript }
+New-Fixture (Join-Path $setups 'tests/e2e') @{
+    'Test-Setup.ps1' = @'
+param([string]$Work, [switch]$SetupOnly, [string]$Scenario = 'a')
+New-Item -ItemType Directory -Force $Work | Out-Null
+"setup: $Scenario $SetupOnly $Work"
+if ($Scenario -eq 'b') { 'FAIL  b broke'; exit 1 }
+exit 0
+'@ + "`n"
+}
+New-Fixture (Join-Path $setups '.github/workflows') @{
+    'test-template.yml' = @'
+jobs:
+  test:
+    steps:
+      - name: Test the suite
+        run: ./tests/Test-Pass.ps1
+      - name: Set up the fixture
+        run: ./tests/e2e/Test-Setup.ps1 -SetupOnly
+      - name: Set up the fixture for a failing scenario
+        run: ./tests/e2e/Test-Setup.ps1 -SetupOnly -Scenario b
+      - name: Run the fixture
+        run: ./tests/e2e/Test-Setup.ps1 -Scenario c
+'@ + "`n"
+}
+$r = Invoke-Runner (Join-Path $setups 'tests')
+$logs = Join-Path $setups 'tests/logs'
+$printedSuite = [array]::IndexOf($r.Lines, ($r.Lines -match '^PASS  Test-Pass\.ps1  \d+:\d\d$')[0])
+$printedFirst = [array]::IndexOf($r.Lines, ($r.Lines -match '^PASS  e2e/Test-Setup\.ps1 -SetupOnly  \d+:\d\d$')[0])
+$printedSecond = [array]::IndexOf($r.Lines, ($r.Lines -match '^FAIL  e2e/Test-Setup\.ps1 -SetupOnly -Scenario b  \d+:\d\d$')[0])
+Check 'setups: runs each -SetupOnly line of the workflow after the suites, in the workflow''s order' (($printedSuite -ge 0) -and ($printedSuite -lt $printedFirst) -and ($printedFirst -lt $printedSecond)) $r.Text
+Check 'setups: a failed setup fails the run and shows its FAIL line' (($r.ExitCode -eq 1) -and ($r.Lines[-1] -eq 'All tests: FAILED (1)') -and ($r.Lines -contains '  FAIL  b broke')) $r.Text
+Check 'setups: skips a workflow line without -SetupOnly' (-not $r.Text.Contains('Scenario c')) $r.Text
+$logA = Join-Path $logs 'e2e-Test-Setup-SetupOnly.log'
+$logB = Join-Path $logs 'e2e-Test-Setup-SetupOnly-Scenario-b.log'
+$okLogs = (Test-Path -LiteralPath $logA) -and (Test-Path -LiteralPath $logB) -and
+([IO.File]::ReadAllText($logA).Contains("setup: a True $(Join-Path $logs 'e2e-1')")) -and
+([IO.File]::ReadAllText($logB).Contains("setup: b True $(Join-Path $logs 'e2e-2')"))
+Check 'setups: each setup logs and works in a -Work folder of its own in the run''s folder' $okLogs $r.Text
 
 # Two runs at once without -Work, as from two worktrees: each must log to a folder of its own and delete it.
 $runs = foreach ($n in 1, 2) {
