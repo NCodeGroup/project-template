@@ -20,7 +20,9 @@
                       changes are merged with the project's edits, like a Git merge; the same lines changed on
                       both sides conflict. An adopted project's own lines at the end of .gitignore,
                       .gitattributes and .editorconfig are set aside while Copier merges, so they never
-                      conflict.
+                      conflict. A catch-all text rule among .gitattributes' kept lines, such as * text eol=lf,
+                      is left out, as Adopt-Project.ps1 leaves it out, and the script says so: it came after
+                      the template's binary rules and overrode them.
       Project-owned   Written once, never touched again (copier.yml's _skip_if_exists). When the template changed
                       one since the project's version, the script shows the template's change, rendered with
                       the project's answers, leaving out what the project's file already has.
@@ -551,6 +553,7 @@ try {
         # The template's Adopt-Project.ps1 ends these files with the repository's own lines under a "# Kept from …" comment. Set them aside while
         # Copier merges, so a template change to the file's last lines can't conflict with them or take them into its conflict.
         $keptLines = @{}
+        $droppedTextRules = @()
         foreach ($file in '.gitignore', '.gitattributes', '.editorconfig') {
             if ($file -notin $merged -or $file -in $ownedFiles -or -not (Test-Path -LiteralPath $file)) { continue }
             $text = [IO.File]::ReadAllText((Join-Path $project $file))
@@ -558,6 +561,14 @@ try {
             if (-not $match.Success) { continue }
             $templatePart = $text.Substring(0, $match.Index).TrimEnd("`r", "`n")
             $keptLines[$file] = $text.Substring($templatePart.Length)
+            # Adopt-Project.ps1 leaves a catch-all text rule, such as "* text eol=lf", out of the lines it keeps (Merge-AdoptedFile in the template's
+            # tools/adopt/Adoption.psm1), because Git uses the last rule that matches and the rule would override the template's binary rules. A project
+            # adopted before it did still has the rule: leave it out here too, and say so below. A deliberate copy of that pattern; change both together.
+            if ($file -eq '.gitattributes') {
+                $keptSplit = $keptLines[$file] -split "`n"
+                $catchAll = @($keptSplit | Where-Object { $_ -match '^\*\s+text(?:=auto)?(?:\s+eol=lf)?\s*$' })
+                if ($catchAll) { $keptLines[$file] = ($keptSplit | Where-Object { $_ -notin $catchAll }) -join "`n"; $droppedTextRules = @($catchAll | ForEach-Object Trim) }
+            }
             [IO.File]::WriteAllText((Join-Path $project $file), "$templatePart`n")
         }
         Add-UpdateChange $scratch
@@ -636,7 +647,8 @@ try {
     $restored = @($reset | Where-Object Kind -EQ 'added' | ForEach-Object File)
     if ($edited) { ''; 'Local edits discarded — these files are the template''s; make the change in a project file instead:'; $edited | ForEach-Object { "  $_" } }
     if ($restored) { ''; 'Restored — these files are the template''s, so the project can''t delete them:'; $restored | ForEach-Object { "  $_" } }
-    if ($refreshed) { ''; 'Refreshed — these files are the template''s, but earlier template versions never updated them; a local edit to one is discarded, so make the change in a project file instead:'; $refreshed | ForEach-Object { "  $_" } }
+    if ($droppedTextRules) { ''; "Left out of the lines .gitattributes kept from this repository at adoption: its catch-all text rule ($($droppedTextRules -join '; ')). Git uses the last rule that matches, so the rule overrode the template's binary rules, such as *.png binary and *.ico binary, and git add dropped the CR of each CR LF pair in a binary file it staged. Check the binary files committed while the rule applied, and replace any that no longer open." }
+    if ($refreshed) { ''; 'Refreshed —these files are the template''s, but earlier template versions never updated them; a local edit to one is discarded, so make the change in a project file instead:'; $refreshed | ForEach-Object { "  $_" } }
     if ($projectOwnedChanged) {
         # Render both versions with the project's answers, so the diffs show what the project would get, not Jinja.
         New-Item -ItemType Directory -Force $scratch | Out-Null
