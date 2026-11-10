@@ -13,8 +13,9 @@
     and v0.2.0's /secrets/ doesn't: its update, with -NoCommit, must leave that file untracked. The fourth, adopted
     before Adopt-Project.ps1 left a catch-all text rule out, keeps * text=auto and * text eol=lf in its .gitattributes:
     its update, with -NoCommit, must leave both out of the kept lines, keep its other kept line, stage the change, say
-    so, and leave an .ico file binary (git check-attr text answers unset). Prints PASS or FAIL per check and exits 1
-    on any failure.
+    so, and leave an .ico file binary (git check-attr text answers unset). The fifth keeps a bare * text and a
+    * text eol=crlf: its update leaves only the bare rule out. Prints PASS or FAIL per check and exits 1 on any
+    failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-kept-test-<process ID> in the
@@ -183,6 +184,22 @@ try {
     Check 'attributes: an icon is no longer text' ((git check-attr text -- x.ico) -eq 'x.ico: text: unset') (git check-attr text -- x.ico | Out-String)
     Check 'attributes: the change to .gitattributes is staged' ((@(git diff --cached --name-only) -contains '.gitattributes') -and -not (git diff --name-only -- .gitattributes)) (git status --porcelain | Out-String)
     Check 'attributes: the update says which rules it left out' ($output.Contains('catch-all text rule (* text=auto; * text eol=lf)')) $output.Trim()
+}
+finally { Pop-Location }
+
+# The catch-all pattern is narrow on purpose: a bare "* text" is one, while "* text eol=crlf" is not and stays among the kept lines.
+$e = New-AdoptedProject 'adopted-attributes-variants'
+Push-Location $e
+try {
+    $attributes = Join-Path $e '.gitattributes'
+    [IO.File]::WriteAllText($attributes, [IO.File]::ReadAllText($attributes).TrimEnd("`n") + "`n`n$attributesMarker`n* text`n* text eol=crlf`n*.cs text diff=csharp`n")
+    Invoke-Git commit -q -am 'Keep a bare catch-all text rule and a CRLF one'
+    $lines = [Collections.Generic.List[string]]::new()
+    try { & (Join-Path $e '.template\Update-Project.ps1') -NoCommit 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
+    $output = $lines -join "`n"
+    $text = [IO.File]::ReadAllText($attributes)
+    Check 'attributes: a bare catch-all text rule is left out and the near-miss with eol=crlf stays' (($exitCode -eq 0) -and $text.EndsWith("`n$attributesMarker`n* text eol=crlf`n*.cs text diff=csharp`n")) "exit $exitCode`n$text"
+    Check 'attributes: the update names the bare rule it left out' ($output.Contains('catch-all text rule (* text)')) $output.Trim()
 }
 finally { Pop-Location }
 ''
