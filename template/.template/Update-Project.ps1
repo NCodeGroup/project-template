@@ -56,9 +56,8 @@
     On the default branch (the branch origin/HEAD names) it refuses to run unless -NoCommit is given, because it
     commits. It enables the template's hooks (core.hooksPath .githooks) unless the clone already has a hooks path,
     hooks in .git/hooks, or uses pre-commit; then it leaves them as they are and warns, naming the command that runs
-    the template's hooks, or says nothing when core.hooksPath names a .githooks folder, or when
-    .pre-commit-config.yaml runs .githooks/commit-msg. With protect: hook in AGENTS.md's Landing section, it also says
-    how to run .githooks/pre-push there.
+    the template's hooks, or says nothing when core.hooksPath names a .githooks folder. With protect: hook in
+    AGENTS.md's Landing section, it also says how to run .githooks/pre-push there.
 
     When the project has version tags merged into HEAD that the changelog (AGENTS.md's Landing changelog key,
     CHANGELOG.md by default) has no section for, it ends with a /plan-migration request to backfill them.
@@ -599,7 +598,6 @@ try {
     if (-not $conflicts) {
         Add-UpdateChange $scratch
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
-        if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
         if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
     }
     else {
@@ -611,7 +609,7 @@ try {
         Add-NewFile $scratch
     }
     # Enable the template's versioned hooks in this clone, unless it already has a hooks path or runs hooks another way
-    # (Get-GitHooksSetup): then warn, because without them nothing strips AI agent attribution before a push.
+    # (Get-GitHooksSetup): then warn with how to run them.
     if (Test-Path -LiteralPath .githooks) {
         $hooksSetup = Get-GitHooksSetup
         if ($hooksSetup.HooksPath) { git config core.hooksPath .githooks }

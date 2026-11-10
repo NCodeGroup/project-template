@@ -78,7 +78,7 @@ try {
     $answers = Get-Content -LiteralPath .copier-answers.yml
     $message = ('Create project from project-template ' + (Get-Answer $answers '_commit')).TrimEnd()
     git init -b main | Out-Null
-    # The template's versioned hooks, such as the one that strips AI agent attribution from commit messages, unless Git
+    # The template's versioned hooks, such as pre-push, unless Git
     # already runs other hooks here, such as a global hooks path (Get-GitHooksSetup): then a warning says how to run them.
     if (Test-Path -LiteralPath .githooks) {
         $hooksSetup = Get-GitHooksSetup
@@ -87,7 +87,6 @@ try {
     }
     git add -A
     # Executable on Linux and macOS; Windows doesn't record the bit on its own.
-    if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
     if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
     git commit -q -m $message
     if ($LASTEXITCODE) { throw 'The first commit failed.' }

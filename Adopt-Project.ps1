@@ -15,9 +15,8 @@
     nothing is committed. -NoVerify skips that check. If anything else fails after the template is applied, the
     repository is reset to where it was.
 
-    It enables the template's Git hooks (core.hooksPath .githooks), so .githooks/commit-msg strips AI agent
-    attribution from commit messages, unless the repository already has a hooks path, hooks in .git/hooks, or uses
-    pre-commit; then it leaves them as they are and warns, naming the command that runs the template's hooks.
+    It enables the template's Git hooks (core.hooksPath .githooks), so .githooks/pre-push runs, unless the
+    repository already has a hooks path, hooks in .git/hooks, or uses pre-commit; then it leaves them as they are and warns, naming the command that runs the template's hooks.
 
     When the repository keeps its own .github/workflows/publish.yml without a workflow_dispatch trigger and gets
     .github/workflows/tag-release.yml, it prints the warning .\.template\Update-Project.ps1 prints: the Tag and publish
@@ -204,10 +203,9 @@ try {
 
         git add -A
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
-        if (Test-Path -LiteralPath .githooks/commit-msg) { git update-index --chmod=+x .githooks/commit-msg }
         if (Test-Path -LiteralPath .githooks/pre-push) { git update-index --chmod=+x .githooks/pre-push }
         # The template's versioned hooks, unless the repository already has a hooks path or runs hooks another way
-        # (Get-GitHooksSetup): then a warning, because without them nothing strips AI agent attribution before a push.
+        # (Get-GitHooksSetup): then a warning that says how to run them.
         $hooksNote = $null
         if (Test-Path -LiteralPath .githooks) {
             $hooksSetup = Get-GitHooksSetup
