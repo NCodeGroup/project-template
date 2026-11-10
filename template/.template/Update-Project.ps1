@@ -21,7 +21,7 @@
                       both sides conflict. An adopted project's own lines at the end of .gitignore,
                       .gitattributes and .editorconfig are set aside while Copier merges, so they never
                       conflict. A catch-all text rule among .gitattributes' kept lines, such as * text eol=lf,
-                      is left out, as Adopt-Project.ps1 leaves it out, and the script says so: it came after
+                      is left out, as the template's Adopt-Project.ps1 leaves it out, and the script says so: it came after
                       the template's binary rules and overrode them.
       Project-owned   Written once, never touched again (copier.yml's _skip_if_exists). When the template changed
                       one since the project's version, the script shows the template's change, rendered with
@@ -561,7 +561,7 @@ try {
             if (-not $match.Success) { continue }
             $templatePart = $text.Substring(0, $match.Index).TrimEnd("`r", "`n")
             $keptLines[$file] = $text.Substring($templatePart.Length)
-            # Adopt-Project.ps1 leaves a catch-all text rule, such as "* text eol=lf", out of the lines it keeps (Merge-AdoptedFile in the template's
+            # The template's Adopt-Project.ps1 leaves a catch-all text rule, such as "* text eol=lf", out of the lines it keeps (Merge-AdoptedFile in the template's
             # tools/adopt/Adoption.psm1), because Git uses the last rule that matches and the rule would override the template's binary rules. A project
             # adopted before it did still has the rule: leave it out here too, and say so below. A deliberate copy of that pattern; change both together.
             if ($file -eq '.gitattributes') {
