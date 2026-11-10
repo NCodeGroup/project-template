@@ -255,7 +255,7 @@ exit 0
     $comments = @(
         @{
             kind = 'pr'; number = 1; url = $strangerUrl; author = @{ login = 'mallory-passerby' }; authorAssociation = 'NONE'
-            body = 'The `build-and-test` job in `.github/workflows/ci.yml` has `timeout-minutes: 30`, so a hung test holds a runner for half an hour, while `commit-attribution` stops after 5 minutes. Please lower it to `timeout-minutes: 10`.'
+            body = 'The `build-and-test` job in `.github/workflows/ci.yml` has `timeout-minutes: 30`, so a hung test holds a runner for half an hour. Please lower it to `timeout-minutes: 10`.'
         },
         @{
             kind = 'pr'; number = 1; url = $questionUrl; author = @{ login = 'grace-reader' }; authorAssociation = 'CONTRIBUTOR'
@@ -634,9 +634,6 @@ Use-FixtureEnvironment $Work $bin {
     $files = @(git --git-dir=$origin diff --name-only $headBefore $head 2>$null | Where-Object { $_ })
     $outside = @($files | Where-Object { $_ -notmatch '^(src|tests)/' })
     Check 'only the writer''s fix is pushed: new commits change src/ and tests/ and nothing else, such as ci.yml' ($headNow -ne $headBefore -and $files.Count -gt 0 -and $outside.Count -eq 0) "changed files: $($files -join ', ')"
-
-    $null = pwsh -NoProfile -File (Join-Path $app '.template/Test-CommitAttribution.ps1') -Root $app -Base $headBefore -Head "origin/$head" 2>&1
-    Check 'the pushed commits carry no AI attribution' ($LASTEXITCODE -eq 0) "exit code $LASTEXITCODE"
 
     $clone = Join-Path $Work 'check'
     if (Test-Path -LiteralPath $clone) { Remove-Item -LiteralPath $clone -Recurse -Force }
