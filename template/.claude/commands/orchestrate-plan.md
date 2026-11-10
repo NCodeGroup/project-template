@@ -27,7 +27,7 @@ Delegate execution to:
 - Copilot CLI: the `plan-executor` custom agent (or the general-purpose subagent, with its model set through `/subagents`).
 - VS Code: the Implementer agent for your setup.
 
-Check that Git runs the repository's hooks in the clone you work in, so `.githooks/commit-msg` strips AI agent attribution from every commit before it can reach a pull request: run `git config core.hooksPath`. When it names a folder called `.githooks`, they run. When it prints nothing, the repository has a `.githooks` folder and no `.pre-commit-config.yaml`, and the folder `git rev-parse --git-path hooks` prints holds no hook of its own (a file whose name doesn't end in `.sample`), run `git config core.hooksPath .githooks`. Otherwise never change it: say in your reply that `.githooks/commit-msg` doesn't run in this clone, and that `.template/Update-Project.ps1` prints how to run it alongside the clone's own hooks.
+Check that Git runs the repository's hooks in the clone you work in, so `.githooks/pre-push` refuses a push to the default branch when `AGENTS.md`'s Landing section says `protect: hook`: run `git config core.hooksPath`. When it names a folder called `.githooks`, they run. When it prints nothing, the repository has a `.githooks` folder and no `.pre-commit-config.yaml`, and the folder `git rev-parse --git-path hooks` prints holds no hook of its own (a file whose name doesn't end in `.sample`), run `git config core.hooksPath .githooks`. Otherwise never change it: when the Landing section says `protect: hook`, say in your reply that `.githooks/pre-push` doesn't run in this clone, and that `.template/Update-Project.ps1` prints how to run it alongside the clone's own hooks.
 
 For each step whose heading starts with `### [ ]`, in order:
 
