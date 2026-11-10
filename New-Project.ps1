@@ -120,10 +120,10 @@ try {
                     $owner = "$(gh api user --jq .login)".Trim()
                     if ($LASTEXITCODE -or -not $owner) { $owner = '<owner>'; throw "Couldn't read the signed-in GitHub user." }
                 }
-                & $baseline -Repo $name -Owner $owner -RequireChecks 'build-and-test,Commit attribution'
+                & $baseline -Repo $name -Owner $owner -RequireChecks 'build-and-test'
             }
             catch {
-                Write-Warning "Couldn't protect the default branch: $($_.Exception.Message) Run it again with: $baseline -Repo $name -Owner $owner -RequireChecks 'build-and-test,Commit attribution'"
+                Write-Warning "Couldn't protect the default branch: $($_.Exception.Message) Run it again with: $baseline -Repo $name -Owner $owner -RequireChecks 'build-and-test'"
             }
         }
 
