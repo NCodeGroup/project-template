@@ -620,7 +620,7 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `tests/Test-GitLabBaseline.ps1` | Test the GitLab baseline script against a stand-in for `glab` |
 | `tests/Test-NewProjectRemote.ps1` | Test the baseline calls `New-Project.ps1 -CreateRemote` makes, against stand-ins |
 | `tests/Test-ScriptAnalyzer.ps1` | Run PSScriptAnalyzer on every script and fail on any warning or error |
-| `tests/Invoke-AllTests.ps1` | Run every test suite and print one line per suite |
+| `tests/Invoke-AllTests.ps1` | Run every test suite and every `-SetupOnly` fixture setup the CI workflow runs, and print one line per run |
 | `tests/Measure-Suites.ps1` | Time the test suites it names, one at a time, against a limit |
 | `tests/Compare-Renders.ps1` | Render the template at a base commit and from the working tree with six answer sets, update each base render to the working tree's, and fail on any difference: the check for a change that must not alter what projects get |
 | `tests/Test-InvokeAllTests.ps1` | Test the runner that runs every test suite |

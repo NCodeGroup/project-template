@@ -9,12 +9,14 @@
     -ThrottleLimit 1 run one at a time, and that two runs at once without -Work log to folders of their own, deleted
     when the run passes. Also checks that the runner runs each -SetupOnly line of the workflow in the parent of -Path
     after the suites, in the workflow's order, fails the run for a setup that fails, skips a line without -SetupOnly,
-    gives each setup a log and a -Work folder of its own, and finds the workflow for a relative -Path. Also checks that tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that
-    every suite with -Work defaults to a folder of its own, kept on a failure and deleted through it on a pass, and,
-    through a trap line, kept with its path printed when the suite stops with an error, and that every such suite that builds a template snapshot keeps Copier's mirrors in its work folder, not the user's cache. Also checks that
+    gives each setup a log and a -Work folder of its own, and finds the workflow for a relative -Path.
+    Also checks that tests/Remove-TestWork.ps1 deletes a work folder or says it couldn't, and that every suite with
+    -Work defaults to a folder of its own, kept on a failure and deleted through it on a pass, and, through a trap
+    line, kept with its path printed when the suite stops with an error, and that every such suite that builds a
+    template snapshot keeps Copier's mirrors in its work folder, not the user's cache. Also checks that
     tests/Measure-Suites.ps1 times a suite, prints the median of -Repeat runs, and fails the run for a suite that
-    fails, is missing or is slower than -MaxSeconds, and passes -SkipDotnetBuild to a suite that takes it. Prints PASS or FAIL per check
-    and exits 1 on any failure.
+    fails, is missing or is slower than -MaxSeconds, and passes -SkipDotnetBuild to a suite that takes it. Prints PASS
+    or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-all-tests-test-<process ID> in the

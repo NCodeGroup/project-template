@@ -18,18 +18,18 @@
     The folder with the Test-*.ps1 scripts. Defaults to the folder of this script.
 
 .PARAMETER Work
-    The folder for the suites' logs, deleted and recreated. Defaults to project-template-all-tests-<process ID> in the
-    temp folder, the run's own: deleted when every suite passes or there is none to run, kept for the failed suites'
-    logs when one fails.
+    The folder for the logs of the suites and setups, deleted and recreated. Defaults to
+    project-template-all-tests-<process ID> in the temp folder, the run's own: deleted when every suite and setup
+    passes or there is no suite to run, kept for the logs of failed ones when one fails.
 
 .PARAMETER SkipDotnetBuild
     Pass -SkipDotnetBuild to the suites that take it, to skip the .NET build and pack.
 
 .PARAMETER ThrottleLimit
-    How many suites run at once. Defaults to the processor count.
+    How many suites and setups run at once. Defaults to the processor count.
 
 .PARAMETER Serial
-    Run one suite at a time, as -ThrottleLimit 1 does.
+    Run one suite or setup at a time, as -ThrottleLimit 1 does.
 
 .EXAMPLE
     .\tests\Invoke-AllTests.ps1
