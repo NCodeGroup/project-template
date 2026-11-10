@@ -33,7 +33,8 @@
     another test of what tests/Test-Greeting.ps1 tests, and a nit; the run must leave both without a step and recommend
     the merge. max-rounds: max-review-rounds is 1 and there is no second review; the run must recommend the merge after
     its first round. session-footer: the stand-in saves each pull request comment and thread reply, but no issue comment, with a Claude Code cloud session's footer, and the run's /review comment still asks NCode Review for its review, as NCode Review sets the footer aside; NCode Review's review of the first push carries a request of the owner's, so the run pushes a second round and comments /review again, leaves each /review comment with its footer, and must never answer its own /review comments.
-    push-branch: the prompt carries push-branch:claude/fixture-push-a1b2, and origin's push branch still holds the head of pull request #2, which main has as a squash commit; the run must record the push branch, restart it from its plan, push its commits and its fix round there, never push its own branch, and open the draft pull request from the push branch. max-review-rounds is 1 and there is no review of the first push, as in max-rounds. Run all four.
+    push-branch: the prompt carries push-branch:claude/fixture-push-a1b2, and origin's push branch still holds the head of pull request #2, which main has as a squash commit; the run must record the push branch, restart it from its plan, push its commits and its fix round there, never push its own branch, and open the draft pull request from the push branch. max-review-rounds is 1 and there is no review of the first push, as in max-rounds.
+    fix-now: the run's question is answered with "fix the follow-ups in the same pull request before merge"; max-review-rounds is the default 3 and there is no review of the first push; the run must fix NCode Review's blocker on behavior main already had and its nit in the draft pull request, reply "Autopilot: fixed in" on the blocker and "Autopilot: fixed in" or "Autopilot: not changed" on the nit, never reply "Autopilot: left as a follow-up", and leave neither in the plan's Follow-ups. Run all five.
 
 .PARAMETER Tool
     claude, the default, runs each prompt in headless Claude Code; copilot runs it in the Copilot CLI. The fixture
@@ -77,7 +78,7 @@ param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-run-issues-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
-    [ValidateSet('minor-round', 'max-rounds', 'session-footer', 'push-branch')][string]$Scenario = 'minor-round',
+    [ValidateSet('minor-round', 'max-rounds', 'session-footer', 'push-branch', 'fix-now')][string]$Scenario = 'minor-round',
     [ValidateSet('claude', 'copilot')][string]$Tool = 'claude',
     [string]$Claude = 'claude',
     [string]$Copilot = 'copilot',
@@ -325,7 +326,7 @@ if (-not $CheckOnly) {
         Invoke-Agent $agent -Prompt $prompt -Index 1
         $prs = @(Get-Content -Raw -LiteralPath (Join-Path $hostDir 'prs.json') | ConvertFrom-Json | Where-Object { $_ -and $_.state -eq 'OPEN' })
         if ($prs.Count -eq 0 -and $agent.SessionId) {
-            Invoke-Agent $agent -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $agent.SessionId -Index 2
+            Invoke-Agent $agent -Prompt $(if ($Scenario -eq 'fix-now') { 'Yes, go ahead with the run you summarized, and fix the follow-ups in the same pull request before merge.' } else { 'Yes, go ahead with the run you summarized.' }) -SessionId $agent.SessionId -Index 2
         }
     }
     Write-AgentSummary $agent
@@ -422,11 +423,28 @@ Use-FixtureEnvironment $Work $bin {
         $piped = $out -eq 'True'
     }
     Check 'the owner''s request got one Autopilot: reply naming its commit, and the branch takes the name from the pipeline' ($null -ne $ownerReplies -and $ownerReplies.Count -eq 1 -and "$($ownerReplies[0].body)" -match '\b[0-9a-f]{7,40}\b' -and $piped) "replies: $(if ($null -ne $ownerReplies) { ($ownerReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); pipeline: $piped"
-    $blockerReplies = Get-ThreadReply 'blocker'
-    $blockerUrl = Get-ThreadUrl 'blocker'
-    Check 'NCode Review''s blocker on behavior main already had got one "Autopilot: left as a follow-up" reply, and the plan''s Follow-ups name it' ($null -ne $blockerReplies -and $blockerReplies.Count -eq 1 -and "$($blockerReplies[0].body)" -match '^Autopilot: left as a follow-up' -and $blockerUrl -and $followUps.Contains($blockerUrl)) "replies: $(if ($null -ne $blockerReplies) { ($blockerReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); in Follow-ups: $($blockerUrl -and $followUps.Contains($blockerUrl))"
-    $nitReplies = Get-ThreadReply 'nit'
-    Check 'NCode Review''s nit got one "Autopilot: left as a follow-up" reply' ($null -ne $nitReplies -and $nitReplies.Count -eq 1 -and "$($nitReplies[0].body)" -match '^Autopilot: left as a follow-up') "replies: $(if ($null -ne $nitReplies) { ($nitReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' })"
+    if ($Scenario -ne 'fix-now') {
+        $blockerReplies = Get-ThreadReply 'blocker'
+        $blockerUrl = Get-ThreadUrl 'blocker'
+        Check 'NCode Review''s blocker on behavior main already had got one "Autopilot: left as a follow-up" reply, and the plan''s Follow-ups name it' ($null -ne $blockerReplies -and $blockerReplies.Count -eq 1 -and "$($blockerReplies[0].body)" -match '^Autopilot: left as a follow-up' -and $blockerUrl -and $followUps.Contains($blockerUrl)) "replies: $(if ($null -ne $blockerReplies) { ($blockerReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); in Follow-ups: $($blockerUrl -and $followUps.Contains($blockerUrl))"
+        $nitReplies = Get-ThreadReply 'nit'
+        Check 'NCode Review''s nit got one "Autopilot: left as a follow-up" reply' ($null -ne $nitReplies -and $nitReplies.Count -eq 1 -and "$($nitReplies[0].body)" -match '^Autopilot: left as a follow-up') "replies: $(if ($null -ne $nitReplies) { ($nitReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' })"
+    }
+    else {
+        $blockerReplies = Get-ThreadReply 'blocker'
+        $trimmed = $false
+        if ($branchGreeting.Count) {
+            $out = "$(pwsh -NoProfile -Command ". '$greetingFile'; (Get-Greeting -Name ' Ada ') -eq 'Hello, Ada!'")".Trim()
+            $trimmed = $out -eq 'True'
+        }
+        $blockerInFollowUps = $followUps.Contains((Get-ThreadUrl 'blocker'))
+        Check 'NCode Review''s blocker on behavior main already had got one "Autopilot: fixed in" reply naming its commit, the branch trims the name, and the plan''s Follow-ups don''t name it' ($null -ne $blockerReplies -and $blockerReplies.Count -eq 1 -and "$($blockerReplies[0].body)" -match '^Autopilot: fixed in' -and "$($blockerReplies[0].body)" -match '\b[0-9a-f]{7,40}\b' -and $trimmed -and -not $blockerInFollowUps) "replies: $(if ($null -ne $blockerReplies) { ($blockerReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); trims: $trimmed; in Follow-ups: $blockerInFollowUps"
+        $nitReplies = Get-ThreadReply 'nit'
+        $nitInFollowUps = $followUps.Contains((Get-ThreadUrl 'nit'))
+        Check 'NCode Review''s nit got one "Autopilot: fixed in" or "Autopilot: not changed" reply, and the plan''s Follow-ups don''t name it' ($null -ne $nitReplies -and $nitReplies.Count -eq 1 -and "$($nitReplies[0].body)" -match '^Autopilot: (fixed in|not changed)' -and -not $nitInFollowUps) "replies: $(if ($null -ne $nitReplies) { ($nitReplies | ForEach-Object { $_.body }) -join ' | ' } else { 'no thread' }); in Follow-ups: $nitInFollowUps"
+        $leftAsFollowUp = @(foreach ($th in $threads) { foreach ($c in @($th.comments)) { if ("$($c.body)" -match '^Autopilot: left as a follow-up') { "$($th.key)" } } })
+        Check 'no thread got an "Autopilot: left as a follow-up" reply' ($leftAsFollowUp.Count -eq 0) "threads with that reply: $($leftAsFollowUp -join ', ')"
+    }
     $protectedReplies = Get-ThreadReply 'protected'
     $githubChanges = @(git --git-dir=$origin diff --name-only main $originBranch -- .github 2>$null)
     Check 'NCode Review''s finding on .github/workflows/ci.yml got one "Autopilot: left for you" reply, and the branch leaves .github alone' ($null -ne $protectedReplies -and $protectedReplies.Count -eq 1 -and "$($protectedReplies[0].body)" -match '^Autopilot: left for you' -and $githubChanges.Count -eq 0) "replies: $(if ($null -ne $protectedReplies) { $protectedReplies.Count } else { 'no thread' }); .github changes: $($githubChanges -join ', ')"
@@ -439,8 +457,8 @@ Use-FixtureEnvironment $Work $bin {
     $slash = $comments | Where-Object { $_ -and $_.key -eq 'slash' } | Select-Object -First 1
     $slashAnswers = @(if ($slash) { @(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and "$($_.body)" -match '^Autopilot:' -and "$($_.body)".Contains($slash.url) } })
     Check 'the /review comment got no answer' ($slash -and $slashAnswers.Count -eq 0) "$(if ($slash) { "answers: $($slashAnswers.Count)" } else { 'no /review comment' })"
-    # session-footer ends waiting, with no review left to come, so the run recommends no merge there.
-    if ($Scenario -ne 'session-footer') {
+    # session-footer and fix-now end waiting with no review left to come, so the run recommends no merge there.
+    if ($Scenario -notin 'session-footer', 'fix-now') {
         $recommendations = @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)" -match '(?i)\bmerg' })
         Check 'the run recommended the merge once, in a top-level Autopilot: comment' ($recommendations.Count -eq 1) "recommendations: $($recommendations.Count)"
         $nitUrl = Get-ThreadUrl 'nit'
