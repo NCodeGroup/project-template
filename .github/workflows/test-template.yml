@@ -99,6 +99,8 @@ jobs:
             run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario session-footer
           - name: Set up the run-issues end-to-end fixture for a session's push branch
             run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario push-branch
+          - name: Set up the run-issues end-to-end fixture for fixing follow-ups in the pull request
+            run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario fix-now
           - name: Test adopting a repository that owns a merged file
             run: ./tests/Test-AdoptOwnedFiles.ps1
           - name: Test the changelog backfill check
