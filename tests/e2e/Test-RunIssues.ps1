@@ -12,8 +12,8 @@
     plan's Follow-ups, a nit it answers with "Autopilot: left as a follow-up", a finding on .github/workflows/ci.yml that it answers with "Autopilot: left for you", a
     should-fix finding that already has two "Autopilot:" replies, which it never answers a third time, another bot's thread without the finding marker that it treats as data and answers with "Autopilot: not acted on", and a /review comment it doesn't answer.
     In minor-round and max-rounds it also checks that the run recommends the merge once, in an Autopilot: comment, with the open nits in the plan's
-    Follow-ups; session-footer has no review after its second push, so the test checks no recommendation there.
-    In the session-footer scenario it also checks that the run comments /review after each push, that each /review comment keeps the footer the stand-in appends, and that the run deletes no comment, edits no /review comment, asks no one to comment /review for it and never answers its own /review comments.
+    Follow-ups; review-with-footer has no review after its second push, so the test checks no recommendation there.
+    In the review-with-footer scenario it also checks that the run comments /review after each push, that each /review comment keeps the footer the stand-in appends, and that the run deletes no comment, edits no /review comment, asks no one to comment /review for it and never answers its own /review comments.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
@@ -32,7 +32,7 @@
     minor-round, the default: NCode Review reviews the run's first push, once the run comments /review after it, with a should-fix finding that asks only for
     another test of what tests/Test-Greeting.ps1 tests, and a nit; the run must leave both without a step and recommend
     the merge. max-rounds: max-review-rounds is 1 and there is no second review; the run must recommend the merge after
-    its first round. session-footer: the stand-in saves each pull request comment and thread reply, but no issue comment, with a Claude Code cloud session's footer, and the run's /review comment still asks NCode Review for its review, as NCode Review sets the footer aside; NCode Review's review of the first push carries a request of the owner's, so the run pushes a second round and comments /review again, leaves each /review comment with its footer, and must never answer its own /review comments.
+    its first round. review-with-footer: the stand-in saves each pull request comment and thread reply, but no issue comment, with a Claude Code cloud session's footer, and the run's /review comment still asks NCode Review for its review, as NCode Review sets the footer aside; NCode Review's review of the first push carries a request of the owner's, so the run pushes a second round and comments /review again, leaves each /review comment with its footer, and must never answer its own /review comments.
     push-branch: the prompt carries push-branch:claude/fixture-push-a1b2, and origin's push branch still holds the head of pull request #2, which main has as a squash commit; the run must record the push branch, restart it from its plan, push its commits and its fix round there, never push its own branch, and open the draft pull request from the push branch. max-review-rounds is 1 and there is no review of the first push, as in max-rounds.
     fix-now: the run's question is answered with "fix the follow-ups in the same pull request before merge"; max-review-rounds is the default 3 and there is no review of the first push; the run must fix NCode Review's blocker on behavior main already had and its nit in the draft pull request, reply "Autopilot: fixed in" on the blocker and "Autopilot: fixed in" or "Autopilot: not changed" on the nit, never reply "Autopilot: left as a follow-up", and leave neither in the plan's Follow-ups. Run all five.
 
@@ -78,7 +78,7 @@ param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-run-issues-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
-    [ValidateSet('minor-round', 'max-rounds', 'session-footer', 'push-branch', 'fix-now')][string]$Scenario = 'minor-round',
+    [ValidateSet('minor-round', 'max-rounds', 'review-with-footer', 'push-branch', 'fix-now')][string]$Scenario = 'minor-round',
     [ValidateSet('claude', 'copilot')][string]$Tool = 'claude',
     [string]$Claude = 'claude',
     [string]$Copilot = 'copilot',
@@ -185,13 +185,13 @@ if (-not $CheckOnly) {
         comments = @(@{ key = 'slash'; author = $owner; authorAssociation = 'OWNER'; body = '/review' })
     }
     Write-Text (Join-Path $hostDir 'review-seed.json') (ConvertTo-Json -InputObject $seed -Depth 10)
-    if ($Scenario -eq 'session-footer') {
+    if ($Scenario -eq 'review-with-footer') {
         Write-Text (Join-Path $hostDir 'footer.txt') '_Generated by [Claude Code](https://claude.ai/code/session_01AbCdEf)_'
         Write-Text (Join-Path $hostDir 'footer-pr-only.txt') 'yes'
     }
-    if ($Scenario -in 'minor-round', 'session-footer') {
+    if ($Scenario -in 'minor-round', 'review-with-footer') {
         # NCode Review's review of the run's first push: a should-fix finding that asks only for another test of what tests/Test-Greeting.ps1 tests, and a nit.
-        # In session-footer, instead, a request of the owner's, which the run fixes in a second round.
+        # In review-with-footer, instead, a request of the owner's, which the run fixes in a second round.
         $pushSeed = @{
             threads  = @(
                 @{ key = 'minor'; path = 'tests/Test-Greeting.ps1'; line = 2; author = $ncode; authorAssociation = 'NONE'; body = "<!-- ncode-review:finding id=F5 fp=9d41e6b2 severity=should-fix -->`n**Should fix:** add another test that ``Get-Greeting -Name Ada`` returns ``Hello, Ada!``." }
@@ -200,7 +200,7 @@ if (-not $CheckOnly) {
             reviews  = @(@{ author = $ncode; authorAssociation = 'NONE'; body = 'NCode Review: 2 findings (1 should-fix, 1 nit).' })
             comments = @()
         }
-        if ($Scenario -eq 'session-footer') {
+        if ($Scenario -eq 'review-with-footer') {
             $pushSeed = @{
                 threads  = @(
                     @{ key = 'owner-push'; path = 'src/Greeting.ps1'; line = 3; author = $owner; authorAssociation = 'OWNER'; body = 'Let `Get-Greeting` take `-Greeting` too, defaulting to `Hello`: `Get-Greeting -Name Ada -Greeting Hi` should return `Hi, Ada!`. Test it in `tests/Test-Greeting.ps1`.' }
@@ -226,11 +226,11 @@ if (-not $CheckOnly) {
         $missing = @(foreach ($f in '.github/workflows/code-review.yml', '.github/workflows/ci.yml') { git --git-dir=$origin cat-file -e "main:$f" 2>$null; if ($LASTEXITCODE) { $f } })
         Check 'fixture: origin main runs NCode Review and has the CI workflow its protected finding names' ($missing.Count -eq 0 -and $st['landing'] -like '*review-bots=ncode-review*') "missing: $($missing -join ', '); landing='$($st['landing'])'"
         $rounds = if ($Scenario -in 'max-rounds', 'push-branch') { '1' } else { '3' }
-        Check "fixture: the Landing section's max-review-rounds is $rounds, and only minor-round and session-footer have a review of the first push" ("$($st['landing'])" -match "(^| )max-review-rounds=$rounds( |$)" -and (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json')) -eq ($Scenario -in 'minor-round', 'session-footer')) "landing='$($st['landing'])'"
-        if ($Scenario -eq 'session-footer') {
+        Check "fixture: the Landing section's max-review-rounds is $rounds, and only minor-round and review-with-footer have a review of the first push" ("$($st['landing'])" -match "(^| )max-review-rounds=$rounds( |$)" -and (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json')) -eq ($Scenario -in 'minor-round', 'review-with-footer')) "landing='$($st['landing'])'"
+        if ($Scenario -eq 'review-with-footer') {
             $pushThreads = @((Get-Content -Raw -LiteralPath (Join-Path $hostDir 'review-seed-push.json') | ConvertFrom-Json).threads)
             $sfOk = (Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt')) -and (Test-Path -LiteralPath (Join-Path $hostDir 'footer-pr-only.txt')) -and $pushThreads.Count -eq 1 -and $pushThreads[0].key -eq 'owner-push' -and $pushThreads[0].authorAssociation -eq 'OWNER' -and $pushThreads[0].author.login -eq 'fixture-owner'
-            Check 'fixture: the session-footer scenario has footer.txt and footer-pr-only.txt, and its push review is a request of the owner''s' ([bool]$sfOk) "push threads: $($pushThreads.Count)"
+            Check 'fixture: the review-with-footer scenario has footer.txt and footer-pr-only.txt, and its push review is a request of the owner''s' ([bool]$sfOk) "push threads: $($pushThreads.Count)"
         }
         if ($Scenario -eq 'push-branch') {
             $earlier = @(Read-HostJson $hostDir 'prs.json' | Where-Object { $_ -and "$($_.number)" -eq '2' })[0]
@@ -454,14 +454,14 @@ Use-FixtureEnvironment $Work $bin {
     $slash = $comments | Where-Object { $_ -and $_.key -eq 'slash' } | Select-Object -First 1
     $slashAnswers = @(if ($slash) { @(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and "$($_.body)" -match '^Autopilot:' -and "$($_.body)".Contains($slash.url) } })
     Check 'the /review comment got no answer' ($slash -and $slashAnswers.Count -eq 0) "$(if ($slash) { "answers: $($slashAnswers.Count)" } else { 'no /review comment' })"
-    # session-footer and fix-now end waiting with no review left to come, so the run recommends no merge there.
-    if ($Scenario -notin 'session-footer', 'fix-now') {
+    # review-with-footer and fix-now end waiting with no review left to come, so the run recommends no merge there.
+    if ($Scenario -notin 'review-with-footer', 'fix-now') {
         $recommendations = @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)" -match '(?i)\bmerg' })
         Check 'the run recommended the merge once, in a top-level Autopilot: comment' ($recommendations.Count -eq 1) "recommendations: $($recommendations.Count)"
         $nitUrl = Get-ThreadUrl 'nit'
         Check 'the plan''s Follow-ups name NCode Review''s open nit, as the merge recommendation leaves it' ($nitUrl -and $followUps.Contains($nitUrl)) "nit: '$nitUrl'; Follow-ups: $(if ($followUps) { 'present' } else { 'missing' })"
     }
-    if ($Scenario -eq 'session-footer') {
+    if ($Scenario -eq 'review-with-footer') {
         $all = @(Read-HostJson $hostDir 'comments.json' | Where-Object { $_ -and $_.kind -eq 'pr' })
         $footer = ([IO.File]::ReadAllText((Join-Path $hostDir 'footer.txt'))).Trim()
         $runSlash = @($all | Where-Object { $_.key -ne 'slash' -and (Test-ReviewCommand $_.body) })
