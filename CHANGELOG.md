@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.82.0] - 2026-11-10
+## [0.83.0] - 2026-11-10
 
 ### Added
 
@@ -23,6 +23,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `.githooks/commit-msg`, which stripped agent attribution from commit messages, and the pre-commit hook `Update-Project.ps1` and `Adopt-Project.ps1` suggested for it.
 - `.template/Test-CommitAttribution.ps1` and the `Commit attribution` CI job on GitHub and GitLab.
 - The workflow commands' read-back of each pull request, issue, comment and note they post, which edited out a session's attribution footer and listed what it couldn't remove.
+
+## [0.82.0] - 2026-11-10
+
+### Added
+
+- `brand/`, the NCode Group logo kit: the `{N}` mark redrawn as a vector on a 64-unit grid, with a pixel-fitted drawing of its own for each of 16, 20, 24, 32, 40 and 48 pixels, in NCode Blue (`#0033CC`) for light backgrounds, a light blue for dark ones, and on blue, white and navy tiles, exported as the PNG and ICO files that NuGet, a website's favicon, GitHub, GitLab, My Apps, profile pictures, badges and social cards each ask for. `brand/build.py` draws every file and stops when one breaks its platform's limit, and `brand/README.md` says which file is for what. No change for projects made from the template.
+
+### Changed
+
+- `NCodeGroup.png`, the package icon a new NCode Group library gets, is the redrawn `{N}` mark in white on a blue tile at 128 by 128 pixels, the size NuGet recommends. It was a 64 by 64 picture of the mark in blue on a transparent background, which a dark theme all but hides: a contrast of 1.9 to 1 on `#1E1E1E`. The file is project-owned, so a project that already has it keeps its own; copy this version's `template/NCodeGroup.png` over it to take the new icon.
 
 ## [0.81.0] - 2026-11-10
 
@@ -1327,7 +1337,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.82.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.83.0...HEAD
+[0.83.0]: https://github.com/NCodeGroup/project-template/compare/v0.82.0...v0.83.0
 [0.82.0]: https://github.com/NCodeGroup/project-template/compare/v0.81.0...v0.82.0
 [0.81.0]: https://github.com/NCodeGroup/project-template/compare/v0.80.1...v0.81.0
 [0.80.1]: https://github.com/NCodeGroup/project-template/compare/v0.80.0...v0.80.1
