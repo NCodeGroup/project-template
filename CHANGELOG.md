@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- Claude Code's planning commands enable `.githooks` and record the session's push branch from the main checkout, before they enter the plan's worktree, and `/run-issues` and `/address-feedback` check the hooks before they create theirs, because Claude Code refuses any change to the clone's shared Git config from a session isolated in a worktree, as in a cloud session. When Git refuses the hooks setting anyway, a command goes on and says so only under `protect: hook`; when it refuses to record a push branch inside a worktree, `/ship-plan` records it from the main checkout and returns.
+- Claude Code's planning commands enable `.githooks` and record the session's push branch from the main checkout, before they enter the plan's worktree, and `/run-issues` and `/address-feedback` check the hooks before they create theirs, because Claude Code refuses any change to the clone's shared Git config from a session isolated in a worktree, as in a cloud session. When Git refuses the hooks setting anyway, a command goes on and says so only under `protect: hook`; when it refuses to record a push branch inside a worktree, the command that records one does so from the main checkout and returns.
 
 ## [0.84.2] - 2026-11-11
 
