@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.84.2] - 2026-11-11
+
+### Changed
+
+- The workflow commands record a Claude Code cloud session's push branch without remarking on it: a plan keeps its own branch, and `/ship-plan` names the branch it pushes to in the summary it shows before it pushes. The rule is written once, in `workflow/templates/_push-branch-session.md`.
+
+### Fixed
+
+- Claude Code's planning commands enable `.githooks` and record the session's push branch from the main checkout, before they enter the plan's worktree, and `/run-issues` and `/address-feedback` check the hooks before they create theirs, because Claude Code refuses any change to the clone's shared Git config from a session isolated in a worktree, as in a cloud session. When Git refuses the hooks setting anyway, a command goes on and says so only under `protect: hook`; when it refuses to record a push branch inside a worktree, `/ship-plan` records it from the main checkout and returns.
+
 ## [0.84.1] - 2026-11-10
 
 ### Changed
@@ -1360,7 +1370,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.84.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.84.2...HEAD
+[0.84.2]: https://github.com/NCodeGroup/project-template/compare/v0.84.1...v0.84.2
 [0.84.1]: https://github.com/NCodeGroup/project-template/compare/v0.84.0...v0.84.1
 [0.84.0]: https://github.com/NCodeGroup/project-template/compare/v0.83.1...v0.84.0
 [0.83.1]: https://github.com/NCodeGroup/project-template/compare/v0.83.0...v0.83.1
