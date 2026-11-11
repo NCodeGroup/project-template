@@ -4,9 +4,8 @@ Each plan lives in its own git worktree, so several Claude Code sessions can pla
 
 1. Run `git rev-parse --show-toplevel`. If the path contains `/.claude/worktrees/`, this session is already in a worktree: use it, unless its `PLAN.md` has a step not yet marked `[x]`. In that case stop, because the worktree holds a plan in progress, and tell me to start the new plan from a new session in the main checkout.
 2. Otherwise, if `git check-ignore -q .claude/worktrees/` exits non-zero, append the line `.claude/worktrees/` to `info/exclude` in the folder that `git rev-parse --path-format=absolute --git-common-dir` prints, so the main checkout doesn't list worktrees as untracked files.
-3. Then name the worktree: two to four lowercase words from the request, joined by hyphens, such as `csv-export`, and not already a folder under `.claude/worktrees/`. Create the worktree and switch into it with the `EnterWorktree` tool and that `name`.
+3. Then, still in the main checkout, settle the clone's Git settings, because the worktree shares the clone's Git config and Claude Code refuses any change to it from a session isolated in a worktree. {{PROMPT:_git-hooks}} {{PROMPT:_push-branch-session}} Then name the worktree: two to four lowercase words from the request, joined by hyphens, such as `csv-export`, and not already a folder under `.claude/worktrees/`. Create the worktree and switch into it with the `EnterWorktree` tool and that `name`.
 4. A worktree is a fresh checkout, without ignored files such as installed dependencies. If the build or test command needs a setup step first, such as `npm ci`, run it in the worktree and list it under Context for the executor.
-5. {{PROMPT:_git-hooks}}
 
 From here on, the repository root is the worktree's root: read, write and run commands only there, never in the main checkout.
 
