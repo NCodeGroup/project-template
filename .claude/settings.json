@@ -14,8 +14,17 @@
     "ask": [
       "Bash(*.env*)",
       "PowerShell(*.env*)",
-      "Bash(*secrets*)",
-      "PowerShell(*secrets*)"
+      "Bash(secrets/*)",
+      "Bash(* secrets/*)",
+      "Bash(* ./secrets*)",
+      "Bash(* secrets)",
+      "PowerShell(secrets/*)",
+      "PowerShell(* secrets/*)",
+      "PowerShell(* ./secrets*)",
+      "PowerShell(* secrets)",
+      "PowerShell(secrets\\*)",
+      "PowerShell(* secrets\\*)",
+      "PowerShell(* .\\secrets*)"
     ]
   },
   "hooks": {

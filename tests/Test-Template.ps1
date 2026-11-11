@@ -587,7 +587,7 @@ $secretsIgnored = @(foreach ($p in 'secrets/key.txt', 'src/secrets/x.cs', 'src/S
 $secretsDeny = @((Get-Content -LiteralPath (Join-Path $listProject '.claude\settings.json') -Raw | ConvertFrom-Json).permissions.deny)
 Check 'project: only the root secrets/ folder is gitignored and denied to Claude Code' (($secretsIgnored -eq '0,1,1') -and ('Read(/secrets/**)' -in $secretsDeny) -and ('Read(./secrets/**)' -notin $secretsDeny)) "check-ignore exit codes $secretsIgnored; deny $($secretsDeny -join ', ')"
 $secretsAsk = @((Get-Content -LiteralPath (Join-Path $listProject '.claude\settings.json') -Raw | ConvertFrom-Json).permissions.ask)
-Check 'project: a Bash or PowerShell command that mentions .env or secrets/ asks, though every command is allowed' (-not (@('Bash(*.env*)', 'PowerShell(*.env*)', 'Bash(*secrets*)', 'PowerShell(*secrets*)') | Where-Object { $_ -notin $secretsAsk })) "ask $($secretsAsk -join ', ')"
+Check 'project: a Bash or PowerShell command that mentions .env or the root secrets/ folder asks, though every command is allowed, and no ask rule matches a secrets-named source folder' (-not (@('Bash(*.env*)', 'PowerShell(*.env*)', 'Bash(secrets/*)', 'PowerShell(secrets/*)', 'Bash(* secrets/*)', 'PowerShell(* secrets/*)', 'PowerShell(* .\secrets*)') | Where-Object { $_ -notin $secretsAsk }) -and ('Bash(*secrets*)' -notin $secretsAsk) -and ('PowerShell(*secrets*)' -notin $secretsAsk)) "ask $($secretsAsk -join ', ')"
 
 $workflow = Join-Path $repoRoot 'workflow'
 $fresh = Join-Path $Work 'generated'

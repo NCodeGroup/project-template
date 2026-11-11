@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.84.2] - 2026-11-11
+
+### Fixed
+
+- The `ask` rules in `.claude/settings.json` match a command that mentions the root `secrets/` folder, not any text containing `secrets`. The broad pattern also matched a source folder or project named `Secrets`, such as `src/Acme.Secrets/`, so every command that touched one asked for approval, which Claude Code's allow rules and Auto mode don't override.
+
 ## [0.84.1] - 2026-11-10
 
 ### Changed
@@ -1360,7 +1366,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.84.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.84.2...HEAD
+[0.84.2]: https://github.com/NCodeGroup/project-template/compare/v0.84.1...v0.84.2
 [0.84.1]: https://github.com/NCodeGroup/project-template/compare/v0.84.0...v0.84.1
 [0.84.0]: https://github.com/NCodeGroup/project-template/compare/v0.83.1...v0.84.0
 [0.83.1]: https://github.com/NCodeGroup/project-template/compare/v0.83.0...v0.83.1
