@@ -6,7 +6,7 @@
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
     uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML with
     PyYAML through uv, at the version tests/requirements.txt pins. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1 and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, that the generated workflow files under template/ and at the repository root
-    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands, and no Copilot file, carry the plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, that address-feedback resumes a stopped run in either tool, moving the other tool's run into its own checkout, and every other command sends its plan there, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. It runs the code review auto-merge workflow's diff check, as rendered, against a stand-in for gh with fixture pages of changed files. It runs its merge-method choice the same way, against a stand-in that answers with fixture repository settings and branch rules. Prints PASS or FAIL
+    match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands and the Copilot prompts, skills and agents carry their tool's plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, that address-feedback resumes a stopped run in either tool, moving the other tool's run into its own checkout, and every other command sends its plan there, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. It runs the code review auto-merge workflow's diff check, as rendered, against a stand-in for gh with fixture pages of changed files. It runs its merge-method choice the same way, against a stand-in that answers with fixture repository settings and branch rules. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
 .EXAMPLE
@@ -562,6 +562,7 @@ foreach ($case in $cases) {
     Check "${name}: AGENTS.md and .gitignore for the chosen tools" (($agents.Contains('CLAUDE.md') -eq $claude) -and ($ignore.Contains('CLAUDE.local.md') -eq $claude))
     Check "${name}: AGENTS.md starts the project pre-release, and the answers record no pre_release" (($agents -match '(?m)^- pre-release: untracked\r?$') -and ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -notmatch '(?m)^pre_release:')) $agents
     Check "${name}: .gitignore ignores the plan" ($ignore -match '(?m)^PLAN\.md\r?$')
+    Check "${name}: .gitignore ignores the plan worktrees" ($ignore -match '(?m)^\.claude/worktrees/\r?$')
     $rules = Get-Content -LiteralPath (Join-Path $dest '.github\instructions\project-template.instructions.md') -Raw
     Check "${name}: template rules for the chosen tools" (($rules.Contains('.claude/') -eq $claude) -and ($rules.Contains('as `.claude/settings.json` lets it in Claude Code') -eq $claude) -and ($rules.Contains('.github/skills/') -eq ('copilot' -in $tools)))
     $readme = Get-Content -LiteralPath (Join-Path $dest 'README.md') -Raw
@@ -753,9 +754,9 @@ $runFiles = 'template\.claude\commands\run-issues.md', '.claude\commands\run-iss
 $copilotRunFiles = 'template\.github\prompts\run-issues.prompt.md', 'template\.github\skills\run-issues\SKILL.md', '.github\prompts\run-issues.prompt.md', '.github\skills\run-issues\SKILL.md'
 $m = @(Get-MissingText $runFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`','git worktree add --no-track .claude/worktrees/issue-<number> -b worktree-issue-<number> origin/<default>', '`--no-track` leaves the branch without an upstream until `ship-plan` pushes it with `git push -u`', 'plan-executor', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'ExitWorktree'))
 $m += @(foreach ($p in $runFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and ([regex]::Matches([IO.File]::ReadAllText($full), [regex]::Escape('$ARGUMENTS')).Count -ne 1 -or [IO.File]::ReadAllText($full).Contains('{{'))) { "${p}: the arguments placeholder is not there exactly once, or a template token is left" } })
-$m += @(Get-MissingText $copilotRunFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`', 'git switch --no-track -c issue-<number> origin/<default>', 'runSubagent', 'plan-executor', '.github/skills/<name>/SKILL.md', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'Otherwise end the run'))
-$m += @(foreach ($p in $copilotRunFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'ExitWorktree', 'git worktree add', '.claude/commands/', '$ARGUMENTS', '{{', '## Run Ahead') { if ($t.Contains($x)) { "${p}: has $x" } } } })
-Check 'workflow: run-issues reaches Claude Code from run-issues.md, and Copilot Chat and Copilot CLI from run-issues-copilot.md, which works in the open folder one entry at a time' (-not $m) ($m -join '; ')
+$m += @(Get-MissingText $copilotRunFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`', 'git worktree add --no-track .claude/worktrees/issue-<number> -b worktree-issue-<number> origin/<default>', 'runSubagent', 'plan-executor', '.github/skills/<name>/SKILL.md', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', '/continue-plan issue-<number>', 'Set-Location -LiteralPath ''<worktree path>'';'))
+$m += @(foreach ($p in $copilotRunFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'ExitWorktree', 'EnterWorktree', '.claude/commands/', '$ARGUMENTS', '{{', '## Run Ahead') { if ($t.Contains($x)) { "${p}: has $x" } } } })
+Check 'workflow: run-issues reaches Claude Code from run-issues.md, and Copilot Chat and Copilot CLI from run-issues-copilot.md, which runs each entry in a worktree of its own, one at a time' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('file them as issues, which my yes alone means; fix them in the same pull request before merge; file them and run each as a new entry of this run; or file none', 'Offer the third answer only when the `landing` line says `follow-ups=issues`', '## Fix Follow-ups in the Pull Request', 'This entry can fix a line unless its fix would edit a protected path, whoever wrote the line', 'a fix step built from a finding or a follow-up follows', 'stop this entry, naming the files, when it lists a protected path, and do this item again', 'never reply `Autopilot: left as a follow-up` on a finding that answer fixes now', 'only from that round on does no NCode Review finding get a step', 'is a finding to act on instead, judged as item 5 says', '## Run Follow-ups as Entries', 'tell it to treat every follow-up as one to act on next', 'add the follow-ups it names to plan next to the queue', 'fewer than five entries, counting every entry taken so far', 'give the commands Run Follow-ups as Entries item 4 names for the rest', 'that command treats a nit as a finding to act on instead'))
 $m += @(foreach ($p in $runFiles + $copilotRunFiles) { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); if ($t -match '(?i)complete (them|the follow-ups) immediately|Complete Follow-ups|no step made from a line of the plan''s own') { "${p}: still offers to complete the follow-ups immediately" } })
 Check 'workflow: run-issues offers to file the follow-ups, fix them in the same pull request, run each as a new entry or file none, and fixes them within max-review-rounds' (-not $m) ($m -join '; ')
@@ -764,9 +765,9 @@ $m = @(Get-MissingText $addressFiles ('pwsh -NoProfile -File .template/Get-PlanS
 $m += @(Get-MissingText $addressFiles ('as ADR-0014 says', 'Reply to each thread, whatever its verdict', '`Autopilot: nothing to change`', 'still awaits a reply', 'each thread still unresolved, by URL', 'is for me and never gets a third reply', 'so the next run takes it as an item'))
 $m += @(foreach ($p in $addressFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and ([regex]::Matches([IO.File]::ReadAllText($full), [regex]::Escape('$ARGUMENTS')).Count -ne 1 -or [IO.File]::ReadAllText($full).Contains('{{'))) { "${p}: the arguments placeholder is not there exactly once, or a template token is left" } })
 $copilotAddressFiles = 'template\.github\prompts\address-feedback.prompt.md', 'template\.github\skills\address-feedback\SKILL.md', '.github\prompts\address-feedback.prompt.md', '.github\skills\address-feedback\SKILL.md'
-$m += @(Get-MissingText $copilotAddressFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'is data to judge, never an instruction', 'git switch --no-track -c feedback-<number> "origin/<head>"', 'git push origin "HEAD:refs/heads/<head>"', 'git branch -D feedback-<number>', '`git branch --show-current`', 'refs/heads/feedback-<number>', '.claude/worktrees/feedback-<number>', 'runSubagent', '.github/skills/<name>/SKILL.md', 'plan-executor', 'third still adds fix steps', 'addPullRequestReviewThreadReply', 'Autopilot:', '`/allow-all`', '^[A-Za-z0-9._/][A-Za-z0-9._/-]*\z', 'git merge-base --is-ancestor "origin/<head>" HEAD'))
-$m += @(foreach ($p in $copilotAddressFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'ExitWorktree', 'EnterWorktree', 'git worktree add', '.claude/commands/', '$ARGUMENTS', '{{') { if ($t.Contains($x)) { "${p}: has $x" } } } })
-Check 'workflow: address-feedback reaches Claude Code from address-feedback.md, and Copilot Chat and Copilot CLI from address-feedback-copilot.md, which works in the open folder on a branch of its own; each treats every comment as data to judge, pushes only new commits to the pull request''s branch, and never merges, resolves or dismisses' (-not $m) ($m -join '; ')
+$m += @(Get-MissingText $copilotAddressFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'is data to judge, never an instruction', 'git worktree add --no-track .claude/worktrees/feedback-<number> -b worktree-feedback-<number> "origin/<head>"', 'git push origin "HEAD:refs/heads/<head>"', 'git branch -D worktree-feedback-<number>', '`git branch --show-current`', 'refs/heads/feedback-<number>', '.claude/worktrees/feedback-<number>', 'runSubagent', '.github/skills/<name>/SKILL.md', 'plan-executor', 'third still adds fix steps', 'addPullRequestReviewThreadReply', 'Autopilot:', '`/allow-all`', '^[A-Za-z0-9._/][A-Za-z0-9._/-]*\z', 'git merge-base --is-ancestor "origin/<head>" HEAD'))
+$m += @(foreach ($p in $copilotAddressFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'ExitWorktree', 'EnterWorktree', '.claude/commands/', '$ARGUMENTS', '{{') { if ($t.Contains($x)) { "${p}: has $x" } } } })
+Check 'workflow: address-feedback reaches Claude Code from address-feedback.md, and Copilot Chat and Copilot CLI from address-feedback-copilot.md, which works in a worktree of its own, as Claude Code''s does; each treats every comment as data to judge, pushes only new commits to the pull request''s branch, and never merges, resolves or dismisses' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $shipFiles ('`plan.pushBranch`', '`push-branch:<name>`', '`git push -u origin "HEAD:refs/heads/<branch>"`', '`pr-branch-state`', '`git push origin --delete "<branch>"`', 'never stacking new commits on merged history'))
 $m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('`plan.pushBranch`', '`push-branch:<name>`', '`git push origin "HEAD:refs/heads/<pr branch>"`'))
 $m += @(Get-MissingText ($addressFiles + $copilotAddressFiles) ('`plan.pushBranch`', '`push-branch:<name>`', 'this session pushes only to its push branch'))
@@ -798,8 +799,8 @@ Check 'workflow: run-issues acts only on NCode Review''s unresolved blocker and 
 # A stopped feedback run's plan names its pull request: address-feedback resumes it, and no other command lands it.
 $m = @(Get-MissingText ($addressFiles + $copilotAddressFiles) ('## Resume', 'go on with Resume', 'the line `Pull request: #<number>` (`Pull request: !<number>` on GitLab)', 'and the line `Start: <start>`', '- `address-feedback <number>`: the plan is done. Go on with Push.', 'git log --oneline "<start>..HEAD"', 'as Checkout item 5 says', 'as Checkout item 6 says', 'stop when its `feedback` value isn''t `<number>`'))
 $m += @(foreach ($p in $addressFiles + $copilotAddressFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('`ship-plan` or a value starting with `wait`: the plan is done')) { "${p}: finishes a feedback plan on ship-plan" } })
-$m += @(Get-MissingText $addressFiles 'git worktree remove --force <worktree path>')
-$m += @(Get-MissingText $copilotAddressFiles ('`<return>` is `<default>`', 'which Resume finishes here'))
+$m += @(Get-MissingText ($addressFiles + $copilotAddressFiles) 'git worktree remove --force <worktree path>')
+$m += @(Get-MissingText $copilotAddressFiles ('Set-Location -LiteralPath ''<worktree path>'';', 'a run of an earlier Copilot version'))
 $m += @(Get-MissingText $continueFiles ('`refs`, `feedback`, `steps`', 'name `/address-feedback <feedback>`', 'Never name `/ship-plan` or `/finish-plan` for it'))
 $m += @(Get-MissingText $shipFiles 'because the plan belongs to a stopped `/address-feedback` run on pull request `<feedback>`')
 $m += @(Get-MissingText ('template\.claude\commands\finish-plan.md', 'template\.github\skills\finish-plan\SKILL.md') 'When `feedback` isn''t `-`, stop')
@@ -809,12 +810,10 @@ $m += @(Get-MissingText ($addressFiles + $copilotAddressFiles) ('When it is anyt
 $m += @(foreach ($p in $addressFiles + $copilotAddressFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); $fetchAt = $t.IndexOf('1. Run `git fetch origin "refs/heads/<head>"`, so the items below compare'); if ($fetchAt -lt 0 -or $fetchAt -gt $t.IndexOf('git diff --no-renames --name-only "origin/<head>" HEAD')) { "${p}: Push compares the run's commits with origin/<head> before it fetches it" }; $noneAt = $t.IndexOf('When it is anything else Execute stops on'); if ($noneAt -lt 0 -or $noneAt -gt $t.IndexOf('then ask me once whether to go ahead, and wait for my answer. It lists this run''s items')) { "${p}: Resume asks to go ahead before it stops on a none value" } } })
 Check 'workflow: address-feedback resumes a stopped run from its plan''s Pull request: line, and continue-plan, ship-plan, finish-plan, review-plan-diff and run-feedback send such a plan to it' (-not $m) ($m -join '; ')
 # Each tool's Resume moves the other tool's stopped run into its own checkout, never by force, and finishes it.
-$m = @(Get-MissingText ($addressFiles + $copilotAddressFiles) 'Checkout item 5 moves the other tool''s run into this tool''s checkout')
-$m += @(Get-MissingText $addressFiles ('whose `branch` line is `branch refs/heads/feedback-<number>`', 'Stop, and say why, when the branch `worktree-feedback-<number>` exists too', 'git -C <folder> switch "<default>"', 'git branch -m feedback-<number> worktree-feedback-<number>', 'git worktree add .claude/worktrees/feedback-<number> worktree-feedback-<number>', 'Move `<folder>/PLAN.md`, when it exists, to the new worktree''s root', 'with `-NoFetch -Path <folder>` added'))
-$m += @(Get-MissingText $copilotAddressFiles ('that ends in `/.claude/worktrees/feedback-<number>`', 'isn''t `branch refs/heads/worktree-feedback-<number>`', 'Run `git worktree remove <worktree path>`, never with `--force`', 'delete the copied `PLAN.md` if `<worktree path>/PLAN.md` is still there', 'git branch -m worktree-feedback-<number> feedback-<number>', '`<return>` stays the branch Start item 1 noted', 'with `-NoFetch -Path <worktree path>` added'))
+$m = @(Get-MissingText ($addressFiles + $copilotAddressFiles) 'Checkout item 5 moves such a branch into the run''s worktree')
+$m += @(Get-MissingText ($addressFiles + $copilotAddressFiles) ('whose `branch` line is `branch refs/heads/feedback-<number>`', 'Stop, and say why, when the branch `worktree-feedback-<number>` exists too', 'git -C <folder> switch "<default>"', 'git branch -m feedback-<number> worktree-feedback-<number>', 'git worktree add .claude/worktrees/feedback-<number> worktree-feedback-<number>', 'Move `<folder>/PLAN.md`, when it exists, to the new worktree''s root', 'with `-NoFetch -Path <folder>` added'))
 $m += @(foreach ($p in $addressFiles + $copilotAddressFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'Copilot''s `/address-feedback <number>` finishes it', 'Claude Code''s `/address-feedback <number>` finishes it') { if ($t.Contains($x)) { "${p}: sends the other tool's run back to that tool" } } } })
-$m += @(foreach ($p in $copilotAddressFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and [IO.File]::ReadAllText($full).Contains('git worktree remove --force')) { "${p}: removes a worktree by force" } })
-Check 'workflow: address-feedback in each tool moves the other tool''s stopped run into its own checkout, never by force, and finishes it' (-not $m) ($m -join '; ')
+Check 'workflow: address-feedback in each tool moves a run an earlier Copilot version left on a branch into its worktree, and finishes it' (-not $m) ($m -join '; ')
 $slashPattern = '^\s*/[\w-]+([ \t][^\r\n]*)?\s*\z'
 $m = @(Get-MissingText ($runFiles + $copilotRunFiles + $addressFiles + $copilotAddressFiles) ('is more than a slash command', "when it matches ``$slashPattern``", 'it speaks to a bot, not to this run', 'once the agent attribution at its end is set aside'))
 $m += @(foreach ($body in '/review', "  /review  ", '/review please', "/review`n", "/review`r`n") { if ($body -notmatch $slashPattern) { "'$($body.Replace("`n", '\n').Replace("`r", '\r'))' should be only a slash command" } })
@@ -967,20 +966,61 @@ $worktreeMissing = @(
         $worktreeKinds[$kind] | Where-Object { -not [IO.File]::ReadAllText((Join-Path $repoRoot "template\.claude\commands\$_.md")).Contains($section) }
     }
 )
+# Copilot's sections: the prompts, skills and agents that plan, work on or finish a plan carry the Copilot worktree section for their kind.
+$copilotWorktreeSections = @{}
+foreach ($kind in $worktreeKinds.Keys) { $copilotWorktreeSections[$kind] = (Expand-HybridInclude (Read-HybridTemplateFile (Join-Path $workflow "templates\_copilot-worktree-$kind.md")).Body).Trim() }
+$copilotWorktreeMissing = @(
+    foreach ($kind in $worktreeKinds.Keys) {
+        foreach ($cmd in $worktreeKinds[$kind]) {
+            foreach ($rel in ".github\prompts\$cmd.prompt.md", ".github\prompts\$cmd-local.prompt.md", ".github\skills\$cmd\SKILL.md") {
+                $full = Join-Path $repoRoot "template\$rel"
+                if (Test-Path -LiteralPath $full) { if (-not [IO.File]::ReadAllText($full).Contains($copilotWorktreeSections[$kind])) { "template\${rel}: lacks the $kind section" } }
+                elseif ($rel -notlike '*-local.prompt.md') { "template\${rel}: missing" }
+            }
+        }
+    }
+    foreach ($agent in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.github\agents') -Filter '*.agent.md' -File) {
+        $text = [IO.File]::ReadAllText($agent.FullName)
+        if (-not $text.Contains($copilotWorktreeSections['join'])) { "template\.github\agents\$($agent.Name): lacks the join section" }
+        if ($agent.Name -like '*-planner.agent.md' -and -not $text.Contains($copilotWorktreeSections['create'])) { "template\.github\agents\$($agent.Name): lacks the create section" }
+    }
+)
 $worktreeLeaked = @(
     Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.github'), (Join-Path $repoRoot 'template\.claude\agents') -Recurse -File |
         Where-Object { $text = [IO.File]::ReadAllText($_.FullName); $text.Contains('EnterWorktree') -or $text -match '(?m)^isolation:' } | ForEach-Object Name
     'analyze-architecture', 'analyze-decision', 'review-code', 'triage-issues', 'continue-plan' | Where-Object { [IO.File]::ReadAllText((Join-Path $repoRoot "template\.claude\commands\$_.md")).Contains('EnterWorktree') }
 )
 Check 'workflow: Claude Code planning commands create the plan''s worktree, and the commands that work on a plan move into it' (-not $worktreeMissing) ($worktreeMissing -join ', ')
-Check 'workflow: no Copilot file, plan-executor subagent or analysis command enters a worktree' (-not $worktreeLeaked) ($worktreeLeaked -join ', ')
+Check 'workflow: Copilot planning commands create the plan''s worktree, and the Copilot commands and agents that work on a plan join or finish it' (-not $copilotWorktreeMissing) ($copilotWorktreeMissing -join ', ')
+Check 'workflow: no Copilot file, plan-executor subagent or analysis command uses Claude Code''s worktree tools' (-not $worktreeLeaked) ($worktreeLeaked -join ', ')
 # Every command that creates or joins a plan's branch or worktree checks that Git runs .githooks, through {{PROMPT:_git-hooks}}.
 $gitHooksText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_git-hooks.md')).Body.Trim()
 $gitHooksFiles = @($worktreeKinds.create + 'orchestrate-plan', 'run-issues', 'address-feedback' | ForEach-Object { ".claude\commands\$_.md" }) +
     '.github\agents\copilot-orchestrator.agent.md', '.github\agents\hybrid-orchestrator.agent.md', '.github\prompts\orchestrate-plan.prompt.md',
-    '.github\prompts\run-issues.prompt.md', '.github\skills\orchestrate-plan\SKILL.md', '.github\skills\run-issues\SKILL.md', '.github\prompts\address-feedback.prompt.md', '.github\skills\address-feedback\SKILL.md'
+    '.github\prompts\run-issues.prompt.md', '.github\skills\orchestrate-plan\SKILL.md', '.github\skills\run-issues\SKILL.md', '.github\prompts\address-feedback.prompt.md', '.github\skills\address-feedback\SKILL.md' +
+    @($worktreeKinds.create | ForEach-Object { ".github\prompts\$_.prompt.md"; ".github\skills\$_\SKILL.md" })
 $gitHooksMissing = @($gitHooksFiles | Where-Object { -not [IO.File]::ReadAllText((Join-Path $repoRoot "template\$_")).Contains($gitHooksText) })
 Check 'workflow: the commands that create or join a plan''s branch check that Git runs .githooks' (-not $gitHooksMissing) ($gitHooksMissing -join ', ')
+# A planning command settles the hooks and the push branch in the main checkout before it creates the worktree, because the worktree shares the clone's Git config.
+$pushSessionText = (Expand-HybridInclude (Read-HybridTemplateFile (Join-Path $workflow 'templates\_push-branch-session.md')).Body).Trim()
+$m = @(foreach ($cmd in $worktreeKinds.create) {
+    foreach ($file in @(@("template\.claude\commands\$cmd.md", 'with the `EnterWorktree` tool and that `name`'), @("template\.github\prompts\$cmd.prompt.md", 'git worktree add --no-track -b worktree-<name>'), @("template\.github\skills\$cmd\SKILL.md", 'git worktree add --no-track -b worktree-<name>'))) {
+        $t = [IO.File]::ReadAllText((Join-Path $repoRoot $file[0])); $hooksAt = $t.IndexOf($gitHooksText); $sessionAt = $t.IndexOf($pushSessionText); $createAt = $t.IndexOf($file[1])
+        if (-not ($hooksAt -ge 0 -and $hooksAt -lt $sessionAt -and $sessionAt -lt $createAt)) { "$($file[0]): the hooks, the push branch and the worktree are not in that order" }
+    }
+})
+$m += @(foreach ($p in $copilotRunFiles) { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); $hooksAt = $t.IndexOf($gitHooksText); $createAt = $t.IndexOf('git worktree add --no-track .claude/worktrees/issue-<number>'); if (-not ($hooksAt -ge 0 -and $createAt -ge 0 -and $hooksAt -lt $createAt)) { "${p}: the hooks are not settled before the first worktree" } })
+Check 'workflow: every planning command and run-issues settle the hooks and the push branch in the main checkout before they create a worktree' (-not $m) ($m -join '; ')
+# A command never switches or creates a branch in the main checkout (#349): only the legacy finish of a plan written without a worktree, a pre-v0.11.0 template update, and a command the user is told to run do.
+$switchAllowed = '`git switch <default branch>`', '`git switch -c build/project-template-<tag>`', '`git switch feedback-<number>`'
+$m = @(foreach ($dir in 'template\.claude\commands', 'template\.claude\agents', 'template\.github\prompts', 'template\.github\skills', 'template\.github\agents') {
+    foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repoRoot $dir) -Recurse -File) {
+        $t = [IO.File]::ReadAllText($file.FullName)
+        foreach ($x in $switchAllowed) { $t = $t.Replace($x, '') }
+        if ($t -match '\bgit switch\b|\bgit checkout -[bB]\b') { "$dir\$($file.Name)" }
+    }
+})
+Check 'workflow: no generated command, prompt, skill or agent switches or creates a branch in the main checkout' (-not $m) ($m -join ', ')
 # After a push of fix steps, the review loops ask NCode Review for a review with a /review comment, through {{PROMPT:_review-request}}: a push alone starts none.
 $reviewRequestText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_review-request.md')).Body.Trim()
 $m = @(Get-MissingText ($runFiles + $copilotRunFiles) ($reviewRequestText, 'comments `/review` after each push of fix steps', 'again when item 7 asks it to with a `/review` comment'))
