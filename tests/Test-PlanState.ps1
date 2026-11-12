@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md and its prelude, valid or not, a push to the default
-    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, with a gh that refuses GitHub's GraphQL API, as a Claude Code cloud session's does, and answers only the REST paths, then a published release and one gh api doesn't find, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open, then the plan an /address-feedback run leaves, which names its pull request on a Pull request: line, on GitHub and GitLab, then a plan pushed through a session's push branch: the clone's plan.pushBranch setting, valid or not, the pull request found through that branch and through the branch the plan was pushed to, other plans' pull requests from it left out, and whether that branch is new, the plan's, landed, busy with another pull request, other work or unknown, then a new plan's empty Plan: commit on an earlier plan's pull request from that branch, merged with a merge commit or by squashing, and the plan's own pull request from it, merged with a merge commit, by squashing or by rebasing. After each move it runs
+    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, analysis worktrees, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, with a gh that refuses GitHub's GraphQL API, as a Claude Code cloud session's does, and answers only the REST paths, then a published release and one gh api doesn't find, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open, then the plan an /address-feedback run leaves, which names its pull request on a Pull request: line, on GitHub and GitLab, then a plan pushed through a session's push branch: the clone's plan.pushBranch setting, valid or not, the pull request found through that branch and through the branch the plan was pushed to, other plans' pull requests from it left out, and whether that branch is new, the plan's, landed, busy with another pull request, other work or unknown, then a new plan's empty Plan: commit on an earlier plan's pull request from that branch, merged with a merge commit or by squashing, and the plan's own pull request from it, merged with a merge commit, by squashing or by rebasing. After each move it runs
     Get-PlanState.ps1, in a runspace of its own in this process that a check compares once with a pwsh of its own, and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -119,7 +119,7 @@ finally { Pop-Location }
 $planFile = Join-Path $repo 'PLAN.md'
 
 # 1. On the default branch with no plan.
-$r = Test-State (Get-State $repo) @{ plan = '-'; refs = '-'; default = 'main'; branch = 'main'; host = 'other'; worktree = '-';ahead = '0'; behind = '0'; landed = 'yes'; dirty = 'no'; plans = '-'; conflicts = '-'; protected = 'unknown'; unfiled = '-' }
+$r = Test-State (Get-State $repo) @{ plan = '-'; refs = '-'; default = 'main'; branch = 'main'; host = 'other'; worktree = '-';ahead = '0'; behind = '0'; landed = 'yes'; dirty = 'no'; plans = '-'; analyses = '-'; conflicts = '-'; protected = 'unknown'; unfiled = '-' }
 Check 'local: a clean default branch with no plan' $r.Ok $r.Detail
 $state = Get-State $repo
 Check 'next: no plan means nothing to do' ($state['next'] -like 'none *') "next='$($state['next'])' expected 'none *'"
@@ -320,6 +320,32 @@ $r = Test-State (Get-State $repo) @{ plans = 'other=Other plan' }
 Check 'local: lists the other plan worktrees' $r.Ok $r.Detail
 $r = Test-State (Get-State $other) @{ worktree = 'other'; branch = 'worktree-other'; plan = 'Other plan' }
 Check 'local: names the worktree it runs in' $r.Ok $r.Detail
+
+# 11b. Analysis worktrees.
+[IO.File]::AppendAllText((Join-Path $repo '.git/info/exclude'), "ANALYSIS.md`n")
+Push-Location $repo
+try {
+    Invoke-Git worktree add -q --no-track -b worktree-study .claude/worktrees/study origin/main
+    Invoke-Git worktree add -q --no-track -b worktree-pick-db .claude/worktrees/pick-db origin/main
+}
+finally { Pop-Location }
+$study = Join-Path $repo '.claude/worktrees/study'
+$pickDb = Join-Path $repo '.claude/worktrees/pick-db'
+Write-Text (Join-Path $study 'ANALYSIS.md') "# Analysis: Study of the parser`n"
+Add-Commit $pickDb 'docs.md' 'Record decision: Use SQLite'
+$r = Test-State (Get-State $repo) @{ plans = 'other=Other plan'; analyses = 'pick-db=Use SQLite; study=Study of the parser' }
+Check 'local: lists the analysis worktrees' $r.Ok $r.Detail
+$r = Test-State (Get-State $study) @{ worktree = 'study'; plan = '-'; landed = 'yes'; next = 'finish-plan'; analyses = 'pick-db=Use SQLite' }
+Check 'local: an analysis worktree names itself and lists the other analyses' $r.Ok $r.Detail
+$r = Test-State (Get-State $pickDb) @{ plan = '-'; landed = 'no'; analyses = 'study=Study of the parser'; next = 'none no plan in this folder; open plans: other; open analyses: study' }
+Check 'next: a worktree without a plan names the open plans and analyses' $r.Ok $r.Detail
+Push-Location $repo
+try {
+    Invoke-Git worktree remove --force .claude/worktrees/study
+    Invoke-Git worktree remove --force .claude/worktrees/pick-db
+    Invoke-Git branch -q -D worktree-study worktree-pick-db
+}
+finally { Pop-Location }
 
 # 12. No plan on a landed branch.
 Remove-Item -LiteralPath $planFile -Force
