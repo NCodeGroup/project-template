@@ -22,9 +22,7 @@ Issues and {{ pr }}s are welcome. [README.md](README.md) explains the project, a
 {%- else %}
 - The tools the build and test commands below run.
 {%- endif %}
-{%- if 'claude' in workflow_tools %}
-- On Windows, `git config --global core.longpaths true`, once: a Claude Code plan's worktree under `.claude/worktrees/` can pass Windows' 260-character path limit.
-{%- endif %}
+- On Windows, `git config --global core.longpaths true`, once: a plan's worktree under `.claude/worktrees/` can pass Windows' 260-character path limit.
 
 ## Set Up
 

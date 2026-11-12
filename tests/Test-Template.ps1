@@ -564,7 +564,7 @@ foreach ($case in $cases) {
     Check "${name}: .gitignore ignores the plan" ($ignore -match '(?m)^PLAN\.md\r?$')
     Check "${name}: .gitignore ignores the plan worktrees" ($ignore -match '(?m)^\.claude/worktrees/\r?$')
     $rules = Get-Content -LiteralPath (Join-Path $dest '.github\instructions\project-template.instructions.md') -Raw
-    Check "${name}: template rules for the chosen tools" (($rules.Contains('.claude/') -eq $claude) -and ($rules.Contains('as `.claude/settings.json` lets it in Claude Code') -eq $claude) -and ($rules.Contains('.github/skills/') -eq ('copilot' -in $tools)))
+    Check "${name}: template rules for the chosen tools" (($rules.Contains('.claude/commands/') -eq $claude) -and ($rules.Contains('as `.claude/settings.json` lets it in Claude Code') -eq $claude) -and ($rules.Contains('.github/skills/') -eq ('copilot' -in $tools)))
     $readme = Get-Content -LiteralPath (Join-Path $dest 'README.md') -Raw
     Check "${name}: README for the chosen tools" (($readme.Contains('| Claude Code |') -eq $claude) -and ($readme.Contains('| Copilot CLI |') -eq ('copilot' -in $tools)) -and ($readme.Contains('Hybrid Planner') -eq $local))
     Check "${name}: answers record v0.1.0" ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -match '(?m)^_commit: v0\.1\.0$')
