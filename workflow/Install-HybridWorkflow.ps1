@@ -27,7 +27,7 @@
 
     The installer also writes Get-PlanState.ps1, which /ship-plan, /continue-plan and /finish-plan run, to .template\ (-Repo), or to ~\.claude\ and ~\.copilot\ (-User).
 
-    Claude Code commands of templates with a "worktree" field start with a section that puts the plan in a git worktree of its own (create), moves the session into it (join), or removes it once the work is pushed (finish): templates\_claude-worktree-*.md.
+    Claude Code commands, VS Code prompts and Copilot CLI skills of templates with a "worktree" field all start with that tool's section that puts the plan in a git worktree of its own (create), moves the session into it (join), or removes it once the work is pushed (finish): templates\_claude-worktree-*.md for Claude Code, templates\_copilot-worktree-*.md for Copilot.
 
     A template's "targets" field limits it to the targets it names, such as "targets: Claude" for run-issues, which only Claude Code gets; without it a template goes to every target.
 
@@ -115,9 +115,9 @@ $claudeRole = @{
     reviewer     = "model: sonnet`neffort: high"
     executor     = 'model: inherit'
 }
-# Claude Code only: the section that puts a plan in a worktree of its own (create), moves the session to it (join), or removes it (finish).
-function Get-ClaudeWorktreeSection([string]$Kind) {
-    $path = Join-Path $templateDir "_claude-worktree-$Kind.md"
+# The section that puts a plan in a worktree of its own (create), moves the session to it (join), or removes it (finish), for Claude Code ($Tool is claude) or Copilot ($Tool is copilot).
+function Get-WorktreeSection([string]$Tool, [string]$Kind) {
+    $path = Join-Path $templateDir "_$Tool-worktree-$Kind.md"
     if (-not (Test-Path -LiteralPath $path)) { throw "Unknown worktree value '$Kind'; use create, join or finish." }
     (Expand-HybridInclude (Read-HybridTemplateFile $path).Body).TrimEnd()
 }
@@ -154,9 +154,12 @@ foreach ($d in $dest) {
                     if ($variants.Copilot) { $promptModels.Add([pscustomobject]@{ Suffix = ''; Model = $CopilotExecutorModel }) }
                     if ($variants.Local) { $promptModels.Add([pscustomobject]@{ Suffix = $(if ($variants.Copilot) { '-local' } else { '' }); Model = $LocalModel }) }
                 }
+                $hint = $t.ArgumentHint
+                if ($t.Worktree -in 'join', 'finish') { $hint += "; the plan's worktree name when several are open" }
                 foreach ($m in $promptModels) {
-                    $body = Get-HybridPromptText -Name $t.Name -Placeholder "`${input:details:$($t.ArgumentHint)}" -StateScript $d.CopilotStateScript
-                    $fm = "---`ndescription: $(Q $t.Description)`nargument-hint: $(Q $t.ArgumentHint)`nagent: agent`nmodel: $(Q $m.Model)`n---`n"
+                    $body = Get-HybridPromptText -Name $t.Name -Placeholder "`${input:details:$hint}" -StateScript $d.CopilotStateScript
+                    if ($t.Worktree) { $body = (Get-WorktreeSection copilot $t.Worktree) + "`n`n## Task`n`n" + $body }
+                    $fm = "---`ndescription: $(Q $t.Description)`nargument-hint: $(Q $hint)`nagent: agent`nmodel: $(Q $m.Model)`n---`n"
                     Write-Generated (Join-Path $d.Prompts "$($t.Command)$($m.Suffix).prompt.md") ($fm + $body)
                 }
             }
@@ -167,7 +170,7 @@ foreach ($d in $dest) {
             if ('Claude' -notin $t.Targets) { continue }
             $body = Get-HybridPromptText -Name $t.Name -Placeholder '$ARGUMENTS' -StateScript $d.ClaudeStateScript
             $hint = $t.ArgumentHint
-            if ($t.Worktree) { $body = (Get-ClaudeWorktreeSection $t.Worktree) + "`n`n## Task`n`n" + $body }
+            if ($t.Worktree) { $body = (Get-WorktreeSection claude $t.Worktree) + "`n`n## Task`n`n" + $body }
             if ($t.Worktree -in 'join', 'finish') { $hint += "; the plan's worktree name when several are open" }
             $fm = "---`ndescription: $(Q $t.Description)`nargument-hint: $(Q "[$hint]")`n$($claudeRole[$t.Role])`ndisable-model-invocation: true`n---`n"
             Write-Generated (Join-Path $d.ClaudeCommands "$($t.Command).md") ($fm + $body)
@@ -178,6 +181,7 @@ foreach ($d in $dest) {
         foreach ($t in $templates) {
             if ('CopilotCli' -notin $t.Targets) { continue }
             $body = Get-HybridPromptText -Name $t.Name -Placeholder $skillInput -StateScript $d.CopilotStateScript
+            if ($t.Worktree) { $body = (Get-WorktreeSection copilot $t.Worktree) + "`n`n## Task`n`n" + $body }
             $fm = "---`nname: $($t.Command)`ndescription: $(Q $t.Description)`n---`n"
             Write-Generated (Join-Path $d.Skills "$($t.Command)\SKILL.md") ($fm + $body)
         }
