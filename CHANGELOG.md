@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.86.0] - 2026-11-12
+
+### Added
+
+- `/analyze-architecture` and `/analyze-decision` work in a git worktree of their own, `.claude/worktrees/<name>/` on `worktree-<name>`, in Claude Code, Copilot Chat and Copilot CLI: `ANALYSIS.md` stays untracked there and every rendered `.gitignore` ignores it, a decision record is committed there and lands with the plan made in the same worktree, `/continue-plan` lists such worktrees and `/finish-plan` removes them. ([#351](https://github.com/NCodeGroup/project-template/issues/351))
+- `/run-issues` in Copilot Chat and Copilot CLI runs the next entry ahead in its own worktree while a draft pull request waits, as it does in Claude Code, and still lands the entries one at a time, in queue order. ([#352](https://github.com/NCodeGroup/project-template/issues/352))
+
+### Changed
+
+- The state script prints an `analyses` line, and without a plan its `next` names the open analyses with the open plans; `/analyze-decision` numbers a new record past those on the default branch and in every worktree. ([#351](https://github.com/NCodeGroup/project-template/issues/351))
+- The Copilot Planner and Hybrid Planner agents state the rules for working in the plan's folder once. ([#353](https://github.com/NCodeGroup/project-template/issues/353))
+
 ## [0.85.0] - 2026-11-12
 
 ### Added
@@ -1388,7 +1400,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.85.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.86.0...HEAD
+[0.86.0]: https://github.com/NCodeGroup/project-template/compare/v0.85.0...v0.86.0
 [0.85.0]: https://github.com/NCodeGroup/project-template/compare/v0.84.3...v0.85.0
 [0.84.3]: https://github.com/NCodeGroup/project-template/compare/v0.84.2...v0.84.3
 [0.84.2]: https://github.com/NCodeGroup/project-template/compare/v0.84.1...v0.84.2
