@@ -6,7 +6,7 @@
     Fixture.ps1 dot-sources it. Everything that differs between the two tools lives here, so a scenario is written once and runs under both.
     New-Agent makes the runner for one tool: its CLI, model, budget, time limit, fixture project and work folder, and, for Copilot, its own home folder and the token it runs with, with a warning when that is a general GitHub token rather than COPILOT_GITHUB_TOKEN; it also writes tool.txt in the work folder.
     Get-RunTool gives the tool a run used, from tool.txt, for -CheckOnly without -Tool.
-    Get-RunCheckout gives the folder and branch a run works in: a Claude Code worktree, or a branch in the main checkout for Copilot.
+    Get-RunCheckout gives the folder and branch a run works in: its worktree under .claude/worktrees, in every tool.
     Get-CommandFile gives the path of a command's installed copy in the fixture: a .claude command, or a .github skill.
     Invoke-AgentProcess runs a CLI as a process of its own in the fixture project, a .ps1 one in a pwsh of its own, and stops it with its child processes past the runner's -TimeoutMinutes.
     Invoke-ClaudeCli and Invoke-CopilotCli run one headless prompt in the tool and return what it printed, parsed.
@@ -83,7 +83,6 @@ function Get-RunTool([string]$Work, [string]$Tool) {
 }
 
 function Get-RunCheckout([string]$Tool, [string]$App, [string]$Name) {
-    if ($Tool -eq 'copilot') { return [pscustomobject]@{ Folder = $App; Branch = $Name } }
     [pscustomobject]@{ Folder = Join-Path $App ".claude/worktrees/$Name"; Branch = "worktree-$Name" }
 }
 

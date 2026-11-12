@@ -158,7 +158,7 @@ try {
 
     $r = Get-RunCheckout copilot $app feedback-1
     $c = Get-RunCheckout claude $app issue-1
-    Check 'Get-RunCheckout and Get-CommandFile name each tool''s run checkout and installed command' ($r.Folder -eq $app -and $r.Branch -eq 'feedback-1' -and $c.Branch -eq 'worktree-issue-1' -and $c.Folder -eq (Join-Path $app '.claude/worktrees/issue-1') -and (Get-CommandFile $app copilot run-issues) -eq (Join-Path $app '.github/skills/run-issues/SKILL.md') -and (Get-CommandFile $app claude run-issues) -eq (Join-Path $app '.claude/commands/run-issues.md')) "$($r | ConvertTo-Json -Compress) $($c | ConvertTo-Json -Compress)"
+    Check 'Get-RunCheckout and Get-CommandFile name each tool''s run worktree and installed command' ($r.Folder -eq (Join-Path $app '.claude/worktrees/feedback-1') -and $r.Branch -eq 'worktree-feedback-1' -and $c.Branch -eq 'worktree-issue-1' -and $c.Folder -eq (Join-Path $app '.claude/worktrees/issue-1') -and (Get-CommandFile $app copilot run-issues) -eq (Join-Path $app '.github/skills/run-issues/SKILL.md') -and (Get-CommandFile $app claude run-issues) -eq (Join-Path $app '.claude/commands/run-issues.md')) "$($r | ConvertTo-Json -Compress) $($c | ConvertTo-Json -Compress)"
 
     $budgetWork = Join-Path $Work 'budget'
     $low = New-Agent -Tool copilot -Copilot (Join-Path $bin 'copilot.ps1') -MaxBudgetUsd 0.1 -App $app -Work $budgetWork
