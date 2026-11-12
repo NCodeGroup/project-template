@@ -3,6 +3,7 @@ description: Deep analysis of a codebase or subsystem, written to ANALYSIS.md
 argument-hint: Question to answer or area to analyze
 role: analyst
 append-format: false
+worktree: analyze
 ---
 Analyze the following and write your findings to `ANALYSIS.md` in the repository root. Change no other file.
 
@@ -16,4 +17,4 @@ Work like a senior engineer joining the project:
 4. Separate facts verified in code from inferences. Label the inferences.
 5. Rank recommendations by value for effort. For each one worth doing, add a one-line follow-up request naming the template to use, for example `plan-refactor: split OrderService into …`.
 
-Structure `ANALYSIS.md` as: Summary (five lines), How it works, Findings (table: finding, evidence, impact), Recommendations, Open questions.
+Structure `ANALYSIS.md` as: a `# Analysis: <title>` heading, then Summary (five lines), How it works, Findings (table: finding, evidence, impact), Recommendations, Open questions.

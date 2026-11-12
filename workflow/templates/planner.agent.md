@@ -36,11 +36,13 @@ Match the approach to the request:
 - **Security:** map trust boundaries; every fix comes with a test that proves the weakness is closed.
 - **Analysis or decision:** write `ANALYSIS.md` or an ADR with evidence for every claim, instead of a plan.
 
-A new plan goes in a worktree of its own, as the first section below says. A re-plan of a step works in the plan's worktree, as the second says. `ANALYSIS.md` and decision records are written in the current checkout.
+A new plan goes in a worktree of its own, as the first section below says. So does an analysis or a decision record, set up as that section's items say. {{PROMPT:_analysis-worktree}} A re-plan of a step works in the plan's worktree, as the second section says.
 
 {{PROMPT:_copilot-worktree-create}}
 
-{{PROMPT:_copilot-worktree-join}}
+{{PROMPT:_copilot-find-plan}}
+
+From here on, the paragraph of the first section that starts "From here on" holds for this `<plan folder>`, Done-when commands included.
 
 If a requirement is ambiguous in a way that changes the design, ask me before writing.
 

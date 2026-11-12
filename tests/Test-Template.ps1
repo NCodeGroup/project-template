@@ -562,6 +562,7 @@ foreach ($case in $cases) {
     Check "${name}: AGENTS.md and .gitignore for the chosen tools" (($agents.Contains('CLAUDE.md') -eq $claude) -and ($ignore.Contains('CLAUDE.local.md') -eq $claude))
     Check "${name}: AGENTS.md starts the project pre-release, and the answers record no pre_release" (($agents -match '(?m)^- pre-release: untracked\r?$') -and ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -notmatch '(?m)^pre_release:')) $agents
     Check "${name}: .gitignore ignores the plan" ($ignore -match '(?m)^PLAN\.md\r?$')
+    Check "${name}: .gitignore ignores the analysis" ($ignore -match '(?m)^ANALYSIS\.md\r?$')
     Check "${name}: .gitignore ignores the plan worktrees" ($ignore -match '(?m)^\.claude/worktrees/\r?$')
     $rules = Get-Content -LiteralPath (Join-Path $dest '.github\instructions\project-template.instructions.md') -Raw
     Check "${name}: template rules for the chosen tools" (($rules.Contains('.claude/commands/') -eq $claude) -and ($rules.Contains('as `.claude/settings.json` lets it in Claude Code') -eq $claude) -and ($rules.Contains('.github/skills/') -eq ('copilot' -in $tools)))
@@ -754,9 +755,9 @@ $runFiles = 'template\.claude\commands\run-issues.md', '.claude\commands\run-iss
 $copilotRunFiles = 'template\.github\prompts\run-issues.prompt.md', 'template\.github\skills\run-issues\SKILL.md', '.github\prompts\run-issues.prompt.md', '.github\skills\run-issues\SKILL.md'
 $m = @(Get-MissingText $runFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`','git worktree add --no-track .claude/worktrees/issue-<number> -b worktree-issue-<number> origin/<default>', '`--no-track` leaves the branch without an upstream until `ship-plan` pushes it with `git push -u`', 'plan-executor', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', 'ExitWorktree'))
 $m += @(foreach ($p in $runFiles) { $full = Join-Path $repoRoot $p; if ((Test-Path -LiteralPath $full) -and ([regex]::Matches([IO.File]::ReadAllText($full), [regex]::Escape('$ARGUMENTS')).Count -ne 1 -or [IO.File]::ReadAllText($full).Contains('{{'))) { "${p}: the arguments placeholder is not there exactly once, or a template token is left" } })
-$m += @(Get-MissingText $copilotRunFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`', 'git worktree add --no-track .claude/worktrees/issue-<number> -b worktree-issue-<number> origin/<default>', 'runSubagent', 'plan-executor', '.github/skills/<name>/SKILL.md', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', '/continue-plan issue-<number>', 'Set-Location -LiteralPath ''<worktree path>'';'))
-$m += @(foreach ($p in $copilotRunFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'ExitWorktree', 'EnterWorktree', '.claude/commands/', '$ARGUMENTS', '{{', '## Run Ahead') { if ($t.Contains($x)) { "${p}: has $x" } } } })
-Check 'workflow: run-issues reaches Claude Code from run-issues.md, and Copilot Chat and Copilot CLI from run-issues-copilot.md, which runs each entry in a worktree of its own, one at a time' (-not $m) ($m -join '; ')
+$m += @(Get-MissingText $copilotRunFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'Open each one as a draft', 'the state script''s `protected` value must be `host`', 'git worktree add --no-track .claude/worktrees/issue-<number> -b worktree-issue-<number> origin/<default>', 'runSubagent', 'plan-executor', '.github/skills/<name>/SKILL.md', 'third review', 'addPullRequestReviewThreadReply', 'Autopilot:', '/continue-plan issue-<number>', 'Set-Location -LiteralPath ''<worktree path>'';', 'becomes the current one, with its own `<worktree path>`'))
+$m += @(foreach ($p in $copilotRunFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'ExitWorktree', 'EnterWorktree', '.claude/commands/', '$ARGUMENTS', '{{') { if ($t.Contains($x)) { "${p}: has $x" } } } })
+Check 'workflow: run-issues reaches Claude Code from run-issues.md, and Copilot Chat and Copilot CLI from run-issues-copilot.md, which runs each entry in a worktree of its own and runs one entry ahead' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('file them as issues, which my yes alone means; fix them in the same pull request before merge; file them and run each as a new entry of this run; or file none', 'Offer the third answer only when the `landing` line says `follow-ups=issues`', '## Fix Follow-ups in the Pull Request', 'This entry can fix a line unless its fix would edit a protected path, whoever wrote the line', 'a fix step built from a finding or a follow-up follows', 'stop this entry, naming the files, when it lists a protected path, and do this item again', 'never reply `Autopilot: left as a follow-up` on a finding that answer fixes now', 'only from that round on does no NCode Review finding get a step', 'is a finding to act on instead, judged as item 5 says', '## Run Follow-ups as Entries', 'tell it to treat every follow-up as one to act on next', 'add the follow-ups it names to plan next to the queue', 'fewer than five entries, counting every entry taken so far', 'give the commands Run Follow-ups as Entries item 4 names for the rest', 'that command treats a nit as a finding to act on instead'))
 $m += @(foreach ($p in $runFiles + $copilotRunFiles) { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); if ($t -match '(?i)complete (them|the follow-ups) immediately|Complete Follow-ups|no step made from a line of the plan''s own') { "${p}: still offers to complete the follow-ups immediately" } })
 Check 'workflow: run-issues offers to file the follow-ups, fix them in the same pull request, run each as a new entry or file none, and fixes them within max-review-rounds' (-not $m) ($m -join '; ')
@@ -897,11 +898,11 @@ $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.
 Check 'workflow: plans say their release version moves when another plan lands it first' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\handoff-plan.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-bugfix\SKILL.md') ('Use the newest version tag on `origin`, not one only this clone has', 'git ls-remote --tags --refs --sort=-version:refname origin'))
 Check 'workflow: plans take their release version from the tags on origin' (-not $m) ($m -join '; ')
-$m = @(Get-MissingText $runFiles ('Land one entry at a time, in queue order', '## Run Ahead', 'the state script''s `renumber` line names the next free version', 'Hold it there until the current entry has landed', 'the entry after it may run ahead in its place'))
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('Land one entry at a time, in queue order', '## Run Ahead', 'the state script''s `renumber` line names the next free version', 'Hold it there until the current entry has landed', 'the entry after it may run ahead in its place'))
 Check 'workflow: run-issues runs one entry ahead and lands entries in queue order' (-not $m) ($m -join '; ')
-$m = @(Get-MissingText $runFiles ('planned, executed and reviewed ahead of it', 'go on with the entry that ran ahead', 'running the next entry ahead meanwhile', 'an entry running ahead keeps its worktree'))
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('planned, executed and reviewed ahead of it', 'go on with the entry that ran ahead', 'running the next entry ahead meanwhile', 'an entry running ahead keeps its worktree'))
 Check 'workflow: run-issues announces, waits with and stops around the entry running ahead' (-not $m) ($m -join '; ')
-$m = @(Get-MissingText $runFiles ('When its `next` is `ship-plan` while the pull request is open', 'pushes the renumber step to the draft pull request', 'Review the Pull Request item 3 renumbers that entry the same way', 'must now merge with a merge commit, not by rebasing'))
+$m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('When its `next` is `ship-plan` while the pull request is open', 'pushes the renumber step to the draft pull request', 'Review the Pull Request item 3 renumbers that entry the same way', 'must now merge with a merge commit, not by rebasing'))
 Check 'workflow: run-issues renumbers an entry whose open draft pull request lost its release' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('In a pre-release project, `ship-plan` moves a plan whose `renumber` version has a major version of 0 by the `Release:` line alone', 'so `next` is `replan-step`: stop this entry as Stop an Issue says', 'Only when the state script''s `next` then starts with `wait`'))
 $m += @(Get-MissingText $runFiles ('adds no step for it and opens the pull request, unless `conflicts` also names files'))
@@ -955,6 +956,7 @@ $results = if ($testHunk) {
 Check 'update: a project-owned change the project already has is recognized, one it lacks is not' ((@($results) -join ',') -eq 'True,False') (@($results) -join ',')
 $worktreeKinds = [ordered]@{
     create = 'plan-feature', 'plan-bugfix', 'plan-refactor', 'plan-tests', 'plan-migration', 'plan-performance', 'plan-security', 'plan-docs', 'handoff-plan', 'plan-issue', 'plan-template-update'
+    analyze = 'analyze-architecture', 'analyze-decision'
     join   = 'orchestrate-plan', 'execute-step', 'replan-step', 'review-plan-diff', 'ship-plan'
     finish = 'finish-plan'
 }
@@ -969,6 +971,7 @@ $worktreeMissing = @(
 # Copilot's sections: the prompts, skills and agents that plan, work on or finish a plan carry the Copilot worktree section for their kind.
 $copilotWorktreeSections = @{}
 foreach ($kind in $worktreeKinds.Keys) { $copilotWorktreeSections[$kind] = (Expand-HybridInclude (Read-HybridTemplateFile (Join-Path $workflow "templates\_copilot-worktree-$kind.md")).Body).Trim() }
+$findPlanText = (Expand-HybridInclude (Read-HybridTemplateFile (Join-Path $workflow 'templates\_copilot-find-plan.md')).Body).Trim()
 $copilotWorktreeMissing = @(
     foreach ($kind in $worktreeKinds.Keys) {
         foreach ($cmd in $worktreeKinds[$kind]) {
@@ -981,30 +984,38 @@ $copilotWorktreeMissing = @(
     }
     foreach ($agent in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.github\agents') -Filter '*.agent.md' -File) {
         $text = [IO.File]::ReadAllText($agent.FullName)
-        if (-not $text.Contains($copilotWorktreeSections['join'])) { "template\.github\agents\$($agent.Name): lacks the join section" }
-        if ($agent.Name -like '*-planner.agent.md' -and -not $text.Contains($copilotWorktreeSections['create'])) { "template\.github\agents\$($agent.Name): lacks the create section" }
+        if ($agent.Name -like '*-planner.agent.md') {
+            # The planner agent carries the create section, which already states the plan-folder rules, and the find-the-plan items, not a second copy of them.
+            if (-not $text.Contains($copilotWorktreeSections['create'])) { "template\.github\agents\$($agent.Name): lacks the create section" }
+            if (-not $text.Contains($findPlanText)) { "template\.github\agents\$($agent.Name): lacks the find-the-plan items" }
+            foreach ($s in 'From here on, `<plan folder>` is the repository root', 'A Copilot session can''t change the folder its shell starts in') {
+                if ([regex]::Matches($text, [regex]::Escape($s)).Count -ne 1) { "template\.github\agents\$($agent.Name): does not state '$s' exactly once" }
+            }
+        }
+        elseif (-not $text.Contains($copilotWorktreeSections['join'])) { "template\.github\agents\$($agent.Name): lacks the join section" }
     }
 )
 $worktreeLeaked = @(
     Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.github'), (Join-Path $repoRoot 'template\.claude\agents') -Recurse -File |
         Where-Object { $text = [IO.File]::ReadAllText($_.FullName); $text.Contains('EnterWorktree') -or $text -match '(?m)^isolation:' } | ForEach-Object Name
-    'analyze-architecture', 'analyze-decision', 'review-code', 'triage-issues', 'continue-plan' | Where-Object { [IO.File]::ReadAllText((Join-Path $repoRoot "template\.claude\commands\$_.md")).Contains('EnterWorktree') }
+    'review-code', 'triage-issues', 'continue-plan' | Where-Object { [IO.File]::ReadAllText((Join-Path $repoRoot "template\.claude\commands\$_.md")).Contains('EnterWorktree') }
 )
 Check 'workflow: Claude Code planning commands create the plan''s worktree, and the commands that work on a plan move into it' (-not $worktreeMissing) ($worktreeMissing -join ', ')
 Check 'workflow: Copilot planning commands create the plan''s worktree, and the Copilot commands and agents that work on a plan join or finish it' (-not $copilotWorktreeMissing) ($copilotWorktreeMissing -join ', ')
-Check 'workflow: no Copilot file, plan-executor subagent or analysis command uses Claude Code''s worktree tools' (-not $worktreeLeaked) ($worktreeLeaked -join ', ')
+Check 'workflow: no Copilot file, plan-executor subagent or read-only command uses Claude Code''s worktree tools' (-not $worktreeLeaked) ($worktreeLeaked -join ', ')
 # Every command that creates or joins a plan's branch or worktree checks that Git runs .githooks, through {{PROMPT:_git-hooks}}.
 $gitHooksText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_git-hooks.md')).Body.Trim()
-$gitHooksFiles = @($worktreeKinds.create + 'orchestrate-plan', 'run-issues', 'address-feedback' | ForEach-Object { ".claude\commands\$_.md" }) +
+$gitHooksFiles = @($worktreeKinds.create + $worktreeKinds.analyze + 'orchestrate-plan', 'run-issues', 'address-feedback' | ForEach-Object { ".claude\commands\$_.md" }) +
     '.github\agents\copilot-orchestrator.agent.md', '.github\agents\hybrid-orchestrator.agent.md', '.github\prompts\orchestrate-plan.prompt.md',
     '.github\prompts\run-issues.prompt.md', '.github\skills\orchestrate-plan\SKILL.md', '.github\skills\run-issues\SKILL.md', '.github\prompts\address-feedback.prompt.md', '.github\skills\address-feedback\SKILL.md' +
-    @($worktreeKinds.create | ForEach-Object { ".github\prompts\$_.prompt.md"; ".github\skills\$_\SKILL.md" })
+    @($worktreeKinds.create + $worktreeKinds.analyze | ForEach-Object { ".github\prompts\$_.prompt.md"; ".github\skills\$_\SKILL.md" })
 $gitHooksMissing = @($gitHooksFiles | Where-Object { -not [IO.File]::ReadAllText((Join-Path $repoRoot "template\$_")).Contains($gitHooksText) })
 Check 'workflow: the commands that create or join a plan''s branch check that Git runs .githooks' (-not $gitHooksMissing) ($gitHooksMissing -join ', ')
 # A planning command settles the hooks and the push branch in the main checkout before it creates the worktree, because the worktree shares the clone's Git config.
 $pushSessionText = (Expand-HybridInclude (Read-HybridTemplateFile (Join-Path $workflow 'templates\_push-branch-session.md')).Body).Trim()
-$m = @(foreach ($cmd in $worktreeKinds.create) {
-    foreach ($file in @(@("template\.claude\commands\$cmd.md", 'with the `EnterWorktree` tool and that `name`'), @("template\.github\prompts\$cmd.prompt.md", 'git worktree add --no-track -b worktree-<name>'), @("template\.github\skills\$cmd\SKILL.md", 'git worktree add --no-track -b worktree-<name>'))) {
+$m = @(foreach ($cmd in $worktreeKinds.create + $worktreeKinds.analyze) {
+    $claudeMarker = if ($cmd -like 'analyze-*') { 'git worktree add --no-track -b worktree-<name>' } else { 'with the `EnterWorktree` tool and that `name`' }
+    foreach ($file in @(@("template\.claude\commands\$cmd.md", $claudeMarker), @("template\.github\prompts\$cmd.prompt.md", 'git worktree add --no-track -b worktree-<name>'), @("template\.github\skills\$cmd\SKILL.md", 'git worktree add --no-track -b worktree-<name>'))) {
         $t = [IO.File]::ReadAllText((Join-Path $repoRoot $file[0])); $hooksAt = $t.IndexOf($gitHooksText); $sessionAt = $t.IndexOf($pushSessionText); $createAt = $t.IndexOf($file[1])
         if (-not ($hooksAt -ge 0 -and $hooksAt -lt $sessionAt -and $sessionAt -lt $createAt)) { "$($file[0]): the hooks, the push branch and the worktree are not in that order" }
     }
