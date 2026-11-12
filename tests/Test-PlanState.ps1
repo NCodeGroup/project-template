@@ -341,9 +341,20 @@ $r = Test-State (Get-State $pickDb) @{ plan = '-'; landed = 'no'; analyses = 'st
 Check 'next: a worktree without a plan names the open plans and analyses' $r.Ok $r.Detail
 Push-Location $repo
 try {
+    Invoke-Git worktree add -q --no-track -b worktree-notes .claude/worktrees/notes origin/main
+    Invoke-Git worktree add -q --no-track -b worktree-bare .claude/worktrees/bare origin/main
+}
+finally { Pop-Location }
+Write-Text (Join-Path $repo '.claude/worktrees/notes/ANALYSIS.md') "Notes without a heading`n"
+$r = Test-State (Get-State $repo) @{ analyses = 'notes=-; pick-db=Use SQLite; study=Study of the parser' }
+Check 'local: a headingless analysis prints - as its title, and a bare worktree is not an analysis' $r.Ok $r.Detail
+Push-Location $repo
+try {
     Invoke-Git worktree remove --force .claude/worktrees/study
     Invoke-Git worktree remove --force .claude/worktrees/pick-db
-    Invoke-Git branch -q -D worktree-study worktree-pick-db
+    Invoke-Git worktree remove --force .claude/worktrees/notes
+    Invoke-Git worktree remove --force .claude/worktrees/bare
+    Invoke-Git branch -q -D worktree-study worktree-pick-db worktree-notes worktree-bare
 }
 finally { Pop-Location }
 
