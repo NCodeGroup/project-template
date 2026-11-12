@@ -26,4 +26,8 @@ handoffs:
     send: true
     model: '{{REVIEWER_MODEL}}'
 ---
+{{PROMPT:_copilot-worktree-join}}
+
+## Task
+
 {{PROMPT:review-plan-diff|the base branch or commit in my message, if any}}

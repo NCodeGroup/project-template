@@ -12,6 +12,10 @@ handoffs:
     send: true
     model: '{{REVIEWER_MODEL}}'
 ---
+{{PROMPT:_copilot-worktree-join}}
+
+## Task
+
 {{PROMPT:orchestrate-plan|any extra instructions in my message}}
 
 In this session, the subagent to delegate to is "{{IMPLEMENTER_AGENT}}"; it runs on {{EXECUTOR_LABEL}}. When re-planning a step, follow these rules:

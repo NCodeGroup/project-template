@@ -21,6 +21,10 @@ handoffs:
     send: true
     model: '{{REVIEWER_MODEL}}'
 ---
+{{PROMPT:_copilot-worktree-join}}
+
+## Task
+
 {{PROMPT:execute-step|the step number in my message; if there is none, the first unchecked step}}
 
 When you escalate, end your report with: Select "Re-plan with the planner" to send this step back for deep reasoning.
