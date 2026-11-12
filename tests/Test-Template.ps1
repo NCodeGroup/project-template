@@ -562,6 +562,7 @@ foreach ($case in $cases) {
     Check "${name}: AGENTS.md and .gitignore for the chosen tools" (($agents.Contains('CLAUDE.md') -eq $claude) -and ($ignore.Contains('CLAUDE.local.md') -eq $claude))
     Check "${name}: AGENTS.md starts the project pre-release, and the answers record no pre_release" (($agents -match '(?m)^- pre-release: untracked\r?$') -and ((Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw) -notmatch '(?m)^pre_release:')) $agents
     Check "${name}: .gitignore ignores the plan" ($ignore -match '(?m)^PLAN\.md\r?$')
+    Check "${name}: .gitignore ignores the analysis" ($ignore -match '(?m)^ANALYSIS\.md\r?$')
     Check "${name}: .gitignore ignores the plan worktrees" ($ignore -match '(?m)^\.claude/worktrees/\r?$')
     $rules = Get-Content -LiteralPath (Join-Path $dest '.github\instructions\project-template.instructions.md') -Raw
     Check "${name}: template rules for the chosen tools" (($rules.Contains('.claude/commands/') -eq $claude) -and ($rules.Contains('as `.claude/settings.json` lets it in Claude Code') -eq $claude) -and ($rules.Contains('.github/skills/') -eq ('copilot' -in $tools)))
