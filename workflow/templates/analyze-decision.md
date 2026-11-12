@@ -3,6 +3,7 @@ description: Compare options for a technical decision and record it as an ADR
 argument-hint: The decision to make, with known options or constraints
 role: analyst
 append-format: false
+worktree: analyze
 ---
 Help me make this decision and record it as an architecture decision record (ADR):
 
@@ -14,4 +15,4 @@ Help me make this decision and record it as an architecture decision record (ADR
 4. Recommend one option and explain why the others lose. State the risks of the recommendation and how to reduce them.
 5. If weighing the forces needs my input, ask before writing.
 6. Read the decisions this one touches first: the repository's own in `docs/decisions/`, and the project template's in `docs/decisions/project-template/`. When the recommendation goes against one, say so; the new ADR supersedes it.
-7. Write the ADR as `docs/decisions/NNNN-<slug>.md` (the next number above the highest record numbered 1000 or more in that folder, or 1000 for the first; numbers below 1000 are the project template's), with the sections of `docs/decisions/0000-template.md`, and add a row for it to the index in `docs/decisions/README.md`. A repository that keeps decisions elsewhere writes it there, in its own format. Never write in `docs/decisions/project-template/`, which the template owns; an ADR that overrides one of the template's says so on a `Supersedes: project-template ADR-NNNN` line, and you remind me to list the override in `AGENTS.md`. Change no other file.
+7. Write the ADR as `docs/decisions/NNNN-<slug>.md` (run `git fetch origin` first; the next number above the highest record numbered 1000 or more in that folder on the branch `git symbolic-ref --short refs/remotes/origin/HEAD` prints, in this checkout, and in the `docs/decisions/` folder of every other worktree `git worktree list` prints, or 1000 for the first; numbers below 1000 are the project template's), with the sections of `docs/decisions/0000-template.md`, and add a row for it to the index in `docs/decisions/README.md`. A repository that keeps decisions elsewhere writes it there, in its own format. Never write in `docs/decisions/project-template/`, which the template owns; an ADR that overrides one of the template's says so on a `Supersedes: project-template ADR-NNNN` line, and you remind me to list the override in `AGENTS.md`. Commit the record and its index row as Analyze in a worktree of its own says. Change no other file.

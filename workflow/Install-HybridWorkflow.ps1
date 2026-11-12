@@ -27,7 +27,7 @@
 
     The installer also writes Get-PlanState.ps1, which /ship-plan, /continue-plan and /finish-plan run, to .template\ (-Repo), or to ~\.claude\ and ~\.copilot\ (-User).
 
-    Claude Code commands, VS Code prompts and Copilot CLI skills of templates with a "worktree" field all start with that tool's section that puts the plan in a git worktree of its own (create), moves the session into it (join), or removes it once the work is pushed (finish): templates\_claude-worktree-*.md for Claude Code, templates\_copilot-worktree-*.md for Copilot.
+    Claude Code commands, VS Code prompts and Copilot CLI skills of templates with a "worktree" field all start with that tool's section that puts the plan in a git worktree of its own (create), puts an analysis or a decision record in one (analyze), moves the session into it (join), or removes it once the work is pushed (finish): templates\_claude-worktree-*.md for Claude Code, templates\_copilot-worktree-*.md for Copilot.
 
     A template's "targets" field limits it to the targets it names, such as "targets: Claude" for run-issues, which only Claude Code gets; without it a template goes to every target.
 
@@ -115,10 +115,10 @@ $claudeRole = @{
     reviewer     = "model: sonnet`neffort: high"
     executor     = 'model: inherit'
 }
-# The section that puts a plan in a worktree of its own (create), moves the session to it (join), or removes it (finish), for Claude Code ($Tool is claude) or Copilot ($Tool is copilot).
+# The section that puts a plan in a worktree of its own (create), puts an analysis or a decision record in one (analyze), moves the session to it (join), or removes it (finish), for Claude Code ($Tool is claude) or Copilot ($Tool is copilot).
 function Get-WorktreeSection([string]$Tool, [string]$Kind) {
     $path = Join-Path $templateDir "_$Tool-worktree-$Kind.md"
-    if (-not (Test-Path -LiteralPath $path)) { throw "Unknown worktree value '$Kind'; use create, join or finish." }
+    if ($Kind -notin 'create', 'analyze', 'join', 'finish' -or -not (Test-Path -LiteralPath $path)) { throw "Unknown worktree value '$Kind'; use create, analyze, join or finish." }
     (Expand-HybridInclude (Read-HybridTemplateFile $path).Body).TrimEnd()
 }
 $vscodeModel = @{ planner = $PlannerModel; analyst = $PlannerModel; orchestrator = $PlannerModel; reviewer = $ReviewerModel }
