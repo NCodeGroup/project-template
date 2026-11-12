@@ -656,7 +656,8 @@ try {
         }
     }
     $plans = if ($others) { $others -join '; ' } else { '-' }
-    $analyses = if ($analysisList) { @($analysisList | Sort-Object) -join '; ' } else { '-' }
+    $analysisSorted = @($analysisList | Sort-Object)
+    $analyses = if ($analysisSorted) { $analysisSorted -join '; ' } else { '-' }
 
     # Next command
     $next = $null
@@ -688,7 +689,7 @@ try {
         elseif ($plans -ne '-' -or $analyses -ne '-') {
             $parts = @()
             if ($plans -ne '-') { $parts += "open plans: $(($others | ForEach-Object { ($_ -split '=', 2)[0] }) -join ', ')" }
-            if ($analyses -ne '-') { $parts += "open analyses: $((@($analysisList | Sort-Object) | ForEach-Object { ($_ -split '=', 2)[0] }) -join ', ')" }
+            if ($analyses -ne '-') { $parts += "open analyses: $(($analysisSorted | ForEach-Object { ($_ -split '=', 2)[0] }) -join ', ')" }
             $next = "none no plan in this folder; $($parts -join '; ')"
         }
         else { $next = 'none no plan in this folder' }
