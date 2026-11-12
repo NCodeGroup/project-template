@@ -1012,15 +1012,25 @@ $m = @(foreach ($cmd in $worktreeKinds.create) {
 $m += @(foreach ($p in $copilotRunFiles) { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); $hooksAt = $t.IndexOf($gitHooksText); $createAt = $t.IndexOf('git worktree add --no-track .claude/worktrees/issue-<number>'); if (-not ($hooksAt -ge 0 -and $createAt -ge 0 -and $hooksAt -lt $createAt)) { "${p}: the hooks are not settled before the first worktree" } })
 Check 'workflow: every planning command and run-issues settle the hooks and the push branch in the main checkout before they create a worktree' (-not $m) ($m -join '; ')
 # A command never switches or creates a branch in the main checkout (#349): only the legacy finish of a plan written without a worktree, a pre-v0.11.0 template update, and a command the user is told to run do.
-$switchAllowed = '`git switch <default branch>`', '`git switch -c build/project-template-<tag>`', '`git switch feedback-<number>`'
+$switchAllowed = @{
+    'finish-plan'          = @('`git switch <default branch>`')
+    'plan-issue'           = @('`git switch -c build/project-template-<tag>`')
+    'plan-template-update' = @('`git switch -c build/project-template-<tag>`')
+    'address-feedback'     = @('`git switch feedback-<number>`')
+}
+# Returns $true when the text still switches or creates a branch after the strings that command may hold are removed.
+function Test-MainCheckoutSwitch([string]$Name, [string]$Text) {
+    foreach ($x in @($switchAllowed[$Name])) { if ($x) { $Text = $Text.Replace($x, '') } }
+    return [bool]($Text -match '\bgit switch\b|\bgit checkout -[bB]\b')
+}
 $m = @(foreach ($dir in 'template\.claude\commands', 'template\.claude\agents', 'template\.github\prompts', 'template\.github\skills', 'template\.github\agents') {
     foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repoRoot $dir) -Recurse -File) {
-        $t = [IO.File]::ReadAllText($file.FullName)
-        foreach ($x in $switchAllowed) { $t = $t.Replace($x, '') }
-        if ($t -match '\bgit switch\b|\bgit checkout -[bB]\b') { "$dir\$($file.Name)" }
+        $name = if ($file.Name -eq 'SKILL.md') { $file.Directory.Name } else { $file.Name -replace '\.(prompt|agent)\.md$|\.md$', '' }
+        if (Test-MainCheckoutSwitch $name ([IO.File]::ReadAllText($file.FullName))) { "$dir\$($file.Name)" }
     }
 })
 Check 'workflow: no generated command, prompt, skill or agent switches or creates a branch in the main checkout' (-not $m) ($m -join ', ')
+Check 'workflow: the main-checkout switch check allows each switch only in its own command' ((-not (Test-MainCheckoutSwitch 'address-feedback' 'run `git switch feedback-<number>`')) -and (Test-MainCheckoutSwitch 'run-issues' 'run `git switch feedback-<number>`') -and (Test-MainCheckoutSwitch 'finish-plan' '`git switch <default branch>` then `git switch -c x`') -and (-not (Test-MainCheckoutSwitch 'plan-issue' '`git switch -c build/project-template-<tag>`'))) 'Test-MainCheckoutSwitch lets a command hold a switch it may not, or rejects one it may'
 # After a push of fix steps, the review loops ask NCode Review for a review with a /review comment, through {{PROMPT:_review-request}}: a push alone starts none.
 $reviewRequestText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_review-request.md')).Body.Trim()
 $m = @(Get-MissingText ($runFiles + $copilotRunFiles) ($reviewRequestText, 'comments `/review` after each push of fix steps', 'again when item 7 asks it to with a `/review` comment'))
