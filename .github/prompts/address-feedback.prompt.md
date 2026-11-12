@@ -13,7 +13,7 @@ You coordinate. Each stage runs as the workflow's own command does: read that co
 - Copilot Chat, in a Local session: the `runSubagent` tool. A planning stage runs without a named agent, on this session's model. `review-plan-diff` runs on the Copilot Reviewer agent, or on the Hybrid Reviewer when the repository has only that one, so it runs on the reviewer model.
 - Copilot CLI: the general-purpose subagent. It runs on the session's model unless `/subagents` sets another, so start the session on Opus.
 
-A subagent doesn't see this conversation: give it the repository's absolute path, the stage file to follow, its arguments and the rules below, and tell it to work only in that folder and never to switch branches. A subagent can't start subagents of its own, so `orchestrate-plan`, which delegates each step, runs in this session.
+A subagent doesn't see this conversation: give it the repository's absolute path, the stage file to follow, its arguments and the rules below. Give every subagent the absolute path of the folder it works in, the plan's worktree when the stage works on a plan, and tell it to start every command with `Set-Location -LiteralPath '<that folder>';`, because its shell starts in this session's folder, to give file tools absolute paths, and never to switch branches. A subagent can't start subagents of its own, so `orchestrate-plan`, which delegates each step, runs in this session.
 
 An item is one open review thread, one top-level comment or one review summary on the pull request. `<number>` is the pull request's number, `<head>` the name of its branch, and `<default>` the repository's default branch. The run's checkout is the folder and branch the run works in, as Checkout says.
 
