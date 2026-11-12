@@ -4,4 +4,8 @@ description: Execute one PLAN.md step on a cheaper model and escalate with [?] i
 model: {{CLI_EXECUTOR_MODEL}}
 user-invocable: false
 ---
+{{PROMPT:_copilot-worktree-join}}
+
+## Task
+
 {{PROMPT:execute-step|the step number in the task you were given; if there is none, the first unchecked step}}

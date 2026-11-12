@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.85.0] - 2026-11-12
+
+### Added
+
+- Copilot Chat, Copilot CLI and the VS Code agents keep each plan in its own git worktree, `.claude/worktrees/<name>/` on `worktree-<name>`, as Claude Code does, so several sessions can work in one clone; a Copilot session runs each command in the plan's folder. ([#348](https://github.com/NCodeGroup/project-template/issues/348))
+
+### Changed
+
+- `/run-issues` and `/address-feedback` in Copilot run each entry or run in a worktree of their own and never switch or edit the main checkout, and `/run-issues` no longer needs a clean main checkout to start. ([#348](https://github.com/NCodeGroup/project-template/issues/348), [#349](https://github.com/NCodeGroup/project-template/issues/349))
+- `/finish-plan` fast-forwards the default branch without switching a checkout that holds other work. ([#349](https://github.com/NCodeGroup/project-template/issues/349))
+- Every rendered `.gitignore` ignores `.claude/worktrees/`, and the customization check fails a generated command that switches or creates a branch in the main checkout. ([#349](https://github.com/NCodeGroup/project-template/issues/349))
+
 ## [0.84.3] - 2026-11-11
 
 ### Changed
@@ -1376,7 +1388,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.84.3...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.85.0...HEAD
+[0.85.0]: https://github.com/NCodeGroup/project-template/compare/v0.84.3...v0.85.0
 [0.84.3]: https://github.com/NCodeGroup/project-template/compare/v0.84.2...v0.84.3
 [0.84.2]: https://github.com/NCodeGroup/project-template/compare/v0.84.1...v0.84.2
 [0.84.1]: https://github.com/NCodeGroup/project-template/compare/v0.84.0...v0.84.1
