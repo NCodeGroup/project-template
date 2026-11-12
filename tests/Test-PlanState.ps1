@@ -348,6 +348,9 @@ finally { Pop-Location }
 Write-Text (Join-Path $repo '.claude/worktrees/notes/ANALYSIS.md') "Notes without a heading`n"
 $r = Test-State (Get-State $repo) @{ analyses = 'notes=-; pick-db=Use SQLite; study=Study of the parser' }
 Check 'local: a headingless analysis prints - as its title, and a bare worktree is not an analysis' $r.Ok $r.Detail
+Write-Text (Join-Path $pickDb 'PLAN.md') "# Plan: Pick a database`n"
+$r = Test-State (Get-State $repo) @{ plans = 'other=Other plan; pick-db=Pick a database'; analyses = 'notes=-; study=Study of the parser' }
+Check 'local: a worktree with a plan and a decision commit is listed only as a plan' $r.Ok $r.Detail
 Push-Location $repo
 try {
     Invoke-Git worktree remove --force .claude/worktrees/study
