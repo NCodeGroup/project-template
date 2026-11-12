@@ -971,6 +971,7 @@ $worktreeMissing = @(
 # Copilot's sections: the prompts, skills and agents that plan, work on or finish a plan carry the Copilot worktree section for their kind.
 $copilotWorktreeSections = @{}
 foreach ($kind in $worktreeKinds.Keys) { $copilotWorktreeSections[$kind] = (Expand-HybridInclude (Read-HybridTemplateFile (Join-Path $workflow "templates\_copilot-worktree-$kind.md")).Body).Trim() }
+$findPlanText = (Expand-HybridInclude (Read-HybridTemplateFile (Join-Path $workflow 'templates\_copilot-find-plan.md')).Body).Trim()
 $copilotWorktreeMissing = @(
     foreach ($kind in $worktreeKinds.Keys) {
         foreach ($cmd in $worktreeKinds[$kind]) {
@@ -983,8 +984,15 @@ $copilotWorktreeMissing = @(
     }
     foreach ($agent in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template\.github\agents') -Filter '*.agent.md' -File) {
         $text = [IO.File]::ReadAllText($agent.FullName)
-        if (-not $text.Contains($copilotWorktreeSections['join'])) { "template\.github\agents\$($agent.Name): lacks the join section" }
-        if ($agent.Name -like '*-planner.agent.md' -and -not $text.Contains($copilotWorktreeSections['create'])) { "template\.github\agents\$($agent.Name): lacks the create section" }
+        if ($agent.Name -like '*-planner.agent.md') {
+            # The planner agent carries the create section, which already states the plan-folder rules, and the find-the-plan items, not a second copy of them.
+            if (-not $text.Contains($copilotWorktreeSections['create'])) { "template\.github\agents\$($agent.Name): lacks the create section" }
+            if (-not $text.Contains($findPlanText)) { "template\.github\agents\$($agent.Name): lacks the find-the-plan items" }
+            foreach ($s in 'From here on, `<plan folder>` is the repository root', 'A Copilot session can''t change the folder its shell starts in') {
+                if ([regex]::Matches($text, [regex]::Escape($s)).Count -ne 1) { "template\.github\agents\$($agent.Name): does not state '$s' exactly once" }
+            }
+        }
+        elseif (-not $text.Contains($copilotWorktreeSections['join'])) { "template\.github\agents\$($agent.Name): lacks the join section" }
     }
 )
 $worktreeLeaked = @(
