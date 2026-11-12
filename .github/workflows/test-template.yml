@@ -65,7 +65,7 @@ jobs:
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly -Scenario rest
           - name: Set up the address-feedback end-to-end fixture for a run Claude Code stopped
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly -Scenario resume-claude
-          - name: Set up the address-feedback end-to-end fixture for a run Copilot stopped
+          - name: Set up the address-feedback end-to-end fixture for a run an earlier Copilot version stopped
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly -Scenario resume-copilot
           - name: Set up the GitLab address-feedback end-to-end fixture
             run: ./tests/e2e/Test-AddressFeedbackGitLab.ps1 -SetupOnly

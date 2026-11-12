@@ -15,7 +15,7 @@
     It then runs /address-feedback #2 on a pull request from farewell;touch${IFS}pwned, a branch name with shell
     characters, resumes it once with a go-ahead, and checks that it stopped on the branch name.
     With -Scenario rest, the stand-in refuses GraphQL and the gh pr, gh issue, gh release and gh repo commands, as a Claude Code
-    cloud session's proxy does, and the run must read and reply through the REST routes. With -Scenario resume-claude, the setup leaves a run of /address-feedback #1 that stopped once its plan was reviewed, and the test runs only /address-feedback #1, which must finish it: push the stopped run's step as it was, name its commit in the writer's reply, reply to the plan's other items and leave no checkout behind. With -Scenario resume-copilot the stopped run is on Copilot's branch feedback-1 in the main checkout instead, and Claude Code must move it into a worktree first.
+    cloud session's proxy does, and the run must read and reply through the REST routes. With -Scenario resume-claude, the setup leaves a run of /address-feedback #1 that stopped once its plan was reviewed, and the test runs only /address-feedback #1, which must finish it: push the stopped run's step as it was, name its commit in the writer's reply, reply to the plan's other items and leave no checkout behind. With -Scenario resume-copilot the stopped run is on the branch feedback-1 in the main checkout instead, as an earlier Copilot version left it, and either tool's Resume moves it into .claude/worktrees/feedback-1 first.
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
@@ -34,7 +34,7 @@
     graphql, the default: the stand-in serves GraphQL, as in a local session. rest: host/graphql-refused.txt makes the
     stand-in refuse GraphQL and the gh pr, gh issue, gh release and gh repo commands as a Claude Code cloud session's
     proxy does, so the run must read the pull request and its threads and reply through the REST routes; the test then
-    also checks that every thread's reply went through pulls/<number>/comments/<id>/replies. resume-claude: the stand-in serves GraphQL, and the setup leaves a stopped run of /address-feedback #1 in .claude/worktrees/feedback-1, as Claude Code leaves one, with its one step committed and its plan reviewed; the test runs only /address-feedback #1. resume-copilot: the same, with the stopped run on the branch feedback-1 in the main checkout and PLAN.md at its root, as Copilot leaves one. Run each. Without
+    also checks that every thread's reply went through pulls/<number>/comments/<id>/replies. resume-claude: the stand-in serves GraphQL, and the setup leaves a stopped run of /address-feedback #1 in .claude/worktrees/feedback-1, as Claude Code leaves one, with its one step committed and its plan reviewed; the test runs only /address-feedback #1. resume-copilot: the same, with the stopped run on the branch feedback-1 in the main checkout and PLAN.md at its root, as an earlier Copilot version left one; either tool's Resume moves it into .claude/worktrees/feedback-1. Run each. Without
     -Scenario, -CheckOnly checks the scenario the fixture was set up for.
 
 .PARAMETER Tool
@@ -148,7 +148,7 @@ function Get-FarewellResult([string]$Folder) {
 # .claude/worktrees/feedback-1 on worktree-feedback-1, as Claude Code leaves one. Its one step makes Get-Farewell say
 # "Goodbye, world!" without a name, as the writer asks, and its plan gives each item its verdict. Returns the run's
 # folder and the step's commit.
-# With -Copilot it leaves the run on the branch feedback-1 in the main checkout, with PLAN.md at its root, as Copilot leaves one.
+# With -Copilot it leaves the run on the branch feedback-1 in the main checkout, with PLAN.md at its root, as Copilot's /address-feedback left one before v0.85.0.
 function New-StoppedRun([switch]$Copilot) {
     if ($Copilot) {
         $folder = $app
@@ -319,16 +319,16 @@ exit 0
             $ok = $fb['feedback'] -eq '1' -and $fb['pr'] -eq '1 OPEN' -and $fb['conflicts'] -eq '-' -and $fb['next'] -eq 'address-feedback 1'
             Check 'fixture: the state script sends a stopped run''s reviewed plan back to /address-feedback 1, with pull request #1 open' $ok "feedback='$($fb['feedback'])' pr='$($fb['pr'])' conflicts='$($fb['conflicts'])' next='$($fb['next'])'"
 
-            # Copilot's Resume: PLAN.md is copied out, the worktree removed without --force, and its branch checked out here as feedback-1.
+            # The layout an earlier Copilot version left: PLAN.md is copied out, the worktree removed without --force, and its branch checked out here as feedback-1.
             Copy-Item -LiteralPath (Join-Path $run.Folder 'PLAN.md') -Destination (Join-Path $app 'PLAN.md')
             Invoke-Git -C $app worktree remove $run.Folder
             Invoke-Git -C $app branch -q -m worktree-feedback-1 feedback-1
             Invoke-Git -C $app switch -q feedback-1
             $fb = Get-State $app $app
             $ok = $fb['worktree'] -eq '-' -and $fb['branch'] -eq 'feedback-1' -and $fb['feedback'] -eq '1' -and $fb['reviewed'] -eq 'current' -and $fb['dirty'] -eq 'no' -and $fb['next'] -eq 'address-feedback 1' -and -not (Test-Path -LiteralPath $run.Folder)
-            Check 'fixture: Copilot''s Resume moves a Claude Code run onto feedback-1 in the main checkout, still reviewed and sent back to /address-feedback 1' $ok "worktree='$($fb['worktree'])' branch='$($fb['branch'])' feedback='$($fb['feedback'])' reviewed='$($fb['reviewed'])' dirty='$($fb['dirty'])' next='$($fb['next'])'"
+            Check 'fixture: a Claude Code run moved onto feedback-1 in the main checkout, as an earlier Copilot version left it, is still reviewed and sent back to /address-feedback 1' $ok "worktree='$($fb['worktree'])' branch='$($fb['branch'])' feedback='$($fb['feedback'])' reviewed='$($fb['reviewed'])' dirty='$($fb['dirty'])' next='$($fb['next'])'"
 
-            # Claude Code's Resume: the main checkout goes back to main, carrying PLAN.md, then the branch and PLAN.md move into the worktree.
+            # Either tool's Resume: the main checkout goes back to main, carrying PLAN.md, then the branch and PLAN.md move into the worktree.
             Invoke-Git -C $app switch -q main
             Invoke-Git -C $app branch -q -m feedback-1 worktree-feedback-1
             Invoke-Git -C $app worktree add -q $run.Folder worktree-feedback-1
@@ -336,7 +336,7 @@ exit 0
             $fb = Get-State $app $run.Folder
             $main = Get-State $app $app
             $ok = $fb['worktree'] -eq 'feedback-1' -and $fb['branch'] -eq 'worktree-feedback-1' -and $fb['feedback'] -eq '1' -and $fb['reviewed'] -eq 'current' -and $fb['dirty'] -eq 'no' -and $fb['next'] -eq 'address-feedback 1' -and $main['branch'] -eq 'main' -and $main['plan'] -eq '-'
-            Check 'fixture: Claude Code''s Resume moves a Copilot run into .claude/worktrees/feedback-1, still reviewed and sent back to /address-feedback 1, and leaves the main checkout on main with no plan' $ok "worktree='$($fb['worktree'])' branch='$($fb['branch'])' feedback='$($fb['feedback'])' reviewed='$($fb['reviewed'])' next='$($fb['next'])' main checkout on '$($main['branch'])' with plan '$($main['plan'])'"
+            Check 'fixture: each tool''s Resume moves such a run into .claude/worktrees/feedback-1, still reviewed and sent back to /address-feedback 1, and leaves the main checkout on main with no plan' $ok "worktree='$($fb['worktree'])' branch='$($fb['branch'])' feedback='$($fb['feedback'])' reviewed='$($fb['reviewed'])' next='$($fb['next'])' main checkout on '$($main['branch'])' with plan '$($main['plan'])'"
         }
         finally {
             if ("$(git -C $app branch --show-current)".Trim() -ne 'main') { Invoke-Git -C $app switch -q main }
@@ -528,7 +528,7 @@ exit 0
             Check 'fixture: the stopped run''s plan is reviewed, and the state script sends it back to /address-feedback 1 with pull request #1 open' $ok "feedback='$($st['feedback'])' pr='$($st['pr'])' reviewed='$($st['reviewed'])' dirty='$($st['dirty'])' next='$($st['next'])'"
             if ($Scenario -eq 'resume-copilot') {
                 $ok = $st['worktree'] -eq '-' -and $st['branch'] -eq 'feedback-1'
-                Check 'fixture: the stopped run is on feedback-1 in the main checkout, with PLAN.md at its root, as Copilot leaves one' $ok "worktree='$($st['worktree'])' branch='$($st['branch'])'"
+                Check 'fixture: the stopped run is on feedback-1 in the main checkout, with PLAN.md at its root, as Copilot''s /address-feedback left one before v0.85.0' $ok "worktree='$($st['worktree'])' branch='$($st['branch'])'"
             }
             else {
                 $ok = $st['worktree'] -eq 'feedback-1' -and $st['branch'] -eq 'worktree-feedback-1'
