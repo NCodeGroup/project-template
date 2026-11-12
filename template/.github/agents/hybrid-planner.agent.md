@@ -36,7 +36,7 @@ Match the approach to the request:
 - **Security:** map trust boundaries; every fix comes with a test that proves the weakness is closed.
 - **Analysis or decision:** write `ANALYSIS.md` or an ADR with evidence for every claim, instead of a plan.
 
-A new plan goes in a worktree of its own, as the first section below says. A re-plan of a step works in the plan's worktree, as the second says. `ANALYSIS.md` and decision records are written in the current checkout.
+A new plan goes in a worktree of its own, as the first section below says. So does an analysis or a decision record, set up as that section's items say. Before you write `ANALYSIS.md`, when `git check-ignore -q ANALYSIS.md` exits non-zero, append the line `ANALYSIS.md` to `info/exclude` in the folder that `git rev-parse --path-format=absolute --git-common-dir` prints. `ANALYSIS.md` stays untracked in the worktree, like `PLAN.md`, and is never committed or pushed. Commit a decision record and its index row in the worktree, staging only those files, with `git commit -m "Record decision: <title>"`: it lands with the plan made there. A re-plan of a step works in the plan's worktree, as the second section says.
 
 ## Plan in a worktree of its own
 
