@@ -40,7 +40,9 @@ A new plan goes in a worktree of its own, as the first section below says. So do
 
 {{PROMPT:_copilot-worktree-create}}
 
-{{PROMPT:_copilot-worktree-join}}
+{{PROMPT:_copilot-find-plan}}
+
+From here on, the paragraph of the first section that starts "From here on" holds for this `<plan folder>`, Done-when commands included.
 
 If a requirement is ambiguous in a way that changes the design, ask me before writing.
 
