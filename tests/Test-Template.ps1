@@ -899,6 +899,7 @@ Check 'workflow: plans say their release version moves when another plan lands i
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\handoff-plan.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-bugfix\SKILL.md') ('Use the newest version tag on `origin`, not one only this clone has', 'git ls-remote --tags --refs --sort=-version:refname origin'))
 Check 'workflow: plans take their release version from the tags on origin' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('Land one entry at a time, in queue order', '## Run Ahead', 'the state script''s `renumber` line names the next free version', 'Hold it there until the current entry has landed', 'the entry after it may run ahead in its place'))
+$m += @(Get-MissingText $rulesJinja ('in every tool it plans, executes and reviews the next entry ahead in its own worktree while a draft pull request waits', 'lands the entries one at a time, in queue order'))
 Check 'workflow: run-issues runs one entry ahead and lands entries in queue order' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('planned, executed and reviewed ahead of it', 'go on with the entry that ran ahead', 'running the next entry ahead meanwhile', 'an entry running ahead keeps its worktree'))
 Check 'workflow: run-issues announces, waits with and stops around the entry running ahead' (-not $m) ($m -join '; ')
