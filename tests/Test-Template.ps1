@@ -1020,8 +1020,16 @@ $m = @(foreach ($cmd in $worktreeKinds.create + $worktreeKinds.analyze) {
         if (-not ($hooksAt -ge 0 -and $hooksAt -lt $sessionAt -and $sessionAt -lt $createAt)) { "$($file[0]): the hooks, the push branch and the worktree are not in that order" }
     }
 })
-$m += @(foreach ($p in $copilotRunFiles) { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); $hooksAt = $t.IndexOf($gitHooksText); $createAt = $t.IndexOf('git worktree add --no-track .claude/worktrees/issue-<number>'); if (-not ($hooksAt -ge 0 -and $createAt -ge 0 -and $hooksAt -lt $createAt)) { "${p}: the hooks are not settled before the first worktree" } })
-Check 'workflow: every planning command and run-issues settle the hooks and the push branch in the main checkout before they create a worktree' (-not $m) ($m -join '; ')
+# run-issues and address-feedback settle the push branch at Start, then check the hooks right before the item that creates their worktree (#347).
+$runCreate = 'Then create its worktree from the main checkout.'; $feedbackCreate = 'Then create the run''s checkout, as Checkout item 2 says.'
+$m += @(foreach ($root in '', 'template\') { foreach ($pair in @(
+        @('.claude\commands\run-issues.md', $runCreate), @('.github\prompts\run-issues.prompt.md', $runCreate), @('.github\skills\run-issues\SKILL.md', $runCreate),
+        @('.claude\commands\address-feedback.md', $feedbackCreate), @('.github\prompts\address-feedback.prompt.md', $feedbackCreate), @('.github\skills\address-feedback\SKILL.md', $feedbackCreate))) {
+    $file = "$root$($pair[0])"; $t = [IO.File]::ReadAllText((Join-Path $repoRoot $file))
+    $settleAt = $t.IndexOf('settle the push branch, as The Push Branch below says'); $hooksAt = $t.IndexOf($gitHooksText); $createAt = $t.IndexOf($pair[1])
+    if (-not ($t.Contains($pushSessionText) -and $settleAt -ge 0 -and $settleAt -lt $hooksAt -and $hooksAt -ge 0 -and $createAt -eq $hooksAt + $gitHooksText.Length + 1)) { "${file}: the push branch, the hooks and the worktree are not in that order" }
+} })
+Check 'workflow: every planning command, run-issues and address-feedback settle the hooks and the push branch in the main checkout before they create a worktree' (-not $m) ($m -join '; ')
 # A command never switches or creates a branch in the main checkout (#349): only the legacy finish of a plan written without a worktree, a pre-v0.11.0 template update, and a command the user is told to run do.
 $switchAllowed = @{
     'finish-plan'          = @('`git switch <default branch>`')
