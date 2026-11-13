@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.86.1] - 2026-11-12
+
+### Changed
+
+- No change for projects made from the template. `tests/Test-Template.ps1` checks that Claude Code's and Copilot's `run-issues` and `address-feedback` settle the push branch first and check that Git runs `.githooks` right before they create a worktree, so a reordering that brings back the notices about refused Git config fails the suite. ([#347](https://github.com/NCodeGroup/project-template/issues/347))
+
+### Fixed
+
+- `.github/instructions/project-template.instructions.md` says that `/run-issues` runs the next entry ahead in its own worktree while a draft pull request waits in every tool, Copilot Chat and Copilot CLI included, and lands the entries one at a time, in queue order; it said Copilot runs one entry after another. ([#355](https://github.com/NCodeGroup/project-template/issues/355))
+
 ## [0.86.0] - 2026-11-12
 
 ### Added
@@ -1400,7 +1410,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.86.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.86.1...HEAD
+[0.86.1]: https://github.com/NCodeGroup/project-template/compare/v0.86.0...v0.86.1
 [0.86.0]: https://github.com/NCodeGroup/project-template/compare/v0.85.0...v0.86.0
 [0.85.0]: https://github.com/NCodeGroup/project-template/compare/v0.84.3...v0.85.0
 [0.84.3]: https://github.com/NCodeGroup/project-template/compare/v0.84.2...v0.84.3

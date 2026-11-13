@@ -899,6 +899,7 @@ Check 'workflow: plans say their release version moves when another plan lands i
 $m = @(Get-MissingText ('template\.claude\commands\plan-feature.md', 'template\.claude\commands\handoff-plan.md', 'template\.github\prompts\plan-issue.prompt.md', 'template\.github\skills\plan-bugfix\SKILL.md') ('Use the newest version tag on `origin`, not one only this clone has', 'git ls-remote --tags --refs --sort=-version:refname origin'))
 Check 'workflow: plans take their release version from the tags on origin' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('Land one entry at a time, in queue order', '## Run Ahead', 'the state script''s `renumber` line names the next free version', 'Hold it there until the current entry has landed', 'the entry after it may run ahead in its place'))
+$m += @(Get-MissingText $rulesJinja ('in every tool it plans, executes and reviews the next entry ahead in its own worktree while a draft pull request waits', 'lands the entries one at a time, in queue order'))
 Check 'workflow: run-issues runs one entry ahead and lands entries in queue order' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ($runFiles + $copilotRunFiles) ('planned, executed and reviewed ahead of it', 'go on with the entry that ran ahead', 'running the next entry ahead meanwhile', 'an entry running ahead keeps its worktree'))
 Check 'workflow: run-issues announces, waits with and stops around the entry running ahead' (-not $m) ($m -join '; ')
@@ -1020,8 +1021,16 @@ $m = @(foreach ($cmd in $worktreeKinds.create + $worktreeKinds.analyze) {
         if (-not ($hooksAt -ge 0 -and $hooksAt -lt $sessionAt -and $sessionAt -lt $createAt)) { "$($file[0]): the hooks, the push branch and the worktree are not in that order" }
     }
 })
-$m += @(foreach ($p in $copilotRunFiles) { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); $hooksAt = $t.IndexOf($gitHooksText); $createAt = $t.IndexOf('git worktree add --no-track .claude/worktrees/issue-<number>'); if (-not ($hooksAt -ge 0 -and $createAt -ge 0 -and $hooksAt -lt $createAt)) { "${p}: the hooks are not settled before the first worktree" } })
-Check 'workflow: every planning command and run-issues settle the hooks and the push branch in the main checkout before they create a worktree' (-not $m) ($m -join '; ')
+# run-issues and address-feedback settle the push branch at Start, then check the hooks right before the item that creates their worktree, with only white space between the two sentences (#347).
+$runCreate = 'Then create its worktree from the main checkout.'; $feedbackCreate = 'Then create the run''s checkout, as Checkout item 2 says.'
+$m += @(foreach ($root in '', 'template\') { foreach ($pair in @(
+        @('.claude\commands\run-issues.md', $runCreate), @('.github\prompts\run-issues.prompt.md', $runCreate), @('.github\skills\run-issues\SKILL.md', $runCreate),
+        @('.claude\commands\address-feedback.md', $feedbackCreate), @('.github\prompts\address-feedback.prompt.md', $feedbackCreate), @('.github\skills\address-feedback\SKILL.md', $feedbackCreate))) {
+    $file = "$root$($pair[0])"; $t = [IO.File]::ReadAllText((Join-Path $repoRoot $file))
+    $settleAt = $t.IndexOf('settle the push branch, as The Push Branch below says'); $hooksAt = $t.IndexOf($gitHooksText); $createAt = $t.IndexOf($pair[1])
+    if (-not ($t.Contains($pushSessionText) -and $settleAt -ge 0 -and $settleAt -lt $hooksAt -and $hooksAt -ge 0 -and $createAt -ge $hooksAt + $gitHooksText.Length -and -not $t.Substring($hooksAt + $gitHooksText.Length, $createAt - $hooksAt - $gitHooksText.Length).Trim())) { "${file}: the push branch, the hooks and the worktree are not in that order" }
+} })
+Check 'workflow: every planning command, run-issues and address-feedback settle the hooks and the push branch in the main checkout before they create a worktree' (-not $m) ($m -join '; ')
 # A command never switches or creates a branch in the main checkout (#349): only the legacy finish of a plan written without a worktree, a pre-v0.11.0 template update, and a command the user is told to run do.
 $switchAllowed = @{
     'finish-plan'          = @('`git switch <default branch>`')
