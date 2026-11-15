@@ -1,12 +1,14 @@
 <#
 .SYNOPSIS
-    Test Get-AssemblyVersionFloor, Get-NuGetPublisher and Update-VersionFile, the library release checks in .template\Update-Project.ps1 and tools\adopt\Adoption.psm1.
+    Test Get-AssemblyVersionFloor, Get-NuGetPublisher, Update-VersionFile, Test-PackageValidationBaseline and Get-CSharpFileWithoutHeader, the library release checks in .template\Update-Project.ps1 and tools\adopt\Adoption.psm1.
 
 .DESCRIPTION
     Builds fixture repositories whose version tags shipped different assembly versions, and a folder of workflows that push to
     NuGet. Then, for the copy of each function in .template\Update-Project.ps1 and the one in tools\adopt\Adoption.psm1, checks the
     tag and assembly version that Get-AssemblyVersionFloor returns, the workflows that Get-NuGetPublisher names, and the
-    version.json that Update-VersionFile fills (the patch after the newest tag and the assembly version with its precision).
+    version.json that Update-VersionFile fills (the patch after the newest tag and the assembly version with its precision),
+    whether Test-PackageValidationBaseline finds a package validation baseline, and the C# files that
+    Get-CSharpFileWithoutHeader names for lacking the .editorconfig header.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -109,7 +111,7 @@ Write-Text (Join-Path $others '.github/workflows/ci.yml') "- run: dotnet pack`n"
 
 $updateFunctions = @{}
 $updateAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
-foreach ($function in 'Get-AssemblyVersionFloor', 'Get-NuGetPublisher', 'Get-PublishedPackageVersion', 'Update-VersionFile') {
+foreach ($function in 'Get-AssemblyVersionFloor', 'Get-NuGetPublisher', 'Get-PublishedPackageVersion', 'Update-VersionFile', 'Get-CSharpFileWithoutHeader', 'Test-PackageValidationBaseline') {
     $updateFunctions[$function] = $updateAst.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $function }, $true) | Select-Object -First 1
 }
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
@@ -237,13 +239,43 @@ $baselineIndex = 0
 foreach ($name in $baselineCases.Keys) {
     $baselineIndex++
     $case = $baselineCases[$name]
-    $folder = Join-Path $Work "baseline$baselineIndex"
-    New-Item -ItemType Directory -Path $folder -Force | Out-Null
-    foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $folder $relative) $case.Files[$relative] }
-    Push-Location $folder
-    try { $result = Adoption\Test-PackageValidationBaseline }
-    finally { Pop-Location }
-    Check "adopt: Test-PackageValidationBaseline: $name" ($result -eq $case.Expect) "Got '$result'; expected '$($case.Expect)'"
+    foreach ($source in $sources.Keys) {
+        $folder = Join-Path $Work "baseline-$source-$baselineIndex"
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $folder $relative) $case.Files[$relative] }
+        Push-Location $folder
+        try { $result = & $sources[$source] 'Test-PackageValidationBaseline' }
+        finally { Pop-Location }
+        Check "${source}: Test-PackageValidationBaseline: $name" ($result -eq $case.Expect) "Got '$result'; expected '$($case.Expect)'"
+    }
+}
+
+# Get-CSharpFileWithoutHeader: the C# files that don't start with the header .editorconfig sets.
+$editorconfig = "[*.cs]`nfile_header_template = Copyright $([char]0xA9) Ada\nSPDX-License-Identifier: MIT`n"
+$header = "// Copyright $([char]0xA9) Ada`n// SPDX-License-Identifier: MIT`n"
+$headerCases = [ordered]@{
+    'a file that starts with the header gives nothing' = @{ Files = @{ '.editorconfig' = $editorconfig; 'src/A.cs' = $header + "class A { }`n" }; Expect = '' }
+    'a file with CRLF line breaks and a byte order mark gives nothing' = @{ Files = @{ '.editorconfig' = $editorconfig; 'src/A.cs' = [string][char]0xFEFF + (($header + "class A { }`n") -replace "`n", "`r`n") }; Expect = '' }
+    'a file without the header is named' = @{ Files = @{ '.editorconfig' = $editorconfig; 'src/B.cs' = "class B { }`n" }; Expect = 'src/B.cs' }
+    'an old region header is named' = @{ Files = @{ '.editorconfig' = $editorconfig; 'src/C.cs' = "#region Copyright Preamble`n// old`n#endregion`nclass C { }`n" }; Expect = 'src/C.cs' }
+    'bin, obj, Migrations, generated and designer files are skipped' = @{ Files = @{ '.editorconfig' = $editorconfig; 'src/bin/D.cs' = "class X { }`n"; 'src/obj/D.cs' = "class X { }`n"; 'src/Migrations/D.cs' = "class X { }`n"; 'src/E.g.cs' = "class X { }`n"; 'src/F.Designer.cs' = "class X { }`n"; 'src/G.cs' = "class G { }`n" }; Expect = 'src/G.cs' }
+    'two files are listed in order' = @{ Files = @{ '.editorconfig' = $editorconfig; 'src/B.cs' = "class B { }`n"; 'src/A.cs' = "class A { }`n" }; Expect = 'src/A.cs,src/B.cs' }
+    'no header setting gives nothing' = @{ Files = @{ '.editorconfig' = "[*.cs]`nindent_size = 4`n"; 'src/B.cs' = "class B { }`n" }; Expect = '' }
+    'no .editorconfig gives nothing' = @{ Files = @{ 'src/B.cs' = "class B { }`n" }; Expect = '' }
+}
+foreach ($source in $sources.Keys) {
+    $headerIndex = 0
+    foreach ($name in $headerCases.Keys) {
+        $headerIndex++
+        $case = $headerCases[$name]
+        $folder = Join-Path $Work "header-$source-$headerIndex"
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $folder $relative) $case.Files[$relative] }
+        Push-Location $folder
+        try { $result = @(& $sources[$source] 'Get-CSharpFileWithoutHeader' | Sort-Object) -join ',' }
+        finally { Pop-Location }
+        Check "${source}: Get-CSharpFileWithoutHeader: $name" ($result -eq $case.Expect) "Got '$result'; expected '$($case.Expect)'"
+    }
 }
 
 ''
