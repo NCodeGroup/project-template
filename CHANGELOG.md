@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.87.0] - 2026-11-14
+
+### Added
+
+- Every GitHub project gets .github/workflows/scorecard.yml, which runs OpenSSF Scorecard on each push to the default branch and weekly, publishes the score and uploads its findings to code scanning; the template's ADR-0020 lists what the template controls and what needs a person.
+- A GitHub .NET library gets .github/workflows/release-provenance.yml: after Publish packages succeeds, it attests the packages with GitHub's build provenance and attaches them and <tag>.intoto.jsonl to the release, so a consumer runs gh attestation verify and Scorecard's Signed-Releases check scores (the template's ADR-0138).
+
+### Changed
+
+- .github/workflows/copilot-setup-steps.yml sets read-only permissions at its top level, as Scorecard's Token-Permissions check wants.
+- tools/Set-RepositoryBaseline.ps1's Protect main ruleset dismisses stale approvals on a push and requires approval of the last push; this changes nothing while no approval is required. A repository that has the ruleset keeps it as it is.
+
 ## [0.86.2] - 2026-11-14
 
 ### Added
@@ -1420,7 +1432,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.86.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.87.0...HEAD
+[0.87.0]: https://github.com/NCodeGroup/project-template/compare/v0.86.2...v0.87.0
 [0.86.2]: https://github.com/NCodeGroup/project-template/compare/v0.86.1...v0.86.2
 [0.86.1]: https://github.com/NCodeGroup/project-template/compare/v0.86.0...v0.86.1
 [0.86.0]: https://github.com/NCodeGroup/project-template/compare/v0.85.0...v0.86.0
