@@ -33,6 +33,7 @@ never brings a number the project already uses
 | [0016](0016-releases-are-tagged-and-published-when-their-pull-request-merges.md) | On GitHub, CI tags and publishes a release when its pull request merges, from the changelog or the pull request's `Release:` line; `/ship-plan` is the fallback |
 | [0017](0017-cloud-sessions-bootstrap-their-tools-through-ensure-scripts.md) | A Claude Code cloud session bootstraps its tools through `.claude/hooks/ensure-*.sh` scripts that `session-start.sh` runs; a project adds a tool by adding a script |
 | [0018](0018-agent-attribution-is-avoided-not-enforced.md) | Agents avoid adding attribution to commits and pull requests, and nothing enforces it: no hook, CI check or read-back fails, rewrites or reports work over it (supersedes 0002, amends 0005 and 0013) |
+| [0019](0019-nothing-requires-the-code-review-check-the-person-who-merges-waits-for-it.md) | No ruleset requires NCode Review's "Code review" check; the person who merges waits for the review before merging or turning on auto-merge |
 {%- if stack == 'dotnet' %}
 
 ## .NET

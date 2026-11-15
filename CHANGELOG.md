@@ -18,6 +18,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Breaking:** A .NET library's `publish.yml` tests and packs with `-p:PublicRelease=true`: once `version.json` is there, a project's own `publish.yml` needs it too, or a release publishes nothing. `Update-Project.ps1` warns until it has it, and warns about a project's own reference to Nerdbank.GitVersioning, which fails the build beside the template's. ([#357](https://github.com/NCodeGroup/project-template/issues/357))
 - A library's Copilot setup steps and GitLab build job fetch the full history, which Nerdbank.GitVersioning needs, and ADR-0136 takes the version number from `version.json` (ADR-0138). ([#357](https://github.com/NCodeGroup/project-template/issues/357))
 
+## [0.86.2] - 2026-11-14
+
+### Added
+
+- The template's ADR-0019 records that nothing requires NCode Review's "Code review" check: the person who merges waits for the review to post its findings before merging or turning on auto-merge, and decides what to do when no review comes; `tools/Set-RepositoryBaseline.ps1 -RequireChecks auto` names that record as its reason for leaving the check out. ([#361](https://github.com/NCodeGroup/project-template/issues/361), [ADR-0019](template/docs/decisions/project-template/0019-nothing-requires-the-code-review-check-the-person-who-merges-waits-for-it.md))
+
+### Changed
+
+- `CONTRIBUTING.md` in a new GitHub project that answers `code_review` says a maintainer merges a pull request once CI passes and NCode Review has posted its review. ([#361](https://github.com/NCodeGroup/project-template/issues/361))
+
 ## [0.86.1] - 2026-11-12
 
 ### Changed
@@ -1423,7 +1433,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
 [unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.87.0...HEAD
-[0.87.0]: https://github.com/NCodeGroup/project-template/compare/v0.86.1...v0.87.0
+[0.87.0]: https://github.com/NCodeGroup/project-template/compare/v0.86.2...v0.87.0
+[0.86.2]: https://github.com/NCodeGroup/project-template/compare/v0.86.1...v0.86.2
 [0.86.1]: https://github.com/NCodeGroup/project-template/compare/v0.86.0...v0.86.1
 [0.86.0]: https://github.com/NCodeGroup/project-template/compare/v0.85.0...v0.86.0
 [0.85.0]: https://github.com/NCodeGroup/project-template/compare/v0.84.3...v0.85.0
