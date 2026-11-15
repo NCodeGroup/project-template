@@ -1,8 +1,9 @@
 # Raise the package validation baseline: after Publish packages succeeds for a stable release, or when run by hand
 # with a release tag, runs build/Update-Baseline.ps1, which waits for nuget.org to list the version and raises
-# PackageValidationBaselineVersion to it, then pushes baseline-<version>, opens a pull request ready for review and
-# starts CI on its branch, because a pull request opened with the workflow's token starts no workflow. A person merges
-# it. The template's ADR-0150 says why; it changes nothing until the project sets the baseline once (ADR-0147).
+# PackageValidationBaselineVersion to it, then pushes baseline-<version>, opens it as a draft pull request, which a
+# person marks ready and merges, and starts CI on its branch, because a pull request opened with the workflow's token
+# starts no workflow. The template's ADR-0150 says why; it changes nothing until the project sets the baseline once
+# (ADR-0147).
 #
 # Needs Settings > Actions > General > Workflow permissions > "Allow GitHub Actions to create and approve pull
 # requests", which tools/Set-RepositoryBaseline.ps1 in the project template turns on for a repository with this file.
@@ -89,8 +90,8 @@ jobs:
           if ($LASTEXITCODE) { throw "git commit failed with exit code $LASTEXITCODE." }
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin $branch
           if ($LASTEXITCODE) { throw "git push failed with exit code $LASTEXITCODE." }
-          $body = 'Raises `PackageValidationBaselineVersion` to {0}, which nuget.org now lists, so each pack is validated against the newest release (the template''s ADR-0150). Opened by `.github/workflows/raise-baseline.yml`, which started CI on this branch.' -f $env:VERSION
-          gh pr create --base $env:DEFAULT_BRANCH --head $branch --title "Raise the package validation baseline to $env:VERSION" --body $body
+          $body = 'Raises `PackageValidationBaselineVersion` to {0}, which nuget.org now lists, so each pack is validated against the newest release (the template''s ADR-0150). Opened by `.github/workflows/raise-baseline.yml`, which started CI on this branch; mark it ready for review once CI passes.' -f $env:VERSION
+          gh pr create --base $env:DEFAULT_BRANCH --head $branch --draft --title "Raise the package validation baseline to $env:VERSION" --body $body
           if ($LASTEXITCODE) { throw "gh pr create failed with exit code $LASTEXITCODE." }
           gh workflow run ci.yml --ref $branch
           if ($LASTEXITCODE) { throw "Couldn't start ci.yml on ${branch} (exit code $LASTEXITCODE): its on: section needs workflow_dispatch, as the template's ci.yml has. Start CI on the pull request by hand." }

@@ -18,8 +18,8 @@ succeeds, so the raise cannot run in the release itself.
   project file sets and that is lower, never lowering one and adding none. It adds a `### Changed` entry under
   `## [Unreleased]` of a Keep a Changelog file with a release section. A prerelease is never a baseline.
 - On GitHub, `.github/workflows/raise-baseline.yml` runs it after `Publish packages` succeeds, or by hand with a tag,
-  pushes `baseline-<version>`, opens a pull request ready for review (not a draft: a one-line change a person merges
-  after CI; a draft adds a step per release), and starts `ci.yml` on the branch with `gh workflow run`, because a pull
+  pushes `baseline-<version>`, opens it as a draft pull request, as workflows that open pull requests do, which a
+  person marks ready and merges after CI, and starts `ci.yml` on the branch with `gh workflow run`, because a pull
   request opened with the workflow's token starts no workflow. Its checkout keeps no credential; the push takes the token
   through `http.extraheader`.
 - The workflow needs "Allow GitHub Actions to create and approve pull requests", which `tools/Set-RepositoryBaseline.ps1`
@@ -31,7 +31,8 @@ succeeds, so the raise cannot run in the release itself.
 
 - A person raises it (ADR-0147, the old way).
 - A personal access token or app for the pull request. Rejected: a secret to manage.
-- A draft pull request. Rejected: it adds a step to every release.
+- A pull request ready for review. Rejected: workflows open pull requests as drafts, so a person marks each one ready
+  before it can merge.
 - A template-owned script and workflow (chosen).
 
 ## Consequences
