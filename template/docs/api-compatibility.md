@@ -21,7 +21,7 @@ Run `./build/Update-PublicApi.ps1` and review the `PublicAPI.Unshipped.txt` diff
 
 ## Releasing and the baseline
 
-The release change runs `./build/Update-PublicApi.ps1 -Release` and sets `version.json`. The first change after the release is on nuget.org sets `<PackageValidationBaselineVersion>` to that version, in `Directory.Build.props` after the import or in the packable project's `.csproj`. A baseline one release behind still compares against a real release and only misses the breaks since then, so a late raise is safe. `.\.template\Update-Project.ps1` and the template's `Adopt-Project.ps1` name the version to set.
+The release change runs `./build/Update-PublicApi.ps1 -Release` and sets `version.json`. The first change after a release reaches nuget.org sets `<PackageValidationBaselineVersion>` to that version, in `Directory.Build.props` after the import or in the packable project's `.csproj`. A baseline one release behind still compares against a real release and only misses the breaks since then, so a late raise is safe. `.\.template\Update-Project.ps1` and the template's `Adopt-Project.ps1` name the version to set.
 
 ## An intended break
 
