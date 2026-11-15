@@ -1,6 +1,6 @@
-# Keeps this repository's own CI inputs current: the actions in its workflow, and the Python packages its tests use,
-# pinned in tests/requirements.txt. The pins inside template/ are in merged files, which each project's own Dependabot
-# keeps current.
+# Keeps this repository's own CI inputs current: the actions in its workflow, the Python programs its tests run,
+# pinned in tests/requirements.txt, and the Node.js packages its tests use, pinned in tests/node/package.json. The pins
+# inside template/ are in merged files, which each project's own Dependabot keeps current.
 # Like every project's, each entry waits three days before it offers a new version (cooldown)
 # and gives security updates a group of their own.
 version: 2
@@ -28,5 +28,17 @@ updates:
       pip:
         patterns: ["*"]
       pip-security:
+        applies-to: security-updates
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /tests/node
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      npm:
+        patterns: ["*"]
+      npm-security:
         applies-to: security-updates
         patterns: ["*"]

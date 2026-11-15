@@ -1,0 +1,10 @@
+{
+  "name": "project-template-tests",
+  "private": true,
+  "type": "module",
+  "description": "The Node.js packages tests/Test-Template.ps1 runs its YAML and _exclude checks with, at exact versions that Dependabot's npm entry for /tests/node moves.",
+  "dependencies": {
+    "nunjucks": "3.2.4",
+    "yaml": "2.9.1"
+  }
+}
