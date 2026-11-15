@@ -69,9 +69,9 @@
     major was built with a higher one than build/ProjectTemplate.props pins (the library's ADR-0136). It leaves
     .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
     publish. When the project has .github/workflows/tag-release.yml and a publish.yml without a workflow_dispatch
-    trigger, it says what to add. When the project has version.json, it also warns about a publish.yml and a .gitlab-ci.yml that packs
-    without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning themselves (the template's
-    ADR-0138).
+    trigger, it says what to add. When the project has version.json, it also warns about a publish.yml or a
+    .gitlab-ci.yml that packs without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning
+    themselves (the template's ADR-0138).
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
@@ -1005,7 +1005,7 @@ try {
         if ($gitlabCi -match 'dotnet\s+pack\b|nuget(?:\.exe)?\s+push\b') {
             $missing = @()
             if ($gitlabCi -notmatch 'PublicRelease=true') { $missing += '-p:PublicRelease=true' }
-            if ($gitlabCi -notmatch 'GIT_DEPTH:\s*["'']?0["'']?\s*(?:\r?\n|$)') { $missing += 'GIT_DEPTH: "0"' }
+            if ($gitlabCi -notmatch '(?m)GIT_DEPTH:[ \t]*["'']?0["'']?[ \t]*(?:#.*)?\r?$') { $missing += 'GIT_DEPTH: "0"' }
             if ($missing.Count) {
                 ''
                 ".gitlab-ci.yml packs or pushes packages without $($missing -join ' and '). Nerdbank.GitVersioning takes each package's version from version.json and ignores -p:Version, adds a -g<commit> suffix without PublicRelease, and fails on a shallow clone, which GitLab CI makes unless GIT_DEPTH is `"0`". Add -p:PublicRelease=true to its dotnet pack command and set GIT_DEPTH: `"0`" in its variables, as the publish.yml the project template gives a .NET library on GitHub does (the template's ADR-0138, in docs/decisions/project-template/)."
