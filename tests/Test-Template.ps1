@@ -125,7 +125,7 @@ $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
-    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md'
+    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'GOVERNANCE.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
     claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
@@ -269,6 +269,10 @@ foreach ($case in $cases) {
     $conduct = [IO.File]::ReadAllText((Join-Path $dest 'CODE_OF_CONDUCT.md'))
     $conductWant = if ($case.Data.conduct_contact) { 'lists, at ' + $case.Data.conduct_contact + '. All complaints' } elseif ($case.Host -eq 'gitlab') { '**This issue is confidential**' } else { 'choose **Report a vulnerability** and start the title with' }
     Check "${name}: CODE_OF_CONDUCT.md sends a report to the conduct contact, or else to the host's private form" ($conduct.Contains($conductWant) -and $conduct.Contains('version 2.1')) $conductWant
+    $governance = [IO.File]::ReadAllText((Join-Path $dest 'GOVERNANCE.md'))
+    $governanceHeadings = '## Roles', '## Decisions', '## Releases', '## Continuity', '## Changing This Document'
+    $governanceWantsBot = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
+    Check "${name}: GOVERNANCE.md has its sections" (-not ($governanceHeadings | Where-Object { -not $governance.Contains($_) }) -and $governance.Contains('ncode-review[bot]') -eq $governanceWantsBot) $governance
     # Every template decision record a rendered Markdown file cites by number is one the project has.
     $recordNumbers = @(Get-ChildItem -LiteralPath (Join-Path $dest 'docs\decisions'), (Join-Path $dest 'docs\decisions\project-template') -File -Filter '*.md' | ForEach-Object { if ($_.Name -match '^(\d{4})-') { $Matches[1] } })
     $unknownCitations = @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force -Filter '*.md' | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } | ForEach-Object {
