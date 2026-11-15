@@ -114,6 +114,7 @@ _exclude:
     docs/decisions/project-template/0144-correctness-guards-fail-closed-capacity-guards-fail-open.md
     docs/decisions/project-template/0145-outbound-calls-are-bounded-and-caller-supplied-urls-are-guarded.md
     docs/decisions/project-template/0146-secrets-are-never-logged-compared-in-constant-time-and-shown-once.md
+    docs/decisions/project-template/0148-csharp-is-formatted-in-the-gate-and-files-carry-the-spdx-header.md
     {% endif %}
   - |-
     {% if stack is defined and nuget_package is defined and not (stack == 'dotnet' and nuget_package) %}
