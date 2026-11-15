@@ -447,6 +447,7 @@ try {
     $pr = $r.Body.rules | Where-Object type -eq 'pull_request'
     Check 'create: no approvals, and merge-commit or rebase merges only, never squash' (($pr.parameters.required_approving_review_count -eq 0) -and ((@($pr.parameters.allowed_merge_methods) -join ',') -eq 'merge,rebase')) ($pr.parameters | ConvertTo-Json -Compress)
     Check 'create: every conversation must be resolved before a merge' ($pr.parameters.required_review_thread_resolution -eq $true) ($pr.parameters | ConvertTo-Json -Compress)
+    Check 'create: stale reviews are dismissed on push and the last push needs approval, which changes nothing while no approval is required' (($pr.parameters.dismiss_stale_reviews_on_push -eq $true) -and ($pr.parameters.require_last_push_approval -eq $true) -and ($pr.parameters.required_approving_review_count -eq 0)) ($pr.parameters | ConvertTo-Json -Compress)
 
     $r = Invoke-Baseline @('-Repo', 'extendedAlready')
     Check 'create: a setup already on the extended suite is not changed' (($r.Changes -join '|') -notmatch 'default-setup' -and $r.Output -notmatch 'query suite') "$($r.Changes -join '|') $($r.Output)"

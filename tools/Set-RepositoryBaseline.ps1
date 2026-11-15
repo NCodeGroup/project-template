@@ -7,7 +7,8 @@
     For each repository it:
       - adds a "Protect main" ruleset on the default branch, the same shape as project-template's: no deletion, no force
         push, a pull request required (no approvals, since the organization has one maintainer) with every conversation
-        resolved, so a review finding from the bot, CodeQL or a person can't be merged past, merge-commit or rebase
+        resolved, with stale reviews dismissed on push and the last push needing approval (both harmless without
+        required approvals), so a review finding from the bot, CodeQL or a person can't be merged past, merge-commit or rebase
         merges only, never squash, so each commit of a plan stays on the branch, when CodeQL's default setup is
         configured for the repository a code-scanning rule that blocks a pull request whose CodeQL results add an alert
         at warning level or above or a security alert of any severity, and, when -RequireChecks names them, those CI
@@ -353,9 +354,9 @@ function Set-BranchRuleset {
         @{ type = 'non_fast_forward' },
         @{ type = 'pull_request'; parameters = @{
             allowed_merge_methods = @('merge', 'rebase')
-            dismiss_stale_reviews_on_push = $false
+            dismiss_stale_reviews_on_push = $true
             require_code_owner_review = $false
-            require_last_push_approval = $false
+            require_last_push_approval = $true
             required_approving_review_count = 0
             required_review_thread_resolution = $true
         } }
