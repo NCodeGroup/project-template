@@ -38,8 +38,11 @@ Once in each clone, run `git config core.hooksPath .githooks`. It turns on `.git
 | Definition of Done, the full gate | `./build/dod.ps1` |
 | The local gate before a push | `./build/dod.ps1 -Fast` |
 | Only the tests a filter matches | `./build/dod.ps1 -Fast -Filter 'FullyQualifiedName~OrderStore'` |
+{%- if csharp_format is defined and csharp_format %}
+| Format C# | `dotnet csharpier format .` |
+{%- endif %}
 
-The Definition of Done checks the decision index, builds in Release with warnings as errors, runs the tests{% if library %}, packs{% endif %} and ends with `Definition of Done: PASSED`.{% if build_command == 'dotnet build' and test_command == 'dotnet test' %} CI runs `./build/dod.ps1` on every {{ pr }}.{% else %} CI runs the build and test commands on every {{ pr }}.{% endif %}
+The Definition of Done checks the decision index, {% if csharp_format is defined and csharp_format %}checks the formatting, {% endif %}builds in Release with warnings as errors, runs the tests{% if library %}, packs{% endif %} and ends with `Definition of Done: PASSED`.{% if build_command == 'dotnet build' and test_command == 'dotnet test' %} CI runs `./build/dod.ps1` on every {{ pr }}.{% else %} CI runs the build and test commands on every {{ pr }}.{% endif %}
 {%- elif build_command or test_command %}
 
 CI runs the same commands on every {{ pr }}.

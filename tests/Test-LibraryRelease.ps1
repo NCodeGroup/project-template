@@ -109,7 +109,7 @@ Write-Text (Join-Path $others '.github/workflows/ci.yml') "- run: dotnet pack`n"
 
 $updateFunctions = @{}
 $updateAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
-foreach ($function in 'Get-AssemblyVersionFloor', 'Get-NuGetPublisher', 'Update-VersionFile') {
+foreach ($function in 'Get-AssemblyVersionFloor', 'Get-NuGetPublisher', 'Get-PublishedPackageVersion', 'Update-VersionFile') {
     $updateFunctions[$function] = $updateAst.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $function }, $true) | Select-Object -First 1
 }
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
@@ -194,6 +194,56 @@ foreach ($source in $sources.Keys) {
         finally { Pop-Location }
         Check "${source}: Get-NuGetPublisher: $name" ($result -eq $case.Expect) "Got '$result'; expected '$($case.Expect)'"
     }
+}
+
+# Get-PublishedPackageVersion: Fetch stands in for nuget.org.
+$published = Join-Path $Work 'published'
+Write-Text (Join-Path $published 'src/Foo/Foo.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
+Write-Text (Join-Path $published 'src/Foo.Tests/Foo.Tests.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
+Write-Text (Join-Path $published 'src/Tool/Tool.csproj') '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>'
+Write-Text (Join-Path $published 'src/Broken/Broken.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
+Write-Text (Join-Path $published 'src/Named/Named.csproj') '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><PackageId>Other.Name</PackageId></PropertyGroup></Project>'
+. ([scriptblock]::Create($updateFunctions['Get-PublishedPackageVersion'].Extent.Text))
+$queried = [Collections.Generic.List[string]]::new()
+$fetch = {
+    param($Uri)
+    $queried.Add($Uri)
+    if ($Uri -match '/broken/') { throw 'offline' }
+    @{ versions = '1.0.0', '1.1.0', '2.0.0-rc.1' }
+}
+$publishedCalls = [ordered]@{
+    update = { Get-PublishedPackageVersion -Fetch $fetch }
+    adopt  = { Adoption\Get-PublishedPackageVersion -Fetch $fetch }
+}
+foreach ($source in $publishedCalls.Keys) {
+    $queried.Clear()
+    Push-Location $published
+    try { $versions = @(& $publishedCalls[$source]) }
+    finally { Pop-Location }
+    $foo = @($versions | Where-Object Id -eq 'Foo')
+    Check "${source}: Get-PublishedPackageVersion: only the packable project is named, with the newest stable version" ($foo.Count -eq 1 -and $foo[0].Version -eq '1.1.0' -and -not ($versions | Where-Object { $_.Id -in 'Foo.Tests', 'Tool' })) "Got '$($versions | ForEach-Object { "$($_.Id) $($_.Version)" })'"
+    Check "${source}: Get-PublishedPackageVersion: a lookup that throws yields nothing" (-not ($versions | Where-Object Id -eq 'Broken')) "Got '$($versions | ForEach-Object { $_.Id })'"
+    Check "${source}: Get-PublishedPackageVersion: a PackageId is queried in lower case" ($queried -contains 'https://api.nuget.org/v3-flatcontainer/other.name/index.json') "Queried '$($queried -join ', ')'"
+}
+
+# Test-PackageValidationBaseline: whether the project already sets a baseline.
+$baselineCases = [ordered]@{
+    'no mention gives false'                                 = @{ Files = @{ 'Directory.Build.props' = '<Project />'; 'src/A/A.csproj' = '<Project Sdk="Microsoft.NET.Sdk" />' }; Expect = $false }
+    'Directory.Build.props with the property gives true'     = @{ Files = @{ 'Directory.Build.props' = '<Project><PropertyGroup><PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion></PropertyGroup></Project>' }; Expect = $true }
+    'a project file with the property gives true'            = @{ Files = @{ 'src/A/A.csproj' = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion></PropertyGroup></Project>' }; Expect = $true }
+    'a project file under obj with the property gives false' = @{ Files = @{ 'src/A/obj/A.csproj' = '<Project><PropertyGroup><PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion></PropertyGroup></Project>' }; Expect = $false }
+}
+$baselineIndex = 0
+foreach ($name in $baselineCases.Keys) {
+    $baselineIndex++
+    $case = $baselineCases[$name]
+    $folder = Join-Path $Work "baseline$baselineIndex"
+    New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $folder $relative) $case.Files[$relative] }
+    Push-Location $folder
+    try { $result = Adoption\Test-PackageValidationBaseline }
+    finally { Pop-Location }
+    Check "adopt: Test-PackageValidationBaseline: $name" ($result -eq $case.Expect) "Got '$result'; expected '$($case.Expect)'"
 }
 
 ''

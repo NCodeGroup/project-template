@@ -34,6 +34,16 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
 
+# IDE0073 is a warning in a rendered project, so a C# file must start with the header its .editorconfig sets: prepend it, in the current folder's project, to a file without it.
+function Add-FileHeader([string]$Path) {
+    $template = [regex]::Match([IO.File]::ReadAllText((Join-Path (Get-Location) '.editorconfig')), '(?m)^file_header_template = (.+?)\r?$').Groups[1].Value
+    if (-not $template) { throw "no file_header_template in $(Join-Path (Get-Location) '.editorconfig')" }
+    $header = (($template -split '\\n') | ForEach-Object { "// $_" }) -join "`n"
+    $text = [IO.File]::ReadAllText($Path).Replace("`r`n", "`n")
+    if (-not $text.StartsWith($header)) { $text = "$header`n`n$text" }
+    [IO.File]::WriteAllText($Path, $text, [Text.UTF8Encoding]::new($false))
+}
+
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 
 $stubRoot = Join-Path $Work 'installer'
@@ -223,6 +233,7 @@ Push-Location (Join-Path $Work 'dotnet')
 try {
     dotnet new classlib -o src/Demo | Out-Null
     dotnet new xunit -o tests/Demo.Tests --no-restore | Out-Null
+    foreach ($scaffolded in 'src/Demo/Class1.cs', 'tests/Demo.Tests/UnitTest1.cs') { Add-FileHeader (Join-Path (Get-Location) $scaffolded) }
     # As AGENTS.md tells the executor: move the template's PackageReference versions into Directory.Packages.props.
     $projPath = (Resolve-Path 'tests/Demo.Tests/Demo.Tests.csproj').Path
     $proj = [xml](Get-Content -LiteralPath $projPath -Raw)
@@ -274,6 +285,9 @@ try {
     finally { [IO.File]::Delete((Join-Path (Get-Location) 'src/Demo/Forgiving.cs')) }
     Check 'dotnet: the null-forgiving operator fails the build' ($forgivingOutput -match 'Forgiving\.cs\(\d+,\d+\): error NX000\d') (($forgivingOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ')
 
+    # The scaffolded and test-written files are not yet formatted, and the Format stage would fail on them.
+    dotnet tool restore | Out-Null
+    dotnet csharpier format . | Out-Null
     $dodOutput = pwsh -NoProfile -File build/dod.ps1 2>&1 | Out-String
     Check 'dotnet: build/dod.ps1 passes and says so' ($LASTEXITCODE -eq 0 -and $dodOutput.TrimEnd().EndsWith('Definition of Done: PASSED') -and $dodOutput.Contains('== Decisions') -and $dodOutput.Contains('== Test') -and -not $dodOutput.Contains('== Pack')) $dodOutput
 
@@ -308,19 +322,50 @@ if (Test-Path -LiteralPath $libraryDest) {
     try {
         dotnet new classlib -o src/Greetings | Out-Null
         [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Greetings/Class1.cs'), "namespace Greetings;`n`n/// <summary>`n/// A greeter.`n/// </summary>`npublic sealed class Greeter`n{`n    /// <summary>`n    /// Greets someone.`n    /// </summary>`n    /// <param name=`"name`">Who to greet.</param>`n    /// <returns>The greeting.</returns>`n    public static string Greet(string name) => `$`"Hello, {name}!`";`n}`n")
+        Add-FileHeader (Join-Path (Get-Location) 'src/Greetings/Class1.cs')
         dotnet new sln | Out-Null
         dotnet sln add src/Greetings | Out-Null
         $apiOutput = pwsh -NoProfile -File build/Update-PublicApi.ps1 2>&1 | Out-String
         $unshipped = Join-Path (Get-Location) 'src/Greetings/PublicAPI.Unshipped.txt'
         $apiText = if (Test-Path -LiteralPath $unshipped) { [IO.File]::ReadAllText($unshipped) } else { '' }
         Check 'dotnet-library-apache: Update-PublicApi.ps1 creates the files and records the public API' ($LASTEXITCODE -eq 0 -and $apiText.StartsWith("#nullable enable`n") -and $apiText.Contains('static Greetings.Greeter.Greet(string! name) -> string!') -and (Test-Path -LiteralPath (Join-Path (Get-Location) 'src/Greetings/PublicAPI.Shipped.txt'))) "$apiOutput | $apiText"
+        # The scaffolded and test-written files are not yet formatted, and the Format stage would fail on them.
+        dotnet tool restore | Out-Null
+        dotnet csharpier format . | Out-Null
         $libDod = pwsh -NoProfile -File build/dod.ps1 2>&1 | Out-String
+        $libDodExit = $LASTEXITCODE
         $packed = @(Get-ChildItem -LiteralPath (Join-Path (Get-Location) 'artifacts/packages') -Filter 'Greetings.*' -ErrorAction SilentlyContinue | ForEach-Object Name)
         Check 'dotnet-library-apache: build/dod.ps1 builds, tests and packs the library at version.json''s version with its symbols' ($LASTEXITCODE -eq 0 -and $libDod.Contains('== Pack') -and @($packed -match '^Greetings\.0\.1\.0(-g[0-9a-f]*)?\.nupkg$').Count -eq 1 -and @($packed -match '^Greetings\.0\.1\.0(-g[0-9a-f]*)?\.snupkg$').Count -eq 1) "$($packed -join ', ') | $libDod"
+        Check 'dotnet-library-apache: build/dod.ps1 runs the Format stage and passes on formatted C#' ($libDodExit -eq 0 -and $libDod.Contains('== Format')) $libDod
         [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Greetings/Extra.cs'), "namespace Greetings;`n`n/// <summary>`n/// Not recorded.`n/// </summary>`npublic sealed class Extra`n{`n}`n")
+        Add-FileHeader (Join-Path (Get-Location) 'src/Greetings/Extra.cs')
         $unrecorded = dotnet build src/Greetings 2>&1 | Out-String
         [IO.File]::Delete((Join-Path (Get-Location) 'src/Greetings/Extra.cs'))
         Check 'dotnet-library-apache: a public type the API files do not record fails the build' ($unrecorded -match "error RS0016: Symbol 'Greetings\.Extra'") (($unrecorded -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ')
+        $messy = Join-Path (Get-Location) 'src/Greetings/Messy.cs'
+        try {
+            [IO.File]::WriteAllText($messy, 'namespace Greetings;internal static class Messy{}')
+            $messyOutput = pwsh -NoProfile -File build/dod.ps1 -Fast 2>&1 | Out-String
+            $messyExit = $LASTEXITCODE
+        }
+        finally { [IO.File]::Delete($messy) }
+        Check 'dotnet-library-apache: an unformatted C# file fails build/dod.ps1 at the Format stage' ($messyExit -eq 1 -and $messyOutput -match 'Definition of Done: FAILED at Format' -and $messyOutput -match 'dotnet csharpier format \.') $messyOutput
+        # Package validation compares a pack with a baseline package: making Greet internal removes a public member the baseline has.
+        $baselinePackage = Get-ChildItem -LiteralPath (Join-Path (Get-Location) 'artifacts/packages') -Filter 'Greetings.*.nupkg' | Where-Object { $_.Name -notlike '*.snupkg' } | Select-Object -First 1
+        $classPath = Join-Path (Get-Location) 'src/Greetings/Class1.cs'
+        $classText = [IO.File]::ReadAllText($classPath)
+        $unshippedText = [IO.File]::ReadAllText($unshipped)
+        try {
+            [IO.File]::WriteAllText($classPath, $classText.Replace('public static string Greet', 'internal static string Greet'))
+            [IO.File]::WriteAllText($unshipped, (($unshippedText -split "`n" | Where-Object { $_ -notmatch 'Greeter\.Greet\(' }) -join "`n"))
+            $validationOutput = dotnet pack src/Greetings --configuration Release "-p:PackageValidationBaselinePath=$($baselinePackage.FullName)" --output artifacts/validation 2>&1 | Out-String
+        }
+        finally {
+            [IO.File]::WriteAllText($classPath, $classText)
+            [IO.File]::WriteAllText($unshipped, $unshippedText)
+        }
+        Remove-Item -LiteralPath (Join-Path (Get-Location) 'src/Greetings/bin'), (Join-Path (Get-Location) 'src/Greetings/obj') -Recurse -Force -ErrorAction Ignore
+        Check 'dotnet-library-apache: package validation fails a pack that removes a public member the baseline package has (CP0002)' ($validationOutput -match 'error CP0002') (($validationOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ')
         # (a) version.json's version, a prerelease here, packs as it is with PublicRelease, and the -p:Version publish.yml passes doesn't change it; AssemblyVersion moves only with the major version.
         $versionFile = Join-Path (Get-Location) 'version.json'
         $versionText = [IO.File]::ReadAllText($versionFile)

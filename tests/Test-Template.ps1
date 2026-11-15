@@ -138,7 +138,7 @@ $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\Pro
 # Files only a project that needs Node.js gets (stack node, or uses_node answered yes).
 $nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', '.template\install-nvs.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
-$libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
+$libraryOnly = 'docs\decisions\project-template\013*.md', 'docs\decisions\project-template\0147-*.md', 'build\Update-PublicApi.ps1', 'docs\api-compatibility.md'
 $hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml'; gitlab = @('.gitlab-ci.yml') }
 # tests\Test-TemplateDotnet.ps1 renders the dotnet and dotnet-library-apache cases again with the same answers: change both together.
 $cases = @(
@@ -149,6 +149,7 @@ $cases = @(
     @{ Name = 'other'; Stack = 'other'; Host = 'github' }
     @{ Name = 'other-code-review'; Stack = 'other'; Host = 'github'; Data = @{ code_review = 'true' } }
     @{ Name = 'dotnet-gitlab'; Stack = 'dotnet'; Host = 'gitlab' }
+    @{ Name = 'dotnet-no-format'; Stack = 'dotnet'; Host = 'github'; Data = @{ csharp_format = 'false' } }
     @{ Name = 'other-gitlab-code-review'; Stack = 'other'; Host = 'gitlab'; Data = @{ code_review = 'true' } }
     @{ Name = 'python-gitlab'; Stack = 'python'; Host = 'gitlab' }
     @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
@@ -263,6 +264,17 @@ foreach ($case in $cases) {
     $present = @($dotnetOnly | Where-Object { Test-Path (Join-Path $dest $_) })
     if ($case.Stack -eq 'dotnet') { Check "${name}: .NET layer present" ($present.Count -eq $dotnetOnly.Count) }
     else { Check "${name}: no .NET layer" ($present.Count -eq 0) ($present -join ', ') }
+    $toolManifest = Join-Path $dest '.config\dotnet-tools.json'
+    $formatIgnore = Join-Path $dest '.csharpierignore'
+    if ($case.Stack -eq 'dotnet') {
+        $wantFormat = $case.Data.csharp_format -ne 'false'
+        $formatOk = (Test-Path -LiteralPath $toolManifest) -eq $wantFormat -and (Test-Path -LiteralPath $formatIgnore) -eq $wantFormat
+        if ($formatOk -and $wantFormat) {
+            $formatOk = (Get-Content -LiteralPath $toolManifest -Raw).Contains('"csharpier"') -and (Get-Content -LiteralPath $toolManifest -Raw).Contains('"rollForward": false') -and (Get-Content -LiteralPath $formatIgnore -Raw).Contains('build/ProjectTemplate.props') -and (Get-Content -LiteralPath $formatIgnore -Raw).Contains('**/Migrations/')
+        }
+        Check "${name}: .config/dotnet-tools.json pins CSharpier and .csharpierignore skips the template-owned XML exactly when csharp_format is not false" $formatOk
+    }
+    else { Check "${name}: no CSharpier manifest or ignore file" (-not (Test-Path -LiteralPath $toolManifest) -and -not (Test-Path -LiteralPath $formatIgnore)) }
     $usesNode = $case.Stack -eq 'node' -or $case.Data.uses_node -eq 'true'
     $nodePresent = @($nodeOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -Force -ErrorAction SilentlyContinue) })
     if ($usesNode) { Check "${name}: Node.js files present" ($nodePresent.Count -eq $nodeOnly.Count) ((@($nodeOnly | Where-Object { $_ -notin $nodePresent })) -join ', ') }
@@ -344,7 +356,11 @@ foreach ($case in $cases) {
         $headerLines = @($editorconfig -split '\r?\n' | Where-Object { $_.StartsWith('file_header_template') })
         $headerOk = if ($author -match '[;#]') { $headerLines.Count -eq 0 -and $editorconfig.Contains('# No file_header_template: author_name holds a ; or #, where Roslyn would cut the header short.') }
             else { $headerLines.Count -eq 1 -and $headerLines[0] -ceq $header -and $headerLines[0] -notmatch '[;#]' }
-        Check "${name}: the C# file header for the license answered" ($headerOk -and $editorconfig.Contains('dotnet_diagnostic.IDE0073.severity = suggestion')) $editorconfig
+        $wantFormatHere = $case.Data.csharp_format -ne 'false'
+        $ideSeverity = if ($wantFormatHere -and $author -notmatch '[;#]') { 'warning' } else { 'suggestion' }
+        Check "${name}: the C# file header for the license answered" ($headerOk -and $editorconfig.Contains("dotnet_diagnostic.IDE0073.severity = $ideSeverity")) $editorconfig
+        $extensionsText = Get-Content -LiteralPath (Join-Path $dest '.vscode\extensions.json') -Raw
+        Check "${name}: .editorconfig indents project files and VS Code recommends CSharpier exactly when csharp_format is not false" ($editorconfig.Contains('[*.{csproj,slnx}]') -eq $wantFormatHere -and $extensionsText.Contains('csharpier.csharpier-vscode') -eq $wantFormatHere) $extensionsText
         $publish = Join-Path $dest '.github\workflows\publish.yml'
         $wantsPublish = $library -and $case.Host -eq 'github'
         Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)

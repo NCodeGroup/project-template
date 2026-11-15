@@ -73,3 +73,4 @@ evolves additively.
 - [ADR-0134](0134-evolving-optional-parameters-are-a-dto.md): a growing set of optional criteria is an init-only DTO.
 - [ADR-0136](0136-packages-follow-semantic-versioning-and-the-assembly-version-moves-only-with-the-major.md): packages
   follow Semantic Versioning, and the assembly version moves only with the major.
+- [ADR-0147](0147-packages-are-validated-against-the-last-published-package.md): packages are validated against the last published package.

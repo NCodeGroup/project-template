@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.88.0] - 2026-11-14
+
+### Added
+
+- A library validates every pack: `build/ProjectTemplate.props` turns on `EnablePackageValidation`, which checks the package's target frameworks against each other and, once a project sets `PackageValidationBaselineVersion`, against the last package published to nuget.org, so a binary break (`CP0002`) fails `dotnet pack`: the full `build/dod.ps1`, CI and `publish.yml`, not `-Fast`. A library gets `docs/api-compatibility.md`, which says how to raise the baseline, record an intended break and hand-edit `PublicAPI.*.txt`. ([#358](https://github.com/NCodeGroup/project-template/issues/358), [ADR-0147](template/docs/decisions/project-template/0147-packages-are-validated-against-the-last-published-package.md))
+- `.\.template\Update-Project.ps1` and `Adopt-Project.ps1` name the version on nuget.org to set as `PackageValidationBaselineVersion` for a library that sets none. ([#358](https://github.com/NCodeGroup/project-template/issues/358))
+- A new .NET project formats C# with CSharpier 1.4.0, pinned in `.config/dotnet-tools.json`: `build/dod.ps1` has a `Format` stage, in `-Fast` and in the full gate, that runs `dotnet csharpier check .` when the manifest names CSharpier and fails with `dotnet csharpier format .`; `.csharpierignore` skips the template-owned XML, `.editorconfig` indents `.csproj` and `.slnx` by two spaces, and VS Code recommends the CSharpier extension. ([#359](https://github.com/NCodeGroup/project-template/issues/359), [ADR-0148](template/docs/decisions/project-template/0148-csharp-is-formatted-in-the-gate-and-files-carry-the-spdx-header.md))
+- The `csharp_format` answer, yes for a new .NET project and no for an updated or adopted one, turns the formatter and the file-header check on; an existing project opts in with `.\.template\Update-Project.ps1 -Data @{ csharp_format = $true }` and a first `dotnet csharpier format .`. ([#359](https://github.com/NCodeGroup/project-template/issues/359))
+
+### Changed
+
+- **Breaking:** A library's `dotnet pack` runs package validation, so a library whose package breaks its own target-framework compatibility, or the baseline it sets, fails the pack; set `PackageValidationBaselineVersion` in `Directory.Build.props` and record an intended break with `-p:ApiCompatGenerateSuppressionFile=true`. ([#358](https://github.com/NCodeGroup/project-template/issues/358))
+- With `csharp_format`, IDE0073 is a warning, which fails the build, so a C# file without the header `.editorconfig` sets does not build; ADR-0117's "no formatter in the gate" is amended (ADR-0148), so a project needs no `build/gate.ps1` to format. ([#359](https://github.com/NCodeGroup/project-template/issues/359), [ADR-0148](template/docs/decisions/project-template/0148-csharp-is-formatted-in-the-gate-and-files-carry-the-spdx-header.md))
+
 ## [0.87.1] - 2026-11-14
 
 ### Fixed
@@ -1442,7 +1456,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.87.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.88.0...HEAD
+[0.88.0]: https://github.com/NCodeGroup/project-template/compare/v0.87.1...v0.88.0
 [0.87.1]: https://github.com/NCodeGroup/project-template/compare/v0.87.0...v0.87.1
 [0.87.0]: https://github.com/NCodeGroup/project-template/compare/v0.86.2...v0.87.0
 [0.86.2]: https://github.com/NCodeGroup/project-template/compare/v0.86.1...v0.86.2

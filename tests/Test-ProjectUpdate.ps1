@@ -55,7 +55,7 @@ $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 # Get-PreReleaseAnswer and Invoke-TemplateRender from the template's script, with a stand-in Copier that records its arguments: the render's pre_release comes from -Data, else from AGENTS.md's Landing section.
 $preRelease = & {
     $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path (Split-Path -Parent $PSScriptRoot) 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
-    foreach ($fnName in 'ConvertTo-CopierValue', 'Get-PreReleaseAnswer', 'Invoke-TemplateRender') {
+    foreach ($fnName in 'ConvertTo-CopierValue', 'Get-PreReleaseAnswer', 'Get-Answer', 'Get-CSharpFormatAnswer', 'Invoke-TemplateRender') {
         $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
         . ([scriptblock]::Create($fn.Extent.Text))
     }
@@ -77,7 +77,11 @@ $preRelease = & {
         $null = New-Item -ItemType Directory -Path $project -Force
         if ($null -ne $cases[$name].Agents) { [IO.File]::WriteAllText((Join-Path $project 'AGENTS.md'), $cases[$name].Agents) }
         Set-Variable -Name Data -Value $cases[$name].Data
-        $null = Invoke-TemplateRender v0.1.0 (Join-Path $project 'out')
+        # Get-Answer reads .copier-answers.yml in the current folder.
+        [IO.File]::WriteAllText((Join-Path $project '.copier-answers.yml'), "stack: python`n")
+        Push-Location $project
+        try { $null = Invoke-TemplateRender v0.1.0 (Join-Path $project 'out') }
+        finally { Pop-Location }
         $got = @($recorded | Where-Object { $_ -like 'pre_release=*' })
         if ($got.Count -ne 1 -or $got[0] -ne "pre_release=$($cases[$name].Want)") { "${name}: $($got -join ',')" }
     }
@@ -202,6 +206,21 @@ try {
     Check 'update: resolving and committing completes it' (-not (git diff --cached --check) -and $LASTEXITCODE -eq 0)
     Invoke-Git commit -q -m 'Update from project-template v0.3.0'
     Check 'update: answers record v0.3.0' ((Get-Content -LiteralPath .copier-answers.yml -Raw) -match '(?m)^_commit: v0\.3\.0$' -and -not (git status --porcelain))
+}
+finally { Pop-Location }
+
+# A .NET project from before csharp_format has no such answer: an update keeps it out of the formatter, and -Data opts it in.
+$dotnet = Join-Path $Work 'dotnet'
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test dotnet' --data 'stack=dotnet' --data 'git_host=github' --data 'csharp_format=false' $tplUrl $dotnet
+Push-Location $dotnet
+try {
+    $answersFile = (Resolve-Path -LiteralPath .copier-answers.yml).Path
+    [IO.File]::WriteAllText($answersFile, ([IO.File]::ReadAllText($answersFile) -replace '(?m)^csharp_format:.*\r?\n', ''))
+    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
+    $output = & (Join-Path $dotnet '.template\Update-Project.ps1') | Out-String
+    Check 'update: a project without csharp_format stays out of the formatter and records csharp_format: false' (-not (Test-Path -LiteralPath .config/dotnet-tools.json) -and -not (Test-Path -LiteralPath .csharpierignore) -and (Get-Content -LiteralPath .copier-answers.yml -Raw) -match '(?m)^csharp_format: false\s*$') $output.Trim()
+    $output = & (Join-Path $dotnet '.template\Update-Project.ps1') -Data @{ csharp_format = $true } | Out-String
+    Check 'update: -Data csharp_format = $true adds the manifest and the ignore file' ((Test-Path -LiteralPath .config/dotnet-tools.json) -and (Test-Path -LiteralPath .csharpierignore)) $output.Trim()
 }
 finally { Pop-Location }
 
