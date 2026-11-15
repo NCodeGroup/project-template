@@ -29,9 +29,9 @@ for the review.
    or turning on auto-merge.
 3. When no review comes, because the workflow skips the pull request (a `skip-review` label, a fork, a pull request a
    bot opened) or the run fails, the person decides: re-run the job, comment `/review`, or merge without it.
-4. `/run-issues` and `/run-feedback` recommend the merge once NCode Review's findings are answered, or once their
-   rounds reach `max-review-rounds`, which can come before the review of their last push posts: their recommendation
-   doesn't replace the person's wait.
+4. `/run-issues` and `/run-feedback` recommend the merge once NCode Review's findings are answered and its review of the
+   last push they asked for is in; after `max-review-rounds` rounds they ask for no further review, so a push after that
+   has no review before their recommendation, which doesn't replace the person's wait.
 
 ## Options considered
 
