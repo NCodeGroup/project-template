@@ -6,6 +6,9 @@
 # holds only id-token: write: it can't attest, and it can't write to the release. This workflow downloads the very
 # packages that run uploaded, so what it attests is what was published.
 #
+# The release also gets an SPDX SBOM (<tag>.spdx.json) from GitHub's dependency graph, as of the run; it describes the
+# default branch's dependencies when this workflow runs and is not attested.
+#
 # To verify a package a consumer downloaded: gh attestation verify <package> --repo <owner>/<repo>
 name: Attach release provenance
 
@@ -60,7 +63,7 @@ jobs:
           subject-path: |
             packages/*.nupkg
             packages/*.snupkg
-      - name: Attach the packages and the provenance to the release
+      - name: Attach the packages, the provenance and the SBOM to the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -68,8 +71,12 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
           BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: |
+          $sbom = "$env:TAG.spdx.json"
           Copy-Item -LiteralPath $env:BUNDLE -Destination "$env:TAG.intoto.jsonl"
-          gh release upload $env:TAG (Get-ChildItem packages -Include *.nupkg,*.snupkg -Recurse).FullName "$env:TAG.intoto.jsonl" --clobber
+          $export = gh api "repos/$env:GH_REPO/dependency-graph/sbom" | ConvertFrom-Json
+          if ($LASTEXITCODE) { throw "gh api dependency-graph/sbom failed with exit code $LASTEXITCODE." }
+          $export.sbom | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $sbom
+          gh release upload $env:TAG (Get-ChildItem packages -Include *.nupkg,*.snupkg -Recurse).FullName "$env:TAG.intoto.jsonl" $sbom --clobber
           if ($LASTEXITCODE) { throw "gh release upload failed with exit code $LASTEXITCODE." }
       # Proves the attestation exists and names this repository, so a broken signing step fails here, not for a consumer.
       - name: Verify the attestations
