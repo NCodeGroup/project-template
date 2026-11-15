@@ -22,6 +22,9 @@ says for `PackageValidationBaselineVersion`.
 - Adoption prints each finding as a follow-up; the update prints them as one block with a `/plan-migration` request.
 - The check is offline and deterministic: it scans files with regular expressions and never loads a project as XML.
 - It runs only when `nuget_package` is `true`.
+- It does not detect a transitive dependency that an older target framework doesn't support (issue #360's
+  `System.IO.Hashing` 11 on net8.0 through Nerdbank.Streams): that needs a restore, which an offline scan can't do. It is
+  filed as a follow-up to make the build gate name the warning, and the changelog and pull request leave it open.
 - `tools/adopt/Adoption.psm1` holds `Get-NuGetLogistics` and `.template/Update-Project.ps1` holds a deliberate copy;
   `tests/Test-NuGetLogistics.ps1` keeps the two equal in behavior.
 
