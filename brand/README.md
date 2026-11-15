@@ -1,6 +1,6 @@
 # NCode Logo Kit
 
-The NCode mark is `{N}`: N for NCode, inside the curly braces of code. This folder holds it as vector masters and as the PNG and ICO files that each place it appears in asks for. `build.py` draws every file here, and `template/NCodeGroup.png`, the NuGet package icon a project made from the template gets.
+The NCode mark is `{N}`: N for NCode, inside the curly braces of code. This folder holds it as vector masters and as the PNG and ICO files that each place it appears in asks for. `build.mjs` draws every file here, and `template/NCodeGroup.png`, the NuGet package icon a project made from the template gets.
 
 | Tile, blue | Tile, white | Tile, dark | Mark | Lockup |
 |---|---|---|---|---|
@@ -103,9 +103,9 @@ GitHub shows the image that matches the reader's GitHub theme when a `<picture>`
 ## Build
 
 ```powershell
-uv run brand/build.py
+node brand/build.mjs
 ```
 
-uv installs the two packages the script names, numpy and Pillow, for that run. Without uv, install them and run `python brand/build.py`. The script rewrites every file here but this one and itself, and `template/NCodeGroup.png`. It reads every PNG and every ICO entry back and stops when one doesn't decode to the picture it drew. It also stops when a file breaks its platform's limit: more than 100 KB for My Apps, 200 KiB for GitLab or 1 MB for NuGet and GitHub, or a transparent pixel where the platform takes none. `--output <folder>` writes the kit elsewhere and leaves the template's icon alone.
+The script runs on the Node.js release `.node-version` names, with no packages to install. It writes every file here but this one and itself, and `template/NCodeGroup.png`, that is missing or doesn't hold what it draws, and keeps the others: a file with the same bytes, a PNG with the same pixels, or an ICO whose entries are stored the same way and hold the same pixels, so an image stays as it is while its picture does. It reads every PNG and every ICO entry back and stops when one doesn't decode to the picture it drew. It also stops when a file breaks its platform's limit: more than 100 KB for My Apps, 200 KiB for GitLab or 1 MB for NuGet and GitHub, or a transparent pixel where the platform takes none. `--output <folder>` writes the kit elsewhere and leaves the template's icon alone. `node brand/build.mjs --check` writes nothing, names each file that is missing or would change, and exits 1 when one would; `tests/Test-BrandKit.ps1` runs it in CI.
 
-To change the mark, edit `MASTER` and `FITTED` in `build.py`; to change a color, the constants above them. A project that already has an `NCodeGroup.png` keeps it, because the file is project-owned: copy the new one over it to take the new icon.
+To change the mark, edit `MASTER` and `FITTED` in `build.mjs`; to change a color, the constants above them. A project that already has an `NCodeGroup.png` keeps it, because the file is project-owned: copy the new one over it to take the new icon.
