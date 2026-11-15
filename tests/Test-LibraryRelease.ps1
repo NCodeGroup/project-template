@@ -111,7 +111,7 @@ Write-Text (Join-Path $others '.github/workflows/ci.yml') "- run: dotnet pack`n"
 
 $updateFunctions = @{}
 $updateAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
-foreach ($function in 'Get-AssemblyVersionFloor', 'Get-NuGetPublisher', 'Get-PublishedPackageVersion', 'Update-VersionFile', 'Get-CSharpFileWithoutHeader') {
+foreach ($function in 'Get-AssemblyVersionFloor', 'Get-NuGetPublisher', 'Get-PublishedPackageVersion', 'Update-VersionFile', 'Get-CSharpFileWithoutHeader', 'Test-PackageValidationBaseline') {
     $updateFunctions[$function] = $updateAst.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $function }, $true) | Select-Object -First 1
 }
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
@@ -239,13 +239,15 @@ $baselineIndex = 0
 foreach ($name in $baselineCases.Keys) {
     $baselineIndex++
     $case = $baselineCases[$name]
-    $folder = Join-Path $Work "baseline$baselineIndex"
-    New-Item -ItemType Directory -Path $folder -Force | Out-Null
-    foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $folder $relative) $case.Files[$relative] }
-    Push-Location $folder
-    try { $result = Adoption\Test-PackageValidationBaseline }
-    finally { Pop-Location }
-    Check "adopt: Test-PackageValidationBaseline: $name" ($result -eq $case.Expect) "Got '$result'; expected '$($case.Expect)'"
+    foreach ($source in $sources.Keys) {
+        $folder = Join-Path $Work "baseline-$source-$baselineIndex"
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $folder $relative) $case.Files[$relative] }
+        Push-Location $folder
+        try { $result = & $sources[$source] 'Test-PackageValidationBaseline' }
+        finally { Pop-Location }
+        Check "${source}: Test-PackageValidationBaseline: $name" ($result -eq $case.Expect) "Got '$result'; expected '$($case.Expect)'"
+    }
 }
 
 # Get-CSharpFileWithoutHeader: the C# files that don't start with the header .editorconfig sets.
