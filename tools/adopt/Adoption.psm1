@@ -474,4 +474,37 @@ function Get-AssemblyVersionFloor {
     if ($best -gt [version]::new($major, 0, 0, 0)) { [pscustomobject]@{ Tag = $bestTag; AssemblyVersion = $best.ToString(); Major = $major } }
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+# Fills the version.json in the current folder from the repository: Version is the patch after the newest stable tag merged
+# into HEAD, and the assembly version is the one Directory.Build.props sets, else Get-AssemblyVersionFloor's. Returns Version,
+# Tag, AssemblyVersion and Precision, each $null when unchanged, and nothing without a version.json.
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both
+# together; tests keep the two equal.
+function Update-VersionFile {
+    $path = Join-Path (Get-Location) 'version.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return }
+    $text = [IO.File]::ReadAllText($path)
+    $result = [pscustomobject]@{ Version = $null; Tag = $null; AssemblyVersion = $null; Precision = $null }
+    $tag = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?\d+\.\d+\.\d+$' } | Sort-Object { [version]($_ -replace '^v') }) | Select-Object -Last 1
+    if ($tag) {
+        $number = [version]($tag -replace '^v')
+        $version = "$($number.Major).$($number.Minor).$($number.Build + 1)"
+        $updated = [regex]::Replace($text, '(?m)^  "version": "[^"]*"', "  `"version`": `"$version`"")
+        if ($updated -ne $text) { $text = $updated; $result.Version = $version; $result.Tag = $tag }
+    }
+    $shipped = $null
+    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion>\s*(\d+(?:\.\d+){1,3})\s*</AssemblyVersion>') { $shipped = $Matches[1] }
+    if (-not $shipped) { $shipped = (Get-AssemblyVersionFloor).AssemblyVersion }
+    if ($shipped) {
+        $number = [version]$shipped
+        $parts = @($number.Major, $number.Minor, [Math]::Max($number.Build, 0), [Math]::Max($number.Revision, 0))
+        if ($parts[3] -gt 0) { $assembly = $parts -join '.'; $precision = 'revision' }
+        elseif ($parts[2] -gt 0) { $assembly = $parts[0..2] -join '.'; $precision = 'build' }
+        else { $assembly = $parts[0..1] -join '.'; $precision = 'minor' }
+        $updated = $text.Replace('"assemblyVersion": { "precision": "major" }', "`"assemblyVersion`": { `"version`": `"$assembly`", `"precision`": `"$precision`" }")
+        if ($updated -ne $text) { $text = $updated; $result.AssemblyVersion = $assembly; $result.Precision = $precision }
+    }
+    if ($result.Version -or $result.AssemblyVersion) { [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false)) }
+    $result
+}
+
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
