@@ -24,6 +24,8 @@
 
     For a library it lists the stale NuGet logistics it finds as follow-ups (Get-NuGetLogistics): a .props file no project imports, GeneratePackageOnBuild, settings the template already makes, a .sln, a UTF-8 BOM and projects at the repository root, and the package Description and PackageTags that differ from the newest published package (Get-PackageMetadataDrift).
 
+    When the repository references Nerdbank.GitVersioning itself, which build/ProjectTemplate.props references once version.json exists, it drops the repository's own PackageReference (and a second PackageVersion in Directory.Packages.props) and reports it, because two references fail the build with NU1504 or NU1506 (ADR-0138).
+
 .EXAMPLE
     .\Adopt-Project.ps1 -Path C:\src\buffers
     .\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot' }
@@ -186,6 +188,7 @@ try {
                 $report.Add($line)
             }
         }
+        if ((Test-Path -LiteralPath version.json -PathType Leaf) -and (Test-Path -LiteralPath build/ProjectTemplate.props -PathType Leaf)) { foreach ($dropped in @(Remove-GitVersioningReference $project)) { $report.Add("  Dropped $($dropped.File) $([char]0x2014) the template references Nerdbank.GitVersioning itself (ADR-0138)" + $(if ($dropped.Version) { "; it pinned version $($dropped.Version), so raise the template's PackageVersion in Directory.Packages.props if the project needs it" } else { '' })) } }
 
         $followUps = [Collections.Generic.List[string]]::new()
         if ($nvmrcText) { $followUps.Add("set .node-version to the Node.js version .nvmrc names ($nvmrcText); it holds the template's version until then") }

@@ -389,6 +389,15 @@ if (-not $UnitOnly) {
     $publishOut = & $adopt -Path $ownPublish -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; nuget_package = $true; license = 'Apache-2.0'; test_command = '' } -NoVerify | Out-String
     Check 'own-publish: keeps its own publish.yml, adds version.json, and asks to add -p:PublicRelease=true' ((Get-Content -Raw -LiteralPath (Join-Path $ownPublish '.github/workflows/publish.yml')) -notmatch 'PublicRelease' -and (Test-Path -LiteralPath (Join-Path $ownPublish 'version.json')) -and $publishOut.Contains('add -p:PublicRelease=true to the dotnet test and dotnet pack commands of .github/workflows/publish.yml')) $publishOut
 
+    # A library that references Nerdbank.GitVersioning itself loses that reference, because the template's build/ProjectTemplate.props references it once version.json exists.
+    $ownGitVersioning = New-Fixture 'own-gitversioning' @{
+        'src/Lib/Lib.csproj' = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n  <ItemGroup>`n    <PackageReference Include=""Nerdbank.GitVersioning"" Version=""3.6.0"" PrivateAssets=""all"" />`n  </ItemGroup>`n</Project>`n"
+        'README.md'          = "# Lib`n"
+    } 'https://github.com/example/own-gitversioning.git'
+    $gitVersioningOut = & $adopt -Path $ownGitVersioning -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; nuget_package = $true; license = 'Apache-2.0'; test_command = '' } -NoVerify | Out-String
+    $gvPackages = Get-Content -Raw -LiteralPath (Join-Path $ownGitVersioning 'Directory.Packages.props')
+    Check 'own-gitversioning: drops the project''s own reference, keeps the template''s one, and says so' (((Get-Content -Raw -LiteralPath (Join-Path $ownGitVersioning 'src/Lib/Lib.csproj')) -notmatch 'Nerdbank\.GitVersioning') -and ([regex]::Matches($gvPackages, '<PackageVersion\s+Include="Nerdbank\.GitVersioning"')).Count -eq 1 -and ((Get-Content -Raw -LiteralPath (Join-Path $ownGitVersioning 'build/ProjectTemplate.props')) -match 'Nerdbank\.GitVersioning') -and $gitVersioningOut.Contains('Dropped src/Lib/Lib.csproj') -and $gitVersioningOut.Contains('pinned version 3.6.0') -and -not (git -C $ownGitVersioning status --porcelain)) $gitVersioningOut
+
     if (-not $SkipDotnetBuild) {
         $subject = git -C $scaffoldRepo log -1 --format=%s
         $packOut = dotnet pack (Join-Path $scaffoldRepo 'src\NCode.Demo') -o (Join-Path $Work 'pack') 2>&1 | Out-String
