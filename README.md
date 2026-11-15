@@ -497,6 +497,7 @@ A Dependabot pull request that only moves the NCode Review pin in `.github/workf
 | CI sets up and installs with the `package_manager` answer, the default commands run it and no other manager, and Dependabot uses its ecosystem | Node.js with npm, pnpm, Yarn and Bun, on GitHub and GitLab |
 | GitLab CI selects the `.node-version` Node.js through the pinned nvs before the build for a project that answers `uses_node`, and installs no nvs without the answer; the PowerShell job runs in the .NET SDK image with no `apt-get`, and the `other` stack's job in `node:lts` with the answer and `alpine:3` without it | .NET, Python, PowerShell and other on GitLab |
 | LF line endings, no leftover Jinja, valid JSON, valid YAML | Every rendered file |
+| Every `shell: pwsh` `run:` block of a workflow or action parses as PowerShell (`${{ }}` expressions set aside), in each render and in this repository's own `.github` workflows | Every rendered file, and this repository |
 | No line that joins two list items, such as `remains.- Secrets` | Every rendered Markdown file |
 | Every `ADR-0NNN` a rendered Markdown file cites names a decision record the project has, in `docs/decisions/` or `docs/decisions/project-template/`; ADR-0016 cites ADR-0137 only in a .NET library on GitHub | Every render |
 | Workflow files, editor settings, `.gitignore`, `AGENTS.md`, the template rules and `README.md` only for the chosen `workflow_tools` | Every render |

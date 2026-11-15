@@ -127,7 +127,7 @@ jobs:
           foreach ($package in $packages) {
             $id = $package.Name.Substring(0, $package.Name.Length - ".$env:VERSION.nupkg".Length).ToLowerInvariant()
             $answer = Invoke-RestMethod -Uri "https://api.nuget.org/v3-flatcontainer/$id/index.json" -SkipHttpErrorCheck -StatusCodeVariable status
-            $versions = if ($status -eq 404) { @() } elseif ($status -eq 200) { @($answer.versions) } else { throw "nuget.org answered HTTP $status for $id: run the workflow again once it answers." }
+            $versions = if ($status -eq 404) { @() } elseif ($status -eq 200) { @($answer.versions) } else { throw "nuget.org answered HTTP $status for ${id}: run the workflow again once it answers." }
             if ($versions -contains $env:VERSION.ToLowerInvariant()) { $published++ }
           }
           if ($published -eq $packages.Count) { throw "Every package is already on nuget.org at $env:VERSION; publish a new version." }

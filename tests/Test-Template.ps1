@@ -38,6 +38,17 @@ function Invoke-Git {
     git -c user.name=template-test -c user.email=template-test@example.invalid @args
     if ($LASTEXITCODE) { throw "git $($args -join ' ') failed." }
 }
+# One message per pwsh run: block in the YAML files that PowerShell can't parse, with ${{ }} expressions swapped for text.
+function Get-PwshParseError([string[]]$Files) {
+    $out = uv run --quiet --no-project --with $pyyamlPin python -c $pwshRunCheck @Files 2>&1 | Out-String
+    if ($LASTEXITCODE) { throw $out }
+    foreach ($entry in @($out | ConvertFrom-Json)) {
+        $script = [regex]::Replace($entry.run, '\$\{\{.*?\}\}', 'x', 'Singleline')
+        $errors = $null
+        [Management.Automation.Language.Parser]::ParseInput($script, [ref]$null, [ref]$errors) | Out-Null
+        if ($errors) { "$([IO.Path]::GetFileName($entry.file)) ($($entry.step)): $(($errors | ForEach-Object { "line $($_.Extent.StartLineNumber): $($_.Message)" }) -join '; ')" }
+    }
+}
 # The run: block of the step with the given id in a workflow, dedented as YAML reads a block scalar: its lines up to the
 # next line indented no deeper than run: itself. Empty when the step or its run: | block isn't there.
 function Get-StepScript([string]$Workflow, [string]$Id) {
@@ -163,6 +174,35 @@ $cases = @(
 )
 if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
 $yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
+# Prints, as JSON, every step that runs under pwsh (its own shell or its job's default) with its run: script.
+$pwshRunCheck = @'
+import sys, json, yaml
+out = []
+for path in sys.argv[1:]:
+    doc = yaml.safe_load(open(path, encoding="utf-8"))
+    if not isinstance(doc, dict):
+        continue
+    groups = []
+    doc_defaults = doc.get("defaults")
+    doc_run_defaults = doc_defaults.get("run") if isinstance(doc_defaults, dict) else None
+    doc_shell = doc_run_defaults.get("shell") if isinstance(doc_run_defaults, dict) else None
+    jobs = doc.get("jobs")
+    for job in (jobs.values() if isinstance(jobs, dict) else []):
+        if not isinstance(job, dict):
+            continue
+        defaults = job.get("defaults")
+        run_defaults = defaults.get("run") if isinstance(defaults, dict) else None
+        shell = run_defaults.get("shell") if isinstance(run_defaults, dict) else None
+        groups.append((job.get("steps"), shell or doc_shell))
+    runs = doc.get("runs")
+    if isinstance(runs, dict):
+        groups.append((runs.get("steps"), None))
+    for steps, default in groups:
+        for step in (steps if isinstance(steps, list) else []):
+            if isinstance(step, dict) and (step.get("shell") or default) == "pwsh" and isinstance(step.get("run"), str):
+                out.append({"file": path, "step": step.get("name") or step.get("id") or "", "run": step["run"]})
+print(json.dumps(out))
+'@
 # The YAML and _exclude checks run PyYAML and Jinja2 at the exact versions tests/requirements.txt pins, which Dependabot's pip entry for /tests moves, not the newest release.
 $pythonPins = [IO.File]::ReadAllLines((Join-Path $repoRoot 'tests\requirements.txt'))
 $pyyamlPin = @($pythonPins -match '^pyyaml==\d+(\.\d+)+$')[0]
@@ -561,6 +601,8 @@ foreach ($case in $cases) {
     $yamlFiles = @($files | Where-Object Extension -In '.yml', '.yaml' | ForEach-Object FullName)
     $yamlOutput = uv run --quiet --no-project --with $pyyamlPin python -c $yamlCheck @yamlFiles 2>&1 | Out-String
     Check "${name}: valid YAML ($($yamlFiles.Count) files)" ($LASTEXITCODE -eq 0) $yamlOutput.Trim()
+    $parseErrors = @(Get-PwshParseError $yamlFiles)
+    Check "${name}: every pwsh run: block parses ($($yamlFiles.Count) files)" (-not $parseErrors) ($parseErrors -join '; ')
     $extensions = Get-Content -LiteralPath (Join-Path $dest '.vscode/extensions.json') -Raw
     $settings = Get-Content -LiteralPath (Join-Path $dest '.vscode/settings.json') -Raw
     $local = 'local' -in $tools
@@ -619,6 +661,9 @@ $stale = @(Get-StaleWorkflowFile (Join-Path $repoRoot 'template') | Select-Objec
 Check 'generated workflow files match workflow/templates (else run tools\Update-Template.ps1)' (-not $stale) ($stale -join ', ')
 $stale = @(Get-StaleWorkflowFile $repoRoot | Select-Object -Unique)
 Check 'this repository''s own workflow files match workflow/templates (else run tools\Update-Template.ps1)' (-not $stale) ($stale -join ', ')
+$ownYaml = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot '.github') -Recurse -File | Where-Object Extension -In '.yml', '.yaml' | ForEach-Object FullName)
+$ownParseErrors = @(Get-PwshParseError $ownYaml)
+Check 'repository: every pwsh run: block of the workflows parses' (-not $ownParseErrors) ($ownParseErrors -join '; ')
 # Text files Git tracks with LF endings; binary files are left out.
 $ownFiles = git -C $repoRoot -c core.quotePath=false ls-files --eol | Where-Object { $_ -match '^i/lf\s' } | ForEach-Object { Join-Path $repoRoot (($_ -split "`t", 2)[1]) }
 $badEnd = $ownFiles | Where-Object { $b = [IO.File]::ReadAllBytes($_); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.Substring($repoRoot.Length).TrimStart('\', '/') }
