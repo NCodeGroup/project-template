@@ -69,7 +69,9 @@
     major was built with a higher one than build/ProjectTemplate.props pins (the library's ADR-0136). It leaves
     .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
     publish. When the project has .github/workflows/tag-release.yml and a publish.yml without a workflow_dispatch
-    trigger, it says what to add.
+    trigger, it says what to add. When the project has version.json, it also warns about a publish.yml that packs
+    without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning themselves (the template's
+    ADR-0138).
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
 
@@ -410,6 +412,47 @@ function Get-AssemblyVersionFloor {
     if ($best -gt [version]::new($major, 0, 0, 0)) { [pscustomobject]@{ Tag = $bestTag; AssemblyVersion = $best.ToString(); Major = $major } }
 }
 
+# A deliberate copy of tools/adopt/Adoption.psm1's Update-VersionFile: change both, or tests\Test-LibraryRelease.ps1 fails.
+function Update-VersionFile {
+    $path = Join-Path (Get-Location) 'version.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return }
+    $text = [IO.File]::ReadAllText($path)
+    $result = [pscustomobject]@{ Version = $null; Tag = $null; AssemblyVersion = $null; Precision = $null }
+    $tag = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?\d+\.\d+\.\d+$' } | Sort-Object { [version]($_ -replace '^v') }) | Select-Object -Last 1
+    if ($tag) {
+        $number = [version]($tag -replace '^v')
+        $version = "$($number.Major).$($number.Minor).$($number.Build + 1)"
+        $updated = [regex]::Replace($text, '(?m)^  "version": "[^"]*"', "  `"version`": `"$version`"")
+        if ($updated -ne $text) { $text = $updated; $result.Version = $version; $result.Tag = $tag }
+    }
+    $shipped = $null
+    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion>\s*(\d+(?:\.\d+){1,3})\s*</AssemblyVersion>') { $shipped = $Matches[1] }
+    if (-not $shipped) { $shipped = (Get-AssemblyVersionFloor).AssemblyVersion }
+    if ($shipped) {
+        $number = [version]$shipped
+        $parts = @($number.Major, $number.Minor, [Math]::Max($number.Build, 0), [Math]::Max($number.Revision, 0))
+        if ($parts[3] -gt 0) { $assembly = $parts -join '.'; $precision = 'revision' }
+        elseif ($parts[2] -gt 0) { $assembly = $parts[0..2] -join '.'; $precision = 'build' }
+        else { $assembly = $parts[0..1] -join '.'; $precision = 'minor' }
+        $updated = $text.Replace('"assemblyVersion": { "precision": "major" }', "`"assemblyVersion`": { `"version`": `"$assembly`", `"precision`": `"$precision`" }")
+        if ($updated -ne $text) { $text = $updated; $result.AssemblyVersion = $assembly; $result.Precision = $precision }
+    }
+    if ($result.Version -or $result.AssemblyVersion) { [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false)) }
+    $result
+}
+
+# The files, other than the template's own, that reference Nerdbank.GitVersioning, which build/ProjectTemplate.props references once version.json exists (the template's ADR-0138).
+function Get-GitVersioningReference {
+    $found = foreach ($file in @(git ls-files -- '*.props' '*.targets' '*.csproj') | Where-Object { $_ -ne 'build/ProjectTemplate.props' }) {
+        $text = Get-Content -LiteralPath $file -Raw
+        if ($file -eq 'Directory.Packages.props') {
+            if ([regex]::Matches($text, '<PackageVersion\s+Include="Nerdbank\.GitVersioning"').Count -gt 1) { $file }
+        }
+        elseif ($text -match '<PackageReference\s+Include="Nerdbank\.GitVersioning"') { $file }
+    }
+    @($found) | Sort-Object
+}
+
 $project = (Resolve-Path -LiteralPath $Path).Path
 $ownClone = -not $TemplateClone
 $scratch = Join-Path ([IO.Path]::GetTempPath()) "project-template-update-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
@@ -529,6 +572,7 @@ try {
         New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
         [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$beginCopy`n$([IO.File]::ReadAllText($projectIgnore))`n$endCopy`n")
     }
+    $versionFileNew = $false
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
@@ -586,6 +630,7 @@ try {
         if ($publishLeftOut) { $copierArgs += '--exclude', '/.github/workflows/publish.yml' }
         # A file the project owns, merged or template-owned, stays as it is; its template change is shown below.
         foreach ($file in $ownedFiles) { $copierArgs += '--exclude', "/$file" }
+        $versionFileNew = -not (Test-Path -LiteralPath version.json) -and 'version.json' -notin @($deleted)
         Invoke-Copier @copierArgs
 
         # Put the kept lines back at the end, after any conflict.
@@ -602,6 +647,8 @@ try {
         throw
     }
 
+    # version.json this update added starts after the newest release (Update-VersionFile, ADR-0138).
+    $versionFile = if ($versionFileNew -and (Test-Path -LiteralPath version.json -PathType Leaf)) { Update-VersionFile }
     $conflicts = @(git diff --name-only --diff-filter=U)
     if (-not $conflicts) {
         Add-UpdateChange $scratch
@@ -708,12 +755,23 @@ try {
         $ownedCommand
     }
 
-    # A library release built with a higher AssemblyVersion than build/ProjectTemplate.props pins (Get-AssemblyVersionFloor).
-    $floor = Get-AssemblyVersionFloor
+    # A library release built with a higher AssemblyVersion than build/ProjectTemplate.props pins (Get-AssemblyVersionFloor), in a library without version.json, whose assemblyVersion holds it instead.
+    $floor = if (-not (Test-Path -LiteralPath version.json)) { Get-AssemblyVersionFloor }
     if ($floor) {
         ''
         "$($floor.Tag) was released with AssemblyVersion $($floor.AssemblyVersion), and build/ProjectTemplate.props gives every $($floor.Major).x release $($floor.Major).0.0.0, which an application compiled against $($floor.AssemblyVersion) can't load. Until the next major version, set it in Directory.Build.props, after the import of build/ProjectTemplate.props (ADR-0136):"
         "  <PropertyGroup><AssemblyVersion>$($floor.AssemblyVersion)</AssemblyVersion></PropertyGroup>"
+    }
+    if ($versionFile) {
+        ''
+        $versionLine = 'Added version.json, which Nerdbank.GitVersioning now builds every assembly''s and package''s version from (the template''s ADR-0138, in docs/decisions/project-template/).'
+        $versionLine += if ($versionFile.Version) { " Its version is $($versionFile.Version), the patch after $($versionFile.Tag): the next plan with a Release: line sets it to that release's version." } else { ' Its version is 0.1.0, as the project has no release tag yet.' }
+        if ($versionFile.AssemblyVersion) { $versionLine += " Its assemblyVersion is $($versionFile.AssemblyVersion) with precision $($versionFile.Precision), the AssemblyVersion the current major version's releases need; the change that starts the next major version sets it to { `"precision`": `"major`" }." }
+        $versionLine
+    }
+    if ((Test-Path -LiteralPath version.json) -and (Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion[\s>]') {
+        ''
+        'Directory.Build.props sets AssemblyVersion, which version.json''s assemblyVersion sets once Nerdbank.GitVersioning builds the project (the template''s ADR-0138): delete it from Directory.Build.props.'
     }
     # A library with its own NuGet publishing workflow (Get-NuGetPublisher).
     if ($publishLeftOut) {
@@ -728,6 +786,18 @@ try {
     if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
+    }
+    if (Test-Path -LiteralPath version.json) {
+        # Nerdbank.GitVersioning ignores -p:Version, and without PublicRelease it adds a -g<commit> suffix.
+        if ((Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch 'PublicRelease=true') {
+            ''
+            '.github/workflows/publish.yml packs without -p:PublicRelease=true. Nerdbank.GitVersioning takes each package''s version from version.json and ignores -p:Version, and without PublicRelease it adds a -g<commit> suffix, so the check that every package has the tag''s version stops each release before it publishes. Add -p:PublicRelease=true to its dotnet test and dotnet pack commands, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0138, in docs/decisions/project-template/).'
+        }
+        $gitVersioning = @(Get-GitVersioningReference)
+        if ($gitVersioning.Count -gt 0) {
+            ''
+            "These files reference Nerdbank.GitVersioning, which build/ProjectTemplate.props references for every project once version.json exists (the template's ADR-0138): $($gitVersioning -join ', '). A second reference fails the build (NU1504, NU1506): delete the project's own PackageReference of it, and its own PackageVersion of it in Directory.Packages.props, keeping the template's."
+        }
     }
 
     Get-AttributionCheckNote $changes

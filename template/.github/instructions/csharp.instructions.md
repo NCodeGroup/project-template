@@ -295,7 +295,7 @@ Use explicit byte arrays only for invalid UTF-8 or error-condition tests. A fixe
 ## Build
 
 - `./build/dod.ps1` is the Definition of Done: it checks the decision index, builds in Release with every analyzer, runs the tests and, for a library, packs. CI runs it, and `./build/dod.ps1 -Fast` (Debug, no pack) is the local gate before a push; `-Filter` narrows the tests in the inner loop. Its last line is `Definition of Done: PASSED`; a script tests its exit code instead.
-- A library's versions follow Semantic Versioning, taken from the release tag (`v1.2.3`); `AssemblyVersion` moves only with the major version, so a minor or patch upgrade is a drop-in replacement, while `FileVersion` and `InformationalVersion` keep the exact version. Never set `AssemblyVersion` by hand.
+- A library's versions follow Semantic Versioning, taken from `version` in the root `version.json`, which its release tag (`v1.2.3`) names too; `AssemblyVersion` moves only with the major version, so a minor or patch upgrade is a drop-in replacement, while `FileVersion` and `InformationalVersion` keep the exact version. Set it only in `version.json`'s `assemblyVersion`, never in a project file.
 - The null-forgiving operator fails the build outside test projects (Nullable.Extended.Analyzer, NX0001-NX0004).
 - Warnings are errors in every project, tests included. Relax a single rule with a justified `.editorconfig` entry or a tight `#pragma warning disable/restore` with a reason, never with `TreatWarningsAsErrors=false`.
 - Unused `using` directives fail the build (IDE0005). Clean them with `dotnet format style --diagnostics IDE0005`.

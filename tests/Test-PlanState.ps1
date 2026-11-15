@@ -856,6 +856,29 @@ Remove-Item -LiteralPath $lateLog
 $r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'missing'; 'changelog-version' = '-'; 'changelog-duplicates' = '-' }
 Check 'changelog: a missing changelog' $r.Ok $r.Detail
 
+$lateVersion = Join-Path $lateRepo 'version.json'
+Write-Text $lateVersion "{ `"version`": `"0.3.1`" }`n"
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'version-file' = 'match' }
+Check 'version-file: version.json at the plan''s Release: version matches' $r.Ok $r.Detail
+
+Write-Text $lateVersion "{ `"version`": `"0.3.0`" }`n"
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'version-file' = 'mismatch 0.3.0' }
+Check 'version-file: version.json at another version names it' $r.Ok $r.Detail
+
+Write-Text $lateVersion "not json`n"
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'version-file' = 'mismatch unreadable' }
+Check 'version-file: a version.json that isn''t JSON is mismatch unreadable' $r.Ok $r.Detail
+
+$versionPlanText = [IO.File]::ReadAllText($latePlan)
+Write-Text $latePlan ($versionPlanText -replace '(?m)^Release: .*\r?\n', '')
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ release = '-'; 'version-file' = '-' }
+Check 'version-file: a plan without a Release: line is -' $r.Ok $r.Detail
+Write-Text $latePlan $versionPlanText
+
+Remove-Item -LiteralPath $lateVersion
+$r = Test-State (Get-State $lateRepo -NoFetch) @{ 'version-file' = '-' }
+Check 'version-file: no version.json is -' $r.Ok $r.Detail
+
 # 20. Version tags without a changelog section.
 $r = Test-State (Get-State $lateRepo -NoFetch) @{ 'changelog-backfill' = 'v0.1.0' }
 Check 'backfill: a missing changelog names the tag merged into HEAD, not a later one' $r.Ok $r.Detail

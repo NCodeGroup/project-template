@@ -1,12 +1,13 @@
 <#
 .SYNOPSIS
-    Test Get-AssemblyVersionFloor and Get-NuGetPublisher, the library release checks in .template\Update-Project.ps1 and tools\adopt\Adoption.psm1.
+    Test Get-AssemblyVersionFloor, Get-NuGetPublisher and Update-VersionFile, the library release checks in .template\Update-Project.ps1 and tools\adopt\Adoption.psm1.
 
 .DESCRIPTION
     Builds fixture repositories whose version tags shipped different assembly versions, and a folder of workflows that push to
     NuGet. Then, for the copy of each function in .template\Update-Project.ps1 and the one in tools\adopt\Adoption.psm1, checks the
-    tag and assembly version that Get-AssemblyVersionFloor returns and the workflows that Get-NuGetPublisher names. Prints PASS or
-    FAIL per check and exits 1 on any failure.
+    tag and assembly version that Get-AssemblyVersionFloor returns, the workflows that Get-NuGetPublisher names, and the
+    version.json that Update-VersionFile fills (the patch after the newest tag and the assembly version with its precision).
+    Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-library-release-test-<process ID> in the
@@ -108,12 +109,12 @@ Write-Text (Join-Path $others '.github/workflows/ci.yml') "- run: dotnet pack`n"
 
 $updateFunctions = @{}
 $updateAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
-foreach ($function in 'Get-AssemblyVersionFloor', 'Get-NuGetPublisher') {
+foreach ($function in 'Get-AssemblyVersionFloor', 'Get-NuGetPublisher', 'Update-VersionFile') {
     $updateFunctions[$function] = $updateAst.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $function }, $true) | Select-Object -First 1
 }
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
 $sources = [ordered]@{
-    update = { param($Function) if ($updateFunctions[$Function]) { . ([scriptblock]::Create($updateFunctions[$Function].Extent.Text)); & $Function } else { 'MISSING' } }
+    update = { param($Function) if ($updateFunctions[$Function]) { foreach ($definition in $updateFunctions.Values) { if ($definition) { . ([scriptblock]::Create($definition.Extent.Text)) } }; & $Function } else { 'MISSING' } }
     adopt  = { param($Function) if ((Get-Module Adoption).ExportedFunctions.ContainsKey($Function)) { & "Adoption\$Function" } else { 'MISSING' } }
 }
 
@@ -124,6 +125,15 @@ $floorCases = [ordered]@{
     'a new major with the pin from its first tag gives nothing' = @{ Folder = $newMajor; Files = @{}; Expect = $null }
     'a tag whose Directory.Build.props set the version gives nothing' = @{ Folder = $ownVersion; Files = @{}; Expect = $null }
     'no tag gives nothing' = @{ Folder = $untagged; Files = @{}; Expect = $null }
+}
+$versionText = [IO.File]::ReadAllText((Join-Path $repoRoot 'template/version.json'))
+$precisionMajor = '"assemblyVersion": { "precision": "major" }'
+$versionCases = [ordered]@{
+    'the patch after the newest tag and the floor from the pin' = @{ Folder = $floor; Write = $true; Files = @{}; Expect = @{ Version = '5.4.1'; Tag = 'v5.4.0'; AssemblyVersion = '5.3'; Precision = 'minor' }; Keeps = @() }
+    'an AssemblyVersion in Directory.Build.props wins over the floor' = @{ Folder = $floor; Write = $true; Files = @{ 'Directory.Build.props' = '<Project><PropertyGroup><AssemblyVersion>5.3.2.0</AssemblyVersion></PropertyGroup></Project>' }; Expect = @{ Version = '5.4.1'; Tag = 'v5.4.0'; AssemblyVersion = '5.3.2'; Precision = 'build' }; Keeps = @() }
+    'a new major keeps the major precision' = @{ Folder = $newMajor; Write = $true; Files = @{}; Expect = @{ Version = '6.0.1'; Tag = 'v6.0.0'; AssemblyVersion = $null; Precision = $null }; Keeps = @($precisionMajor) }
+    'no tag leaves the file unchanged' = @{ Folder = $untagged; Write = $true; Files = @{}; Expect = @{ Version = $null; Tag = $null; AssemblyVersion = $null; Precision = $null }; Keeps = @($versionText) }
+    'no version.json gives nothing' = @{ Folder = $untagged; Write = $false; Files = @{}; Expect = $null; Keeps = @() }
 }
 $publisherCases = [ordered]@{
     'no workflows folder gives nothing' = @{ Folder = $noWorkflows; Expect = '' }
@@ -150,6 +160,32 @@ foreach ($source in $sources.Keys) {
         else { $null -eq $result }
         $detail = if ($expect) { "Got Tag '$($result.Tag)', AssemblyVersion '$($result.AssemblyVersion)', Major '$($result.Major)'; expected '$($expect.Tag)', '$($expect.AssemblyVersion)', '$($expect.Major)'" } else { "Got '$result'; expected nothing" }
         Check "${source}: Get-AssemblyVersionFloor: $name" $ok $detail
+    }
+    foreach ($name in $versionCases.Keys) {
+        $case = $versionCases[$name]
+        $versionPath = Join-Path $case.Folder 'version.json'
+        Push-Location $case.Folder
+        try {
+            foreach ($file in $case.Files.Keys) { Write-Text (Join-Path $case.Folder $file) $case.Files[$file] }
+            if ($case.Write) { Write-Text $versionPath $versionText }
+            $result = & $sources[$source] 'Update-VersionFile'
+            $written = if (Test-Path -LiteralPath $versionPath) { [IO.File]::ReadAllText($versionPath) } else { '' }
+        }
+        finally {
+            Invoke-Git checkout -q -- .
+            Remove-Item version.json -ErrorAction SilentlyContinue
+            Pop-Location
+        }
+        $expect = $case.Expect
+        $ok = if ($expect) {
+            $null -ne $result -and $result.Version -eq $expect.Version -and $result.Tag -eq $expect.Tag -and $result.AssemblyVersion -eq $expect.AssemblyVersion -and $result.Precision -eq $expect.Precision
+        }
+        else { $null -eq $result }
+        if ($ok -and $expect.Version) { $ok = $written.Contains("`"version`": `"$($expect.Version)`"") }
+        if ($ok -and $expect.AssemblyVersion) { $ok = $written.Contains("`"version`": `"$($expect.AssemblyVersion)`", `"precision`": `"$($expect.Precision)`"") }
+        if ($ok) { foreach ($keep in $case.Keeps) { if (-not $written.Contains($keep)) { $ok = $false } } }
+        $detail = if ($expect) { "Got Version '$($result.Version)', Tag '$($result.Tag)', AssemblyVersion '$($result.AssemblyVersion)', Precision '$($result.Precision)'; expected '$($expect.Version)', '$($expect.Tag)', '$($expect.AssemblyVersion)', '$($expect.Precision)'; file:`n$written" } else { "Got '$result'; expected nothing" }
+        Check "${source}: Update-VersionFile: $name" $ok $detail
     }
     foreach ($name in $publisherCases.Keys) {
         $case = $publisherCases[$name]

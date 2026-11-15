@@ -42,6 +42,10 @@ jobs:
       # The agent gets a token of its own, so the checkout keeps none.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+{%- if stack == 'dotnet' and nuget_package %}
+          # Nerdbank.GitVersioning computes the version from the history and fails on a shallow clone.
+          fetch-depth: 0
+{%- endif %}
           persist-credentials: false
 {%- if stack == 'dotnet' %}
       # The SDK global.json selects and the runtime of each older .NET a test project targets.

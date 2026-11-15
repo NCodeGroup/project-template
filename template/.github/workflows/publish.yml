@@ -1,6 +1,7 @@
 # Publish packages: when a GitHub release is published, or when the Tag and publish release workflow (tag-release.yml)
-# starts it for the release it published, packs every packable project with the version its tag names and pushes the
-# packages, with their symbol packages, to nuget.org. docs/decisions/project-template/ says why.
+# starts it for the release it published, packs every packable project with the version its tag names, which
+# version.json must hold when the project has one, and pushes the packages, with their symbol packages, to nuget.org.
+# docs/decisions/project-template/ says why.
 #
 # Two jobs, so the job that builds the code never holds a publishing credential:
 #   - pack checks the tag is a version (v1.2.3 or v1.2.3-rc.1) and names a commit the default branch holds, so a tag on
@@ -74,12 +75,13 @@ jobs:
       # The SDK global.json selects and the runtime of each older .NET a test project targets.
       - uses: ./.github/actions/install-dotnet
       - name: Test
-        run: dotnet test --configuration Release
+        run: dotnet test --configuration Release -p:PublicRelease=true
+      # With version.json, Nerdbank.GitVersioning packs its version and ignores -p:Version, and PublicRelease drops the -g<commit> suffix, as this is the tagged commit; without version.json, -p:Version is the tag's (ADR-0138).
       - name: Pack
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: dotnet pack --configuration Release --output artifacts/packages "-p:Version=$VERSION"
-      # A project that sets its own Version would pack a version the tag doesn't name.
+        run: dotnet pack --configuration Release --output artifacts/packages -p:PublicRelease=true "-p:Version=$VERSION"
+      # A version.json that holds another version, or a project that sets its own Version, would pack a version the tag doesn't name.
       - name: Check every package has the tag's version
         shell: pwsh
         env:
@@ -88,7 +90,7 @@ jobs:
           $packages = @(Get-ChildItem artifacts/packages -Filter '*.nupkg')
           if (-not $packages) { throw 'dotnet pack produced no package: set IsPackable to false only on the projects that are not published.' }
           $wrong = @($packages | Where-Object { -not $_.Name.EndsWith(".$env:VERSION.nupkg", [StringComparison]::OrdinalIgnoreCase) })
-          if ($wrong) { throw "These packages don't have version $env:VERSION, the tag's: $($wrong.Name -join ', ')" }
+          if ($wrong) { throw "These packages don't have version $env:VERSION, the tag's: $($wrong.Name -join ', '). Set version in version.json to $env:VERSION, or remove the Version a project sets itself." }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: packages
