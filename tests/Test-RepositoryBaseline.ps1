@@ -21,7 +21,8 @@
     repository it doesn't skip, one whose default branch it leaves alone too, gets a "Protect release tags" ruleset on
     v* tags with no deletion, no update and no bypass, which -WhatIf shows, unless it has one of that name, whatever its
     state, or an active tag ruleset that refuses both already; that it turns on, in order, the read-only workflow token
-    with Actions not approving pull requests, secret scanning, its push protection, Dependabot alerts, Dependabot
+    with Actions not approving pull requests (or opening the baseline pull request, where the default branch has
+    raise-baseline.yml), secret scanning, its push protection, Dependabot alerts, Dependabot
     security updates and private vulnerability reporting, each with the call and body the API takes, and only where it
     is off, reports each as set, already set, would set or not available, leaves secret scanning out of a repository
     that isn't public, and reports a setting the API won't read or refuses without failing the run; that it allows
@@ -339,6 +340,8 @@ $repos = @{
     private = New-Repo -Visibility 'private' -Security @{ 'private-vulnerability-reporting' = 'fail:422' }
     refused = New-Repo -WriteFails @{ 'actions/permissions/workflow' = 409; 'secret_scanning_push_protection' = 422; 'automated-security-fixes' = 422; 'allow_auto_merge' = 403 }
     workflowUnreadable = New-Repo -Security @{ 'actions/permissions/workflow' = 'fail:403' }
+    baselineRaiser = New-Repo -Workflows @('.github/workflows/raise-baseline.yml')
+    baselineRaiserSet = New-Repo -Workflows @('.github/workflows/raise-baseline.yml') -Security @{ 'actions/permissions/workflow' = 'readApproves' }
     partial = New-Repo -SecretScanning 'enabled' -Security @{ 'actions/permissions/workflow' = 'readApproves'; 'vulnerability-alerts' = 'on'; 'private-vulnerability-reporting' = 'on' } -AutoMerge $true
     # Auto-merge: an answer that leaves allow_auto_merge out, as GitHub's does for someone who can't change it.
     autoMergeUnread = New-Repo -AutoMerge $null
@@ -690,6 +693,13 @@ try {
     Check 'security: only the settings that are off are changed' ((@($r.Changes | Where-Object { $_ -notlike '*rulesets*' -and $_ -notlike '*default-setup*' -and $_ -notlike '*delete_branch_on_merge*' }) -join '|') -eq 'BODY PUT repos/NCodeGroup/partial/actions/permissions/workflow|BODY PATCH repos/NCodeGroup/partial|api -X PUT repos/NCodeGroup/partial/automated-security-fixes') ($r.Changes -join '|')
     Check 'security: a read-only token that may still approve pull requests counts as off' ($r.Output -match [regex]::Escape('partial: read-only workflow token, and Actions not approving pull requests: set')) $r.Output
     Check 'security: with secret scanning on, only its push protection is turned on' ((@($r.Bodies | Where-Object { $_.path -eq 'repos/NCodeGroup/partial' } | ForEach-Object { $_.body.security_and_analysis | ConvertTo-Json -Depth 6 -Compress }) -join '|') -eq '{"secret_scanning_push_protection":{"status":"enabled"}}' -and $r.Output -match 'partial: secret scanning: already set') $r.Output
+
+    $r = Invoke-Baseline @('-Repo', 'baselineRaiser')
+    $workflow = @($r.Bodies | Where-Object { $_.path -eq 'repos/NCodeGroup/baselineRaiser/actions/permissions/workflow' })
+    Check 'security: a repository with raise-baseline.yml lets Actions open pull requests, with a read-only token' ($workflow.Count -eq 1 -and $workflow[0].method -eq 'PUT' -and $workflow[0].body.default_workflow_permissions -eq 'read' -and $workflow[0].body.can_approve_pull_request_reviews -eq $true -and $r.Output -match [regex]::Escape('baselineRaiser: read-only workflow token, and Actions opening the baseline pull request: set')) "$($workflow | ConvertTo-Json -Depth 6 -Compress) $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'baselineRaiserSet')
+    Check 'security: a repository with raise-baseline.yml whose Actions may open pull requests already changes nothing there' (@($r.Bodies | Where-Object { $_.path -match 'actions/permissions/workflow' }).Count -eq 0 -and $r.Output -match [regex]::Escape('baselineRaiserSet: read-only workflow token, and Actions opening the baseline pull request: already set')) "$($r.Changes -join '|') $($r.Output)"
 
     $r = Invoke-Baseline @('-Repo', 'private')
     Check 'security: secret scanning is left out of a repository that is not public, with the reason, since it would be paid there' (@($r.Bodies | Where-Object { $_.body.security_and_analysis }).Count -eq 0 -and $r.Output -match [regex]::Escape("private: secret scanning: not available (the repository isn't public") -and $r.Output -match [regex]::Escape("private: secret scanning push protection: not available (the repository isn't public")) $r.Output

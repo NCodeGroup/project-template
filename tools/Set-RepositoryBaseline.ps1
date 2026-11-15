@@ -19,7 +19,8 @@
       - adds a "Protect release tags" ruleset on the tags matching v* (refs/tags/v*): no deletion and no update, so a
         tag is never moved, with no bypass. A release tag names one published package set, so it never changes;
       - turns on the security settings a public project should have, each where it is off: the workflow token
-        (GITHUB_TOKEN) read-only by default, with GitHub Actions not allowed to approve pull requests; secret scanning
+        (GITHUB_TOKEN) read-only by default, with GitHub Actions not allowed to create and approve pull requests, except
+        where the default branch has .github/workflows/raise-baseline.yml, which opens a pull request; secret scanning
         and its push protection; Dependabot alerts and Dependabot security updates, which need the alerts; and private
         vulnerability reporting;
       - turns on "Allow auto-merge" where it is off, so the template's code-review-auto-merge.yml workflow can turn on
@@ -618,8 +619,12 @@ function Set-SecuritySetting {
 # organization fixes (HTTP 409).
 function Set-SecuritySettings([string]$Name, $Info) {
     $base = "repos/$Owner/$Name"
-    $state = Get-SettingState (Invoke-HostApi gh "$base/actions/permissions/workflow") { param($answer) $answer.default_workflow_permissions -eq 'read' -and -not $answer.can_approve_pull_request_reviews }
-    Set-SecuritySetting $Name 'read-only workflow token, and Actions not approving pull requests' $state PUT "$base/actions/permissions/workflow" @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false }
+    # GitHub's "Allow GitHub Actions to create and approve pull requests" is one setting: it is on only where
+    # raise-baseline.yml must open its pull request (the template's ADR-0150), and a read that fails leaves it off.
+    $raiser = (Invoke-HostApi gh "$base/contents/.github/workflows/raise-baseline.yml?ref=$($Info.default_branch)").Status -eq 200
+    $label = if ($raiser) { 'read-only workflow token, and Actions opening the baseline pull request' } else { 'read-only workflow token, and Actions not approving pull requests' }
+    $state = Get-SettingState (Invoke-HostApi gh "$base/actions/permissions/workflow") { param($answer) $answer.default_workflow_permissions -eq 'read' -and [bool]$answer.can_approve_pull_request_reviews -eq $raiser }
+    Set-SecuritySetting $Name $label $state PUT "$base/actions/permissions/workflow" @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $raiser }
 
     $features = [ordered]@{ secret_scanning = 'secret scanning'; secret_scanning_push_protection = 'secret scanning push protection' }
     foreach ($feature in $features.Keys) {

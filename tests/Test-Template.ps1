@@ -366,6 +366,9 @@ foreach ($case in $cases) {
         Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)
         $provenance = Join-Path $dest '.github\workflows\release-provenance.yml'
         Check "${name}: the release provenance workflow only for a library on GitHub" ((Test-Path -LiteralPath $provenance) -eq $wantsPublish)
+        Check "${name}: build/Update-Baseline.ps1 only for a library" ((Test-Path -LiteralPath (Join-Path $dest 'build\Update-Baseline.ps1')) -eq $library)
+        $raise = Join-Path $dest '.github\workflows\raise-baseline.yml'
+        Check "${name}: the raise-baseline workflow only for a library on GitHub" ((Test-Path -LiteralPath $raise) -eq $wantsPublish)
         if ($wantsPublish) {
             $provenanceText = Get-Content -LiteralPath $provenance -Raw
             $provenanceUses = [regex]::Matches($provenanceText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
@@ -373,6 +376,12 @@ foreach ($case in $cases) {
             $headBranchLines = @($provenanceText -split '\r?\n' | Where-Object { $_.Contains('github.event.workflow_run.head_branch') })
             $headBranchSafe = -not ($headBranchLines | Where-Object { $_ -notmatch '^\s*TAG:' -and $_ -notmatch '^\s*group: release-provenance-' })
             Check "${name}: the release provenance workflow follows Publish packages, holds no permission by default, attests, and keeps the tag out of scripts" ($provenanceText.Contains('workflows: [Publish packages]') -and $provenanceText -match '(?m)^permissions: \{\}\r?$' -and $provenanceText.Contains('attestations: write') -and $provenanceText.Contains('id-token: write') -and -not $provenanceText.Contains('actions/checkout') -and $provenanceText -notmatch '(?i)nuget(\.exe)?\s+push' -and $headBranchLines.Count -ge 1 -and $headBranchSafe -and $provenanceText.Contains('dependency-graph/sbom') -and $provenanceText.Contains('.spdx.json')) $provenanceText
+            $raiseText = Get-Content -LiteralPath $raise -Raw
+            $raiseUses = [regex]::Matches($raiseText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+            Check "${name}: the raise-baseline workflow pins each action to a full commit SHA, with its tag in a comment" ($raiseUses.Count -ge 1 -and -not ($raiseUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $raiseText
+            $raiseTagLines = @($raiseText -split '\r?\n' | Where-Object { $_.Contains('github.event.workflow_run.head_branch') -or $_.Contains('inputs.tag') })
+            $raiseTagSafe = -not ($raiseTagLines | Where-Object { $_ -notmatch '^\s*TAG:' })
+            Check "${name}: the raise-baseline workflow follows Publish packages, holds no permission by default, keeps no credential after checkout, and keeps the tag out of scripts" ($raiseText.Contains('workflows: [Publish packages]') -and $raiseText -match '(?m)^permissions: \{\}\r?$' -and $raiseText.Contains('persist-credentials: false') -and $raiseText.Contains('http.https://github.com/.extraheader') -and $raiseText -match '(?m)^\s*git -c "http\.https://github\.com/\.extraheader=[^"]*" ls-remote --exit-code --heads origin \$branch' -and $raiseText.Contains('./build/Update-Baseline.ps1 -Version $env:VERSION') -and $raiseText.Contains('gh workflow run ci.yml --ref $branch') -and $raiseText -match '(?m)^\s*gh pr create .*--draft' -and $raiseText.Contains('contents: write') -and $raiseText.Contains('pull-requests: write') -and $raiseText.Contains('actions: write') -and -not $raiseText.Contains('secrets.') -and $raiseTagLines.Count -ge 1 -and $raiseTagSafe) $raiseText
             $workflow = Get-Content -LiteralPath $publish -Raw
             $uses = [regex]::Matches($workflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
             Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 4 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
@@ -1189,6 +1198,15 @@ $m2 += @(foreach ($t in Get-HybridTemplateList) { $text = (Get-HybridPromptText 
 $m2 += @(foreach ($t in 'GitHub GraphQL is not available', 'pulls/<number>/ccr/review_threads', '`get_review_comments`', 'comments/<id>/replies -F body=@<file>', '`add_reply_to_pull_request_comment`', 'issues/<number>/comments -F body=@<file>', 'releases/tags/<tag>', 'search/issues', '-f sort=updated -f order=desc', '&page=<n>') { if (-not $githubRestText.Contains($t)) { "workflow\templates\_github-rest.md: missing $t" } })
 $m2 += @(foreach ($t in 'ccr/auto_merge', 'ready_for_review', '/resolve', 'gh api --paginate') { if ($githubRestText.Contains($t)) { "workflow\templates\_github-rest.md: names $t, which the workflow never calls or which the cloud proxy breaks" } })
 Check 'workflow: every command that runs gh pr, gh issue, gh release or gh api graphql gives their REST forms for a session that refuses GitHub''s GraphQL API' (-not $m2) ($m2 -join '; ')
+# /review-plan-diff checks each changed file against the instruction files that apply to it, so style findings are fixed before the first push.
+$reviewDiffText = Get-HybridPromptText -Name 'review-plan-diff' -Placeholder '$ARGUMENTS'
+Check 'workflow: review-plan-diff checks each changed file against the instruction files that apply to it' ($reviewDiffText.Contains('whose `applyTo` glob matches the file''s path') -and $reviewDiffText.Contains('every `.claude/rules/*.md` whose `paths:` match it') -and $reviewDiffText.Contains('Report each departure as should-fix') -and $reviewDiffText.Contains('before the first push')) $reviewDiffText
+# Every command that posts comments and replies from files reads each one back by its id and corrects it once, so shell quoting can't corrupt a reply unnoticed.
+$replyCheckText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_reply-check.md')).Body.Trim()
+$replyGaps = @(foreach ($t in Get-HybridTemplateList) { $text = Get-HybridPromptText -Name $t.Name -Placeholder '$ARGUMENTS'; if ($text.Contains('Write every comment and reply to a temporary file') -and -not $text.Contains($replyCheckText)) { "workflow\templates\$($t.Name).md: no reply check" } })
+$replyGaps += @(foreach ($n in 'address-feedback', 'run-feedback', 'run-issues') { if (-not (Get-HybridPromptText -Name $n -Placeholder '$ARGUMENTS').Contains($replyCheckText)) { "workflow\templates\$n.md: no reply check" } })
+$replyGaps += @(foreach ($t in 'pulls/comments/<id>', 'issues/comments/<id>', 'notes/<note id>', '-X PATCH', '--method PUT', '-F body=@<file>', 'hashtable', '`/review` comment is the one exception') { if (-not $replyCheckText.Contains($t)) { "workflow\templates\_reply-check.md: missing $t" } })
+Check 'workflow: every command that posts comments and replies from files reads each one back and corrects it once' (-not $replyGaps) ($replyGaps -join '; ')
 # The /review comment is posted after each push of fix steps and left as posted, footer and all: _review-request.md and every generated run-issues and run-feedback copy say so.
 $reviewKeptTexts = 'whose first line is `/review`', 'sets aside everything from a `---` line on', 'Leave that comment as it was posted, with whatever the session''s tooling appended: never read it back, edit or delete it.'
 $m += @(Get-MissingText (@('workflow\templates\_review-request.md') + $runFiles + $copilotRunFiles + $feedbackFiles + $copilotFeedbackFiles) $reviewKeptTexts | ForEach-Object { "$_ (how a /review comment is posted and left)" })

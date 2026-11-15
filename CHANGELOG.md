@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-11-15
+
+### Added
+
+- A .NET library gets `build/Update-Baseline.ps1`, which waits for nuget.org to list a release for every packable project, raises each lower `PackageValidationBaselineVersion` the project sets to it, never lowering one, and adds a `### Changed` entry to the changelog's `## [Unreleased]`; on GitHub, `.github/workflows/raise-baseline.yml` runs it after Publish packages succeeds, opens a draft pull request and starts CI on its branch, so a release needs no manual baseline raise and its plan no follow-up for one. ([#378](https://github.com/NCodeGroup/project-template/issues/378), [ADR-0150](template/docs/decisions/project-template/0150-a-workflow-raises-the-package-validation-baseline-after-each-release.md))
+- `.template/Update-Project.ps1` and `Adopt-Project.ps1` name the project's own `build/*.ps1` scripts that run `dotnet csharpier check`, which `build/dod.ps1` already runs in its Format stage once `.config/dotnet-tools.json` names CSharpier, and `/plan-template-update` searches a project's own scripts for checks a template script now runs. ([#378](https://github.com/NCodeGroup/project-template/issues/378))
+
+### Changed
+
+- `tools/Set-RepositoryBaseline.ps1` turns on "Allow GitHub Actions to create and approve pull requests" for a repository whose default branch has `.github/workflows/raise-baseline.yml`, and keeps it off everywhere else. ([#378](https://github.com/NCodeGroup/project-template/issues/378), [ADR-0150](template/docs/decisions/project-template/0150-a-workflow-raises-the-package-validation-baseline-after-each-release.md))
+- `/review-plan-diff` checks every changed file against the instruction files that apply to it (`AGENTS.md` and the files it lists, each `.github/instructions/*.instructions.md` whose `applyTo` matches, each `.claude/rules/*.md` whose `paths:` match) and reports each departure as should-fix, so style findings the gate can't catch are fixed before the first push. ([#379](https://github.com/NCodeGroup/project-template/issues/379))
+- `/address-feedback`, `/run-feedback` and `/run-issues` post every comment and reply from a file of its own, never a shell argument, read each one back by its id and write the file's text over it once when it differs, so shell quoting can't leave a corrupted reply. ([#380](https://github.com/NCodeGroup/project-template/issues/380))
+
 ## [0.93.0] - 2026-11-15
 
 ### Changed
@@ -1501,7 +1514,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.93.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.94.0...HEAD
+[0.94.0]: https://github.com/NCodeGroup/project-template/compare/v0.93.0...v0.94.0
 [0.93.0]: https://github.com/NCodeGroup/project-template/compare/v0.92.0...v0.93.0
 [0.92.0]: https://github.com/NCodeGroup/project-template/compare/v0.91.0...v0.92.0
 [0.91.0]: https://github.com/NCodeGroup/project-template/compare/v0.90.0...v0.91.0

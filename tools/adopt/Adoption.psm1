@@ -736,4 +736,13 @@ function Update-VersionFile {
     $result
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup
+# The project's own build scripts that run CSharpier's check, which build/dod.ps1 runs in its Format stage once .config/dotnet-tools.json names CSharpier (ADR-0148): such a wrapper checks the formatting twice. template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests keep the two equal.
+function Get-CSharpierWrapper([string[]]$TemplateFiles) {
+    if (-not (Test-Path -LiteralPath .config/dotnet-tools.json -PathType Leaf) -or (Get-Content -LiteralPath .config/dotnet-tools.json -Raw) -notmatch '(?i)csharpier') { return }
+    foreach ($file in @(Get-ChildItem -LiteralPath build -Filter *.ps1 -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
+        $relative = "build/$($file.Name)"
+        if ($relative -notin $TemplateFiles -and (Get-Content -LiteralPath $file.FullName -Raw) -match '(?m)^[^#\r\n]*\bcsharpier\s+check\b') { $relative }
+    }
+}
+
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup

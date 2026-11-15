@@ -493,10 +493,16 @@ exit 0
             Check 'fixture: a REST reply sent with -X POST first lands on its thread' ($botAfter -eq $botBefore + 1) "PRRT_bot comments before $botBefore, after $botAfter"
 
             Write-Text $bodyFile 'Autopilot: a reply from the setup check.'
-            $null = gh api 'repos/{owner}/{repo}/pulls/1/comments/2001/replies' -F "body=@$bodyFile"
-            Remove-Item -LiteralPath $bodyFile
+            $reply = gh api 'repos/{owner}/{repo}/pulls/1/comments/2001/replies' -F "body=@$bodyFile" | Out-String | ConvertFrom-Json
             $last = @((Get-Thread (Read-Threads) 'PRRT_writer').comments)[-1]
             Check 'fixture: a REST reply lands on its thread' ("$($last.body)" -eq 'Autopilot: a reply from the setup check.') "last comment: '$($last.body)'"
+
+            $readBack = "$(gh api "repos/{owner}/{repo}/pulls/comments/$($reply.id)" --jq .body)".Trim()
+            Write-Text $bodyFile 'Autopilot: an edited reply from the setup check.'
+            $null = gh api -X PATCH "repos/{owner}/{repo}/pulls/comments/$($reply.id)" -F "body=@$bodyFile"
+            $edited = "$(gh api "repos/{owner}/{repo}/pulls/comments/$($reply.id)" --jq .body)".Trim()
+            Remove-Item -LiteralPath $bodyFile
+            Check 'fixture: a REST thread reply reads back by its id and is edited with -X PATCH' ($readBack.StartsWith('Autopilot: a reply from the setup check.') -and $edited -eq 'Autopilot: an edited reply from the setup check.') "read back '$readBack', edited '$edited'"
 
             # Every REST route the stand-in refuses, so that CI fails when a refusal is dropped.
             $restRefusals = @(
