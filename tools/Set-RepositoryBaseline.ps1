@@ -38,7 +38,8 @@
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
     main" ruleset an older version of this script made, when it is off, sending only the ruleset's rules with that one
-    parameter changed, so no pull request merges past an unresolved discussion; -WhatIf shows it, and a refusal is
+    parameter changed, so no pull request merges past an unresolved discussion (in the "Protect main" ruleset it also turns
+    on dismissing stale reviews on push and requiring approval of the last push, harmless without required approvals); -WhatIf shows it, and a refusal is
     reported without failing the run. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's
     required checks in place. Either way the repository still gets the tag ruleset and the security settings, so a second run
     brings a repository protected by an older version of this script up to date. A ruleset named "Protect release tags",
@@ -310,14 +311,14 @@ function Set-BranchRuleset {
     }
     if ($others.Count) {
         foreach ($full in $others) { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full }
-        if ($own) { Enable-ThreadResolution $Name $own }
+        if ($own) { Enable-ThreadResolution $Name $own -Strict }
         return $true
     }
 
     # A ruleset of this name that exists already is changed only when -RequireChecks asks for new checks.
     if ($own -and -not $RequireChecks.Count) {
         Write-Host "${Name}: left alone (already has '$rulesetName')"
-        Enable-ThreadResolution $Name $own
+        Enable-ThreadResolution $Name $own -Strict
         if ($own.rules.type -contains 'code_scanning') { Write-SuiteNotice $Name }
         return $true
     }
@@ -426,15 +427,23 @@ function Set-BranchRuleset {
 # it: its other rules and their parameters are sent back as they were read. A ruleset without a pull request rule, or
 # with the setting on already, is left as it is. A refusal is reported, not thrown, like a security setting's. A pull
 # request rule that came without parameters is reported and left as it is: writing it would mean inventing its other
-# parameters.
+# parameters. For the script's own ruleset (-Strict) it also turns on dismissing stale reviews on push and requiring
+# approval of the last push, which is harmless without required approvals.
 function Enable-ThreadResolution {
     [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Name, $Ruleset)
+    param([string]$Name, $Ruleset, [switch]$Strict)
     $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
-    if (-not $rule -or $rule.parameters.required_review_thread_resolution -eq $true) { return }
-    $label = "'$($Ruleset.name)': require every conversation resolved"
+    if (-not $rule) { return }
+    $needThreads = $rule.parameters.required_review_thread_resolution -ne $true
+    $needStale = $Strict -and ($rule.parameters.dismiss_stale_reviews_on_push -ne $true -or $rule.parameters.require_last_push_approval -ne $true)
+    if (-not $needThreads -and -not $needStale) { return }
+    $label = if ($needThreads) { "'$($Ruleset.name)': require every conversation resolved" } else { "'$($Ruleset.name)': dismiss stale reviews on push and require approval of the last push" }
     if ($null -eq $rule.parameters) { Write-Host "${Name}: ${label}: not set (its pull request rule came without parameters; turn it on in the ruleset's settings on GitHub)"; return }
-    $rule.parameters | Add-Member -NotePropertyName required_review_thread_resolution -NotePropertyValue $true -Force
+    if ($needThreads) { $rule.parameters | Add-Member -NotePropertyName required_review_thread_resolution -NotePropertyValue $true -Force }
+    if ($Strict) {
+        $rule.parameters | Add-Member -NotePropertyName dismiss_stale_reviews_on_push -NotePropertyValue $true -Force
+        $rule.parameters | Add-Member -NotePropertyName require_last_push_approval -NotePropertyValue $true -Force
+    }
     if (-not $PSCmdlet.ShouldProcess($Name, "turn on $label")) { Write-Host "${Name}: ${label}: would set"; return }
     $result = Invoke-HostWrite PUT "repos/$Owner/$Name/rulesets/$($Ruleset.id)" @{ rules = @($Ruleset.rules) }
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Name}: ${label}: set" }

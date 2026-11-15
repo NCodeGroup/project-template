@@ -195,10 +195,10 @@ if ($path -match '^repos/[^/]+/([^/]+)$') { ConvertTo-Json -InputObject $data.re
 exit 1
 '@
 
-function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_forward', 'pull_request'), [string]$Include = '~DEFAULT_BRANCH', [bool]$Threads = $true) {
+function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_forward', 'pull_request'), [string]$Include = '~DEFAULT_BRANCH', [bool]$Threads = $true, [bool]$Stale = $true) {
     @{ name = $Name; target = 'branch'; enforcement = 'active'
         conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
-        rules = @($Types | ForEach-Object { if ($_ -eq 'pull_request') { @{ type = $_; parameters = @{ required_approving_review_count = 0; required_review_thread_resolution = $Threads } } } else { @{ type = $_ } } }) }
+        rules = @($Types | ForEach-Object { if ($_ -eq 'pull_request') { @{ type = $_; parameters = @{ required_approving_review_count = 0; required_review_thread_resolution = $Threads; dismiss_stale_reviews_on_push = $Stale; require_last_push_approval = $Stale } } } else { @{ type = $_ } } }) }
 }
 function New-TagRuleset([string]$Name, [string[]]$Types = @('deletion', 'update'), [string]$Include = 'refs/tags/v*', [string]$Enforcement = 'active') {
     @{ name = $Name; target = 'tag'; enforcement = $Enforcement
@@ -304,6 +304,8 @@ $repos = @{
     ours = New-Repo -Rulesets @((New-Ruleset 'Protect main'))
     ownedLoose = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false))
     oursLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false))
+    oursStaleLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $true -Stale $false))
+    ownedStaleLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $true -Stale $false))
     looseRefused = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false)) -WriteFails @{ 'rulesets/101' = 403 }
     ownedBare = New-Repo -Rulesets @($bareRuleset)
     twoOwnedLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $false), (New-Ruleset 'team rules' -Threads $false))
@@ -532,6 +534,15 @@ try {
     }
     $r = Invoke-Baseline @('-Repo', 'owned')
     Check 'threads: a ruleset that has it already is not written' (($r.Changes -join '|') -notmatch 'rulesets/101') ($r.Changes -join '|')
+    $staleLabel = "oursStaleLoose: 'Protect main': dismiss stale reviews on push and require approval of the last push"
+    $r = Invoke-Baseline @('-Repo', 'oursStaleLoose')
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursStaleLoose/rulesets/101' })
+    $sp = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'stale: a Protect main ruleset without them gets both settings in one PUT' ($puts.Count -eq 1 -and $sp.dismiss_stale_reviews_on_push -eq $true -and $sp.require_last_push_approval -eq $true -and $r.Output.Contains("${staleLabel}: set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursStaleLoose', '-WhatIf')
+    Check 'stale: -WhatIf sends nothing and says it would set them' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("${staleLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedStaleLoose')
+    Check 'stale: a ruleset of the owner''s is not written for them' (($r.Changes -join '|') -notmatch 'rulesets/101') ($r.Changes -join '|')
 
     # 6. -RequireChecks updates the ruleset the script made.
     $r = Invoke-Baseline @('-Repo', 'ours', '-RequireChecks', 'test')
