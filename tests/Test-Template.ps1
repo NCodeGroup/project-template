@@ -366,6 +366,9 @@ foreach ($case in $cases) {
         Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)
         $provenance = Join-Path $dest '.github\workflows\release-provenance.yml'
         Check "${name}: the release provenance workflow only for a library on GitHub" ((Test-Path -LiteralPath $provenance) -eq $wantsPublish)
+        Check "${name}: build/Update-Baseline.ps1 only for a library" ((Test-Path -LiteralPath (Join-Path $dest 'build\Update-Baseline.ps1')) -eq $library)
+        $raise = Join-Path $dest '.github\workflows\raise-baseline.yml'
+        Check "${name}: the raise-baseline workflow only for a library on GitHub" ((Test-Path -LiteralPath $raise) -eq $wantsPublish)
         if ($wantsPublish) {
             $provenanceText = Get-Content -LiteralPath $provenance -Raw
             $provenanceUses = [regex]::Matches($provenanceText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
@@ -373,6 +376,12 @@ foreach ($case in $cases) {
             $headBranchLines = @($provenanceText -split '\r?\n' | Where-Object { $_.Contains('github.event.workflow_run.head_branch') })
             $headBranchSafe = -not ($headBranchLines | Where-Object { $_ -notmatch '^\s*TAG:' -and $_ -notmatch '^\s*group: release-provenance-' })
             Check "${name}: the release provenance workflow follows Publish packages, holds no permission by default, attests, and keeps the tag out of scripts" ($provenanceText.Contains('workflows: [Publish packages]') -and $provenanceText -match '(?m)^permissions: \{\}\r?$' -and $provenanceText.Contains('attestations: write') -and $provenanceText.Contains('id-token: write') -and -not $provenanceText.Contains('actions/checkout') -and $provenanceText -notmatch '(?i)nuget(\.exe)?\s+push' -and $headBranchLines.Count -ge 1 -and $headBranchSafe -and $provenanceText.Contains('dependency-graph/sbom') -and $provenanceText.Contains('.spdx.json')) $provenanceText
+            $raiseText = Get-Content -LiteralPath $raise -Raw
+            $raiseUses = [regex]::Matches($raiseText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+            Check "${name}: the raise-baseline workflow pins each action to a full commit SHA, with its tag in a comment" ($raiseUses.Count -ge 1 -and -not ($raiseUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $raiseText
+            $raiseTagLines = @($raiseText -split '\r?\n' | Where-Object { $_.Contains('github.event.workflow_run.head_branch') -or $_.Contains('inputs.tag') })
+            $raiseTagSafe = -not ($raiseTagLines | Where-Object { $_ -notmatch '^\s*TAG:' })
+            Check "${name}: the raise-baseline workflow follows Publish packages, holds no permission by default, keeps no credential after checkout, and keeps the tag out of scripts" ($raiseText.Contains('workflows: [Publish packages]') -and $raiseText -match '(?m)^permissions: \{\}\r?$' -and $raiseText.Contains('persist-credentials: false') -and $raiseText.Contains('http.https://github.com/.extraheader') -and $raiseText.Contains('./build/Update-Baseline.ps1 -Version $env:VERSION') -and $raiseText.Contains('gh workflow run ci.yml --ref $branch') -and $raiseText.Contains('contents: write') -and $raiseText.Contains('pull-requests: write') -and $raiseText.Contains('actions: write') -and -not $raiseText.Contains('secrets.') -and $raiseTagLines.Count -ge 1 -and $raiseTagSafe) $raiseText
             $workflow = Get-Content -LiteralPath $publish -Raw
             $uses = [regex]::Matches($workflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
             Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 4 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
