@@ -333,7 +333,7 @@ foreach ($case in $cases) {
         $setup = Get-Content -LiteralPath $copilotSetup -Raw
         $setupUses = [regex]::Matches($setup, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         $setupCheckouts = [regex]::Matches($setup, '(?m)^\s+- uses: actions/checkout@').Count
-        Check "${name}: the Copilot setup workflow has the one job Copilot runs, runs by hand, reads only contents and stops at 59 minutes" ($setup -match '(?m)^jobs:\r?\n  copilot-setup-steps:\r?$' -and [regex]::Matches($setup, '(?m)^    runs-on: ').Count -eq 1 -and $setup.Contains('workflow_dispatch:') -and $setup -match '(?m)^    timeout-minutes: 59\r?$' -and $setup -match '(?m)^    permissions:\r?\n      contents: read\r?$' -and -not $setup.Contains(': write')) $setup
+        Check "${name}: the Copilot setup workflow has the one job Copilot runs, runs by hand, reads only contents and stops at 59 minutes" ($setup -match '(?m)^jobs:\r?\n  copilot-setup-steps:\r?$' -and [regex]::Matches($setup, '(?m)^    runs-on: ').Count -eq 1 -and $setup.Contains('workflow_dispatch:') -and $setup -match '(?m)^    timeout-minutes: 59\r?$' -and $setup -match '(?m)^    permissions:\r?\n      contents: read\r?$' -and $setup -match '(?m)^permissions:\r?\n  contents: read\r?$' -and -not $setup.Contains(': write')) $setup
         # Its push and pull_request triggers list it and each file of the project its steps run, so a change to any of them runs it.
         $setupLf = $setup -replace '\r\n', "`n"
         $wantPaths = @('.github/workflows/copilot-setup-steps.yml') + @(if ($case.Stack -eq 'dotnet') { '.github/actions/install-dotnet/**', 'build/Get-TestRuntimes.ps1' }) + @(if ($usesNode) { '.node-version' })
