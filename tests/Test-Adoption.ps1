@@ -56,7 +56,7 @@ New-Item -ItemType Directory -Force $Work | Out-Null
 $copierYml = Join-Path $repoRoot 'copier.yml'
 $skip = @(Get-CopierList $copierYml '_skip_if_exists')
 $merged = @(Get-CopierList $copierYml '_merged_files')
-Check 'unit: Get-CopierList reads the file lists' (($skip -join ',') -eq '/AGENTS.md,/README.md,/.node-version,/Directory.Build.props,/.github/workflows/code-review.yml,/.github/workflows/publish.yml,/docs/decisions/README.md,/docs/decisions/0000-template.md,/LICENSE.txt,/COPYRIGHT.txt,/NCodeGroup.png,/SECURITY.md,/CONTRIBUTING.md,/docs/README.md,/docs/metrics.md,/docs/designs/_template.md' -and '.gitignore' -in $merged -and 'global.json' -in $merged -and 'nuget.config' -in $merged -and '.github/workflows/copilot-setup-steps.yml' -in $merged) "$($skip -join ',') | $($merged -join ',')"
+Check 'unit: Get-CopierList reads the file lists' (($skip -join ',') -eq '/AGENTS.md,/README.md,/.node-version,/Directory.Build.props,/version.json,/.github/workflows/code-review.yml,/.github/workflows/publish.yml,/docs/decisions/README.md,/docs/decisions/0000-template.md,/LICENSE.txt,/COPYRIGHT.txt,/NCodeGroup.png,/SECURITY.md,/CONTRIBUTING.md,/docs/README.md,/docs/metrics.md,/docs/designs/_template.md' -and '.gitignore' -in $merged -and 'global.json' -in $merged -and 'nuget.config' -in $merged -and '.github/workflows/copilot-setup-steps.yml' -in $merged) "$($skip -join ',') | $($merged -join ',')"
 $ownable = @(Get-OwnableFile (Join-Path $repoRoot 'template'))
 $one = Get-OwnedFile '.github/workflows/ci.yml' $ownable
 $dropped = Get-OwnedFile @('build/dod.ps1', '', $null, 'build/dod.ps1') $ownable
@@ -375,7 +375,18 @@ if (-not $UnitOnly) {
     $licenseOut = & $adopt -Path $ownLicense -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; nuget_package = $true; license = 'Apache-2.0'; test_command = '' } -NoVerify | Out-String
     Check 'own-license: keeps its own license, without LICENSE.txt or COPYRIGHT.txt, and says so' ((Get-Content -Raw -LiteralPath (Join-Path $ownLicense 'LICENSE')) -eq "Own license.`n" -and -not (Test-Path -LiteralPath (Join-Path $ownLicense 'LICENSE.txt')) -and -not (Test-Path -LiteralPath (Join-Path $ownLicense 'COPYRIGHT.txt')) -and $licenseOut.Contains('Skipped LICENSE.txt') -and $licenseOut.Contains('Skipped COPYRIGHT.txt') -and -not (git -C $ownLicense status --porcelain)) $licenseOut
     Check 'own-license: leaves publish.yml out beside its own publishing workflow, and says so' (-not (Test-Path -LiteralPath (Join-Path $ownLicense '.github/workflows/publish.yml')) -and (Test-Path -LiteralPath (Join-Path $ownLicense '.github/workflows/release.yml')) -and $licenseOut.Contains('Skipped .github/workflows/publish.yml')) $licenseOut
-    Check 'own-license: names the AssemblyVersion its release of the current major shipped' ($licenseOut.Contains('set <AssemblyVersion>2.3.0.0</AssemblyVersion> in Directory.Build.props')) $licenseOut
+    $licenseVersion = Get-Content -Raw -LiteralPath (Join-Path $ownLicense 'version.json') | ConvertFrom-Json
+    Check 'own-license: adds version.json at the patch after v2.3.0, with the AssemblyVersion v2.3.0 shipped, and no Directory.Build.props follow-up' ($licenseVersion.version -eq '2.3.1' -and $licenseVersion.assemblyVersion.version -eq '2.3' -and $licenseVersion.assemblyVersion.precision -eq 'minor' -and $licenseOut.Contains('Set version.json') -and -not $licenseOut.Contains('set <AssemblyVersion>')) $licenseOut
+
+    # A library with a publish.yml of its own that packs without -p:PublicRelease=true keeps it, and the report asks to add it.
+    $ownPublishYml = "name: publish`non: release`njobs:`n  pack:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet pack --output out -p:Version=1.0.0`n"
+    $ownPublish = New-Fixture 'own-publish' @{
+        'src/Lib/Lib.csproj' = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n</Project>`n"
+        'README.md'          = "# Lib`n"
+        '.github/workflows/publish.yml' = $ownPublishYml
+    } 'https://github.com/example/own-publish.git'
+    $publishOut = & $adopt -Path $ownPublish -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; nuget_package = $true; license = 'Apache-2.0'; test_command = '' } -NoVerify | Out-String
+    Check 'own-publish: keeps its own publish.yml, adds version.json, and asks to add -p:PublicRelease=true' ((Get-Content -Raw -LiteralPath (Join-Path $ownPublish '.github/workflows/publish.yml')) -notmatch 'PublicRelease' -and (Test-Path -LiteralPath (Join-Path $ownPublish 'version.json')) -and $publishOut.Contains('add -p:PublicRelease=true to the dotnet test and dotnet pack commands of .github/workflows/publish.yml')) $publishOut
 
     if (-not $SkipDotnetBuild) {
         $subject = git -C $scaffoldRepo log -1 --format=%s

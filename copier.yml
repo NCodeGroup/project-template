@@ -18,6 +18,7 @@ _skip_if_exists:
   - /README.md
   - /.node-version
   - /Directory.Build.props
+  - /version.json
   - /.github/workflows/code-review.yml
   - /.github/workflows/publish.yml
   - /docs/decisions/README.md
@@ -119,6 +120,7 @@ _exclude:
     docs/decisions/project-template/0133-abstractions-are-framework-free-and-tiered.md
     docs/decisions/project-template/0134-evolving-optional-parameters-are-a-dto.md
     docs/decisions/project-template/0136-packages-follow-semantic-versioning-and-the-assembly-version-moves-only-with-the-major.md
+    docs/decisions/project-template/0138-package-versions-come-from-version-json-through-nerdbank-gitversioning.md
     {% endif %}
   - |-
     {% if git_host is defined and stack is defined and nuget_package is defined and not (git_host == 'github' and stack == 'dotnet' and nuget_package) %}
@@ -136,6 +138,7 @@ _exclude:
   - |-
     {% if stack is defined and nuget_package is defined and not (stack == 'dotnet' and nuget_package) %}
     build/Update-PublicApi.ps1
+    /version.json
     {% endif %}
   - |-
     {% if stack is defined and nuget_package is defined and package_icon is defined and not (stack == 'dotnet' and nuget_package and package_icon == 'NCodeGroup.png') %}
