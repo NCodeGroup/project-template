@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - A .NET library versions every build from a root `version.json` through Nerdbank.GitVersioning: `version` is the version the next release ships, a build from its release tag packs exactly that version and any other commit `<version>-g<commit>`, and `assemblyVersion` keeps `AssemblyVersion` on the major version. A new library gets the file at `0.1.0`; `Update-Project.ps1` and `Adopt-Project.ps1` add it to an existing library at the patch after its newest release tag, with the `AssemblyVersion` its current major shipped. ([#357](https://github.com/NCodeGroup/project-template/issues/357), ADR-0138 in `docs/decisions/project-template/`)
-- A plan with a `Release:` line sets `version.json` to that version in its last step; the state script prints `version-file`, `/ship-plan` stops when the two differ and sets it when it renumbers the plan, and the Tag and publish release workflow refuses to tag a commit whose `version.json` holds another version. ([#357](https://github.com/NCodeGroup/project-template/issues/357))
+- A plan with a `Release:` line sets `version.json` to that version in its last step; the state script prints `version-file`, `/ship-plan` stops when the two differ and sets it when it renumbers the plan, and the Tag and publish release workflow refuses to tag a commit whose `version.json` holds another version or can't be read. ([#357](https://github.com/NCodeGroup/project-template/issues/357))
 
 ### Changed
 
