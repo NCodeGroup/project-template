@@ -300,7 +300,15 @@ foreach ($case in $cases) {
         $publish = Join-Path $dest '.github\workflows\publish.yml'
         $wantsPublish = $library -and $case.Host -eq 'github'
         Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)
+        $provenance = Join-Path $dest '.github\workflows\release-provenance.yml'
+        Check "${name}: the release provenance workflow only for a library on GitHub" ((Test-Path -LiteralPath $provenance) -eq $wantsPublish)
         if ($wantsPublish) {
+            $provenanceText = Get-Content -LiteralPath $provenance -Raw
+            $provenanceUses = [regex]::Matches($provenanceText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+            Check "${name}: the release provenance workflow pins each action to a full commit SHA, with its tag in a comment" ($provenanceUses.Count -ge 1 -and -not ($provenanceUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $provenanceText
+            $headBranchLines = @($provenanceText -split '\r?\n' | Where-Object { $_.Contains('github.event.workflow_run.head_branch') })
+            $headBranchSafe = -not ($headBranchLines | Where-Object { $_ -notmatch '^\s*TAG:' -and $_ -notmatch '^\s*group: release-provenance-' })
+            Check "${name}: the release provenance workflow follows Publish packages, holds no permission by default, attests, and keeps the tag out of scripts" ($provenanceText.Contains('workflows: [Publish packages]') -and $provenanceText -match '(?m)^permissions: \{\}\r?$' -and $provenanceText.Contains('attestations: write') -and $provenanceText.Contains('id-token: write') -and -not $provenanceText.Contains('actions/checkout') -and $provenanceText -notmatch '(?i)nuget(\.exe)?\s+push' -and $headBranchLines.Count -ge 1 -and $headBranchSafe) $provenanceText
             $workflow = Get-Content -LiteralPath $publish -Raw
             $uses = [regex]::Matches($workflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
             Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 4 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow

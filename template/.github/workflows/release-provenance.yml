@@ -1,0 +1,84 @@
+# Attach release provenance: when Publish packages succeeds, signs a provenance attestation for the packages it built
+# and attaches the packages and a signed provenance file (<tag>.intoto.jsonl) to the GitHub release. OpenSSF Scorecard
+# looks for such a file among a release's assets, and a consumer needs one to learn which workflow built a package.
+#
+# This is a separate workflow that runs on workflow_run because publish.yml belongs to the project, and its publish job
+# holds only id-token: write: it can't attest, and it can't write to the release. This workflow downloads the very
+# packages that run uploaded, so what it attests is what was published.
+#
+# To verify a package a consumer downloaded: gh attestation verify <package> --repo <owner>/<repo>
+name: Attach release provenance
+
+on:
+  workflow_run:
+    workflows: [Publish packages]
+    types: [completed]
+
+permissions: {}
+
+# One run per tag at a time; a second waits rather than racing the first to the release's assets.
+concurrency:
+  group: release-provenance-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  attest:
+    name: Attest and attach
+    # A failed publication has no packages worth attesting.
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # To download the packages the publishing run uploaded.
+      actions: read
+      # To store the attestation with the repository.
+      attestations: write
+      # To upload the packages and the provenance file to the release.
+      contents: write
+      # To sign the attestation with the job's OIDC token.
+      id-token: write
+    steps:
+      # The run's head_branch is the tag for a release or a run started for a tag. It reaches the script through env,
+      # and only after it is known to be a version, so it can't inject anything.
+      - name: Read the tag
+        id: tag
+        shell: pwsh
+        env:
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          if ($env:TAG -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') { throw "The run's ref '$env:TAG' isn't a version tag such as v1.2.3." }
+          "tag=$env:TAG" >> $env:GITHUB_OUTPUT
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packages
+          path: packages
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        id: attest
+        with:
+          subject-path: |
+            packages/*.nupkg
+            packages/*.snupkg
+      - name: Attach the packages and the provenance to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          Copy-Item -LiteralPath $env:BUNDLE -Destination "$env:TAG.intoto.jsonl"
+          gh release upload $env:TAG (Get-ChildItem packages -Include *.nupkg,*.snupkg -Recurse).FullName "$env:TAG.intoto.jsonl" --clobber
+          if ($LASTEXITCODE) { throw "gh release upload failed with exit code $LASTEXITCODE." }
+      # Proves the attestation exists and names this repository, so a broken signing step fails here, not for a consumer.
+      - name: Verify the attestations
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          Get-ChildItem packages -Filter '*.nupkg' | ForEach-Object {
+            gh attestation verify $_.FullName --repo $env:GH_REPO
+            if ($LASTEXITCODE) { throw "gh attestation verify failed for $($_.Name) with exit code $LASTEXITCODE." }
+          }
