@@ -88,7 +88,7 @@ Push-Location $unlicensed
 try {
     [IO.File]::WriteAllText((Join-Path $unlicensed '.github/workflows/release.yml'), $release)
     $publishYml = Join-Path $unlicensed '.github/workflows/publish.yml'
-    [IO.File]::WriteAllText($publishYml, [regex]::Replace([IO.File]::ReadAllText($publishYml), '(?m)^  workflow_dispatch:\r?\n(?:    .*\r?\n)*', ''))
+    [IO.File]::WriteAllText($publishYml, [regex]::Replace([IO.File]::ReadAllText($publishYml), '(?m)^  workflow_dispatch:\r?\n(?:    .*\r?\n)*', '').Replace(' -p:PublicRelease=true', ''))
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     Check 'fixture: unlicensed has no license answer, and publish.yml' (-not (Select-String -LiteralPath .copier-answers.yml -Pattern '^license: *[^\s'']' -Quiet) -and (Test-Path -LiteralPath .github/workflows/publish.yml))
     $head = git rev-parse HEAD
@@ -103,6 +103,7 @@ try {
     Check 'unlicensed: with -Data @{ license = ''MIT'' } the update commits v0.2.0 and records the license' ($result.ExitCode -eq 0 -and (git log -1 --format=%s) -eq 'Update from project-template v0.2.0' -and (Select-String -LiteralPath .copier-answers.yml -Pattern '^license: MIT$' -Quiet) -and -not (git status --porcelain)) $result.Output
     Check 'unlicensed: the update warns that publish.yml and release.yml both push NuGet packages' ($result.Output.Contains('Both .github/workflows/publish.yml and .github/workflows/release.yml push NuGet packages') -and (Test-Path -LiteralPath .github/workflows/publish.yml)) $result.Output
     Check 'unlicensed: the update warns that publish.yml has no workflow_dispatch trigger' ($result.Output.Contains('.github/workflows/publish.yml has no workflow_dispatch trigger') -and (Test-Path -LiteralPath .github/workflows/tag-release.yml)) $result.Output
+    Check 'unlicensed: the update warns that publish.yml packs without -p:PublicRelease=true' ($result.Output.Contains('.github/workflows/publish.yml packs without -p:PublicRelease=true')) $result.Output
 }
 finally { Pop-Location }
 
@@ -126,9 +127,12 @@ finally { Pop-Location }
 $withTrigger = New-Library 'with-trigger' 'license=MIT'
 Push-Location $withTrigger
 try {
+    $buildProps = Join-Path $withTrigger 'Directory.Build.props'
+    [IO.File]::WriteAllText($buildProps, [IO.File]::ReadAllText($buildProps).Replace('</Project>', '<ItemGroup><PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" /></ItemGroup></Project>'))
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $withTrigger
     Check 'with-trigger: a publish.yml with workflow_dispatch gets no warning' ($result.ExitCode -eq 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Test-Path -LiteralPath .github/workflows/tag-release.yml) -and -not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
+    Check 'with-trigger: the update adds version.json, has no PublicRelease warning, and names the file that references Nerdbank.GitVersioning' ($result.Output.Contains('Added version.json') -and $result.Output.Contains('Its version is 0.1.0') -and -not $result.Output.Contains('packs without -p:PublicRelease=true') -and $result.Output.Contains('These files reference Nerdbank.GitVersioning') -and $result.Output.Contains('Directory.Build.props')) $result.Output
 }
 finally { Pop-Location }
 
