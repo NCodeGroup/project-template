@@ -321,6 +321,22 @@ if (Test-Path -LiteralPath $libraryDest) {
         $unrecorded = dotnet build src/Greetings 2>&1 | Out-String
         [IO.File]::Delete((Join-Path (Get-Location) 'src/Greetings/Extra.cs'))
         Check 'dotnet-library-apache: a public type the API files do not record fails the build' ($unrecorded -match "error RS0016: Symbol 'Greetings\.Extra'") (($unrecorded -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ')
+        # Package validation compares a pack with a baseline package: making Greet internal removes a public member the baseline has.
+        $baselinePackage = Get-ChildItem -LiteralPath (Join-Path (Get-Location) 'artifacts/packages') -Filter 'Greetings.*.nupkg' | Where-Object { $_.Name -notlike '*.snupkg' } | Select-Object -First 1
+        $classPath = Join-Path (Get-Location) 'src/Greetings/Class1.cs'
+        $classText = [IO.File]::ReadAllText($classPath)
+        $unshippedText = [IO.File]::ReadAllText($unshipped)
+        try {
+            [IO.File]::WriteAllText($classPath, $classText.Replace('public static string Greet', 'internal static string Greet'))
+            [IO.File]::WriteAllText($unshipped, (($unshippedText -split "`n" | Where-Object { $_ -notmatch 'Greeter\.Greet\(' }) -join "`n"))
+            $validationOutput = dotnet pack src/Greetings --configuration Release "-p:PackageValidationBaselinePath=$($baselinePackage.FullName)" --output artifacts/validation 2>&1 | Out-String
+        }
+        finally {
+            [IO.File]::WriteAllText($classPath, $classText)
+            [IO.File]::WriteAllText($unshipped, $unshippedText)
+        }
+        Remove-Item -LiteralPath (Join-Path (Get-Location) 'src/Greetings/bin'), (Join-Path (Get-Location) 'src/Greetings/obj') -Recurse -Force -ErrorAction Ignore
+        Check 'dotnet-library-apache: package validation fails a pack that removes a public member the baseline package has (CP0002)' ($validationOutput -match 'error CP0002') (($validationOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ')
         # (a) version.json's version, a prerelease here, packs as it is with PublicRelease, and the -p:Version publish.yml passes doesn't change it; AssemblyVersion moves only with the major version.
         $versionFile = Join-Path (Get-Location) 'version.json'
         $versionText = [IO.File]::ReadAllText($versionFile)
