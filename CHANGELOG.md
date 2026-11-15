@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.96.0] - 2026-11-15
+
+### Added
+
+- Every project gets `GOVERNANCE.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `ROADMAP.md`, `docs/architecture.md`, `docs/assurance-case.md` and `docs/best-practices-badge.md`, the documents the OpenSSF Best Practices silver level asks for, mapped to its criteria. They are project-owned, an update adds missing ones, and prompts say what to write. The `conduct_contact` answer says where conduct reports go; blank, GitHub's private report form or a confidential GitLab issue. ([#383](https://github.com/NCodeGroup/project-template/issues/383), [ADR-0023](template/docs/decisions/project-template/0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md.jinja))
+- `release-provenance.yml` runs by hand to attest an earlier release while its Publish packages run's artifact is kept (14 days): `gh workflow run release-provenance.yml -f tag=<tag> -f run-id=<run id>`. ([#381](https://github.com/NCodeGroup/project-template/issues/381), [ADR-0151](template/docs/decisions/project-template/0151-release-follow-ups-are-jobs-publish-calls.md))
+
+### Changed
+
+- **Breaking:** a .NET library's `release-provenance.yml` and `raise-baseline.yml` run as jobs `publish.yml` calls, not on `workflow_run`, which never fired for the run `tag-release.yml` starts. Add the template's `provenance` and `baseline` jobs to your `publish.yml`; the update says so until you do. Scorecard averages the last five releases with assets: delete older unsigned assets, or wait five releases. ([#381](https://github.com/NCodeGroup/project-template/issues/381), [ADR-0151](template/docs/decisions/project-template/0151-release-follow-ups-are-jobs-publish-calls.md))
+- With NCode Review, `code-review.yml` passes `approve: true` (v1.4.0), so a clean review approves; new projects open drafts (`draft: yes`); and `tools/Set-RepositoryBaseline.ps1` then requires one approval, dismisses stale approvals and requires approval of the last push. To adopt it, pin v1.4.0, add `approve: true`, set `- draft: yes` and rerun the baseline script. A bot's pull request then waits for a maintainer's approval; after a push by hand, comment `/review`. ([#382](https://github.com/NCodeGroup/project-template/issues/382), [ADR-0022](template/docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md.jinja))
+- ADR-0020 follows Scorecard's source: Code-Review counts any non-author approval, bots included; Branch-Protection scores nothing past tier 2, one required approval; Signed-Releases averages the last five releases with assets; CII-Best-Practices scores silver 7, gold 10. ([#386](https://github.com/NCodeGroup/project-template/issues/386), [ADR-0020](template/docs/decisions/project-template/0020-github-projects-are-scored-by-openssf-scorecard.md.jinja))
+
+### Fixed
+
+- `tools/Set-RepositoryBaseline.ps1` no longer requires approval of the last push without a required approval, which blocked every merge with one maintainer; for a ruleset that does, it prints the command that turns it off, for the maintainer, since it never loosens a ruleset. ([#385](https://github.com/NCodeGroup/project-template/issues/385))
+
 ## [0.95.0] - 2026-11-15
 
 ### Added
@@ -1526,7 +1543,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.95.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.96.0...HEAD
+[0.96.0]: https://github.com/NCodeGroup/project-template/compare/v0.95.0...v0.96.0
 [0.95.0]: https://github.com/NCodeGroup/project-template/compare/v0.94.0...v0.95.0
 [0.94.0]: https://github.com/NCodeGroup/project-template/compare/v0.93.0...v0.94.0
 [0.93.0]: https://github.com/NCodeGroup/project-template/compare/v0.92.0...v0.93.0
