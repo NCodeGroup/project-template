@@ -51,8 +51,6 @@ every assembly and package.
 
 - [ADR-0136](0136-packages-follow-semantic-versioning-and-the-assembly-version-moves-only-with-the-major.md): packages
   follow Semantic Versioning, and the assembly version moves only with the major.
-- [ADR-0135](0135-packages-are-published-from-a-github-release-through-trusted-publishing.md): packages are published
-  from a GitHub release through trusted publishing.
 - [ADR-0016](0016-releases-are-tagged-and-published-when-their-pull-request-merges.md): releases are tagged and
   published when their pull request merges.
 - `version.json`, `build/ProjectTemplate.props`
