@@ -30,6 +30,7 @@ _skip_if_exists:
   - /CONTRIBUTING.md
   - /docs/README.md
   - /docs/metrics.md
+  - /docs/api-compatibility.md
   - /docs/designs/_template.md
 _merged_files:
   - .gitignore
@@ -139,6 +140,7 @@ _exclude:
   - |-
     {% if stack is defined and nuget_package is defined and not (stack == 'dotnet' and nuget_package) %}
     build/Update-PublicApi.ps1
+    docs/api-compatibility.md
     /version.json
     {% endif %}
   - |-
