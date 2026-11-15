@@ -31,6 +31,7 @@ the project's workflow and commit, and the release carries no packages or proven
 - A project with its own publish workflow gets a workflow that never triggers.
 - `workflow_run` runs the default branch's copy of the file, so the first release after the workflow lands on the
   default branch is the first one it covers.
+- The release also gets an SPDX SBOM, `<tag>.spdx.json`, exported from GitHub's dependency graph when the workflow runs; it describes the default branch at that time and is not attested.
 
 ## References
 
