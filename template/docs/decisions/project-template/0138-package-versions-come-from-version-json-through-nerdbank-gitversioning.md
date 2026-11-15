@@ -28,7 +28,9 @@ every assembly and package.
 - Every checkout that builds fetches the full history.
 - A plan with a `Release:` line sets `version` to that version. The state script reports a mismatch, `/ship-plan` stops
   on one, and the Tag and publish release workflow refuses to tag a commit whose `version.json` disagrees. On GitHub,
-  `publish.yml` packs with `-p:PublicRelease=true` and refuses a package whose version isn't the tag's.
+  `publish.yml` packs with `-p:PublicRelease=true` and refuses a package whose version isn't the tag's. It also passes
+  the tag's version as `-p:Version`, which Nerdbank.GitVersioning ignores, so a library that deletes `version.json`
+  still packs the tag's version.
 - `build/ProjectTemplate.props` references the package only while `version.json` exists. A library that deletes it
   keeps ADR-0136's tag-based version.
 
