@@ -880,6 +880,9 @@ $m = @(Get-MissingText ($shipFiles + ('template\.claude\commands\plan-feature.md
 $m += @(Get-MissingText $shipFiles ('never under two headings of the same name'))
 Check 'workflow: the changelog step merges a heading changelog-duplicates names in [Unreleased] at the first one''s place, and a merge step never writes a heading twice' (-not $m) ($m -join '; ')
 $planCopies = 'template\.claude\commands\plan-feature.md', 'template\.github\prompts\plan-bugfix.prompt.md', 'template\.github\skills\plan-tests\SKILL.md'
+$m = @(Get-MissingText $shipFiles ('starts with `mismatch`', '## The Version File Step', 'Set version.json to <renumber>'))
+$m += @(Get-MissingText $planCopies ('sets that file''s `version` to the `Release:` version'))
+Check 'workflow: a plan keeps version.json equal to its Release: version, and ship-plan stops on a mismatch and sets it when it renumbers' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ($shipFiles + $planCopies) ('Until the first stable release, the [Unreleased] section describes the product as it is, not its changes.', 'The state script prints `pre-release: yes` for it', 'a tag below the first stable version never counts', 'ends the pre-release'))
 $m += @(Get-MissingText $planCopies ('a raise keeps the major version at 0', 'except in a pre-release project, which has none'))
 $m += @(Get-MissingText $shipFiles ('Stop when `pre-release` is `invalid`', 'the state script''s `pre-release` is `no` and its `changelog-version` isn''t `<version>`', 'Write the <renumber> changelog section', 'that section is `## [Unreleased]`', 'In a pre-release changelog, keep the catalog entries of both sides'))
