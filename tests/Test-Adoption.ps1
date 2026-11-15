@@ -378,6 +378,16 @@ if (-not $UnitOnly) {
     $licenseVersion = Get-Content -Raw -LiteralPath (Join-Path $ownLicense 'version.json') | ConvertFrom-Json
     Check 'own-license: adds version.json at the patch after v2.3.0, with the AssemblyVersion v2.3.0 shipped, and no Directory.Build.props follow-up' ($licenseVersion.version -eq '2.3.1' -and $licenseVersion.assemblyVersion.version -eq '2.3' -and $licenseVersion.assemblyVersion.precision -eq 'minor' -and $licenseOut.Contains('Set version.json') -and -not $licenseOut.Contains('set <AssemblyVersion>')) $licenseOut
 
+    # A library with a publish.yml of its own that packs without -p:PublicRelease=true keeps it, and the report asks to add it.
+    $ownPublishYml = "name: publish`non: release`njobs:`n  pack:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet pack --output out -p:Version=1.0.0`n"
+    $ownPublish = New-Fixture 'own-publish' @{
+        'src/Lib/Lib.csproj' = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n</Project>`n"
+        'README.md'          = "# Lib`n"
+        '.github/workflows/publish.yml' = $ownPublishYml
+    } 'https://github.com/example/own-publish.git'
+    $publishOut = & $adopt -Path $ownPublish -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; nuget_package = $true; license = 'Apache-2.0'; test_command = '' } -NoVerify | Out-String
+    Check 'own-publish: keeps its own publish.yml, adds version.json, and asks to add -p:PublicRelease=true' ((Get-Content -Raw -LiteralPath (Join-Path $ownPublish '.github/workflows/publish.yml')) -notmatch 'PublicRelease' -and (Test-Path -LiteralPath (Join-Path $ownPublish 'version.json')) -and $publishOut.Contains('add -p:PublicRelease=true to the dotnet test and dotnet pack commands of .github/workflows/publish.yml')) $publishOut
+
     if (-not $SkipDotnetBuild) {
         $subject = git -C $scaffoldRepo log -1 --format=%s
         $packOut = dotnet pack (Join-Path $scaffoldRepo 'src\NCode.Demo') -o (Join-Path $Work 'pack') 2>&1 | Out-String
