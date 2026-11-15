@@ -183,6 +183,9 @@ for path in sys.argv[1:]:
     if not isinstance(doc, dict):
         continue
     groups = []
+    doc_defaults = doc.get("defaults")
+    doc_run_defaults = doc_defaults.get("run") if isinstance(doc_defaults, dict) else None
+    doc_shell = doc_run_defaults.get("shell") if isinstance(doc_run_defaults, dict) else None
     jobs = doc.get("jobs")
     for job in (jobs.values() if isinstance(jobs, dict) else []):
         if not isinstance(job, dict):
@@ -190,7 +193,7 @@ for path in sys.argv[1:]:
         defaults = job.get("defaults")
         run_defaults = defaults.get("run") if isinstance(defaults, dict) else None
         shell = run_defaults.get("shell") if isinstance(run_defaults, dict) else None
-        groups.append((job.get("steps"), shell))
+        groups.append((job.get("steps"), shell or doc_shell))
     runs = doc.get("runs")
     if isinstance(runs, dict):
         groups.append((runs.get("steps"), None))
