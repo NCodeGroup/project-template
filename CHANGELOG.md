@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.86.3] - 2026-11-14
+
+### Fixed
+
+- The `publish.yml` a .NET library gets parses in PowerShell: its "Check the version is new" step wrote `$id:` in a string, which PowerShell reads as a scope-qualified variable, so the step failed on every publish before it ran a line. It writes `${id}:`. ([#364](https://github.com/NCodeGroup/project-template/issues/364))
+
+### Changed
+
+- No change for other projects. `tests/Test-Template.ps1` parses every `shell: pwsh` `run:` block of the rendered workflows and of this repository's own, so a parse error like that one fails the template's CI and not a project's release. ([#364](https://github.com/NCodeGroup/project-template/issues/364))
+
 ## [0.86.2] - 2026-11-14
 
 ### Added
@@ -1420,7 +1430,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.86.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.86.3...HEAD
+[0.86.3]: https://github.com/NCodeGroup/project-template/compare/v0.86.2...v0.86.3
 [0.86.2]: https://github.com/NCodeGroup/project-template/compare/v0.86.1...v0.86.2
 [0.86.1]: https://github.com/NCodeGroup/project-template/compare/v0.86.0...v0.86.1
 [0.86.0]: https://github.com/NCodeGroup/project-template/compare/v0.85.0...v0.86.0
