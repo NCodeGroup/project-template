@@ -62,11 +62,13 @@ function roundHalfEven(x) {
 }
 
 /**
- * The number with `digits` decimals: the exact binary value rounded half to even. toFixed(100) is the exact decimal expansion of every value this file formats
- * (and rounds a tiny one to digits that round to 0 all the same); toFixed(digits) itself takes the
- * larger neighbor on a tie.
+ * The number with `digits` decimals: the exact binary value rounded half to even. toFixed(100) is the
+ * exact decimal expansion of every value below 1e21 (and rounds a tiny one to digits that round to 0 all
+ * the same); toFixed(digits) itself takes the larger neighbor on a tie. From 1e21 on, toFixed writes an
+ * exponent, so such a value is refused.
  */
 function toFixedHalfEven(v, digits) {
+  if (!(Math.abs(v) < 1e21)) throw new RangeError(`can't format ${v}: only finite values below 1e21 are`);
   const negative = v < 0 || Object.is(v, -0);
   const [whole, fraction] = Math.abs(v).toFixed(100).split('.');
   const rest = fraction.slice(digits);
@@ -144,8 +146,12 @@ const PI_2 = [1.57079632673412561417e+00, 6.07710050630396597660e-11, 2.02226624
  * Math.sin and Math.cos can be a bit off in the last place, and differently from one V8 release to the
  * next; a last bit of an arc's points can move a pixel whose coverage is exactly one half. Correctly
  * rounded functions draw the same pixels on every platform and with every Node.js release.
+ *
+ * The reduction is exact while x / (pi/2) is below 2^20, so |x| from 2^20 radians on, far beyond the
+ * angles this file uses, is refused.
  */
 function sinCos(x) {
+  if (!(Math.abs(x) < 2 ** 20)) throw new RangeError(`sinCos(${x}): only |x| below 2^20 radians is reduced exactly`);
   const k = Math.round(x / (Math.PI / 2));
   let r = twoSum(x, -k * PI_2[0]);
   for (const part of PI_2.slice(1)) r = ddAdd(r, [-k * part, 0]);
@@ -187,12 +193,14 @@ function acos(y) {
 
 /**
  * The distance between two points, correctly rounded: scaled by a power of two, the squares summed in
- * extended precision, the square root corrected once.
+ * extended precision, the square root corrected once. A distance whose larger side is subnormal, below
+ * 2^-1022, has no power of two to scale it by, and is Math.hypot's.
  */
 function dist(p, q) {
   const vec = [Math.abs(p[0] - q[0]), Math.abs(p[1] - q[1])];
   const max = Math.max(vec[0], vec[1]);
   if (!Number.isFinite(max) || max === 0) return max;
+  if (max < 2 ** -1022) return Math.hypot(vec[0], vec[1]);
   let e = Math.floor(Math.log2(max)) + 1; // frexp's exponent: max * 2^-e in [0.5, 1)
   while (max * 2 ** -e >= 1) e++;
   while (max * 2 ** -e < 0.5) e--;
