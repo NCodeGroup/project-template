@@ -1,0 +1,3 @@
+# Files from the project template that updates overwrite.
+build/ProjectTemplate.props
+nuget.config

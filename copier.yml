@@ -31,6 +31,8 @@ _skip_if_exists:
   - /docs/README.md
   - /docs/metrics.md
   - /docs/api-compatibility.md
+  - /.config/dotnet-tools.json
+  - /.csharpierignore
   - /docs/designs/_template.md
 _merged_files:
   - .gitignore
@@ -144,6 +146,11 @@ _exclude:
     /version.json
     {% endif %}
   - |-
+    {% if stack is defined and (stack != 'dotnet' or (csharp_format is defined and not csharp_format)) %}
+    /.config/dotnet-tools.json
+    /.csharpierignore
+    {% endif %}
+  - |-
     {% if stack is defined and nuget_package is defined and package_icon is defined and not (stack == 'dotnet' and nuget_package and package_icon == 'NCodeGroup.png') %}
     /NCodeGroup.png
     {% endif %}
@@ -244,6 +251,12 @@ nuget_package:
   type: bool
   help: "Publish the projects as NuGet packages: license, README and icon in each package, Source Link, symbol packages"
   default: false
+  when: "{{ stack == 'dotnet' }}"
+
+csharp_format:
+  type: bool
+  help: "Format C# with CSharpier in build/dod.ps1 and fail the build on a C# file without the SPDX header .editorconfig sets? Existing projects keep their formatting until they answer yes"
+  default: true
   when: "{{ stack == 'dotnet' }}"
 
 license:
