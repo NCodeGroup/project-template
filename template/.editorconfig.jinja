@@ -38,7 +38,7 @@ csharp_place_constructor_initializer_on_same_line = false
 csharp_wrap_before_first_type_parameter_constraint = true
 csharp_wrap_multiple_type_parameter_constraints_style = chop_always
 
-# The header each new C# file starts with: the copyright line, and an SPDX line for the license answered. Visual Studio and Rider add it, and IDE0073 offers the fix. A suggestion, so files without it still build. Roslyn ends a value at the first ; or #, so the header holds neither.
+# The header each new C# file starts with: the copyright line, and an SPDX line for the license answered. Visual Studio and Rider add it, and IDE0073 offers the fix. A suggestion, so files without it still build. Roslyn ends a value at the first ; or #, so the header holds neither. With csharp_format, a file without the header fails the build.
 {%- if ';' in author_name or '#' in author_name %}
 # No file_header_template: author_name holds a ; or #, where Roslyn would cut the header short.
 {%- elif license %}
@@ -46,7 +46,13 @@ file_header_template = Copyright © {{ author_name }}\nSPDX-License-Identifier: 
 {%- else %}
 file_header_template = Copyright © {{ author_name }}
 {%- endif %}
-dotnet_diagnostic.IDE0073.severity = suggestion
+dotnet_diagnostic.IDE0073.severity = {% if csharp_format is defined and csharp_format and not (';' in author_name or '#' in author_name) %}warning{% else %}suggestion{% endif %}
+{%- if csharp_format is defined and csharp_format %}
+
+# CSharpier (build/dod.ps1) formats project files too; two spaces align them with the other MSBuild files.
+[*.{csproj,slnx}]
+indent_size = 2
+{%- endif %}
 
 # EF Core migrations are scaffolded by dotnet ef, not written by hand: the analyzers treat them as generated code.
 [**/Migrations/**.cs]

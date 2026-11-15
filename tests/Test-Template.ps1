@@ -356,7 +356,11 @@ foreach ($case in $cases) {
         $headerLines = @($editorconfig -split '\r?\n' | Where-Object { $_.StartsWith('file_header_template') })
         $headerOk = if ($author -match '[;#]') { $headerLines.Count -eq 0 -and $editorconfig.Contains('# No file_header_template: author_name holds a ; or #, where Roslyn would cut the header short.') }
             else { $headerLines.Count -eq 1 -and $headerLines[0] -ceq $header -and $headerLines[0] -notmatch '[;#]' }
-        Check "${name}: the C# file header for the license answered" ($headerOk -and $editorconfig.Contains('dotnet_diagnostic.IDE0073.severity = suggestion')) $editorconfig
+        $wantFormatHere = $case.Data.csharp_format -ne 'false'
+        $ideSeverity = if ($wantFormatHere -and $author -notmatch '[;#]') { 'warning' } else { 'suggestion' }
+        Check "${name}: the C# file header for the license answered" ($headerOk -and $editorconfig.Contains("dotnet_diagnostic.IDE0073.severity = $ideSeverity")) $editorconfig
+        $extensionsText = Get-Content -LiteralPath (Join-Path $dest '.vscode\extensions.json') -Raw
+        Check "${name}: .editorconfig indents project files and VS Code recommends CSharpier exactly when csharp_format is not false" ($editorconfig.Contains('[*.{csproj,slnx}]') -eq $wantFormatHere -and $extensionsText.Contains('csharpier.csharpier-vscode') -eq $wantFormatHere) $extensionsText
         $publish = Join-Path $dest '.github\workflows\publish.yml'
         $wantsPublish = $library -and $case.Host -eq 'github'
         Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)
