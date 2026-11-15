@@ -38,6 +38,7 @@ never brings a number the project already uses
 | [0020](0020-github-projects-are-scored-by-openssf-scorecard.md) | A GitHub project runs the OpenSSF Scorecard workflow; the record lists what the template controls and what needs a person |
 {%- endif %}
 | [0021](0021-tooling-is-written-in-nodejs-then-go-then-powershell.md) | Tooling is written in Node.js first, then Go, then PowerShell 7; Python is left out of the toolchain, except for Python programs such as Copier |
+| [0022](0022-ncode-reviews-approval-gates-the-merge.md) | Where `code-review.yml` passes NCode Review's `approve: true`, the ruleset requires one approval and approval of the last push, never the latter alone, and a new such project opens every pull request as a draft (amends 0005, 0006, 0019{% if git_host == 'github' %} and 0020{% endif %}) |
 | [0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md) | Every project ships the governance, conduct, roadmap, architecture and assurance documents the OpenSSF Best Practices silver level asks for, with a map from each criterion to its evidence |
 {%- if stack == 'dotnet' %}
 
