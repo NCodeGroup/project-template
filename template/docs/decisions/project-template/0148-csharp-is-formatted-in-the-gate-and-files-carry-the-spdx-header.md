@@ -36,6 +36,7 @@ fails the build.
 - No script rewrites old file headers, because it runs once per project. The rewrite replaces each
   `#region Copyright Preamble` ... `#endregion` block with the two header lines and drops a UTF-8 BOM. A Rider
   `*.DotSettings` file may carry an old `FileHeaderText` that makes Rider generate the old header; change it too.
+- `Update-Project.ps1`, when `-Data` turns `csharp_format` on, and `Adopt-Project.ps1` count the C# files without the header `.editorconfig` sets and name the first five, so the first IDE0073 failures aren't a surprise; they rewrite none.
 - The formatter's first pass changes layout only. Review that commit as such, and keep it apart from other changes.
 
 ## Options considered
