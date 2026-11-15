@@ -18,6 +18,7 @@ _skip_if_exists:
   - /README.md
   - /.node-version
   - /Directory.Build.props
+  - /version.json
   - /.github/workflows/code-review.yml
   - /.github/workflows/publish.yml
   - /docs/decisions/README.md
@@ -136,6 +137,7 @@ _exclude:
   - |-
     {% if stack is defined and nuget_package is defined and not (stack == 'dotnet' and nuget_package) %}
     build/Update-PublicApi.ps1
+    /version.json
     {% endif %}
   - |-
     {% if stack is defined and nuget_package is defined and package_icon is defined and not (stack == 'dotnet' and nuget_package and package_icon == 'NCodeGroup.png') %}
