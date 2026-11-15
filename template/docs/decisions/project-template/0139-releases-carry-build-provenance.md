@@ -1,6 +1,6 @@
 # 0139. Releases carry build provenance
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0151)
 - **Date:** 2026-11-14
 - **Amends:** 0135
 
@@ -11,7 +11,8 @@ the project's workflow and commit, and the release carries no packages or proven
 
 ## Decision
 
-`release-provenance.yml` runs after a successful `Publish packages` run, attests the packages with
+`release-provenance.yml` runs as a job of a successful `Publish packages` run
+([ADR-0151](0151-release-follow-ups-are-jobs-publish-calls.md)), attests the packages with
 `actions/attest-build-provenance`, and attaches the packages and `<tag>.intoto.jsonl` to the GitHub release.
 
 - Consumers verify a package with `gh attestation verify <package>.nupkg --repo <owner>/<repo>`.
@@ -28,9 +29,10 @@ the project's workflow and commit, and the release carries no packages or proven
 
 - The assets stay on the release.
 - A rerun of Publish packages re-attests and replaces the assets (`--clobber`).
-- A project with its own publish workflow gets a workflow that never triggers.
-- `workflow_run` runs the default branch's copy of the file, so the first release after the workflow lands on the
-  default branch is the first one it covers.
+- A project with its own publish workflow gets a workflow that runs only once that workflow calls it.
+- A release that `publish.yml` publishes is covered once its `provenance` job calls the workflow, and an earlier one
+  can be backfilled while its `Publish packages` run's artifact is kept
+  ([ADR-0151](0151-release-follow-ups-are-jobs-publish-calls.md)).
 - The release also gets an SPDX SBOM, `<tag>.spdx.json`, exported from GitHub's dependency graph when the workflow runs; it describes the default branch at that time and is not attested.
 
 ## References

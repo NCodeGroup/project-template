@@ -387,6 +387,7 @@ foreach ($case in $cases) {
         Check "${name}: build/Update-Baseline.ps1 only for a library" ((Test-Path -LiteralPath (Join-Path $dest 'build\Update-Baseline.ps1')) -eq $library)
         $raise = Join-Path $dest '.github\workflows\raise-baseline.yml'
         Check "${name}: the raise-baseline workflow only for a library on GitHub" ((Test-Path -LiteralPath $raise) -eq $wantsPublish)
+        Check "${name}: ADR-0151 only for a library on GitHub" ([bool](Get-ChildItem -Path (Join-Path $dest 'docs\decisions\project-template\0151-*.md') -ErrorAction SilentlyContinue) -eq $wantsPublish)
         if ($wantsPublish) {
             $provenanceText = Get-Content -LiteralPath $provenance -Raw
             $provenanceUses = [regex]::Matches($provenanceText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
