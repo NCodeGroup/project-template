@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.91.0] - 2026-11-15
+
+### Added
+
+- `Adopt-Project.ps1` and `.template/Update-Project.ps1` name the stale NuGet logistics an older library carries: a `.props` file no project imports, so its `Description` and `PackageTags` no longer reach the package; `GeneratePackageOnBuild`; settings `build/ProjectTemplate.props` already makes; a `.sln` where `.slnx` is current; files with a UTF-8 byte order mark; and projects at the repository root. Adoption lists them as follow-ups and the update prints them with a `/plan-migration` request; neither edits a project file. Both scripts also compare the package's `Description` and `PackageTags` with the newest published package and name any that differ. ([#360](https://github.com/NCodeGroup/project-template/issues/360), [ADR-0149](template/docs/decisions/project-template/0149-stale-nuget-logistics-are-named-not-fixed.md))
+
 ## [0.90.0] - 2026-11-14
 
 ### Added
@@ -1478,7 +1484,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.90.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.91.0...HEAD
+[0.91.0]: https://github.com/NCodeGroup/project-template/compare/v0.90.0...v0.91.0
 [0.90.0]: https://github.com/NCodeGroup/project-template/compare/v0.89.0...v0.90.0
 [0.89.0]: https://github.com/NCodeGroup/project-template/compare/v0.88.0...v0.89.0
 [0.88.0]: https://github.com/NCodeGroup/project-template/compare/v0.87.1...v0.88.0

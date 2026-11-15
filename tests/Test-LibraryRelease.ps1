@@ -111,7 +111,7 @@ Write-Text (Join-Path $others '.github/workflows/ci.yml') "- run: dotnet pack`n"
 
 $updateFunctions = @{}
 $updateAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
-foreach ($function in 'Get-AssemblyVersionFloor', 'Get-NuGetPublisher', 'Get-PublishedPackageVersion', 'Update-VersionFile', 'Get-CSharpFileWithoutHeader', 'Test-PackageValidationBaseline') {
+foreach ($function in 'Get-AssemblyVersionFloor', 'Get-NuGetPublisher', 'Get-PublishedPackageVersion', 'Get-PackageMetadataDrift', 'Update-VersionFile', 'Get-CSharpFileWithoutHeader', 'Test-PackageValidationBaseline') {
     $updateFunctions[$function] = $updateAst.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $function }, $true) | Select-Object -First 1
 }
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
@@ -226,6 +226,43 @@ foreach ($source in $publishedCalls.Keys) {
     Check "${source}: Get-PublishedPackageVersion: only the packable project is named, with the newest stable version" ($foo.Count -eq 1 -and $foo[0].Version -eq '1.1.0' -and -not ($versions | Where-Object { $_.Id -in 'Foo.Tests', 'Tool' })) "Got '$($versions | ForEach-Object { "$($_.Id) $($_.Version)" })'"
     Check "${source}: Get-PublishedPackageVersion: a lookup that throws yields nothing" (-not ($versions | Where-Object Id -eq 'Broken')) "Got '$($versions | ForEach-Object { $_.Id })'"
     Check "${source}: Get-PublishedPackageVersion: a PackageId is queried in lower case" ($queried -contains 'https://api.nuget.org/v3-flatcontainer/other.name/index.json') "Queried '$($queried -join ', ')'"
+}
+
+# Get-PackageMetadataDrift: Fetch stands in for nuget.org and Evaluate for MSBuild.
+$drift = Join-Path $Work 'drift'
+Write-Text (Join-Path $drift 'src/Foo/Foo.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
+Write-Text (Join-Path $drift 'src/Fresh/Fresh.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
+$driftFetch = {
+    param($Uri)
+    if ($Uri -match '/fresh/') { return @{ versions = @() } }
+    if ($Uri -match 'index\.json$') { return @{ versions = '1.0.0', '1.1.0' } }
+    '<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd"><metadata><id>Foo</id><description>A  fast
+ buffer library</description><tags>buffers span</tags></metadata></package>'
+}
+$driftCases = [ordered]@{
+    'equal metadata gives nothing'                          = @{ Local = @{ Description = 'A fast buffer library'; PackageTags = 'buffers;span' }; Expect = @() }
+    'tags in another order and separator give nothing'      = @{ Local = @{ Description = 'A fast buffer library'; PackageTags = 'span, buffers' }; Expect = @() }
+    'a different Description is named'                      = @{ Local = @{ Description = 'Something else'; PackageTags = 'buffers span' }; Expect = @('Description') }
+    'a lost Description and PackageTags are both named'     = @{ Local = @{ Description = ''; PackageTags = $null }; Expect = @('Description', 'PackageTags') }
+    'different PackageTags are named'                       = @{ Local = @{ Description = 'A fast buffer library'; PackageTags = 'buffers' }; Expect = @('PackageTags') }
+    'a project that cannot be evaluated gives nothing'      = @{ Local = $null; Expect = @() }
+}
+$driftCalls = [ordered]@{
+    update = { param($Evaluate) Get-PackageMetadataDrift -Fetch $driftFetch -Evaluate $Evaluate }
+    adopt  = { param($Evaluate) Adoption\Get-PackageMetadataDrift -Fetch $driftFetch -Evaluate $Evaluate }
+}
+foreach ($source in $driftCalls.Keys) {
+    foreach ($name in $driftCases.Keys) {
+        $case = $driftCases[$name]
+        $local = $case.Local
+        $evaluate = { param($Project) $null = $Project; $local }.GetNewClosure()
+        Push-Location $drift
+        try { $found = @(& $driftCalls[$source] $evaluate) }
+        finally { Pop-Location }
+        $fields = @($found | ForEach-Object Field)
+        $ok = ($fields -join ',') -eq ($case.Expect -join ',') -and -not ($found | Where-Object { $_.Id -ne 'Foo' -or $_.Version -ne '1.1.0' -or $_.Message -notlike 'src/Foo/Foo.csproj would publish *' })
+        Check "${source}: Get-PackageMetadataDrift: $name" $ok "Got '$($found.Message -join ' | ')'; expected '$($case.Expect -join ',')'"
+    }
 }
 
 # Test-PackageValidationBaseline: whether the project already sets a baseline.

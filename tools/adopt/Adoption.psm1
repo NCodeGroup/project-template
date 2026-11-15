@@ -493,11 +493,151 @@ function Get-PublishedPackageVersion {
     }
 }
 
+# The Description and PackageTags each packable project would publish, where they differ from the newest stable package
+# on nuget.org, as Id, Version, Field and Message: metadata that stopped reaching a package, such as when a .props file was
+# dropped. A project that cannot be evaluated, a package never published, or a lookup that fails gives nothing. Fetch stands
+# in for nuget.org and Evaluate for MSBuild in tests. Nothing is edited.
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both
+# together; tests keep the two equal.
+function Get-PackageMetadataDrift {
+    param(
+        [scriptblock]$Fetch = { param($Uri) Invoke-RestMethod -Uri $Uri -TimeoutSec 20 },
+        [scriptblock]$Evaluate = {
+            param($Project)
+            try {
+                $json = & dotnet msbuild $Project -getProperty:Description -getProperty:PackageTags -nologo 2>$null
+                if ($LASTEXITCODE -ne 0) { return $null }
+                $properties = ($json -join "`n" | ConvertFrom-Json).Properties
+                @{ Description = $properties.Description; PackageTags = $properties.PackageTags }
+            }
+            catch { $null }
+        }
+    )
+    $root = (Get-Location).ProviderPath
+    foreach ($file in Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue) {
+        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
+        $text = Get-Content -LiteralPath $file.FullName -Raw
+        if ($text -match '<IsPackable>\s*false') { continue }
+        $id = if ($text -match '<PackageId>\s*([^<\s]+)\s*</PackageId>') { $Matches[1] } else { $file.BaseName }
+        $lower = $id.ToLowerInvariant()
+        try {
+            $response = & $Fetch "https://api.nuget.org/v3-flatcontainer/$lower/index.json"
+            $stable = @($response.versions | Where-Object { $_ -and $_ -notmatch '-' } | Sort-Object { [version]$_ })
+            if ($stable.Count -eq 0) { continue }
+            $version = $stable[-1]
+            $nuspec = & $Fetch "https://api.nuget.org/v3-flatcontainer/$lower/$version/$lower.nuspec"
+            if ($nuspec -is [string]) { $nuspec = [xml]$nuspec }
+            $metadata = $nuspec.package.metadata
+            $publishedValues = @{ Description = [string]$metadata.description; PackageTags = [string]$metadata.tags }
+            $local = & $Evaluate $file.FullName
+        }
+        catch { continue }
+        if (-not $local) { continue }
+        $relative = [IO.Path]::GetRelativePath($root, $file.FullName) -replace '\\', '/'
+        foreach ($field in 'Description', 'PackageTags') {
+            $publishedText = ($publishedValues[$field] -replace '\s+', ' ').Trim()
+            $localText = ([string]$local[$field] -replace '\s+', ' ').Trim()
+            if (-not $publishedText) { continue }
+            if ($field -eq 'PackageTags') {
+                $publishedKey = (@($publishedText -split '[;,\s]+' | Where-Object { $_ } | Sort-Object -Unique) -join ' ')
+                $localKey = (@($localText -split '[;,\s]+' | Where-Object { $_ } | Sort-Object -Unique) -join ' ')
+            }
+            else { $publishedKey = $publishedText; $localKey = $localText }
+            if ($publishedKey -ne $localKey) {
+                [pscustomobject]@{ Id = $id; Version = $version; Field = $field; Message = "$relative would publish $field '$localText' where $id $version published '$publishedText': restore it in the project or Directory.Build.props (NCodeGroup/Buffers#33 lost both when a .props file stopped being imported)." }
+            }
+        }
+    }
+}
+
 # Whether Directory.Build.props, or a project file under the current folder, already sets PackageValidationBaselineVersion.
 # template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests keep the two equal.
 function Test-PackageValidationBaseline {
     if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match 'PackageValidationBaselineVersion') { return $true }
     @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
+}
+
+# The stale NuGet logistics an older library carries, found under the current folder, as Kind and Message in a fixed
+# order: OrphanProps, GeneratePackageOnBuild, RepeatedSettings, Solution, ByteOrderMark, RootProject. Nothing for none.
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both
+# together; tests keep the two equal.
+function Get-NuGetLogistics {
+    $root = (Get-Location).ProviderPath
+    $excluded = 'bin', 'obj', 'node_modules', 'artifacts', '.git'
+    $found = [Collections.Generic.List[object]]::new()
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $pending.Push($root)
+    while ($pending.Count) {
+        foreach ($entry in Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction SilentlyContinue) {
+            if ($entry.PSIsContainer) {
+                if ($entry.Name -notin $excluded) { $pending.Push($entry.FullName) }
+                continue
+            }
+            $path = $entry.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
+            $found.Add([pscustomobject]@{ Path = $path; Name = $entry.Name; Full = $entry.FullName })
+        }
+    }
+    $files = @($found | Sort-Object { $_.Path } -CaseSensitive)
+    $projectFiles = @($files | Where-Object { $_.Path -ne 'build/ProjectTemplate.props' -and $_.Name -match '\.(csproj|props)$' })
+    $mentioning = @($files | Where-Object { $_.Name -match '\.(csproj|props|targets|slnx)$' } | ForEach-Object { [pscustomobject]@{ Path = $_.Path; Text = Get-Content -LiteralPath $_.Full -Raw } })
+
+    foreach ($file in $files | Where-Object { $_.Name -like '*.props' -and $_.Name -notlike 'Directory.*.props' -and $_.Name -ne 'ProjectTemplate.props' }) {
+        if ($mentioning | Where-Object { $_.Path -ne $file.Path -and $_.Text -and $_.Text.IndexOf($file.Name, [StringComparison]::OrdinalIgnoreCase) -ge 0 }) { continue }
+        $text = Get-Content -LiteralPath $file.Full -Raw
+        $settings = @('Description', 'PackageTags', 'Authors', 'PackageProjectUrl', 'PackageReleaseNotes', 'PackageIcon' | Where-Object { $text -match "<$_[\s>]" })
+        $message = if ($settings.Count) { "$($file.Path) is imported by no project, so the $($settings -join ', ') it sets no longer reach the package: import it from Directory.Build.props, after the import of build/ProjectTemplate.props, or move its settings into the project file." }
+        else { "$($file.Path) is imported by no project: import it or delete it." }
+        [pscustomobject]@{ Kind = 'OrphanProps'; Message = $message }
+    }
+
+    foreach ($file in $projectFiles) {
+        if ((Get-Content -LiteralPath $file.Full -Raw) -match '<GeneratePackageOnBuild>\s*true') {
+            [pscustomobject]@{ Kind = 'GeneratePackageOnBuild'; Message = "$($file.Path) sets GeneratePackageOnBuild to true, which races with dotnet pack from a clean tree (NU5026): delete it; build/dod.ps1 packs on its own." }
+        }
+    }
+
+    $elements = 'ImplicitUsings', 'Nullable', 'LangVersion', 'PublishRepositoryUrl', 'EmbedUntrackedSources', 'IncludeSymbols', 'SymbolPackageFormat', 'DocumentationFile'
+    foreach ($file in $projectFiles | Where-Object { $_.Name -like '*.csproj' -or $_.Name -in 'Directory.Build.props', 'Directory.Packages.props' }) {
+        $text = Get-Content -LiteralPath $file.Full -Raw
+        $repeated = @($elements | Where-Object { $text -match "<$_[\s>]" })
+        if ($text -match '<Package(Reference|Version)\b[^>]*\bInclude\s*=\s*"Microsoft\.SourceLink\.GitHub"') { $repeated += 'Microsoft.SourceLink.GitHub' }
+        if ($repeated.Count) {
+            [pscustomobject]@{ Kind = 'RepeatedSettings'; Message = "$($file.Path) repeats settings build/ProjectTemplate.props makes: $($repeated -join ', '). Delete them, or keep one only to differ from the template on purpose." }
+        }
+    }
+
+    foreach ($file in $files | Where-Object { $_.Name -like '*.sln' }) {
+        $folder = if ($file.Path.Contains('/')) { $file.Path.Substring(0, $file.Path.LastIndexOf('/') + 1) } else { '' }
+        if (($file.Path.Split('/').Count -le 3) -and -not ($files | Where-Object { $_.Name -like '*.slnx' -and $_.Path -eq "$folder$($_.Name)" })) {
+            $name = [IO.Path]::GetFileNameWithoutExtension($file.Name)
+            [pscustomobject]@{ Kind = 'Solution'; Message = "$($file.Path) is a .sln where the template and current SDKs use .slnx: run dotnet sln $($file.Path) migrate, delete the .sln, and rename $name.sln.DotSettings to $name.slnx.DotSettings if it exists." }
+        }
+    }
+
+    $bomExtensions = '.cs', '.csproj', '.props', '.targets', '.slnx', '.json', '.md', '.yml', '.yaml', '.xml', '.txt', '.editorconfig'
+    $withBom = [Collections.Generic.List[string]]::new()
+    foreach ($file in $files | Where-Object { [IO.Path]::GetExtension($_.Name) -in $bomExtensions }) {
+        $bytes = [byte[]]::new(3)
+        try {
+            $stream = [IO.File]::Open($file.Full, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+            try { $read = $stream.Read($bytes, 0, 3) } finally { $stream.Dispose() }
+        }
+        catch [IO.IOException], [UnauthorizedAccessException] {
+            Write-Verbose "Skipped $($file.Path), which can't be read for a byte order mark: $($_.Exception.Message)"
+            continue
+        }
+        if ($read -eq 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $withBom.Add($file.Path) }
+    }
+    if ($withBom.Count) {
+        $listed = ($withBom | Select-Object -First 5) -join ', '
+        if ($withBom.Count -gt 5) { $listed += ", and $($withBom.Count - 5) more" }
+        [pscustomobject]@{ Kind = 'ByteOrderMark'; Message = "$($withBom.Count) file(s) start with a UTF-8 byte order mark, which the template's encoding rule (UTF-8 without BOM) forbids: $listed. Save them without it." }
+    }
+
+    $rootProjects = @($files | Where-Object { $_.Name -like '*.csproj' -and -not $_.Path.Contains('/') })
+    if ($rootProjects.Count) {
+        [pscustomobject]@{ Kind = 'RootProject'; Message = "$($rootProjects.Name -join ', ') $(if ($rootProjects.Count -eq 1) { 'is' } else { 'are' }) at the repository root: move each project into src/ (a test project into tests/), as the template's layout has it." }
+    }
 }
 
 # The *.cs files under the current folder that don't start with the header .editorconfig's file_header_template sets,
@@ -549,4 +689,4 @@ function Update-VersionFile {
     $result
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
