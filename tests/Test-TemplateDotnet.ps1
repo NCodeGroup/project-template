@@ -316,16 +316,39 @@ if (Test-Path -LiteralPath $libraryDest) {
         Check 'dotnet-library-apache: Update-PublicApi.ps1 creates the files and records the public API' ($LASTEXITCODE -eq 0 -and $apiText.StartsWith("#nullable enable`n") -and $apiText.Contains('static Greetings.Greeter.Greet(string! name) -> string!') -and (Test-Path -LiteralPath (Join-Path (Get-Location) 'src/Greetings/PublicAPI.Shipped.txt'))) "$apiOutput | $apiText"
         $libDod = pwsh -NoProfile -File build/dod.ps1 2>&1 | Out-String
         $packed = @(Get-ChildItem -LiteralPath (Join-Path (Get-Location) 'artifacts/packages') -Filter 'Greetings.*' -ErrorAction SilentlyContinue | ForEach-Object Name)
-        Check 'dotnet-library-apache: build/dod.ps1 builds, tests and packs the library with its symbols' ($LASTEXITCODE -eq 0 -and $libDod.Contains('== Pack') -and $packed -contains 'Greetings.1.0.0.nupkg' -and $packed -contains 'Greetings.1.0.0.snupkg') "$($packed -join ', ') | $libDod"
+        Check 'dotnet-library-apache: build/dod.ps1 builds, tests and packs the library at version.json''s version with its symbols' ($LASTEXITCODE -eq 0 -and $libDod.Contains('== Pack') -and @($packed -match '^Greetings\.0\.1\.0(-g[0-9a-f]*)?\.nupkg$').Count -eq 1 -and @($packed -match '^Greetings\.0\.1\.0(-g[0-9a-f]*)?\.snupkg$').Count -eq 1) "$($packed -join ', ') | $libDod"
         [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Greetings/Extra.cs'), "namespace Greetings;`n`n/// <summary>`n/// Not recorded.`n/// </summary>`npublic sealed class Extra`n{`n}`n")
         $unrecorded = dotnet build src/Greetings 2>&1 | Out-String
         [IO.File]::Delete((Join-Path (Get-Location) 'src/Greetings/Extra.cs'))
         Check 'dotnet-library-apache: a public type the API files do not record fails the build' ($unrecorded -match "error RS0016: Symbol 'Greetings\.Extra'") (($unrecorded -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ')
-        dotnet build src/Greetings --configuration Release -p:Version=2.5.0-rc.1 2>&1 | Out-Null
+        # (a) version.json's version, a prerelease here, packs as it is with PublicRelease; AssemblyVersion moves only with the major version.
+        $versionFile = Join-Path (Get-Location) 'version.json'
+        $versionText = [IO.File]::ReadAllText($versionFile)
         $dll = Join-Path (Get-Location) 'src/Greetings/bin/Release/net10.0/Greetings.dll'
+        try {
+            [IO.File]::WriteAllText($versionFile, $versionText.Replace('"version": "0.1.0"', '"version": "2.5.0-rc.1"'))
+            Remove-Item -LiteralPath (Join-Path (Get-Location) 'src/Greetings/bin'), (Join-Path (Get-Location) 'src/Greetings/obj') -Recurse -Force -ErrorAction Ignore
+            dotnet pack src/Greetings --configuration Release -p:PublicRelease=true --output artifacts/rc 2>&1 | Out-Null
+        }
+        finally { [IO.File]::WriteAllText($versionFile, $versionText) }
+        $rcPacked = @(Get-ChildItem -LiteralPath (Join-Path (Get-Location) 'artifacts/rc') -Filter 'Greetings.*' -ErrorAction SilentlyContinue | ForEach-Object Name)
         $assemblyVersion = if (Test-Path -LiteralPath $dll) { "$([Reflection.AssemblyName]::GetAssemblyName($dll).Version)" } else { 'missing' }
         $fileVersion = if (Test-Path -LiteralPath $dll) { [Diagnostics.FileVersionInfo]::GetVersionInfo($dll).FileVersion } else { 'missing' }
-        Check 'dotnet-library-apache: AssemblyVersion moves only with the major version, FileVersion keeps the exact one' ($assemblyVersion -eq '2.0.0.0' -and $fileVersion -eq '2.5.0') "AssemblyVersion=$assemblyVersion FileVersion=$fileVersion"
+        Check 'dotnet-library-apache: version.json''s version packs as is with PublicRelease, a prerelease included, and AssemblyVersion moves only with the major version' ($rcPacked -contains 'Greetings.2.5.0-rc.1.nupkg' -and $assemblyVersion -eq '2.0.0.0' -and $fileVersion -match '^2\.5\.0(\.\d+)?$') "$($rcPacked -join ', ') | AssemblyVersion=$assemblyVersion FileVersion=$fileVersion"
+        # (b) Without version.json, the tag-based versioning stays: -p:Version sets the exact version.
+        $versionOff = Join-Path (Get-Location) 'version.json.off'
+        try {
+            [IO.File]::Move($versionFile, $versionOff)
+            Remove-Item -LiteralPath (Join-Path (Get-Location) 'src/Greetings/bin'), (Join-Path (Get-Location) 'src/Greetings/obj') -Recurse -Force -ErrorAction Ignore
+            dotnet build src/Greetings --configuration Release -p:Version=2.5.0-rc.1 2>&1 | Out-Null
+        }
+        finally {
+            [IO.File]::Move($versionOff, $versionFile)
+        }
+        $assemblyVersion = if (Test-Path -LiteralPath $dll) { "$([Reflection.AssemblyName]::GetAssemblyName($dll).Version)" } else { 'missing' }
+        $fileVersion = if (Test-Path -LiteralPath $dll) { [Diagnostics.FileVersionInfo]::GetVersionInfo($dll).FileVersion } else { 'missing' }
+        Remove-Item -LiteralPath (Join-Path (Get-Location) 'src/Greetings/bin'), (Join-Path (Get-Location) 'src/Greetings/obj') -Recurse -Force -ErrorAction Ignore
+        Check 'dotnet-library-apache: without version.json, AssemblyVersion moves only with the major version, FileVersion keeps the exact one' ($assemblyVersion -eq '2.0.0.0' -and $fileVersion -eq '2.5.0') "AssemblyVersion=$assemblyVersion FileVersion=$fileVersion"
         # IDE0073, raised to a warning for two probe files only, matches a file that starts with the header .editorconfig sets and fails one without it.
         $editorconfigPath = Join-Path (Get-Location) '.editorconfig'
         $editorconfigText = [IO.File]::ReadAllText($editorconfigPath)
