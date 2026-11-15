@@ -125,7 +125,7 @@ $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
-    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md'
+    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
     claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
@@ -171,7 +171,7 @@ $cases = @(
     @{ Name = 'dotnet-library-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT' } }
     @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true' }; Refused = 'Required for a NuGet package' }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
-    @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT' } }
+    @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT'; conduct_contact = 'conduct@example.test' } }
     @{ Name = 'python-claude'; Stack = 'python'; Host = 'github'; Tools = @('claude') }
     @{ Name = 'dotnet-author-comment'; Stack = 'dotnet'; Host = 'github'; Data = @{ author_name = 'C# Tools; Inc.' } }
 )
@@ -266,6 +266,9 @@ foreach ($case in $cases) {
 
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
+    $conduct = [IO.File]::ReadAllText((Join-Path $dest 'CODE_OF_CONDUCT.md'))
+    $conductWant = if ($case.Data.conduct_contact) { 'lists, at ' + $case.Data.conduct_contact + '. All complaints' } elseif ($case.Host -eq 'gitlab') { '**This issue is confidential**' } else { 'choose **Report a vulnerability** and start the title with' }
+    Check "${name}: CODE_OF_CONDUCT.md sends a report to the conduct contact, or else to the host's private form" ($conduct.Contains($conductWant) -and $conduct.Contains('version 2.1')) $conductWant
     # Every template decision record a rendered Markdown file cites by number is one the project has.
     $recordNumbers = @(Get-ChildItem -LiteralPath (Join-Path $dest 'docs\decisions'), (Join-Path $dest 'docs\decisions\project-template') -File -Filter '*.md' | ForEach-Object { if ($_.Name -match '^(\d{4})-') { $Matches[1] } })
     $unknownCitations = @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force -Filter '*.md' | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } | ForEach-Object {
