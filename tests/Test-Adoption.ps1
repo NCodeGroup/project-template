@@ -334,7 +334,7 @@ if (-not $UnitOnly) {
         'src/NCode.Demo/Greeter.cs'         = "namespace NCode.Demo;`n`n/// <summary>Greets people.</summary>`npublic static class Greeter`n{`n    /// <summary>Builds a greeting.</summary>`n    /// <param name=""name"">Who to greet.</param>`n    /// <returns>The greeting.</returns>`n    public static string Greet(string name) => `$""Hello, {name}!"";`n}`n"
         'Directory.Build.props'             = "<Project>`n  <PropertyGroup>`n    <LangVersion>latest</LangVersion>`n  </PropertyGroup>`n</Project>`n"
         '.gitignore'                        = "bin/`nobj/`n*.local-test`n"
-        '.editorconfig'                     = "root = true`n`n[*.cs]`nindent_size = 4`n"
+        '.editorconfig'                     = "root = true`n`n[*.cs]`nindent_size = 4`nfile_header_template = Copyright Demo`n"
         'README.md'                         = "# NCode.Demo`n"
         'CHANGELOG.md'                      = "# Changes`n`n## 1.0.0`n`n- First.`n"
         'NCodeGroup.png'                    = $png
@@ -348,6 +348,7 @@ if (-not $UnitOnly) {
     $out = & $adopt -Path $scaffoldRepo -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; test_command = '' } -NoVerify:$SkipDotnetBuild | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo '.copier-answers.yml')
     Check 'scaffold: answers from the adapter' ($answersText -match '(?m)^stack: dotnet\s*$' -and $answersText -match '(?m)^project_name: NCode\.Demo\s*$' -and $answersText -match '(?m)^nuget_package: true\s*$' -and $answersText -match '(?m)^license: Apache-2\.0\s*$' -and $answersText -match '(?m)^package_icon: NCodeGroup\.png\s*$' -and $answersText -match '(?m)^author_name: NCode Group\s*$') "$answersText | $out"
+    Check 'scaffold: the adoption counts the C# file without the header .editorconfig sets, and rewrites none' ($out.Contains('1 C# file don''t start with the header .editorconfig sets') -and $out.Contains('src/NCode.Demo/Greeter.cs') -and (Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'src/NCode.Demo/Greeter.cs')).StartsWith('namespace NCode.Demo;')) $out
     $csproj = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'src/NCode.Demo/NCode.Demo.csproj')
     $packages = Get-Content -Raw -LiteralPath (Join-Path $scaffoldRepo 'Directory.Packages.props')
     Check 'scaffold: package removed and versions central' (-not $csproj.Contains('NCode.ProjectSettings.Scaffold') -and -not $csproj.Contains('Version="') -and $csproj.Contains('JetBrains.Annotations') -and $packages.Contains('<PackageVersion Include="JetBrains.Annotations" Version="2025.2.4" />') -and -not $packages.Contains('NCode.ProjectSettings.Scaffold')) "$csproj | $packages"
