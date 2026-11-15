@@ -502,14 +502,14 @@ function Test-PackageValidationBaseline {
 
 # The *.cs files under the current folder that don't start with the header .editorconfig's file_header_template sets,
 # as relative paths with /: what IDE0073 fails once a project turns csharp_format on (the template's ADR-0148). Nothing
-# when .editorconfig sets no header. Generated code is skipped, as IDE0073 skips it.
+# when .editorconfig sets no header. Generated code is skipped, as IDE0073 skips it. The files come back sorted by path.
 # template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests keep the two equal.
 function Get-CSharpFileWithoutHeader {
     if (-not (Test-Path -LiteralPath .editorconfig -PathType Leaf)) { return }
     $setting = [regex]::Match([IO.File]::ReadAllText((Join-Path (Get-Location).Path '.editorconfig')), '(?m)^file_header_template\s*=\s*(.+?)\r?$')
     if (-not $setting.Success) { return }
     $header = (($setting.Groups[1].Value -split '\\n') | ForEach-Object { "// $_" }) -join "`n"
-    foreach ($file in Get-ChildItem -LiteralPath . -Filter *.cs -File -Recurse -ErrorAction SilentlyContinue) {
+    foreach ($file in Get-ChildItem -LiteralPath . -Filter *.cs -File -Recurse -ErrorAction SilentlyContinue | Sort-Object FullName) {
         if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git|Migrations)[\\/]' -or $file.Name -match '\.(g|generated|designer)\.cs$') { continue }
         $text = ([IO.File]::ReadAllText($file.FullName).TrimStart([char]0xFEFF)) -replace "`r`n", "`n"
         if (-not $text.StartsWith("$header`n")) { [IO.Path]::GetRelativePath((Get-Location).Path, $file.FullName) -replace '\\', '/' }
