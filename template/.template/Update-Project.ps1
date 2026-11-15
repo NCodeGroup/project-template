@@ -628,7 +628,16 @@ function Get-GitVersioningReference {
     @($found) | Sort-Object
 }
 
-$project = (Resolve-Path -LiteralPath $Path).Path
+# The project's own build scripts that run CSharpier's check, which build/dod.ps1 runs in its Format stage once .config/dotnet-tools.json names CSharpier (ADR-0148): such a wrapper checks the formatting twice.
+function Get-CSharpierWrapper([string[]]$TemplateFiles) {
+    if (-not (Test-Path -LiteralPath .config/dotnet-tools.json -PathType Leaf) -or (Get-Content -LiteralPath .config/dotnet-tools.json -Raw) -notmatch '(?i)csharpier') { return }
+    foreach ($file in @(Get-ChildItem -LiteralPath build -Filter *.ps1 -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
+        $relative = "build/$($file.Name)"
+        if ($relative -notin $TemplateFiles -and (Get-Content -LiteralPath $file.FullName -Raw) -match '(?m)^[^#\r\n]*\bcsharpier\s+check\b') { $relative }
+    }
+}
+
+$project =(Resolve-Path -LiteralPath $Path).Path
 $ownClone = -not $TemplateClone
 $scratch = Join-Path ([IO.Path]::GetTempPath()) "project-template-update-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
 $outputEncoding = [Console]::OutputEncoding
@@ -994,6 +1003,11 @@ try {
             ''
             "csharp_format is on, and $($headerless.Count) C# file$(if ($headerless.Count -ne 1) { 's' }) don't start with the header .editorconfig sets (file_header_template): IDE0073 is a warning, which fails the build, for each. Rewrite each once, as the template's ADR-0148 describes: replace its old header, such as a #region Copyright Preamble block, with the header's lines as // comments, and drop a UTF-8 byte order mark. $(($headerless | Select-Object -First 5) -join ', ')$(if ($headerless.Count -gt 5) { ', ...' })"
         }
+    }
+    $wrappers = @(Get-CSharpierWrapper $ownable)
+    if ($wrappers.Count -gt 0) {
+        ''
+        "These build scripts of the project's own run dotnet csharpier check, which build/dod.ps1 already runs in its Format stage now that .config/dotnet-tools.json names CSharpier (the template's ADR-0148): $($wrappers -join ', '). Drop that check from them, and update any comment or decision record of the project's that says build/dod.ps1 doesn't check the formatting."
     }
     if (Test-Path -LiteralPath version.json) {
         # Nerdbank.GitVersioning ignores -p:Version, and without PublicRelease it adds a -g<commit> suffix.
