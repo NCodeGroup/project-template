@@ -73,6 +73,18 @@ $cases = [ordered]@{
         Files  = @{ 'A.sln' = 'Microsoft Visual Studio Solution File'; 'A.slnx' = '<Solution />' }
         Expect = @()
     }
+    'solution-in-folder' = @{
+        Files  = @{ 'src/A/A.sln' = 'Microsoft Visual Studio Solution File' }
+        Expect = @(@{ Kind = 'Solution'; Message = 'src/A/A.sln is a .sln where the template and current SDKs use .slnx: run dotnet sln src/A/A.sln migrate, delete the .sln, and rename A.sln.DotSettings to A.slnx.DotSettings if it exists.' })
+    }
+    'solution-too-deep' = @{
+        Files  = @{ 'src/A/B/C/D.sln' = 'Microsoft Visual Studio Solution File' }
+        Expect = @()
+    }
+    'repeated-in-build-props' = @{
+        Files  = @{ 'Directory.Build.props' = '<Project><Import Project="build/ProjectTemplate.props" /><PropertyGroup><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" /></ItemGroup></Project>' }
+        Expect = @(@{ Kind = 'RepeatedSettings'; Message = 'Directory.Build.props repeats settings build/ProjectTemplate.props makes: ImplicitUsings, Microsoft.SourceLink.GitHub. Delete them, or keep one only to differ from the template on purpose.' })
+    }
     'bom' = @{
         Files  = @{ 'src/A/Class.cs' = @{ Text = 'class A { }'; Bom = $true } }
         Expect = @(@{ Kind = 'ByteOrderMark'; Message = '1 file(s) start with a UTF-8 byte order mark, which the template''s encoding rule (UTF-8 without BOM) forbids: src/A/Class.cs. Save them without it.' })
