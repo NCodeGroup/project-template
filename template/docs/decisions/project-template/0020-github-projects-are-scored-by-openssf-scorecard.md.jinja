@@ -30,7 +30,11 @@ The table lists each check, what the template does for it and what needs a perso
 | Vulnerabilities | Dependency and vulnerability scanning is configured. | Fix the findings it reports. |
 | CI-Tests | Pull requests run the CI workflow. | Nothing. |
 | Maintained | Scheduled automation keeps the repository active. | Keep committing and answering issues. |
+{%- if stack == 'dotnet' and nuget_package %}
 | Signed-Releases | A GitHub .NET library attaches build provenance to its releases (ADR-0138). | Nothing. |
+{%- else %}
+| Signed-Releases | Nothing: the template attaches no signature or provenance to this project's releases. | A signature or a *.intoto.jsonl provenance file among each release's assets. |
+{%- endif %}
 | Packaging | `publish.yml` publishes the packages. | The first successful `publish.yml` run. |
 | Branch-Protection | The ruleset blocks deletion and force pushes, requires a pull request, an up-to-date branch and the status check, dismisses stale reviews and requires approval of the last push. | Approvals need a second reviewer. |
 | Code-Review | Pull requests are reviewed. | A second human; bot reviews do not count. |
@@ -54,5 +58,7 @@ The table lists each check, what the template does for it and what needs a perso
 - [ADR-0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md): the default branch accepts changes
   only through pull requests.
 - [ADR-0008](0008-external-inputs-are-pinned-and-kept-current.md): external inputs are pinned and kept current.
+{%- if stack == 'dotnet' and nuget_package %}
 - [ADR-0138](0138-releases-carry-build-provenance.md): releases carry build provenance.
+{%- endif %}
 - `.github/workflows/scorecard.yml`
