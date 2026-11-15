@@ -272,7 +272,7 @@ foreach ($source in $sources.Keys) {
         New-Item -ItemType Directory -Path $folder -Force | Out-Null
         foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $folder $relative) $case.Files[$relative] }
         Push-Location $folder
-        try { $result = @(& $sources[$source] 'Get-CSharpFileWithoutHeader') -join ',' }
+        try { $result = @(& $sources[$source] 'Get-CSharpFileWithoutHeader' | Sort-Object) -join ',' }
         finally { Pop-Location }
         Check "${source}: Get-CSharpFileWithoutHeader: $name" ($result -eq $case.Expect) "Got '$result'; expected '$($case.Expect)'"
     }

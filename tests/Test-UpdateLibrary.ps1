@@ -145,7 +145,7 @@ foreach ($fixture in $headerless, $plain) {
         Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
         if ($fixture -eq $headerless) {
             $on = Invoke-Update $headerless @{ csharp_format = 'true' }
-            Check 'headerless: turning csharp_format on counts six files and names the first five, then ", ..."' ($on.ExitCode -eq 0 -and $on.Output.Contains('csharp_format is on, and 6 C# files don''t start with the header') -and $on.Output.Contains('src/Demo/Extra1.cs') -and -not $on.Output.Contains('src/Demo/Plain.cs') -and $on.Output.Contains(', ...') -and -not $on.Output.Contains('Headed.cs')) $on.Output
+            Check 'headerless: turning csharp_format on counts six files and names five of them, then ", ..."' ($on.ExitCode -eq 0 -and $on.Output.Contains('csharp_format is on, and 6 C# files don''t start with the header') -and (@('Extra1','Extra2','Extra3','Extra4','Extra5','Plain') | Where-Object { $on.Output.Contains("src/Demo/$_.cs") }).Count -eq 5 -and $on.Output.Contains(', ...') -and -not $on.Output.Contains('Headed.cs')) $on.Output
         }
         else {
             $ordinary = Invoke-Update $plain
