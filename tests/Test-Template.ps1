@@ -149,6 +149,7 @@ $cases = @(
     @{ Name = 'other'; Stack = 'other'; Host = 'github' }
     @{ Name = 'other-code-review'; Stack = 'other'; Host = 'github'; Data = @{ code_review = 'true' } }
     @{ Name = 'dotnet-gitlab'; Stack = 'dotnet'; Host = 'gitlab' }
+    @{ Name = 'dotnet-no-format'; Stack = 'dotnet'; Host = 'github'; Data = @{ csharp_format = 'false' } }
     @{ Name = 'other-gitlab-code-review'; Stack = 'other'; Host = 'gitlab'; Data = @{ code_review = 'true' } }
     @{ Name = 'python-gitlab'; Stack = 'python'; Host = 'gitlab' }
     @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
@@ -263,6 +264,17 @@ foreach ($case in $cases) {
     $present = @($dotnetOnly | Where-Object { Test-Path (Join-Path $dest $_) })
     if ($case.Stack -eq 'dotnet') { Check "${name}: .NET layer present" ($present.Count -eq $dotnetOnly.Count) }
     else { Check "${name}: no .NET layer" ($present.Count -eq 0) ($present -join ', ') }
+    $toolManifest = Join-Path $dest '.config\dotnet-tools.json'
+    $formatIgnore = Join-Path $dest '.csharpierignore'
+    if ($case.Stack -eq 'dotnet') {
+        $wantFormat = $case.Data.csharp_format -ne 'false'
+        $formatOk = (Test-Path -LiteralPath $toolManifest) -eq $wantFormat -and (Test-Path -LiteralPath $formatIgnore) -eq $wantFormat
+        if ($formatOk -and $wantFormat) {
+            $formatOk = (Get-Content -LiteralPath $toolManifest -Raw).Contains('"csharpier"') -and (Get-Content -LiteralPath $toolManifest -Raw).Contains('"rollForward": false') -and (Get-Content -LiteralPath $formatIgnore -Raw).Contains('build/ProjectTemplate.props')
+        }
+        Check "${name}: .config/dotnet-tools.json pins CSharpier and .csharpierignore skips the template-owned XML exactly when csharp_format is not false" $formatOk
+    }
+    else { Check "${name}: no CSharpier manifest or ignore file" (-not (Test-Path -LiteralPath $toolManifest) -and -not (Test-Path -LiteralPath $formatIgnore)) }
     $usesNode = $case.Stack -eq 'node' -or $case.Data.uses_node -eq 'true'
     $nodePresent = @($nodeOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -Force -ErrorAction SilentlyContinue) })
     if ($usesNode) { Check "${name}: Node.js files present" ($nodePresent.Count -eq $nodeOnly.Count) ((@($nodeOnly | Where-Object { $_ -notin $nodePresent })) -join ', ') }
