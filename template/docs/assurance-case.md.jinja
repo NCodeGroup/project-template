@@ -1,0 +1,59 @@
+{%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
+{%- set ghlib = git_host == 'github' and library %}
+{%- set review = git_host == 'github' and code_review is defined and code_review %}
+{%- set pr = 'merge request' if git_host == 'gitlab' else 'pull request' -%}
+# Assurance Case
+
+This page states {{ project_name }}'s security requirements, the threats it considers, and why the design and the way it is
+built meet them. [architecture.md](architecture.md) describes the components; [README.md](../README.md) is the
+user-facing summary.
+
+## Security Requirements
+
+[//]: # "Maintainers: list what the project is expected to do as R1, R2, ..., and what users must not rely on."
+
+Not written yet.
+
+## Threat Model
+
+[//]: # "Maintainers: add a table (Threat, In scope, Countered by) and state the trust boundary."
+
+Not written yet.
+
+## Secure Design Principles Applied
+
+[//]: # "Maintainers: say how the design applies economy of mechanism, fail-safe defaults, complete mediation, least privilege and open design."
+
+Not written yet.
+
+## Common Weaknesses Countered
+
+[//]: # "Maintainers: list the CWE ids the design counters, each with the requirement that counters it."
+
+Not written yet.
+
+## Evidence
+
+[//]: # "Maintainers: add the tests and the coverage the project keeps."
+
+- **Gate:**
+{%- if stack == 'dotnet' %} `./build/dod.ps1` builds in Release with warnings as errors ([ADR-0100](decisions/project-template/0100-warnings-are-errors-in-every-project.md)), runs the analyzers and the banned-API list in `build/BannedSymbols.txt` ([ADR-0102](decisions/project-template/0102-disallowed-apis-are-banned-at-build-time.md)), and runs the tests; CI runs the commands on every {{ pr }}.
+{%- else %} CI runs the project's commands on every {{ pr }}.
+{%- endif %}
+{%- if git_host == 'github' %}
+- **Static analysis:** with CodeQL's default setup configured, the repository ruleset blocks a pull request that adds a CodeQL alert at warning level or above, or a security alert of any severity ([ADR-0005](decisions/project-template/0005-the-default-branch-accepts-changes-only-through-pull-requests.md)).
+- **Review:** every change reaches the default branch through a pull request with passing CI and every conversation resolved, and the ruleset refuses force pushes and deletion ([ADR-0005](decisions/project-template/0005-the-default-branch-accepts-changes-only-through-pull-requests.md), [ADR-0014](decisions/project-template/0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md)).{% if review %} NCode Review reviews each pull request and approves a clean one.{% endif %}
+{%- else %}
+- **Review:** every change reaches the default branch through a merge request whose pipeline passes, and no one can push to the default branch directly ([ADR-0005](decisions/project-template/0005-the-default-branch-accepts-changes-only-through-pull-requests.md)).
+{%- endif %}
+- **Dependencies:** pinned, and moved by reviewed updates ([ADR-0008](decisions/project-template/0008-external-inputs-are-pinned-and-kept-current.md)) that wait three days for a new version ([ADR-0009](decisions/project-template/0009-new-dependency-versions-wait-a-cooldown.md)).
+{%- if git_host == 'github' %} Dependabot proposes the updates.
+{%- endif %}
+{%- if stack == 'dotnet' %} Central package management keeps one version of each package ([ADR-0101](decisions/project-template/0101-central-package-management.md)).
+{%- endif %}
+{%- if library %}
+- **Release integrity:** packages are deterministic and source-linked, built from a tagged default-branch commit ([ADR-0130](decisions/project-template/0130-source-link-and-symbol-packages.md)).
+{%- if ghlib %} They are pushed through nuget.org trusted publishing with no stored key, after a maintainer approves ([ADR-0135](decisions/project-template/0135-packages-are-published-from-a-github-release-through-trusted-publishing.md)), and each release carries signed provenance and an SBOM ([ADR-0139](decisions/project-template/0139-releases-carry-build-provenance.md), [ADR-0151](decisions/project-template/0151-release-follow-ups-are-jobs-publish-calls.md)).
+{%- endif %} [SECURITY.md](../SECURITY.md#verify-a-package) says how to verify a package.
+{%- endif %}
+- **Response:** [SECURITY.md](../SECURITY.md) defines private reporting, coordinated disclosure and credit.
