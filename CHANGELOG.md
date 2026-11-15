@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.92.0] - 2026-11-15
+
+### Added
+
+- `Adopt-Project.ps1` drops a repository's own Nerdbank.GitVersioning reference once `version.json` makes `build/ProjectTemplate.props` reference it, a `PackageReference` in a project or `Directory.Build.props` file and a second `PackageVersion` in `Directory.Packages.props`, and reports each file it changed, so the verification build no longer fails with NU1504 or NU1506. ([#365](https://github.com/NCodeGroup/project-template/issues/365))
+- `.template/Update-Project.ps1` warns, once `version.json` exists, about a `.gitlab-ci.yml` that runs `dotnet pack` or `nuget push` without `PublicRelease=true` or `GIT_DEPTH: "0"`, as it does for a `publish.yml`, because Nerdbank.GitVersioning ignores `-p:Version` and fails on a shallow clone. ([#366](https://github.com/NCodeGroup/project-template/issues/366))
+
 ## [0.91.0] - 2026-11-15
 
 ### Added
@@ -1484,7 +1491,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.91.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.92.0...HEAD
+[0.92.0]: https://github.com/NCodeGroup/project-template/compare/v0.91.0...v0.92.0
 [0.91.0]: https://github.com/NCodeGroup/project-template/compare/v0.90.0...v0.91.0
 [0.90.0]: https://github.com/NCodeGroup/project-template/compare/v0.89.0...v0.90.0
 [0.89.0]: https://github.com/NCodeGroup/project-template/compare/v0.88.0...v0.89.0
