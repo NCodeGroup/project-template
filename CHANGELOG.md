@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.90.0] - 2026-11-14
+
+### Added
+
+- `.\.template\Update-Project.ps1`, when `-Data @{ csharp_format = $true }` turns the formatter on, and `Adopt-Project.ps1` count the C# files that don't start with the header `.editorconfig` sets and name the first five, so the first IDE0073 failures aren't a surprise; neither rewrites a header. ([#371](https://github.com/NCodeGroup/project-template/issues/371), [ADR-0148](template/docs/decisions/project-template/0148-csharp-is-formatted-in-the-gate-and-files-carry-the-spdx-header.md))
+
+### Changed
+
+- `docs/api-compatibility.md` explains why a pack prints "Could not resolve reference" for a dependency whose compile asset is a placeholder, such as `Microsoft.VisualStudio.Threading.Only` under `Nerdbank.Streams`: package validation compares each target framework's compile references, so the warning hides no change to the library's own public API, and the page gives a target that silences it. ([#370](https://github.com/NCodeGroup/project-template/issues/370))
+
 ## [0.89.0] - 2026-11-14
 
 ### Added
@@ -1468,7 +1478,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.89.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.90.0...HEAD
+[0.90.0]: https://github.com/NCodeGroup/project-template/compare/v0.89.0...v0.90.0
 [0.89.0]: https://github.com/NCodeGroup/project-template/compare/v0.88.0...v0.89.0
 [0.88.0]: https://github.com/NCodeGroup/project-template/compare/v0.87.1...v0.88.0
 [0.87.1]: https://github.com/NCodeGroup/project-template/compare/v0.87.0...v0.87.1

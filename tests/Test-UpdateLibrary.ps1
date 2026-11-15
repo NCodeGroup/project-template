@@ -15,6 +15,9 @@
                      without build/ProjectTemplate.props. The update leaves publish.yml out and says so, without a
                      workflow_dispatch warning. It adds version.json at the patch after v2.3.0 (2.3.1), with the
                      assemblyVersion 2.3 (precision minor) that v2.3.0 shipped, and says so; v0.1.0 predates version.json.
+      headerless     A C# file without the header .editorconfig sets, and one with it. Turning csharp_format on with
+                     -Data counts the first, names it, and not the second.
+      headerless-ordinary  The same two files; an ordinary update prints no header note.
       with-trigger   The template's own publish.yml, with its workflow_dispatch trigger. The update adds tag-release.yml
                      and prints no workflow_dispatch warning.
     Prints PASS or FAIL per check and exits 1 on any failure.
@@ -122,6 +125,35 @@ try {
     Check 'own-publisher: the update adds version.json at the patch after v2.3.0, with the AssemblyVersion v2.3.0 shipped, and says so' (($versionJson.version -eq '2.3.1') -and ($versionJson.assemblyVersion.version -eq '2.3') -and ($versionJson.assemblyVersion.precision -eq 'minor') -and $result.Output.Contains('Added version.json') -and $result.Output.Contains('the patch after v2.3.0') -and -not $result.Output.Contains('<PropertyGroup><AssemblyVersion>')) $result.Output
 }
 finally { Pop-Location }
+
+# headerless, headerless-ordinary: a C# file without the header .editorconfig sets, and one with it. Turning csharp_format on counts the first and names it; an ordinary update prints no note. Each fixture gets one update, since a second one at the same version stops with "Already up to date".
+$headerless = New-Library 'headerless' 'license=MIT'
+$plain = New-Library 'headerless-ordinary' 'license=MIT'
+foreach ($fixture in $headerless, $plain) {
+    Push-Location $fixture
+    try {
+        Invoke-Git init -q -b main
+        $null = New-Item -ItemType Directory -Path src/Demo -Force
+        [IO.File]::WriteAllText((Join-Path $fixture 'src/Demo/Plain.cs'), "namespace Demo;`n")
+        if ($fixture -eq $headerless) {
+            foreach ($n in 1..5) { [IO.File]::WriteAllText((Join-Path $fixture "src/Demo/Extra$n.cs"), "namespace Demo;`n") }
+        }
+        $editorconfig = [IO.File]::ReadAllText((Join-Path $fixture '.editorconfig'))
+        if ($editorconfig -notmatch '(?m)^file_header_template\s*=\s*(.+?)\r?$') { throw "$fixture/.editorconfig has no file_header_template." }
+        $header = (($Matches[1] -split '\\n') | ForEach-Object { "// $_" }) -join "`n"
+        [IO.File]::WriteAllText((Join-Path $fixture 'src/Demo/Headed.cs'), "$header`nnamespace Demo;`n")
+        Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
+        if ($fixture -eq $headerless) {
+            $on = Invoke-Update $headerless @{ csharp_format = 'true' }
+            Check 'headerless: turning csharp_format on counts six files and names five of them, then ", ..."' ($on.ExitCode -eq 0 -and $on.Output.Contains('csharp_format is on, and 6 C# files don''t start with the header') -and (@('Extra1','Extra2','Extra3','Extra4','Extra5','Plain') | Where-Object { $on.Output.Contains("src/Demo/$_.cs") }).Count -eq 5 -and $on.Output.Contains(', ...') -and -not $on.Output.Contains('Headed.cs')) $on.Output
+        }
+        else {
+            $ordinary = Invoke-Update $plain
+            Check 'headerless-ordinary: an ordinary update prints no header note' ($ordinary.ExitCode -eq 0 -and -not $ordinary.Output.Contains('csharp_format is on')) $ordinary.Output
+        }
+    }
+    finally { Pop-Location }
+}
 
 # with-trigger: the template's publish.yml keeps its workflow_dispatch trigger, so no publish.yml warning; its Directory.Build.props references Nerdbank.GitVersioning and sets AssemblyVersion, which the update warns about.
 $withTrigger = New-Library 'with-trigger' 'license=MIT'

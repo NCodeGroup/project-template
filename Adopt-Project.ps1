@@ -111,6 +111,7 @@ try {
     $head = git rev-parse HEAD 2>$null
     if ($LASTEXITCODE -or -not $head) { throw "$project has no commits yet. Make the first commit, then adopt it." }
 
+    $headerless = @()
     try {
         $copierArgs = @('copy', '--overwrite', '--defaults', '--quiet')
         if ($Ref) { $copierArgs += '--vcs-ref', $Ref }
@@ -225,6 +226,7 @@ try {
             # A library's build fails on a public symbol its PublicAPI.*.txt files don't list; the verification below records the API as it is.
             if ($NoVerify -and (Test-Path -LiteralPath build/Update-PublicApi.ps1)) { $followUps.Add('record each packable project''s public API with ./build/Update-PublicApi.ps1, which the build now checks') }
         }
+        $headerless = if ((Get-Answer 'stack') -eq 'dotnet') { @(Get-CSharpFileWithoutHeader) } else { @() }
 
         git add -A
         # Executable on Linux and macOS; Windows doesn't record the bit on its own.
@@ -250,6 +252,10 @@ try {
     git status --porcelain | ForEach-Object { "  $_" }
     if ($report.Count) { ''; "Merged with the repository's own files:"; $report }
     if ($hooksNote) { ''; Write-Warning $hooksNote }
+    if ($headerless.Count -gt 0) {
+        ''
+        "$($headerless.Count) C# file$(if ($headerless.Count -ne 1) { 's' }) don't start with the header .editorconfig sets (file_header_template). csharp_format is off, so they build. Rewrite each before you turn it on with .\.template\Update-Project.ps1 -Data @{ csharp_format = `$true }, because IDE0073 then fails the build for each (the template's ADR-0148): replace the old header, such as a #region Copyright Preamble block, with the header's lines as // comments, and drop a UTF-8 byte order mark. $(($headerless | Select-Object -First 5) -join ', ')$(if ($headerless.Count -gt 5) { ', ...' })"
+    }
     # A publish.yml the repository kept, without the trigger tag-release.yml starts it with: a release that workflow
     # publishes would ship no packages. The warning is .template/Update-Project.ps1's, word for word;
     # tests/Test-AdoptEdgeCases.ps1 keeps the two equal.

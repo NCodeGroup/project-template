@@ -72,6 +72,7 @@
     trigger, it says what to add. When the project has version.json, it also warns about a publish.yml that packs
     without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning themselves (the template's
     ADR-0138).
+    When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
 
@@ -360,6 +361,22 @@ function Get-AttributionCheckNote([object[]]$Changes) {
     if ($callers) { "These files still call .githooks/commit-msg, which this update removed, so every commit fails until you delete that call: $($callers -join ', ')" }
 }
 
+# The *.cs files under the current folder that don't start with the header .editorconfig's file_header_template sets,
+# as relative paths with /: what IDE0073 fails once a project turns csharp_format on (the template's ADR-0148). Nothing
+# when .editorconfig sets no header. Generated code is skipped, as IDE0073 skips it.
+# tools/adopt/Adoption.psm1 in the template has a deliberate copy of this function, not shared code: this script runs on its own, from an older template's copy. Change both together; tests/Test-LibraryRelease.ps1 keeps the two equal.
+function Get-CSharpFileWithoutHeader {
+    if (-not (Test-Path -LiteralPath .editorconfig -PathType Leaf)) { return }
+    $setting = [regex]::Match([IO.File]::ReadAllText((Join-Path (Get-Location).Path '.editorconfig')), '(?m)^file_header_template\s*=\s*(.+?)\r?$')
+    if (-not $setting.Success) { return }
+    $header = (($setting.Groups[1].Value -split '\\n') | ForEach-Object { "// $_" }) -join "`n"
+    foreach ($file in Get-ChildItem -LiteralPath . -Filter *.cs -File -Recurse -ErrorAction SilentlyContinue) {
+        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git|Migrations)[\\/]' -or $file.Name -match '\.(g|generated|designer)\.cs$') { continue }
+        $text = ([IO.File]::ReadAllText($file.FullName).TrimStart([char]0xFEFF)) -replace "`r`n", "`n"
+        if (-not $text.StartsWith("$header`n")) { [IO.Path]::GetRelativePath((Get-Location).Path, $file.FullName) -replace '\\', '/' }
+    }
+}
+
 # The changelog AGENTS.md's Landing section names (CHANGELOG.md by default) as File, and as Range the version tags merged into HEAD
 # that have no release heading in it: <oldest>..<newest>, the tag alone, or -. .template/Get-PlanState.ps1 prints Range as changelog-backfill.
 # With pre-release: untracked in the Landing section, a tag below 1.0.0 needs no section.
@@ -429,6 +446,13 @@ function Get-PublishedPackageVersion {
         $stable = @($response.versions | Where-Object { $_ -and $_ -notmatch '-' } | Sort-Object { [version]$_ })
         if ($stable.Count -gt 0) { [pscustomobject]@{ Id = $id; Version = $stable[-1] } }
     }
+}
+
+# Whether Directory.Build.props, or a project file under the current folder, already sets PackageValidationBaselineVersion.
+# tools/adopt/Adoption.psm1 in the template has a deliberate copy of this function, not shared code: this script runs on its own, from an older template's copy. Change both together; tests/Test-LibraryRelease.ps1 keeps the two equal.
+function Test-PackageValidationBaseline {
+    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match 'PackageValidationBaselineVersion') { return $true }
+    @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
 }
 
 # A deliberate copy of tools/adopt/Adoption.psm1's Update-VersionFile: change both, or tests\Test-LibraryRelease.ps1 fails.
@@ -810,12 +834,18 @@ try {
     }
     # A library without a package validation baseline (ADR-0147): name the published version to set.
     if ((Get-Answer 'nuget_package') -eq 'true') {
-        $hasBaseline = ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match 'PackageValidationBaselineVersion') -or
-            @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
-        if (-not $hasBaseline) {
+        if (-not (Test-PackageValidationBaseline)) {
             foreach ($published in @(Get-PublishedPackageVersion)) {
                 Write-Warning "$($published.Id) is published on nuget.org at $($published.Version). The template now validates every pack against the last published package (ADR-0147): set <PackageValidationBaselineVersion>$($published.Version)</PackageValidationBaselineVersion> in Directory.Build.props after the import, or in the project's file."
             }
+        }
+    }
+    # A project that has just turned the C# formatter on: the files IDE0073 now fails (Get-CSharpFileWithoutHeader).
+    if ($Data.ContainsKey('csharp_format') -and (Get-Answer 'csharp_format') -eq 'true') {
+        $headerless = @(Get-CSharpFileWithoutHeader)
+        if ($headerless.Count -gt 0) {
+            ''
+            "csharp_format is on, and $($headerless.Count) C# file$(if ($headerless.Count -ne 1) { 's' }) don't start with the header .editorconfig sets (file_header_template): IDE0073 is a warning, which fails the build, for each. Rewrite each once, as the template's ADR-0148 describes: replace its old header, such as a #region Copyright Preamble block, with the header's lines as // comments, and drop a UTF-8 byte order mark. $(($headerless | Select-Object -First 5) -join ', ')$(if ($headerless.Count -gt 5) { ', ...' })"
         }
     }
     if (Test-Path -LiteralPath version.json) {
