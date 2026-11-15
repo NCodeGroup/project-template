@@ -170,7 +170,7 @@ Check 'Update-Baseline: waits with a doubling delay until nuget.org lists the ve
 
 $folder = New-Case 'wait-timeout' (& $waitFiles '5.0.0')
 $r = Invoke-WaitCase $folder @(1..10 | ForEach-Object { 'throw' }) 1
-$ok = $r.Threw -and $r.Message.Contains('Fixture.A') -and $r.Message.Contains('5.0.2') -and $stubState.Sleeps.Count -eq 3 -and $stubState.Sleeps[0] -in 15..19 -and $stubState.Sleeps[1] -in 30..34 -and $stubState.Sleeps[2] -in 60..64 -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.0')
+$ok = $r.Threw -and $r.Message.Contains('Fixture.A') -and $r.Message.Contains('5.0.2') -and $r.Message.Contains('The last error from nuget.org: Fixture.A: nuget.org stand-in: not found') -and $stubState.Sleeps.Count -eq 3 -and $stubState.Sleeps[0] -in 15..19 -and $stubState.Sleeps[1] -in 30..34 -and $stubState.Sleeps[2] -in 60..64 -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.0')
 Check 'Update-Baseline: gives up after three sleeps at a one minute timeout and changes nothing' $ok "Threw: $($r.Threw); message: $($r.Message); sleeps: $($stubState.Sleeps -join ', ')"
 
 $folder = New-Case 'wait-already' (& $waitFiles '5.0.2')

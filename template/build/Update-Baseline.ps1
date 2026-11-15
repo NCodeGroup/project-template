@@ -106,9 +106,20 @@ if (-not $SkipNugetCheck) {
     )
     if (-not $ids.Count) { throw 'No packable project found: nothing to wait for on nuget.org.' }
 
+    $lastError = @{}
     function Test-Listed([string]$Id) {
-        try { @((Invoke-RestMethod -Uri "https://api.nuget.org/v3-flatcontainer/$($Id.ToLowerInvariant())/index.json" -TimeoutSec 30).versions) -contains $target }
-        catch { Write-Warning "nuget.org gave no answer for ${Id}: $($_.Exception.Message)"; $false }
+        try {
+            $listed = @((Invoke-RestMethod -Uri "https://api.nuget.org/v3-flatcontainer/$($Id.ToLowerInvariant())/index.json" -TimeoutSec 30).versions) -contains $target
+            $lastError.Remove($Id)
+            $listed
+        }
+        catch {
+            Write-Warning "nuget.org gave no answer for ${Id}: $($_.Exception.Message)"
+            $response = $_.Exception.PSObject.Properties['Response']
+            $notFound = $response -and $response.Value -and [int]$response.Value.StatusCode -eq 404
+            if ($notFound) { $lastError.Remove($Id) } else { $lastError[$Id] = $_.Exception.Message }
+            $false
+        }
     }
     $pending = $ids
     $slept = 0
@@ -116,7 +127,11 @@ if (-not $SkipNugetCheck) {
     while ($true) {
         $pending = @($pending | Where-Object { -not (Test-Listed $_) })
         if (-not $pending.Count) { break }
-        if ($slept -ge $TimeoutMinutes * 60) { throw "nuget.org doesn't list $($pending -join ', ') at $target after $TimeoutMinutes minutes: run this again once it does." }
+        if ($slept -ge $TimeoutMinutes * 60) {
+            $errors = @($pending | Where-Object { $lastError.ContainsKey($_) } | ForEach-Object { "${_}: $($lastError[$_])" })
+            $detail = if ($errors.Count) { " The last error from nuget.org: $($errors -join '; ')." } else { '' }
+            throw "nuget.org doesn't list $($pending -join ', ') at $target after $TimeoutMinutes minutes: run this again once it does.$detail"
+        }
         $wait = $delay + (Get-Random -Maximum 5)
         Write-Host "Waiting $wait seconds for nuget.org to list $($pending -join ', ') at $target."
         Start-Sleep -Seconds $wait
