@@ -499,6 +499,76 @@ function Test-PackageValidationBaseline {
     @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
 }
 
+# The stale NuGet logistics an older library carries, found under the current folder, as Kind and Message in a fixed
+# order: OrphanProps, GeneratePackageOnBuild, RepeatedSettings, Solution, ByteOrderMark, RootProject. Nothing for none.
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both
+# together; tests keep the two equal.
+function Get-NuGetLogistics {
+    $root = (Get-Location).ProviderPath
+    $files = @(Get-ChildItem -LiteralPath . -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+            $path = $_.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
+            if ("/$path" -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]') { [pscustomobject]@{ Path = $path; Name = $_.Name; Full = $_.FullName } }
+        })
+    $files = @($files | Sort-Object { $_.Path } -CaseSensitive)
+    $projectFiles = @($files | Where-Object { $_.Path -ne 'build/ProjectTemplate.props' -and $_.Name -match '\.(csproj|props)$' })
+    $mentioning = @($files | Where-Object { $_.Name -match '\.(csproj|props|targets|slnx)$' } | ForEach-Object { [pscustomobject]@{ Path = $_.Path; Text = Get-Content -LiteralPath $_.Full -Raw } })
+
+    foreach ($file in $files | Where-Object { $_.Name -like '*.props' -and $_.Name -notlike 'Directory.*.props' -and $_.Name -ne 'ProjectTemplate.props' }) {
+        if ($mentioning | Where-Object { $_.Path -ne $file.Path -and $_.Text -and $_.Text.IndexOf($file.Name, [StringComparison]::OrdinalIgnoreCase) -ge 0 }) { continue }
+        $text = Get-Content -LiteralPath $file.Full -Raw
+        $settings = @('Description', 'PackageTags', 'Authors', 'PackageProjectUrl', 'PackageReleaseNotes', 'PackageIcon' | Where-Object { $text -match "<$_[\s>]" })
+        $message = if ($settings.Count) { "$($file.Path) is imported by no project, so the $($settings -join ', ') it sets no longer reach the package: import it from Directory.Build.props, after the import of build/ProjectTemplate.props, or move its settings into the project file." }
+        else { "$($file.Path) is imported by no project: import it or delete it." }
+        [pscustomobject]@{ Kind = 'OrphanProps'; Message = $message }
+    }
+
+    foreach ($file in $projectFiles) {
+        if ((Get-Content -LiteralPath $file.Full -Raw) -match '<GeneratePackageOnBuild>\s*true') {
+            [pscustomobject]@{ Kind = 'GeneratePackageOnBuild'; Message = "$($file.Path) sets GeneratePackageOnBuild to true, which races with dotnet pack from a clean tree (NU5026): delete it; build/dod.ps1 packs on its own." }
+        }
+    }
+
+    $elements = 'ImplicitUsings', 'Nullable', 'LangVersion', 'PublishRepositoryUrl', 'EmbedUntrackedSources', 'IncludeSymbols', 'SymbolPackageFormat', 'DocumentationFile'
+    foreach ($file in $projectFiles | Where-Object { $_.Name -like '*.csproj' -or $_.Name -in 'Directory.Build.props', 'Directory.Packages.props' }) {
+        $text = Get-Content -LiteralPath $file.Full -Raw
+        $repeated = @($elements | Where-Object { $text -match "<$_[\s>]" })
+        if ($text -match '<Package(Reference|Version)\b[^>]*\bInclude\s*=\s*"Microsoft\.SourceLink\.GitHub"') { $repeated += 'Microsoft.SourceLink.GitHub' }
+        if ($repeated.Count) {
+            [pscustomobject]@{ Kind = 'RepeatedSettings'; Message = "$($file.Path) repeats settings build/ProjectTemplate.props makes: $($repeated -join ', '). Delete them, or keep one only to differ from the template on purpose." }
+        }
+    }
+
+    foreach ($file in $files | Where-Object { $_.Name -like '*.sln' }) {
+        $folder = if ($file.Path.Contains('/')) { $file.Path.Substring(0, $file.Path.LastIndexOf('/') + 1) } else { '' }
+        if (($file.Path.Split('/').Count -le 3) -and -not ($files | Where-Object { $_.Name -like '*.slnx' -and $_.Path -eq "$folder$($_.Name)" })) {
+            $name = [IO.Path]::GetFileNameWithoutExtension($file.Name)
+            [pscustomobject]@{ Kind = 'Solution'; Message = "$($file.Path) is a .sln where the template and current SDKs use .slnx: run dotnet sln $($file.Path) migrate, delete the .sln, and rename $name.sln.DotSettings to $name.slnx.DotSettings if it exists." }
+        }
+    }
+
+    $bomExtensions = '.cs', '.csproj', '.props', '.targets', '.slnx', '.json', '.md', '.yml', '.yaml', '.xml', '.txt', '.editorconfig'
+    $withBom = [Collections.Generic.List[string]]::new()
+    foreach ($file in $files | Where-Object { [IO.Path]::GetExtension($_.Name) -in $bomExtensions }) {
+        $bytes = [byte[]]::new(3)
+        try {
+            $stream = [IO.File]::Open($file.Full, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+            try { $read = $stream.Read($bytes, 0, 3) } finally { $stream.Dispose() }
+        }
+        catch { continue }
+        if ($read -eq 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $withBom.Add($file.Path) }
+    }
+    if ($withBom.Count) {
+        $listed = ($withBom | Select-Object -First 5) -join ', '
+        if ($withBom.Count -gt 5) { $listed += ", and $($withBom.Count - 5) more" }
+        [pscustomobject]@{ Kind = 'ByteOrderMark'; Message = "$($withBom.Count) file(s) start with a UTF-8 byte order mark, which the template's encoding rule (UTF-8 without BOM) forbids: $listed. Save them without it." }
+    }
+
+    $rootProjects = @($files | Where-Object { $_.Name -like '*.csproj' -and -not $_.Path.Contains('/') })
+    if ($rootProjects.Count) {
+        [pscustomobject]@{ Kind = 'RootProject'; Message = "$($rootProjects.Name -join ', ') sit at the repository root: move each project into src/ (a test project into tests/), as the template's layout has it." }
+    }
+}
+
 # Fills the version.json in the current folder from the repository: Version is the patch after the newest stable tag merged
 # into HEAD, and the assembly version is the one Directory.Build.props sets, else Get-AssemblyVersionFloor's. Returns Version,
 # Tag, AssemblyVersion and Precision, each $null when unchanged, and nothing without a version.json.
@@ -532,4 +602,4 @@ function Update-VersionFile {
     $result
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Test-PackageValidationBaseline, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Test-PackageValidationBaseline, Get-NuGetLogistics, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
