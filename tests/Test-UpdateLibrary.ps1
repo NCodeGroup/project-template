@@ -123,16 +123,17 @@ try {
 }
 finally { Pop-Location }
 
-# with-trigger: the template's publish.yml keeps its workflow_dispatch trigger, so the update has nothing to warn about.
+# with-trigger: the template's publish.yml keeps its workflow_dispatch trigger, so no publish.yml warning; its Directory.Build.props references Nerdbank.GitVersioning and sets AssemblyVersion, which the update warns about.
 $withTrigger = New-Library 'with-trigger' 'license=MIT'
 Push-Location $withTrigger
 try {
     $buildProps = Join-Path $withTrigger 'Directory.Build.props'
-    [IO.File]::WriteAllText($buildProps, [IO.File]::ReadAllText($buildProps).Replace('</Project>', '<ItemGroup><PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" /></ItemGroup></Project>'))
+    [IO.File]::WriteAllText($buildProps, [IO.File]::ReadAllText($buildProps).Replace('</Project>', '<PropertyGroup><AssemblyVersion>1.2.0.0</AssemblyVersion></PropertyGroup><ItemGroup><PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" /></ItemGroup></Project>'))
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $withTrigger
     Check 'with-trigger: a publish.yml with workflow_dispatch gets no warning' ($result.ExitCode -eq 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Test-Path -LiteralPath .github/workflows/tag-release.yml) -and -not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
     Check 'with-trigger: the update adds version.json, has no PublicRelease warning, and names the file that references Nerdbank.GitVersioning' ($result.Output.Contains('Added version.json') -and $result.Output.Contains('Its version is 0.1.0') -and -not $result.Output.Contains('packs without -p:PublicRelease=true') -and $result.Output.Contains('These files reference Nerdbank.GitVersioning') -and $result.Output.Contains('Directory.Build.props')) $result.Output
+    Check 'with-trigger: the update says to delete the AssemblyVersion that Directory.Build.props sets' ($result.Output.Contains('Directory.Build.props sets AssemblyVersion') -and $result.Output.Contains('delete it from Directory.Build.props')) $result.Output
 }
 finally { Pop-Location }
 
