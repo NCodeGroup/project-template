@@ -6,7 +6,7 @@
 #
 # Needs Settings > Actions > General > Workflow permissions > "Allow GitHub Actions to create and approve pull
 # requests", which tools/Set-RepositoryBaseline.ps1 in the project template turns on for a repository with this file.
-# The checkout keeps no credential; the push gets the token for that one command. The template owns this file.
+# The checkout keeps no credential; the branch check and the push get the token for that one command. The template owns this file.
 name: Raise the package validation baseline
 
 on:
@@ -75,7 +75,8 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           $branch = "baseline-$env:VERSION"
-          git ls-remote --exit-code --heads origin $branch *> $null
+          $auth = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("x-access-token:$env:GH_TOKEN"))
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" ls-remote --exit-code --heads origin $branch *> $null
           if ($LASTEXITCODE -eq 0) { "$branch already exists; nothing to open." >> $env:GITHUB_STEP_SUMMARY; exit 0 }
           if ($LASTEXITCODE -ne 2) { throw "git ls-remote failed with exit code $LASTEXITCODE." }
           git config user.name 'github-actions[bot]'
@@ -86,7 +87,6 @@ jobs:
           if ($LASTEXITCODE) { throw "git switch failed with exit code $LASTEXITCODE." }
           git commit -am "Raise the package validation baseline to $env:VERSION"
           if ($LASTEXITCODE) { throw "git commit failed with exit code $LASTEXITCODE." }
-          $auth = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("x-access-token:$env:GH_TOKEN"))
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin $branch
           if ($LASTEXITCODE) { throw "git push failed with exit code $LASTEXITCODE." }
           $body = 'Raises `PackageValidationBaselineVersion` to {0}, which nuget.org now lists, so each pack is validated against the newest release (the template''s ADR-0150). Opened by `.github/workflows/raise-baseline.yml`, which started CI on this branch.' -f $env:VERSION
