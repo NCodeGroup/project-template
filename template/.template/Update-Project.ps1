@@ -558,6 +558,7 @@ try {
         New-Item -ItemType Directory -Force (Split-Path $infoExclude) | Out-Null
         [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$beginCopy`n$([IO.File]::ReadAllText($projectIgnore))`n$endCopy`n")
     }
+    $versionFileNew = $false
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
@@ -615,6 +616,7 @@ try {
         if ($publishLeftOut) { $copierArgs += '--exclude', '/.github/workflows/publish.yml' }
         # A file the project owns, merged or template-owned, stays as it is; its template change is shown below.
         foreach ($file in $ownedFiles) { $copierArgs += '--exclude', "/$file" }
+        $versionFileNew = -not (Test-Path -LiteralPath version.json) -and 'version.json' -notin @($deleted)
         Invoke-Copier @copierArgs
 
         # Put the kept lines back at the end, after any conflict.
@@ -631,6 +633,8 @@ try {
         throw
     }
 
+    # version.json this update added starts after the newest release (Update-VersionFile, ADR-0138).
+    $versionFile = if ($versionFileNew -and (Test-Path -LiteralPath version.json -PathType Leaf)) { Update-VersionFile }
     $conflicts = @(git diff --name-only --diff-filter=U)
     if (-not $conflicts) {
         Add-UpdateChange $scratch
@@ -737,12 +741,23 @@ try {
         $ownedCommand
     }
 
-    # A library release built with a higher AssemblyVersion than build/ProjectTemplate.props pins (Get-AssemblyVersionFloor).
-    $floor = Get-AssemblyVersionFloor
+    # A library release built with a higher AssemblyVersion than build/ProjectTemplate.props pins (Get-AssemblyVersionFloor), in a library without version.json, whose assemblyVersion holds it instead.
+    $floor = if (-not (Test-Path -LiteralPath version.json)) { Get-AssemblyVersionFloor }
     if ($floor) {
         ''
         "$($floor.Tag) was released with AssemblyVersion $($floor.AssemblyVersion), and build/ProjectTemplate.props gives every $($floor.Major).x release $($floor.Major).0.0.0, which an application compiled against $($floor.AssemblyVersion) can't load. Until the next major version, set it in Directory.Build.props, after the import of build/ProjectTemplate.props (ADR-0136):"
         "  <PropertyGroup><AssemblyVersion>$($floor.AssemblyVersion)</AssemblyVersion></PropertyGroup>"
+    }
+    if ($versionFile) {
+        ''
+        $versionLine = 'Added version.json, which Nerdbank.GitVersioning now builds every assembly''s and package''s version from (the template''s ADR-0138, in docs/decisions/project-template/).'
+        $versionLine += if ($versionFile.Version) { " Its version is $($versionFile.Version), the patch after $($versionFile.Tag): the next plan with a Release: line sets it to that release's version." } else { ' Its version is 0.1.0, as the project has no release tag yet.' }
+        if ($versionFile.AssemblyVersion) { $versionLine += " Its assemblyVersion is $($versionFile.AssemblyVersion) with precision $($versionFile.Precision), the AssemblyVersion the current major version's releases need; the change that starts the next major version sets it to { `"precision`": `"major`" }." }
+        $versionLine
+    }
+    if ((Test-Path -LiteralPath version.json) -and (Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion[\s>]') {
+        ''
+        'Directory.Build.props sets AssemblyVersion, which version.json''s assemblyVersion sets once Nerdbank.GitVersioning builds the project (the template''s ADR-0138): delete it from Directory.Build.props.'
     }
     # A library with its own NuGet publishing workflow (Get-NuGetPublisher).
     if ($publishLeftOut) {

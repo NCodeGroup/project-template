@@ -13,7 +13,8 @@
                      both workflows publish, and warns that publish.yml has no workflow_dispatch trigger.
       own-publisher  A release.yml that runs dotnet nuget push and no publish.yml, and a v2.3.0 tag on a commit
                      without build/ProjectTemplate.props. The update leaves publish.yml out and says so, without a
-                     workflow_dispatch warning, and names AssemblyVersion 2.3.0.0 to set in Directory.Build.props.
+                     workflow_dispatch warning. It adds version.json at the patch after v2.3.0 (2.3.1), with the
+                     assemblyVersion 2.3 (precision minor) that v2.3.0 shipped, and says so; v0.1.0 predates version.json.
       with-trigger   The template's own publish.yml, with its workflow_dispatch trigger. The update adds tag-release.yml
                      and prints no workflow_dispatch warning.
     Prints PASS or FAIL per check and exits 1 on any failure.
@@ -70,10 +71,13 @@ $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl -BeforeCommi
     $text = [IO.File]::ReadAllText((Join-Path (Get-Location) 'copier.yml'))
     if ($text -notmatch $validator) { throw "copier.yml has no license validator." }
     [IO.File]::WriteAllText((Join-Path (Get-Location) 'copier.yml'), [regex]::Replace($text, $validator, ''))
+    # v0.1.0 predates version.json, so an update adds it.
+    Remove-Item -LiteralPath (Join-Path (Get-Location) 'template/version.json')
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot 'copier.yml') -Destination (Join-Path $tpl 'copier.yml') -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot 'template\version.json') -Destination (Join-Path $tpl 'template\') -Force
 Push-Location $tpl
-try { Invoke-Git commit -q -am 'Require a license for a NuGet package'; Invoke-Git tag v0.2.0 }
+try { Invoke-Git add -A; Invoke-Git commit -q -m 'Require a license for a NuGet package, and version from version.json'; Invoke-Git tag v0.2.0 }
 finally { Pop-Location }
 
 $release = "name: release`non: release`njobs:`n  push:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push out/*.nupkg`n"
@@ -111,9 +115,10 @@ try {
     [IO.File]::WriteAllText((Join-Path $ownPublisher '.github/workflows/release.yml'), $release)
     Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $ownPublisher
+    $versionJson = Get-Content -Raw -LiteralPath version.json | ConvertFrom-Json
     Check 'own-publisher: the update leaves publish.yml out beside release.yml, and says so' ($result.ExitCode -eq 0 -and -not (Test-Path -LiteralPath .github/workflows/publish.yml) -and $result.Output.Contains('Left out .github/workflows/publish.yml: .github/workflows/release.yml already push NuGet packages')) $result.Output
     Check 'own-publisher: without publish.yml, no workflow_dispatch warning' (-not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
-    Check 'own-publisher: the update names the AssemblyVersion v2.3.0 shipped' ($result.Output.Contains('v2.3.0 was released with AssemblyVersion 2.3.0.0') -and $result.Output.Contains('  <PropertyGroup><AssemblyVersion>2.3.0.0</AssemblyVersion></PropertyGroup>')) $result.Output
+    Check 'own-publisher: the update adds version.json at the patch after v2.3.0, with the AssemblyVersion v2.3.0 shipped, and says so' (($versionJson.version -eq '2.3.1') -and ($versionJson.assemblyVersion.version -eq '2.3') -and ($versionJson.assemblyVersion.precision -eq 'minor') -and $result.Output.Contains('Added version.json') -and $result.Output.Contains('the patch after v2.3.0') -and -not $result.Output.Contains('<PropertyGroup><AssemblyVersion>')) $result.Output
 }
 finally { Pop-Location }
 
