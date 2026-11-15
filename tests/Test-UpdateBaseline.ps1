@@ -135,6 +135,48 @@ try { Invoke-Baseline $folder '5.0.2-rc.1' | Out-Null; $threw = $false } catch {
 $ok = $threw -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.0') -and (Read-Text $folder 'CHANGELOG.md') -ceq $changelog
 Check 'Update-Baseline: a prerelease version throws and changes nothing' $ok "Threw: $threw"
 
+# The wait: stand-ins for the script's network calls and sleeps, seen only by the script run here.
+$stubState = @{ Requests = $null; Sleeps = $null; Answers = $null }
+function Invoke-RestMethod {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Stand-ins for the script''s network calls and waits, seen only by the script this test runs.')]
+    param([string]$Uri, [int]$TimeoutSec)
+    $stubState.Requests.Add(@{ Uri = $Uri; TimeoutSec = $TimeoutSec })
+    $answer = $stubState.Answers.Dequeue()
+    if ($answer -is [string] -and $answer -eq 'throw') { throw 'nuget.org stand-in: not found' }
+    @{ versions = $answer }
+}
+function Start-Sleep {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Stand-ins for the script''s network calls and waits, seen only by the script this test runs.')]
+    param([int]$Seconds)
+    $stubState.Sleeps.Add($Seconds)
+}
+function Invoke-WaitCase([string]$Folder, [object[]]$Answers, [int]$TimeoutMinutes = 30) {
+    $stubState.Requests = [Collections.Generic.List[hashtable]]::new()
+    $stubState.Sleeps = [Collections.Generic.List[int]]::new()
+    $stubState.Answers = [Collections.Generic.Queue[object]]::new([object[]]$Answers)
+    $threw = $false; $message = ''; $out = @()
+    try { $out = @(& $script -Version v5.0.2 -Root $Folder -TimeoutMinutes $TimeoutMinutes 3>$null 6>$null) }
+    catch { $threw = $true; $message = $_.Exception.Message }
+    @{ Out = $out; Threw = $threw; Message = $message }
+}
+$waitFiles = { param($Baseline) @{ $csproj = Get-Project $Baseline; 'tests/Fixture.A.Tests/Fixture.A.Tests.csproj' = '<Project />' } }
+$fixtureUri = 'https://api.nuget.org/v3-flatcontainer/fixture.a/index.json'
+
+$folder = New-Case 'wait-listed' (& $waitFiles '5.0.0')
+$r = Invoke-WaitCase $folder @('throw', @(), @('5.0.2'))
+$badRequests = @($stubState.Requests | Where-Object { $_.Uri -ne $fixtureUri -or $_.TimeoutSec -ne 30 })
+$ok = $r.Out.Count -eq 1 -and $r.Out[0] -eq '5.0.2' -and $stubState.Sleeps.Count -eq 2 -and $stubState.Sleeps[0] -in 15..19 -and $stubState.Sleeps[1] -in 30..34 -and $stubState.Requests.Count -eq 3 -and -not $badRequests -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.2')
+Check 'Update-Baseline: waits with a doubling delay until nuget.org lists the version' $ok "Output: $($r.Out -join ', '); sleeps: $($stubState.Sleeps -join ', '); requests: $($stubState.Requests.Count); bad: $($badRequests.Count)"
+
+$folder = New-Case 'wait-timeout' (& $waitFiles '5.0.0')
+$r = Invoke-WaitCase $folder @(1..10 | ForEach-Object { 'throw' }) 1
+$ok = $r.Threw -and $r.Message.Contains('Fixture.A') -and $r.Message.Contains('5.0.2') -and $stubState.Sleeps.Count -eq 3 -and $stubState.Sleeps[0] -in 15..19 -and $stubState.Sleeps[1] -in 30..34 -and $stubState.Sleeps[2] -in 60..64 -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.0')
+Check 'Update-Baseline: gives up after three sleeps at a one minute timeout and changes nothing' $ok "Threw: $($r.Threw); message: $($r.Message); sleeps: $($stubState.Sleeps -join ', ')"
+
+$folder = New-Case 'wait-already' (& $waitFiles '5.0.2')
+$r = Invoke-WaitCase $folder @()
+Check 'Update-Baseline: asks nuget.org nothing when the baseline is already raised' ($stubState.Requests.Count -eq 0 -and $stubState.Sleeps.Count -eq 0 -and $r.Out.Count -eq 0) "Requests: $($stubState.Requests.Count)"
+
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Update baseline tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }

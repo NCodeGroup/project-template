@@ -93,7 +93,37 @@ if ($changed.Count -eq 0) {
     return
 }
 
-$null = $TimeoutMinutes, $SkipNugetCheck # The nuget.org wait replaces this line (step 3).
+if (-not $SkipNugetCheck) {
+    $ids = @(
+        foreach ($candidate in $candidates) {
+            $file = $candidate.File
+            if ($file.Extension -ne '.csproj' -or $file.Name -like '*.Tests.csproj') { continue }
+            $projectText = [IO.File]::ReadAllText($file.FullName)
+            if ($projectText -match '<IsPackable>\s*false') { continue }
+            $idMatch = [regex]::Match($projectText, '<PackageId>\s*([^<]*?)\s*</PackageId>')
+            if ($idMatch.Success -and $idMatch.Groups[1].Value) { $idMatch.Groups[1].Value } else { $file.BaseName }
+        }
+    )
+    if (-not $ids.Count) { throw 'No packable project found: nothing to wait for on nuget.org.' }
+
+    function Test-Listed([string]$Id) {
+        try { @((Invoke-RestMethod -Uri "https://api.nuget.org/v3-flatcontainer/$($Id.ToLowerInvariant())/index.json" -TimeoutSec 30).versions) -contains $target }
+        catch { Write-Warning "nuget.org gave no answer for ${Id}: $($_.Exception.Message)"; $false }
+    }
+    $pending = $ids
+    $slept = 0
+    $delay = 15
+    while ($true) {
+        $pending = @($pending | Where-Object { -not (Test-Listed $_) })
+        if (-not $pending.Count) { break }
+        if ($slept -ge $TimeoutMinutes * 60) { throw "nuget.org doesn't list $($pending -join ', ') at $target after $TimeoutMinutes minutes: run this again once it does." }
+        $wait = $delay + (Get-Random -Maximum 5)
+        Write-Host "Waiting $wait seconds for nuget.org to list $($pending -join ', ') at $target."
+        Start-Sleep -Seconds $wait
+        $slept += $wait
+        $delay = [Math]::Min($delay * 2, 120)
+    }
+}
 
 foreach ($path in $changed.Keys) {
     [IO.File]::WriteAllText($path, $changed[$path].Text, [Text.UTF8Encoding]::new($changed[$path].HadBom))
