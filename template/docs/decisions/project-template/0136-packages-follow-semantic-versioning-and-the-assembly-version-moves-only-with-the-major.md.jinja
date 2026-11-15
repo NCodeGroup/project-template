@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-31
+- **Amended by:** 0138
 
 ## Context
 
@@ -22,8 +23,12 @@ A library's packages follow Semantic Versioning 2.0, and their assembly version 
 
 ### The version number
 
-- The version comes from the release tag, `v1.2.3`, or `v1.2.3-rc.1` for a prerelease.{% if git_host == 'github' %} On GitHub,
-  `.github/workflows/publish.yml` packs the tag's version (ADR-0135).{% endif %}
+- The version is `version` in the root `version.json`, which Nerdbank.GitVersioning stamps into every assembly and
+  package
+  ([ADR-0138](0138-package-versions-come-from-version-json-through-nerdbank-gitversioning.md)); its release tag,
+  `v1.2.3`, or `v1.2.3-rc.1` for a prerelease, names the same version. A library without `version.json` takes the
+  version from the release tag.{% if git_host == 'github' %} On GitHub, `.github/workflows/publish.yml` packs the tag's
+  version (ADR-0135).{% endif %}
 - A breaking change is a major version. So is a change to validation or security behavior that a consumer can observe,
   even when no signature changes.
 - An addition is a minor version; a fix is a patch.
@@ -46,8 +51,9 @@ A library's packages follow Semantic Versioning 2.0, and their assembly version 
 
 ### The assembly version
 
-When a project does not set `AssemblyVersion` itself, an MSBuild target in `build/ProjectTemplate.props` derives the
-assembly's versions from the final `Version`:
+With `version.json`, its `assemblyVersion` applies this rule: `{ "precision": "major" }` gives `<major>.0.0.0`
+(ADR-0138). Without it, when a project does not set `AssemblyVersion` itself, an MSBuild target in
+`build/ProjectTemplate.props` derives the assembly's versions from the final `Version`:
 
 - `AssemblyVersion` is `<major>.0.0.0`;
 - `FileVersion` is the exact `major.minor.patch`;
@@ -60,9 +66,10 @@ and different major versions load side by side.
 
 A library that released a version of its current major with a higher assembly version, such as `5.3.0` built as
 `5.3.0.0` by a build that doesn't pin it, keeps that assembly version for the rest of the major, because an
-application compiled against `5.3.0.0` cannot load `5.0.0.0`. It sets `AssemblyVersion` in `Directory.Build.props` to
-the highest one the major released, which opts it out of the pinning, and removes the setting in the next major.
-`Update-Project.ps1` and the template's adoption name the release and the version to set.
+application compiled against `5.3.0.0` cannot load `5.0.0.0`. It sets that version in `version.json`'s
+`assemblyVersion`, such as `{ "version": "5.3", "precision": "minor" }`, or, without `version.json`, `AssemblyVersion`
+in `Directory.Build.props`, and removes the setting in the next major. `Update-Project.ps1` and the template's adoption
+name the release and the version to set.
 
 ### The compatibility rules the number expresses
 
@@ -103,7 +110,8 @@ A pull request that touches the public API is reviewed against this checklist:
 ## Consequences
 
 - A consumer reads the version and knows whether an upgrade can break them; the changelog says how.
-- The tag, the package, the release and the changelog section name one version, and there is no version file to forget.
+- The tag, the package, the release and the changelog section name one version, and `version.json` holds it, which the
+  release checks against the tag (ADR-0138).
 - A minor or patch upgrade replaces the assembly in place; a major upgrade is a new identity.
 - A change in observable validation or security behavior is a major version even when the API diff is empty, so the
   review asks about behavior, not only signatures.
@@ -125,3 +133,5 @@ A pull request that touches the public API is reviewed against this checklist:
 - [ADR-0015](0015-a-pre-release-project-describes-the-product-as-it-is.md): a pre-release project describes the product
   as it is and keeps no compatibility.
 - [ADR-0134](0134-evolving-optional-parameters-are-a-dto.md): a growing set of optional criteria is an init-only DTO.
+- [ADR-0138](0138-package-versions-come-from-version-json-through-nerdbank-gitversioning.md): package versions come
+  from `version.json` through Nerdbank.GitVersioning.
