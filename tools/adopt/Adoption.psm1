@@ -340,7 +340,7 @@ function Move-PackageVersionsToCentral([string]$Path) {
 # Returns one File and Version object per edited file.
 function Remove-GitVersioningReference([string]$Path) {
     $root = (Resolve-Path -LiteralPath $Path).Path.TrimEnd('\', '/')
-    $referenceRegex = [regex]::new('(?s)[ \t]*<PackageReference\b[^>]*\bInclude="Nerdbank\.GitVersioning"[^>]*(?:/>|>.*?</PackageReference>)[ \t]*\r?\n?')
+    $referenceRegex = [regex]::new('(?s)[ \t]*<PackageReference\b[^>]*?\bInclude="Nerdbank\.GitVersioning"(?:[^>/]|/(?!>))*(?:/>|>.*?</PackageReference>)[ \t]*\r?\n?')
     $emptyGroupRegex = [regex]::new('(?s)[ \t]*<ItemGroup>\s*</ItemGroup>[ \t]*\r?\n?')
     $versionTagRegex = [regex]::new('<PackageVersion\b[^>]*\bInclude="Nerdbank\.GitVersioning"[^>]*/>')
     $versionLineRegex = [regex]::new('[ \t]*<PackageVersion\b[^>]*\bInclude="Nerdbank\.GitVersioning"[^>]*/>[ \t]*\r?\n?')

@@ -127,6 +127,25 @@ $result = @(Remove-GitVersioningReference $f)
 Check 'template props: untouched' ((Read-Text (Join-Path $f 'build/ProjectTemplate.props')) -ceq $template)
 Check 'template props: no result' ($result.Count -eq 0) "Got $($result.Count)"
 
+# (g) a self-closing reference followed by a multi-line reference
+$g = Join-Path $Work 'g'
+$followed = @'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />
+    <PackageReference Include="Serilog" Version="1">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>
+'@
+Write-Text (Join-Path $g 'src/G/G.csproj') $followed
+$result = @(Remove-GitVersioningReference $g)
+$text = Read-Text (Join-Path $g 'src/G/G.csproj')
+Check 'self-closing before multi-line: the reference is gone' (-not $text.Contains('Nerdbank.GitVersioning')) $text
+Check 'self-closing before multi-line: the next element stays whole' ($text.Contains('<PackageReference Include="Serilog" Version="1">') -and $text.Contains('<PrivateAssets>all</PrivateAssets>') -and $text.Contains('</PackageReference>')) $text
+Check 'self-closing before multi-line: one result' ($result.Count -eq 1) "Got $($result.Count)"
+
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "GitVersioning reference tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
