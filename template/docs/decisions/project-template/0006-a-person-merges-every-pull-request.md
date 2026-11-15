@@ -25,8 +25,10 @@ turns on auto-merge, resolves a review thread, dismisses a review or force-pushe
    conversation rule keeps from merging. Approving is resolving every thread, marking a draft ready, and merging, or
    turning on auto-merge with the merge method
    [ADR-0013](0013-pull-requests-merge-with-a-merge-commit-or-by-rebasing.md) sets; those are the author's actions.
-3. `/run-issues` answers review feedback and fixes the review bot's findings that hold, then recommends the merge after
-   `max-review-rounds` rounds, or a round of only minor findings; the person merges.
+3. `/run-issues` answers review feedback and fixes the review bot's findings that hold, whatever their severity, then
+   recommends the merge once each finding is fixed, declined, answered or left as a follow-up and the bot's review of
+   the last push it asked for is in; after `max-review-rounds` rounds it asks the bot for no further review. The person
+   merges.
 4. After the merge, the next `/ship-plan` tags the release when the Landing section asks for one and closes any of the
    plan's issues still open, and `/finish-plan` cleans up.
 

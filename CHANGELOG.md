@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.93.0] - 2026-11-15
+
+### Changed
+
+- `/run-feedback`, `/run-issues` and `/continue-plan` treat every NCode Review finding alike, whatever its severity: a nit is judged against the code and fixed when it holds, or declined or answered with the reason, like a blocker, and a run never posts a reply before it has judged the finding. The `Autopilot: not changed: a nit, left for the maintainer to judge.` reply and `/run-issues`' "minor" findings are gone: a request for another test of behavior already tested, or a repeat, is declined naming the test or the earlier reply. ([#384](https://github.com/NCodeGroup/project-template/issues/384), [ADR-0014](template/docs/decisions/project-template/0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md))
+- `/address-feedback` and `/run-feedback` take each finding an NCode Review summary lists without a thread of its own, such as one not on a changed line, as an item, and answer it in a top-level `Autopilot:` comment that names it, such as `F2`; a pass with no items says which threads and comments it left out, and why. ([#384](https://github.com/NCodeGroup/project-template/issues/384))
+- `/address-feedback` and `/run-feedback` list each bot finding on a protected path in their one start question, with the change it proposes, and make that change only when you approve it there, such as by answering `yes, all`; a bot's finding alone still never changes a protected path. `/run-issues` judges such a finding and replies `Autopilot: left for you`, with the change it proposes, only when it holds. ([#384](https://github.com/NCodeGroup/project-template/issues/384))
+- The Landing section's `max-review-rounds` limits how often `/run-feedback` and `/run-issues` comment `/review`, not what they fix: after that many rounds they ask NCode Review for no further review but still fix and answer every finding, also after their merge recommendation. They recommend the merge after a pass or check that leaves nothing to fix once NCode Review's review of the last push they asked for is in, which `/run-issues` now awaits through the `Code review` check run as `/run-feedback` does, and recommend again after a later round. ([#384](https://github.com/NCodeGroup/project-template/issues/384), [ADR-0014](template/docs/decisions/project-template/0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md))
+- No change for projects made from the template. `tests/e2e/gh.ps1` gives a later `/review` an empty review whose check run completes, and the e2e tests expect every nit that holds to be fixed. ([#384](https://github.com/NCodeGroup/project-template/issues/384))
+
 ## [0.92.0] - 2026-11-15
 
 ### Added
@@ -1491,7 +1501,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.92.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.93.0...HEAD
+[0.93.0]: https://github.com/NCodeGroup/project-template/compare/v0.92.0...v0.93.0
 [0.92.0]: https://github.com/NCodeGroup/project-template/compare/v0.91.0...v0.92.0
 [0.91.0]: https://github.com/NCodeGroup/project-template/compare/v0.90.0...v0.91.0
 [0.90.0]: https://github.com/NCodeGroup/project-template/compare/v0.89.0...v0.90.0
