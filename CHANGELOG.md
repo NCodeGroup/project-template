@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- .github/workflows/copilot-setup-steps.yml sets read-only permissions at its top level, as Scorecard's Token-Permissions check wants.
+- .github/workflows/copilot-setup-steps.yml sets read-only permissions at its top level, as Scorecard's Token-Permissions check wants, and .github/workflows/template-update.yml holds `issues: write` on its job instead of at its top level, which stays `contents: read`.
 - tools/Set-RepositoryBaseline.ps1's Protect main ruleset dismisses stale approvals on a push and requires approval of the last push; this changes nothing while no approval is required. A Protect main ruleset the script made earlier gets both settings the next time it runs; a ruleset of the owner's keeps its shape.
 
 ## [0.88.0] - 2026-11-14

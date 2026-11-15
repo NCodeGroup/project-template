@@ -190,7 +190,7 @@ nvs() {
         Check 'ensure-nvs.sh exits 0 with one line when nvs cannot select Node.js' ($r.Code -eq 0 -and $r.Output -eq 'ensure-nvs: nvs could not put the .node-version Node.js on PATH.') "exit $($r.Code): $($r.Output)"
 
         $case = New-NvsCase 'resumed' 'v24.0.0'
-        & (Get-Command -Name cp -CommandType Application) -R $nvsSource "$case/nvs"
+        & (Get-Command -Name cp -CommandType Application -TotalCount 1) -R $nvsSource "$case/nvs"
         [IO.File]::WriteAllText((Join-Path $case 'nvs/added'), '')
         $r = Invoke-Ensure $case
         $calls = (Read-CaseFile "$case/nvs/calls").Trim().Replace("`n", '|')
