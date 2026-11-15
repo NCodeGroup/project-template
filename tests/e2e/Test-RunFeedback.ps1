@@ -22,6 +22,9 @@
     review, as the command does. With -Scenario review-with-footer the stand-in saves each comment and thread reply with a
     Claude Code cloud session's footer: the test then checks that each /review comment keeps the footer and still asks
     for the review, and that the run deletes no comment, edits no /review comment and asks no one to comment /review.
+    With -Scenario protected-approval the pull request has a second thread, from NCode Review, that asks to lower
+    timeout-minutes in .github/workflows/ci.yml, a protected path: the test answers the run's question with "yes, all" and
+    checks that the run pushes that change and replies "Autopilot: fixed in <commit>".
     It costs model usage, so Invoke-AllTests.ps1 doesn't run it; run it by hand. CI runs only its fixture setup
     (-SetupOnly), so a template change that breaks the fixture still fails CI. Prints PASS or FAIL per check and exits
     1 on any failure.
@@ -36,12 +39,14 @@
 .PARAMETER CheckOnly
     Check the fixture of an earlier run again, without building it or calling a model.
     Without -Scenario it checks the scenario the fixture was set up for: review-with-footer when the host folder has
-    footer.txt, push-review otherwise.
+    footer.txt, protected-approval when it has protected.txt, push-review otherwise.
 
 .PARAMETER Scenario
     push-review, the default: the run's /review comment asks NCode Review for its review of the push. review-with-footer:
     the stand-in saves each comment and reply with the footer that footer.txt in its host folder holds, and the run's
-    /review comment, footer and all, still asks for that review and stays as posted. Run both.
+    /review comment, footer and all, still asks for that review and stays as posted. protected-approval: a second thread, from
+    NCode Review, asks to change .github/workflows/ci.yml, a protected path, and the run's question is answered with yes, all,
+    so the run must push that change and reply to the thread. Run all three.
 
 .PARAMETER Tool
     claude, the default, runs each prompt in headless Claude Code; copilot runs it in the Copilot CLI. The fixture
@@ -82,7 +87,7 @@ param(
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) 'project-template-run-feedback-e2e'),
     [switch]$SetupOnly,
     [switch]$CheckOnly,
-    [ValidateSet('push-review', 'review-with-footer')][string]$Scenario = 'push-review',
+    [ValidateSet('push-review', 'review-with-footer', 'protected-approval')][string]$Scenario = 'push-review',
     [ValidateSet('claude', 'copilot')][string]$Tool = 'claude',
     [string]$Claude = 'claude',
     [string]$Copilot = 'copilot',
@@ -104,6 +109,7 @@ $hostDir = Join-Path $bin 'host'
 if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Tool')) { $Tool = Get-RunTool $Work $Tool }
 # Without -Scenario, -CheckOnly checks the scenario the fixture was set up for: footer.txt in the host folder marks review-with-footer.
 if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt'))) { $Scenario = 'review-with-footer' }
+if ($CheckOnly -and -not $PSBoundParameters.ContainsKey('Scenario') -and (Test-Path -LiteralPath (Join-Path $hostDir 'protected.txt'))) { $Scenario = 'protected-approval' }
 $head = 'add-farewell'
 $prUrl = 'https://github.com/fixture/app/pull/1'
 $commandFile = Get-CommandFile $app $Tool 'run-feedback'
@@ -175,6 +181,17 @@ exit 0
                 })
         }
     )
+    # In the protected-approval scenario NCode Review also asks for a change to a protected path, which the run makes only because its question is answered with yes, all.
+    if ($Scenario -eq 'protected-approval') {
+        $threads += @{
+            id = 'PRRT_protected'; number = 1; isResolved = $false; isOutdated = $false; path = '.github/workflows/ci.yml'; line = 1
+            comments = @(@{
+                    author = @{ __typename = 'Bot'; login = 'ncode-review' }; authorAssociation = 'NONE'; url = "$prUrl#discussion_r2002"
+                    body = "<!-- ncode-review:finding id=F2 fp=5b1d0c34 severity=should-fix -->`n**Should-fix:** the ``build-and-test`` job in ``.github/workflows/ci.yml`` has ``timeout-minutes: 30``, so a hung test holds a runner for half an hour. Lower it to ``timeout-minutes: 10``."
+                })
+        }
+        Write-Text (Join-Path $hostDir 'protected.txt') "protected-approval`n"
+    }
     Write-Text (Join-Path $hostDir 'issues.json') '{}'
     Write-Text (Join-Path $hostDir 'prs.json') (ConvertTo-Json -InputObject $prs -Depth 10)
     Write-Text (Join-Path $hostDir 'comments.json') '[]'
@@ -225,8 +242,8 @@ exit 0
 
         $data = $null
         if ($readQuery) { $data = (gh api graphql -F 'owner={owner}' -F 'name={repo}' -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json).data.repository.pullRequest }
-        $ok = $data -and @($data.reviewThreads.nodes | Where-Object { -not $_.isResolved }).Count -eq 1 -and @($data.comments.nodes).Count -eq 0 -and @($data.reviews.nodes).Count -eq 0
-        Check 'fixture: the command''s query reads one open thread, no comments and no reviews' ([bool]$ok) "threads=$(@($data.reviewThreads.nodes).Count) comments=$(@($data.comments.nodes).Count) reviews=$(@($data.reviews.nodes).Count)"
+        $ok = $data -and @($data.reviewThreads.nodes | Where-Object { -not $_.isResolved }).Count -eq $(if ($Scenario -eq 'protected-approval') { 2 } else { 1 }) -and @($data.comments.nodes).Count -eq 0 -and @($data.reviews.nodes).Count -eq 0
+        Check 'fixture: the command''s query reads one open thread (two in protected-approval), no comments and no reviews' ([bool]$ok) "threads=$(@($data.reviewThreads.nodes).Count) comments=$(@($data.comments.nodes).Count) reviews=$(@($data.reviews.nodes).Count)"
 
         $count = if ($checkPath) { "$(pwsh -NoProfile -File (Join-Path $bin 'gh.ps1') api ($checkPath.Replace('<pushed>', $headOid)) --jq $checkJq)".Trim() } else { '' }
         Check 'fixture: the stand-in reports no completed check run for the head before any review is asked for, and still holds the push review' ($count -eq '0' -and (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json'))) "completed check runs: '$count'"
@@ -344,6 +361,11 @@ exit 0
     # In the review-with-footer scenario the stand-in saves each comment and reply the run posts with a cloud session's footer.
     if ($Scenario -eq 'review-with-footer') { Write-Text (Join-Path $hostDir 'footer.txt') "_Generated by [Claude Code](https://claude.ai/code/session_01AbCdEf)_`n" }
     Check "fixture: the stand-in saves what the run posts with a session footer only in the review-with-footer scenario ($Scenario)" ((Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt')) -eq ($Scenario -eq 'review-with-footer')) "footer.txt in the host folder: $(Test-Path -LiteralPath (Join-Path $hostDir 'footer.txt'))"
+    if ($Scenario -eq 'protected-approval') {
+        $seeded = Get-Thread (Read-Threads) 'PRRT_protected'
+        $seededFirst = if ($seeded) { @($seeded.comments)[0] } else { $null }
+        Check 'fixture: the protected-approval thread is on .github/workflows/ci.yml, is NCode Review''s and is open' ($seeded -and $seeded.path -eq '.github/workflows/ci.yml' -and -not $seeded.isResolved -and $seededFirst.author.login -eq 'ncode-review' -and $seededFirst.author.__typename -eq 'Bot') "thread: $([bool]$seeded) path='$(if ($seeded) { $seeded.path })' resolved=$(if ($seeded) { $seeded.isResolved }) author='$(if ($seededFirst) { $seededFirst.author.login })'"
+    }
 }
 
 if ($SetupOnly) {
@@ -361,7 +383,8 @@ if (-not $CheckOnly) {
         $callsPath = Join-Path $hostDir 'calls.log'
         $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match '^CALL (pr comment|api graphql .*addPullRequestReviewThreadReply)' }).Count
         if (-not $replied -and $agent.SessionId) {
-            Invoke-Agent $agent -Prompt 'Yes, go ahead with the run you summarized.' -SessionId $agent.SessionId -Index 2
+            $answer = if ($Scenario -eq 'protected-approval') { 'Yes, all: go ahead with the run you summarized, and approve each change to a protected path it lists.' } else { 'Yes, go ahead with the run you summarized.' }
+        Invoke-Agent $agent -Prompt $answer -SessionId $agent.SessionId -Index 2
         }
     }
     Write-AgentSummary $agent
@@ -392,8 +415,8 @@ Use-FixtureEnvironment $Work $bin {
     Check 'add-farewell on origin only moved forward: nothing was force-pushed' ($headNow -and $LASTEXITCODE -eq 0) "add-farewell is '$headNow', which doesn't contain '$headBefore'"
 
     $files = @(git --git-dir=$origin diff --name-only $headBefore $head 2>$null | Where-Object { $_ })
-    $outside = @($files | Where-Object { $_ -notmatch '^(src|tests)/' })
-    Check 'only the writer''s fix and the nit''s are pushed: new commits change src/ and tests/ and nothing else, such as ci.yml' ($headNow -ne $headBefore -and $files.Count -gt 0 -and $outside.Count -eq 0) "changed files: $($files -join ', ')"
+    $outside = @($files | Where-Object { $_ -notmatch '^(src|tests)/' -and -not ($Scenario -eq 'protected-approval' -and $_ -eq '.github/workflows/ci.yml') })
+    Check 'only the writer''s fix and the nit''s are pushed: new commits change src/ and tests/ and nothing else, such as ci.yml (but the approved ci.yml change in protected-approval)' ($headNow -ne $headBefore -and $files.Count -gt 0 -and $outside.Count -eq 0) "changed files: $($files -join ', ')"
 
     $clone = Join-Path $Work 'check'
     if (Test-Path -LiteralPath $clone) { Remove-Item -LiteralPath $clone -Recurse -Force }
@@ -433,8 +456,17 @@ Use-FixtureEnvironment $Work $bin {
     $farewell = (@(git --git-dir=$origin show "$($head):src/Farewell.ps1" 2>$null) -join "`n")
     Check 'NCode Review''s nit on the push got one "Autopilot: fixed in <commit>" reply, and Get-Farewell has a comment-based help block' ($nitThread -and $nitReplies.Count -eq 1 -and "$($nitReplies[0].body)".TrimStart() -match '^Autopilot: fixed in [0-9a-f]{7,}' -and $farewell -match '(?s)<#.*\.SYNOPSIS.*#>') "comments on the nit: $($nitComments.Count); last: '$(if ($nitComments.Count -gt 1) { $nitComments[-1].body })'"
 
+    if ($Scenario -eq 'protected-approval') {
+        $ciText = (@(git --git-dir=$origin show "$($head):.github/workflows/ci.yml" 2>$null) -join "`n")
+        $job = if ($ciText -match '(?s)\n  build-and-test:(.*?)(\n  [a-z-]+:|\z)') { $Matches[1] } else { '' }
+        Check 'the approved change to .github/workflows/ci.yml is pushed: build-and-test has timeout-minutes: 10' ($job -match '(?m)^    timeout-minutes: 10\r?$') "ci.yml on origin: $(if ($ciText) { 'build-and-test job not found or its timeout-minutes is not 10' } else { 'missing' })"
+        $protectedComments = @((Get-Thread $threads 'PRRT_protected').comments)
+        $protectedReplies = @($protectedComments | Select-Object -Skip 1)
+        Check 'NCode Review''s finding on .github/workflows/ci.yml got one "Autopilot: fixed in <commit>" reply' ($protectedReplies.Count -eq 1 -and "$($protectedReplies[0].body)".TrimStart() -match '^Autopilot: fixed in [0-9a-f]{7,}') "comments on the thread: $($protectedComments.Count); last: '$(if ($protectedComments.Count -gt 1) { $protectedComments[-1].body })'"
+    }
+
     $resolved = @($threads | Where-Object { $_.isResolved })
-    Check 'no thread is resolved' ($threads.Count -eq 2 -and $resolved.Count -eq 0) "threads: $($threads.Count); resolved: $($resolved.Count)"
+    Check 'no thread is resolved' ($threads.Count -eq $(if ($Scenario -eq 'protected-approval') { 3 } else { 2 }) -and $resolved.Count -eq 0) "threads: $($threads.Count); resolved: $($resolved.Count)"
 
     $lastSlash = -1
     for ($i = 0; $i -lt $comments.Count; $i++) { if ($comments[$i].kind -eq 'pr' -and (Test-ReviewCommand $comments[$i].body)) { $lastSlash = $i } }
