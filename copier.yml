@@ -152,6 +152,7 @@ _exclude:
   - |-
     {% if git_host is defined and git_host != 'github' %}
     .github/workflows/code-review-auto-merge.yml
+    .github/workflows/scorecard.yml
     .github/workflows/tag-release.yml
     .github/workflows/template-update.yml
     {% endif %}

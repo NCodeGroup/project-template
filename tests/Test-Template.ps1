@@ -128,7 +128,7 @@ $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\Pro
 $nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', '.template\install-nvs.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'build\Update-PublicApi.ps1'
-$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml'; gitlab = @('.gitlab-ci.yml') }
+$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml', '.github\workflows\scorecard.yml'; gitlab = @('.gitlab-ci.yml') }
 # tests\Test-TemplateDotnet.ps1 renders the dotnet and dotnet-library-apache cases again with the same answers: change both together.
 $cases = @(
     @{ Name = 'dotnet'; Stack = 'dotnet'; Host = 'github' }
@@ -412,6 +412,10 @@ foreach ($case in $cases) {
         $releaseWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\tag-release.yml') -Raw
         $uses = [regex]::Matches($releaseWorkflow, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the release workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $releaseWorkflow
+        # The Scorecard workflow: every GitHub project gets it.
+        $scorecard = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\scorecard.yml') -Raw
+        $uses = [regex]::Matches($scorecard, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        Check "${name}: the Scorecard workflow pins each action to a full commit SHA with its tag in a comment, publishes its results with the OIDC and code scanning permissions, and reads contents by default" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and $scorecard.Contains('ossf/scorecard-action@') -and $scorecard.Contains('publish_results: true') -and $scorecard.Contains('id-token: write') -and $scorecard.Contains('security-events: write') -and $scorecard -match '(?m)^permissions:\r?\n  contents: read\r?$') $scorecard
         # The code review auto-merge workflow: every GitHub project gets it, and it merges nothing where no Dependabot pull
         # request moves the NCode Review pin.
         $autoMerge = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\code-review-auto-merge.yml') -Raw
