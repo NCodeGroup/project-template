@@ -8,3 +8,6 @@ PLAN.md
 
 # The analysis in progress: a local working file, never committed
 ANALYSIS.md
+
+# The template tests' Node.js packages, which tests/Test-Template.ps1 installs with npm ci
+/tests/node/node_modules/

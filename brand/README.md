@@ -1,6 +1,6 @@
 # NCode Logo Kit
 
-The NCode mark is `{N}`: N for NCode, inside the curly braces of code. This folder holds it as vector masters and as the PNG and ICO files that each place it appears in asks for. `build.py` draws every file here, and `template/NCodeGroup.png`, the NuGet package icon a project made from the template gets.
+The NCode mark is `{N}`: N for NCode, inside the curly braces of code. This folder holds it as vector masters and as the PNG and ICO files that each place it appears in asks for. `build.mjs` draws every file here, and `template/NCodeGroup.png`, the NuGet package icon a project made from the template gets.
 
 | Tile, blue | Tile, white | Tile, dark | Mark | Lockup |
 |---|---|---|---|---|
@@ -57,7 +57,7 @@ Contrast, as WCAG measures it: NCode Blue on white, and white on NCode Blue, 8.9
 
 - The master is drawn on a grid of 64 units from straight lines and circular arcs. The braces are a stroke of 4 units, 48 high; the N is 24 wide and 32 high, with stems of 5. Every stem lies on a whole unit, so the mark is sharp at 64 pixels and at its multiples.
 - At 16, 20, 24, 32, 40 and 48 pixels the mark has a drawing of its own, with each stem on whole pixels. A scaled-down master puts them between pixels, which is what makes a small icon look soft. The ICO files and `favicon.svg` use these drawings.
-- The wordmark is "NCode" in Inter Display Medium, version 4.000, converted to outlines, with capitals as tall and stems about as heavy as the mark's N. Inter is copyright The Inter Project Authors and licensed under the SIL Open Font License 1.1; `build.py` names the exact font file beside the outlines.
+- The wordmark is "NCode" in Inter Display Medium, version 4.000, converted to outlines, with capitals as tall and stems about as heavy as the mark's N. Inter is copyright The Inter Project Authors and licensed under the SIL Open Font License 1.1; `build.mjs` names the exact font file beside the outlines.
 - Leave clear space around the mark of at least the width of one brace, 12 of its 64 units. The files in `mark/` already hold 4 units of it at the sides and 8 above and below.
 - The smallest drawing is 16 pixels, 14 across its ink, which is also the size a badge shows the cropped mark at. Below that the braces no longer read. Keep the lockup at least 24 pixels high.
 - Don't stretch the mark, recolor it outside the palette, outline it, or set the braces in a font: a font's braces and the mark's differ.
@@ -103,9 +103,9 @@ GitHub shows the image that matches the reader's GitHub theme when a `<picture>`
 ## Build
 
 ```powershell
-uv run brand/build.py
+node brand/build.mjs
 ```
 
-uv installs the two packages the script names, numpy and Pillow, for that run. Without uv, install them and run `python brand/build.py`. The script rewrites every file here but this one and itself, and `template/NCodeGroup.png`. It reads every PNG and every ICO entry back and stops when one doesn't decode to the picture it drew. It also stops when a file breaks its platform's limit: more than 100 KB for My Apps, 200 KiB for GitLab or 1 MB for NuGet and GitHub, or a transparent pixel where the platform takes none. `--output <folder>` writes the kit elsewhere and leaves the template's icon alone.
+The script runs on the Node.js release `.node-version` names, with no packages to install. It writes every file here but this one and itself, and `template/NCodeGroup.png`, that is missing or doesn't hold what it draws, and keeps the others: a file with the same bytes, a PNG with the same pixels, or an ICO whose entries are stored the same way and hold the same pixels, so an image stays as it is while its picture does. It reads every PNG and every ICO entry back and stops when one doesn't decode to the picture it drew. It also stops when a file breaks its platform's limit: more than 100 KB for My Apps, 200 KiB for GitLab or 1 MB for NuGet and GitHub, or a transparent pixel where the platform takes none. `--output <folder>` writes the kit elsewhere and leaves the template's icon alone. `node brand/build.mjs --check` writes nothing, names each file that is missing or would change, and exits 1 when one would; `tests/Test-BrandKit.ps1` runs it in CI.
 
-To change the mark, edit `MASTER` and `FITTED` in `build.py`; to change a color, the constants above them. A project that already has an `NCodeGroup.png` keeps it, because the file is project-owned: copy the new one over it to take the new icon.
+To change the mark, edit `MASTER` and `FITTED` in `build.mjs`; to change a color, the constants above them. A project that already has an `NCodeGroup.png` keeps it, because the file is project-owned: copy the new one over it to take the new icon.

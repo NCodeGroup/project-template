@@ -4,8 +4,10 @@
 
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
-    uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML with
-    PyYAML through uv, at the version tests/requirements.txt pins. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1 and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, that the generated workflow files under template/ and at the repository root
+    uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML, the
+    pwsh run: blocks and copier.yml's _exclude patterns with the Node.js scripts in tests/node, which use the yaml and nunjucks versions tests/node/package.json
+    pins exactly; it installs them with npm ci when tests/node/node_modules doesn't hold what tests/node/package-lock.json locks, so it needs Node.js and npm
+    on PATH. It checks those scripts on small fixtures first. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1, sets up Node.js from .node-version and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, that tests/node/package.json pins every package exactly and a Dependabot npm entry keeps them current, that tests/requirements.txt pins only the Python programs the tests run and no Python file outside template/ is in the repository (ADR-0021), that the generated workflow files under template/ and at the repository root
     match a fresh run of workflow\Install-HybridWorkflow.ps1, that the installer writes .template-version and template/ has no copy of it, that the Claude Code commands and the Copilot prompts, skills and agents carry their tool's plan-worktree sections, that every executor runs its Done-when command in a child pwsh that prints exit=<code>, that the Landing section's prelude runs, dot-sourced, before the gate and each Done-when command and stops them with its error when it fails, that run-issues reaches Claude Code from run-issues.md and Copilot from run-issues-copilot.md, that address-feedback resumes a stopped run in either tool, moving a run an earlier Copilot version left on a branch into its worktree, and every other command sends its plan there, and that the workflow scripts run and New-PlanPrompt.ps1 -List shows each template's targets. It runs the code review auto-merge workflow's diff check, as rendered, against a stand-in for gh with fixture pages of changed files. It runs its merge-method choice the same way, against a stand-in that answers with fixture repository settings and branch rules. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -40,7 +42,7 @@ function Invoke-Git {
 }
 # One message per pwsh run: block in the YAML files that PowerShell can't parse, with ${{ }} expressions swapped for text.
 function Get-PwshParseError([string[]]$Files) {
-    $out = uv run --quiet --no-project --with $pyyamlPin python -c $pwshRunCheck @Files 2>&1 | Out-String
+    $out = node "$repoRoot/tests/node/pwsh-steps.mjs" @Files 2>&1 | Out-String
     if ($LASTEXITCODE) { throw $out }
     foreach ($entry in @($out | ConvertFrom-Json)) {
         $script = [regex]::Replace($entry.run, '\$\{\{.*?\}\}', 'x', 'Singleline')
@@ -174,41 +176,57 @@ $cases = @(
     @{ Name = 'dotnet-author-comment'; Stack = 'dotnet'; Host = 'github'; Data = @{ author_name = 'C# Tools; Inc.' } }
 )
 if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
-$yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
-# Prints, as JSON, every step that runs under pwsh (its own shell or its job's default) with its run: script.
-$pwshRunCheck = @'
-import sys, json, yaml
-out = []
-for path in sys.argv[1:]:
-    doc = yaml.safe_load(open(path, encoding="utf-8"))
-    if not isinstance(doc, dict):
-        continue
-    groups = []
-    doc_defaults = doc.get("defaults")
-    doc_run_defaults = doc_defaults.get("run") if isinstance(doc_defaults, dict) else None
-    doc_shell = doc_run_defaults.get("shell") if isinstance(doc_run_defaults, dict) else None
-    jobs = doc.get("jobs")
-    for job in (jobs.values() if isinstance(jobs, dict) else []):
-        if not isinstance(job, dict):
-            continue
-        defaults = job.get("defaults")
-        run_defaults = defaults.get("run") if isinstance(defaults, dict) else None
-        shell = run_defaults.get("shell") if isinstance(run_defaults, dict) else None
-        groups.append((job.get("steps"), shell or doc_shell))
-    runs = doc.get("runs")
-    if isinstance(runs, dict):
-        groups.append((runs.get("steps"), None))
-    for steps, default in groups:
-        for step in (steps if isinstance(steps, list) else []):
-            if isinstance(step, dict) and (step.get("shell") or default) == "pwsh" and isinstance(step.get("run"), str):
-                out.append({"file": path, "step": step.get("name") or step.get("id") or "", "run": step["run"]})
-print(json.dumps(out))
-'@
-# The YAML and _exclude checks run PyYAML and Jinja2 at the exact versions tests/requirements.txt pins, which Dependabot's pip entry for /tests moves, not the newest release.
-$pythonPins = [IO.File]::ReadAllLines((Join-Path $repoRoot 'tests\requirements.txt'))
-$pyyamlPin = @($pythonPins -match '^pyyaml==\d+(\.\d+)+$')[0]
-$jinja2Pin = @($pythonPins -match '^jinja2==\d+(\.\d+)+$')[0]
-if (-not $pyyamlPin -or -not $jinja2Pin) { throw 'tests/requirements.txt must pin pyyaml and jinja2 exactly, such as pyyaml==6.0.3 and jinja2==3.1.6.' }
+# The YAML, pwsh run: block and _exclude checks run the Node.js scripts in tests/node, with the yaml and nunjucks versions
+# tests/node/package.json pins exactly, which Dependabot's npm entry for /tests/node moves, not the newest release.
+# npm ci installs them when tests/node/node_modules doesn't hold the packages tests/node/package-lock.json locks.
+if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) { throw 'Node.js not found: install the release .node-version names, see CONTRIBUTING.md' }
+$nodeTests = Join-Path $repoRoot 'tests/node'
+# The packages a lockfile records, as compact JSON, without the root "" entry; empty when the file is missing or unreadable.
+function Get-LockedPackages([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return '' }
+    try { $packages = (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable).packages } catch { return '' }
+    if ($packages -isnot [Collections.IDictionary]) { return '' }
+    $packages.Remove('')
+    ConvertTo-Json -InputObject $packages -Depth 32 -Compress
+}
+$installed = Get-LockedPackages (Join-Path $nodeTests 'node_modules/.package-lock.json')
+if (-not $installed -or $installed -ne (Get-LockedPackages (Join-Path $nodeTests 'package-lock.json'))) {
+    Push-Location -LiteralPath $nodeTests
+    try { $npmOutput = npm ci --ignore-scripts --no-audit --no-fund --loglevel=error 2>&1 | Out-String }
+    finally { Pop-Location }
+    if ($LASTEXITCODE) { throw "npm ci in tests/node failed: $($npmOutput.Trim())" }
+}
+# The Node.js scripts, on small fixtures: an invalid YAML file and one with an unknown tag, patterns that exclude a path or fail without the answers, a copier.yml with no _exclude list, and a pwsh step beside a bash one.
+$nodeFixture = Join-Path $Work 'node-scripts'
+New-Item -ItemType Directory -Force $nodeFixture | Out-Null
+$fixtureGood = Join-Path $nodeFixture 'good.yml'; $fixtureBad = Join-Path $nodeFixture 'bad.yml'
+[IO.File]::WriteAllText($fixtureGood, "a: 1`n")
+[IO.File]::WriteAllText($fixtureBad, "a: [1, 2`n")
+$fixtureTag = Join-Path $nodeFixture 'tag.yml'
+[IO.File]::WriteAllText($fixtureTag, "script: !reference [.setup, script]`n")
+$fixtureOutput = node "$repoRoot/tests/node/check-yaml.mjs" $fixtureGood $fixtureBad $fixtureTag 2>&1 | Out-String
+Check 'tests/node/check-yaml.mjs: names an invalid YAML file and one with an unknown tag, and only them, and exits 1' ($LASTEXITCODE -eq 1 -and $fixtureOutput.Contains("${fixtureBad}: ") -and $fixtureOutput.Contains("${fixtureTag}: ") -and -not $fixtureOutput.Contains($fixtureGood)) $fixtureOutput.Trim()
+$fixtureOutput = node "$repoRoot/tests/node/pwsh-steps.mjs" $fixtureTag 2>&1 | Out-String
+Check 'tests/node/pwsh-steps.mjs: prints only the JSON for a file with an unknown tag' ($LASTEXITCODE -eq 0 -and $fixtureOutput.Trim() -eq '[]') $fixtureOutput.Trim()
+$fixtureCopier = Join-Path $nodeFixture 'copier-bad.yml'
+[IO.File]::WriteAllText($fixtureCopier, "_exclude:`n  - `"{% if x is defined and not x %}kept{% endif %}`"`n  - `"{% if not x %}docs{% endif %}`"`n")
+$fixtureOutput = node "$repoRoot/tests/node/check-exclude.mjs" $fixtureCopier 2>&1 | Out-String
+Check 'tests/node/check-exclude.mjs: names a pattern that renders a path without the answers, and only it, and exits 1' ($LASTEXITCODE -eq 1 -and $fixtureOutput.Trim() -eq '{% if not x %}docs{% endif %}') $fixtureOutput.Trim()
+[IO.File]::WriteAllText($fixtureCopier, "_exclude:`n  - `"{% if x is defined and x.y %}kept{% endif %}`"`n  - `"{% if x.y %}docs{% endif %}`"`n")
+$fixtureOutput = node "$repoRoot/tests/node/check-exclude.mjs" $fixtureCopier 2>&1 | Out-String
+Check 'tests/node/check-exclude.mjs: names a pattern that reads an attribute of an unanswered question, as Jinja2 fails on, and only it, and exits 1' ($LASTEXITCODE -eq 1 -and $fixtureOutput.Trim().StartsWith('{% if x.y %}docs{% endif %} (') -and -not $fixtureOutput.Contains('kept')) $fixtureOutput.Trim()
+[IO.File]::WriteAllText($fixtureCopier, "_skip_if_exists: []`n")
+$fixtureOutput = node "$repoRoot/tests/node/check-exclude.mjs" $fixtureCopier 2>&1 | Out-String
+Check 'tests/node/check-exclude.mjs: exits 1 when copier.yml has no _exclude list' ($LASTEXITCODE -eq 1 -and $fixtureOutput.Contains('_exclude is missing or not a list')) $fixtureOutput.Trim()
+$fixtureCopier = Join-Path $nodeFixture 'copier-good.yml'
+[IO.File]::WriteAllText($fixtureCopier, "_exclude:`n  - `"{% if x is defined and not x %}kept{% endif %}`"`n  - `"{% if 'a' not in (tools | default(['a'])) %}a{% endif %}`"`n")
+$fixtureOutput = node "$repoRoot/tests/node/check-exclude.mjs" $fixtureCopier 2>&1 | Out-String
+Check 'tests/node/check-exclude.mjs: exits 0 when every pattern renders empty without the answers' ($LASTEXITCODE -eq 0 -and -not $fixtureOutput.Trim()) $fixtureOutput.Trim()
+$fixtureWorkflow = Join-Path $nodeFixture 'workflow.yml'
+[IO.File]::WriteAllText($fixtureWorkflow, "on: push`njobs:`n  build:`n    defaults:`n      run:`n        shell: pwsh`n    steps:`n      - name: In pwsh`n        run: Write-Output pwsh`n      - name: In bash`n        shell: bash`n        run: echo bash`n")
+$fixtureOutput = node "$repoRoot/tests/node/pwsh-steps.mjs" $fixtureWorkflow 2>&1 | Out-String
+$fixtureSteps = if ($LASTEXITCODE -eq 0) { @($fixtureOutput | ConvertFrom-Json) } else { @() }
+Check 'tests/node/pwsh-steps.mjs: returns the pwsh step and not the bash one' ($fixtureSteps.Count -eq 1 -and $fixtureSteps[0].file -eq $fixtureWorkflow -and $fixtureSteps[0].step -eq 'In pwsh' -and $fixtureSteps[0].run -eq 'Write-Output pwsh') $fixtureOutput.Trim()
 $copierCommand = @(if (Get-Command copier -ErrorAction SilentlyContinue) { 'copier' } elseif (Get-Command uvx -ErrorAction SilentlyContinue) { 'uvx', '--from', 'copier', 'copier' } else { throw 'Copier not found. Install it with: uv tool install copier' })
 # Render every case at once, then check each: the renders don't depend on each other, and each takes seconds.
 $renders = @($cases | ForEach-Object -ThrottleLimit ([Environment]::ProcessorCount) -Parallel {
@@ -636,7 +654,7 @@ foreach ($case in $cases) {
     } | ForEach-Object Name
     Check "${name}: valid JSON" (-not $badJson) ($badJson -join ', ')
     $yamlFiles = @($files | Where-Object Extension -In '.yml', '.yaml' | ForEach-Object FullName)
-    $yamlOutput = uv run --quiet --no-project --with $pyyamlPin python -c $yamlCheck @yamlFiles 2>&1 | Out-String
+    $yamlOutput = node "$repoRoot/tests/node/check-yaml.mjs" @yamlFiles 2>&1 | Out-String
     Check "${name}: valid YAML ($($yamlFiles.Count) files)" ($LASTEXITCODE -eq 0) $yamlOutput.Trim()
     $parseErrors = @(Get-PwshParseError $yamlFiles)
     Check "${name}: every pwsh run: block parses ($($yamlFiles.Count) files)" (-not $parseErrors) ($parseErrors -join '; ')
@@ -733,9 +751,24 @@ $ownCooldowns = [regex]::Matches($ownDependabot, '(?m)^    cooldown:\r?\n      d
 $ownGrouped = [regex]::Matches($ownDependabot, '(?m)^    groups:\r?$').Count
 $ownSecurity = [regex]::Matches($ownDependabot, '(?m)^      [\w-]+-security:\r?\n        applies-to: security-updates\r?\n        patterns: \["\*"\]\r?$').Count
 Check 'repository: every entry in .github/dependabot.yml waits a three-day cooldown and gives security updates a group of its own' ($ownEcosystems -gt 0 -and $ownCooldowns -eq $ownEcosystems -and $ownGrouped -eq $ownEcosystems -and $ownSecurity -eq $ownEcosystems) $ownDependabot
-$excludeCheck = 'import sys, yaml, jinja2; c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); e = jinja2.Environment(); bad = [p for p in c["_exclude"] if e.from_string(p).render().strip()]; print("; ".join(bad)); sys.exit(1 if bad else 0)'
-$excludeOutput = uv run --quiet --no-project --with $pyyamlPin --with $jinja2Pin python -c $excludeCheck (Join-Path $repoRoot 'copier.yml') 2>&1 | Out-String
+$excludeOutput = node "$repoRoot/tests/node/check-exclude.mjs" (Join-Path $repoRoot 'copier.yml') 2>&1 | Out-String
 Check 'copier.yml: _exclude patterns exclude nothing without the answers' ($LASTEXITCODE -eq 0) $excludeOutput.Trim()
+# The template tests' Node.js packages: CI sets up the Node.js release .node-version names before the suites run, and tests/node pins every package exactly, which Dependabot's npm entry for /tests/node moves.
+$ownNodeVersionPath = Join-Path $repoRoot '.node-version'
+$ownNodeVersion = if (Test-Path -LiteralPath $ownNodeVersionPath) { [IO.File]::ReadAllText($ownNodeVersionPath).Trim() } else { '' }
+$setupNodeAt = $ciWorkflow.IndexOf('uses: actions/setup-node@')
+Check 'repository: CI sets up Node.js from .node-version with actions/setup-node, after the checkout and before the suites run' ($ownNodeVersion -match '^\d+(\.\d+){0,2}$' -and $ciWorkflow -match '(?m)^      - uses: actions/setup-node@[0-9a-f]{40} # v\d+\.\d+\.\d+\r?\n        with:\r?\n          node-version-file: "\.node-version"\r?$' -and [regex]::Matches($ciWorkflow, 'uses: actions/setup-node@').Count -eq 1 -and $ciWorkflow.IndexOf('uses: actions/checkout@') -lt $setupNodeAt -and $setupNodeAt -lt $ciWorkflow.IndexOf('run: ${{ matrix.run }}')) ".node-version: $ownNodeVersion | $(@($ciWorkflow -split '\r?\n' -match 'setup-node|node-version') -join ' / ')"
+$testPackages = [IO.File]::ReadAllText((Join-Path $repoRoot 'tests\node\package.json')) | ConvertFrom-Json -AsHashtable
+$testDependencies = @(foreach ($group in 'dependencies', 'devDependencies', 'optionalDependencies') { if ($testPackages[$group]) { $testPackages[$group].GetEnumerator() } })
+$loosePins = @($testDependencies | Where-Object { $_.Value -notmatch '^\d+\.\d+\.\d+$' } | ForEach-Object { "$($_.Key)@$($_.Value)" })
+Check 'repository: tests/node/package.json pins every package exactly, and Dependabot''s npm entry for /tests/node keeps the pins current' ($testDependencies.Count -gt 0 -and -not $loosePins -and $ownDependabot -match '(?m)^  - package-ecosystem: npm\r?\n    directory: /tests/node\r?$') "loose: $($loosePins -join ', ')"
+# tests/requirements.txt pins the Python programs the tests run, Copier and pre-commit, and nothing the tests import: the tests' own tooling is Node.js (ADR-0021).
+$pythonPins = @(([IO.File]::ReadAllLines($copierPinPath)) | Where-Object { $_.Trim() -and -not $_.TrimStart().StartsWith('#') })
+$pythonPinNames = @($pythonPins | ForEach-Object { ($_ -split '==', 2)[0].Trim().ToLowerInvariant() } | Sort-Object)
+Check 'repository: tests/requirements.txt pins only the Python programs the tests run, copier and pre-commit, each exactly' (($pythonPinNames -join ',') -eq 'copier,pre-commit' -and -not ($pythonPins | Where-Object { $_ -notmatch '^[a-z0-9-]+==\d+(\.\d+)+$' })) ($pythonPins -join ' / ')
+# Python files Git tracks, or would add, outside template/ that the working tree still has: the repository's own tooling is Node.js, then Go, then PowerShell (ADR-0021).
+$ownPython = @(git -C $repoRoot -c core.quotePath=false ls-files --cached --others --exclude-standard -- '*.py' ':(exclude)template/' | Select-Object -Unique | Where-Object { Test-Path -LiteralPath (Join-Path $repoRoot $_) })
+Check 'repository: no Python file outside template/ (ADR-0021: tooling is Node.js, then Go, then PowerShell)' (-not $ownPython) ($ownPython -join ', ')
 $executorChecks = @(
     @{ Path = 'template\.github\agents\copilot-implementer.agent.md'; Text = "model: 'Claude Sonnet 5.5 (copilot)'" }
     @{ Path = 'template\.github\agents\plan-executor.agent.md'; Text = 'model: claude-sonnet-5.5' }
