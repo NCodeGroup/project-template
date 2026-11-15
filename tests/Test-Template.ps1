@@ -248,6 +248,11 @@ foreach ($case in $cases) {
         $apiTracked = ($packages -match '<PackageVersion Include="Microsoft\.CodeAnalysis\.PublicApiAnalyzers" Version="\d+\.\d+\.\d+" />') -and $buildProps.Contains('<PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers"')
         $versionPinned = $buildProps.Contains('Name="ProjectTemplatePinAssemblyVersion"')
         Check "${name}: the public API is tracked and AssemblyVersion pinned to the major version only for a library" ($apiTracked -eq $library -and $versionPinned -eq $library) "$packages | $buildProps"
+        $versionFile = Join-Path $dest 'version.json'
+        $versionJson = if (Test-Path -LiteralPath $versionFile) { Get-Content -LiteralPath $versionFile -Raw | ConvertFrom-Json }
+        $nbgvWired = ($packages -match '<PackageVersion Include="Nerdbank\.GitVersioning" Version="\d+\.\d+\.\d+" />') -and $buildProps.Contains('<PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />') -and $buildProps.Contains("Exists('`$(MSBuildThisFileDirectory)../version.json')")
+        $versionFileOk = if ($library) { $versionJson -and $versionJson.version -eq '0.1.0' -and $versionJson.assemblyVersion.precision -eq 'major' -and $versionJson.nuGetPackageVersion.semVer -eq 2 -and $versionJson.cloudBuild.setVersionVariables -eq $false -and (@($versionJson.publicReleaseRefSpec) -contains '^refs/tags/v\d+\.\d+\.\d+') } else { $true }
+        Check "${name}: a library versions from version.json through Nerdbank.GitVersioning, and only a library" ((Test-Path -LiteralPath $versionFile) -eq $library -and $nbgvWired -eq $library -and $versionFileOk) "$packages | $buildProps"
         $agentsText = Get-Content -LiteralPath (Join-Path $dest 'AGENTS.md') -Raw
         Check "${name}: AGENTS.md names the Definition of Done and gates each push with it" ($agentsText.Contains('- Definition of Done: `./build/dod.ps1`') -and $agentsText -match '(?m)^- gate: \./build/dod\.ps1 -Fast\r?$' -and ($agentsText.Contains('./build/Update-PublicApi.ps1') -eq $library)) $agentsText
         # A context's migrations folder named for its class becomes a namespace segment that hides the class (CS0118).

@@ -63,6 +63,11 @@
     <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
+  <!-- Nerdbank.GitVersioning stamps every assembly and package with the version in the root version.json: exactly that version from a release tag or with -p:PublicRelease=true, <version>-g<commit> from any other commit, and its assemblyVersion keeps AssemblyVersion on the major version. Without version.json, the version comes from -p:Version and the target below pins AssemblyVersion (ADR-0136, ADR-0138). -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)../version.json')">
+    <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />
+  </ItemGroup>
+
   <!-- The package's project page and release notes point at the repository Source Link finds from the git remote, unless the project sets them. -->
   <Target Name="ProjectTemplateRepositoryLinks" BeforeTargets="GenerateNuspec" DependsOnTargets="InitializeSourceControlInformation" Condition="'$(RepositoryUrl)' != '' or '$(PrivateRepositoryUrl)' != ''">
     <PropertyGroup>
@@ -75,7 +80,7 @@
   </Target>
 
   <!-- Semantic versioning for the assemblies: AssemblyVersion moves only with the major version, so a minor or patch upgrade is a drop-in replacement and two majors load side by side; FileVersion and InformationalVersion keep the exact version. A target, so it reads the final Version, from the project file or the command line. -->
-  <Target Name="ProjectTemplatePinAssemblyVersion" BeforeTargets="GetAssemblyVersion" Condition="'$(AssemblyVersion)' == ''">
+  <Target Name="ProjectTemplatePinAssemblyVersion" BeforeTargets="GetAssemblyVersion" Condition="'$(AssemblyVersion)' == '' and !Exists('$(MSBuildThisFileDirectory)../version.json')">
     <PropertyGroup>
       <FileVersion Condition="'$(FileVersion)' == ''">$(Version.Split('-')[0].Split('+')[0])</FileVersion>
       <AssemblyVersion>$([System.Version]::Parse($(Version.Split('-')[0].Split('+')[0])).Major).0.0.0</AssemblyVersion>
