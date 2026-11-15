@@ -31,3 +31,35 @@ for the review.
    bot opened) or the run fails, the person decides: re-run the job, comment `/review`, or merge without it.
 4. `/run-issues` and `/run-feedback` wait for NCode Review's review of the commit they pushed before they recommend the
    merge.
+
+## Options considered
+
+- Require the "Code review" check or the `review` job in the ruleset. Rejected: the check run is on the commit the
+  review read and a push starts no review, so each pushed commit would wait for a `/review` comment, a model call,
+  before it could merge; an outage, an expired key or a failed run would block every merge, and the ruleset has no
+  bypass actor to get past it ([ADR-0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md)); and
+  a skipped required job counts as passing, so a pull request the workflow skips would pass without a review all the
+  same.
+- Keep it advice that the person who merges waits for (chosen): once the review posts, its threads block the merge like
+  any other, and an outage costs only the review.
+
+## Consequences
+
+- A merge before the review posts its findings skips them. Waiting is the person's step, and nothing enforces it.
+- Auto-merge waits only for the required checks, so turned on before the review posts, it can merge without it: the
+  person turns it on once the review is in ([ADR-0006](0006-a-person-merges-every-pull-request.md)).
+- An outage or a failed review never blocks a merge.
+- A project that wants the review to gate its merges writes a record that supersedes this one, adds the check to its
+  ruleset and says how a merge gets past an outage.
+
+## References
+
+- `.github/workflows/code-review.yml`: when the review runs, and the `skip-review` label.
+- `tools/Set-RepositoryBaseline.ps1` in the project template's repository: `$excludedChecks`, the checks
+  `-RequireChecks auto` never requires.
+- [ADR-0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md): the default branch accepts changes
+  only through pull requests that pass CI.
+- [ADR-0006](0006-a-person-merges-every-pull-request.md): a person merges every pull request.
+- [ADR-0014](0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md): every pull request
+  discussion is remediated and replied to before it merges.
+- [NCodeGroup/project-template#361](https://github.com/NCodeGroup/project-template/issues/361): the decision's issue.
