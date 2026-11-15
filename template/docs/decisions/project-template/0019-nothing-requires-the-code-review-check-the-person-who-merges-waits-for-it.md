@@ -1,6 +1,6 @@
 # 0019. Nothing requires the Code review check; the person who merges waits for it
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0022)
 - **Date:** 2026-11-14
 
 ## Context
@@ -28,7 +28,8 @@ for the review.
    [ADR-0014](0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md) says, before merging
    or turning on auto-merge.
 3. When no review comes, because the workflow skips the pull request (a `skip-review` label, a fork, a pull request a
-   bot opened) or the run fails, the person decides: re-run the job, comment `/review`, or merge without it.
+   bot opened) or the run fails, the person decides: re-run the job, comment `/review`, or merge without it. Where the ruleset requires an approval ([ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md)), a
+   maintainer approves a pull request the workflow skips instead.
 4. `/run-issues` and `/run-feedback` recommend the merge once NCode Review's findings are answered and its review of the
    last push they asked for is in; after `max-review-rounds` rounds they ask for no further review, so a push after that
    has no review before their recommendation, which doesn't replace the person's wait.
@@ -49,7 +50,8 @@ for the review.
 - A merge before the review posts its findings skips them. Waiting is the person's step, and nothing enforces it.
 - Auto-merge waits only for the required checks, so turned on before the review posts, it can merge without it: the
   person turns it on once the review is in ([ADR-0006](0006-a-person-merges-every-pull-request.md)).
-- An outage or a failed review never blocks a merge.
+- An outage or a failed review never blocks a merge, except where the ruleset requires NCode Review's approval
+  ([ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md)): there a merge waits for an approval, or for the maintainer to change the ruleset.
 - A project that wants the review to gate its merges writes a record that supersedes this one, adds the check to its
   ruleset and says how a merge gets past an outage.
 
