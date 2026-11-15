@@ -35,6 +35,11 @@
         An organization read that fails other than with HTTP 403 or 404 is named in the policy's line. GitHub's
         default policy blocks pull_request_target on a public repository without one from December 2, 2026.
 
+    Where the default branch's .github/workflows/code-review.yml passes approve: true (NCode Review approves a clean
+    review, ADR-0022), the "Protect main" ruleset it makes requires one approval, with approval of the last push; it
+    never requires approval of the last push without an approval. A file it can't read is named, and the ruleset then
+    requires no approval.
+
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
     main" ruleset an older version of this script made, when it is off, sending only the ruleset's rules with that one
@@ -251,6 +256,18 @@ function Get-PassingChecks([string]$Name, [string]$Branch) {
     [pscustomobject]@{ Number = $latest.number; Checks = @($passed); LeftOut = @($leftOut) }
 }
 
+# Reads the default branch's .github/workflows/code-review.yml to see whether NCode Review approves: its job passes
+# approve: true (ADR-0022). Approver is $true then; Why says why the file couldn't be read, and is $null when it was
+# read or isn't there (404), so a repository without the workflow just gets no approval requirement.
+function Read-ReviewApproval([string]$Name, [string]$Branch) {
+    $read = Invoke-HostApi gh "repos/$Owner/$Name/contents/.github/workflows/code-review.yml?ref=$Branch"
+    if ($read.Status -eq 404) { return [pscustomobject]@{ Approver = $false; Why = $null } }
+    if ($read.Status -ne 200) { return [pscustomobject]@{ Approver = $false; Why = Get-FailureReason $read } }
+    $text = Get-ContentText $read.Body
+    if ($null -eq $text) { return [pscustomobject]@{ Approver = $false; Why = 'the contents API sent no base64 UTF-8 text' } }
+    [pscustomobject]@{ Approver = $text -match '(?m)^\s+approve:\s*["'']?true["'']?\s*(#.*)?$'; Why = $null }
+}
+
 function Set-Baseline([string]$Name) {
     $info = Invoke-GhJson @('api', "repos/$Owner/$Name")
     if ($info.archived -or $info.fork) { Write-Host "${Name}: skipped (archived or fork)"; return }
@@ -258,7 +275,9 @@ function Set-Baseline([string]$Name) {
         Invoke-GhJson @('api', "repos/$Owner/$Name/rulesets/$($summary.id)")
     })
     # A repository skipped for its default branch gets nothing else either: the reason printed says what to fix first.
-    if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets)) { return }
+    $review = Read-ReviewApproval $Name $info.default_branch
+    if ($review.Why) { Write-Host "${Name}: couldn't read .github/workflows/code-review.yml to see whether NCode Review approves ($($review.Why)); the ruleset requires no approval" }
+    if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets -Approver $review.Approver)) { return }
     Set-TagRuleset $Name $rulesets
     Set-SecuritySettings $Name $info
     Set-AutoMerge $Name $info
@@ -301,7 +320,7 @@ function Write-SuiteNotice([string]$Name) {
 # repository, which then changes nothing, and $true otherwise: done, shown by -WhatIf, or left alone.
 function Set-BranchRuleset {
     [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Name, [string]$Branch, [object[]]$Rulesets)
+    param([string]$Name, [string]$Branch, [object[]]$Rulesets, [bool]$Approver = $false)
     $own = $null
     $others = @()
     foreach ($full in $Rulesets) {
@@ -324,7 +343,7 @@ function Set-BranchRuleset {
         if ($own.rules.type -contains 'code_scanning') { Write-SuiteNotice $Name }
         return $true
     }
-    if ($own) { Write-LastPushNotice $Name $own }
+    if ($own -and -not $Approver) { Write-LastPushNotice $Name $own }
     $checks = @($RequireChecks)
     if ($autoChecks) {
         $found = Get-PassingChecks $Name $Branch
@@ -355,10 +374,13 @@ function Set-BranchRuleset {
 
     # Approval of the last push stays off while no approval is required: GitHub then wants someone other than the pusher
     # to approve the newest push, which blocks every merge where only the author can approve (#385). An update keeps the
-    # approval settings of the ruleset it made, so it never loosens them.
+    # approval settings of the ruleset it made, so it never loosens them. Where code-review.yml passes approve: true,
+    # one approval is required, and then approval of the last push too (ADR-0022).
     $ownPull = if ($own) { @($own.rules | Where-Object type -eq 'pull_request')[0].parameters } else { $null }
     $approvals = if ($ownPull) { [int]$ownPull.required_approving_review_count } else { 0 }
+    $approvals = [Math]::Max($approvals, [int]$Approver)
     $lastPush = $ownPull.require_last_push_approval -eq $true
+    $lastPush = $lastPush -or $Approver
     $rules = @(
         @{ type = 'deletion' },
         @{ type = 'non_fast_forward' },
@@ -396,7 +418,7 @@ function Set-BranchRuleset {
     } | ConvertTo-Json -Depth 10
 
     $verb = if ($own) { 'update' } else { 'create' }
-    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
+    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($Approver) { ', one required approval, as code-review.yml passes approve: true' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) {
         Write-Host "would: $summary"
         if ($autoChecks) {

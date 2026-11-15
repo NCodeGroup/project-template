@@ -281,8 +281,11 @@ $bareRuleset = New-Ruleset 'owner rules' -Threads $false
 $bareRuleset.rules[2].Remove('parameters')
 $reviewWorkflows = @('.github/workflows/code-review.yml', '.github/workflows/code-review-auto-merge.yml')
 $dispatchYaml = "name: Code review`n`non:`n  pull_request_target:`n    types: [opened, reopened, ready_for_review, closed]`n  issue_comment:`n    types: [created]`n  workflow_dispatch:`n`npermissions: {}`n`njobs:`n  review:`n    runs-on: ubuntu-latest`n"
+$approveYaml = "on:`n  pull_request_target:`njobs:`n  review:`n    steps:`n      - uses: NCodeGroup/code-review@x`n        with:`n          approve: true`n"
 $repos = @{
     fresh = New-Repo
+    freshApprover = New-Repo -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
+    freshNotApprover = New-Repo -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml.Replace('approve: true', 'approve: false') }
     extendedAlready = New-Repo -Suite 'extended'
     suiteUnreported = New-Repo -Suite ''
     switchRefused = New-Repo -SwitchFails $true
@@ -457,6 +460,16 @@ try {
     Check 'create: every conversation must be resolved before a merge' ($pr.parameters.required_review_thread_resolution -eq $true) ($pr.parameters | ConvertTo-Json -Compress)
     # A stand-in can't show what GitHub enforces: on 2026-11-15 NCodeGroup/Buffers#62 was BLOCKED, "Approval required", with require_last_push_approval on and no approval required, and CLEAN once it was off (#385).
     Check 'create: stale reviews are dismissed on push, and the last push needs no approval while no approval is required' (($pr.parameters.dismiss_stale_reviews_on_push -eq $true) -and ($pr.parameters.require_last_push_approval -eq $false) -and ($pr.parameters.required_approving_review_count -eq 0)) ($pr.parameters | ConvertTo-Json -Compress)
+
+    # Where code-review.yml passes approve: true, NCode Review's approval is the one required (ADR-0022).
+    foreach ($case in @(@('freshApprover', 1, $true), @('freshNotApprover', 0, $false), @('reviewedTemplate', 1, $true))) {
+        $r = Invoke-Baseline @('-Repo', $case[0])
+        $ap = ($r.Body.rules | Where-Object type -eq 'pull_request').parameters
+        Check "approval: $($case[0]) creates the ruleset with $($case[1]) required approval(s) and last-push approval $($case[2])" (($ap.required_approving_review_count -eq $case[1]) -and ($ap.require_last_push_approval -eq $case[2]) -and ($ap.dismiss_stale_reviews_on_push -eq $true) -and ($r.Output.Contains('one required approval') -eq $case[2])) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    }
+    $r = Invoke-Baseline @('-Repo', 'workflowsUnreadable')
+    $ap = ($r.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'approval: a code-review.yml it can''t read is named, and the ruleset requires no approval' (($ap.required_approving_review_count -eq 0) -and $r.Output.Contains("workflowsUnreadable: couldn't read .github/workflows/code-review.yml to see whether NCode Review approves (HTTP 500")) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
 
     $r = Invoke-Baseline @('-Repo', 'extendedAlready')
     Check 'create: a setup already on the extended suite is not changed' (($r.Changes -join '|') -notmatch 'default-setup' -and $r.Output -notmatch 'query suite') "$($r.Changes -join '|') $($r.Output)"
