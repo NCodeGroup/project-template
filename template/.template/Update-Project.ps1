@@ -131,12 +131,18 @@ function Get-PreReleaseAnswer {
     'tracked'
 }
 
+# An existing project is not opted in to the C# formatter: false when its answers have no csharp_format and -Data sets none.
+function Get-CSharpFormatAnswer {
+    if (-not (Get-Answer 'csharp_format') -and -not $Data.ContainsKey('csharp_format')) { 'false' }
+}
+
 # Render the template at a version into a folder with the project's answers;
 # false, with a warning that says why, when Copier can't.
 function Invoke-TemplateRender([string]$Version, [string]$Folder) {
     $renderArgs = @('copy', '--defaults', '--quiet', '--vcs-ref', $Version, '--data-file', (Join-Path $project '.copier-answers.yml'))
     foreach ($k in $Data.Keys) { $renderArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
     if (-not $Data.ContainsKey('pre_release')) { $renderArgs += '--data', "pre_release=$(Get-PreReleaseAnswer)" }
+    $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $renderArgs += '--data', "csharp_format=$csharpFormat" }
     $copierOutput = [Collections.Generic.List[string]]::new()
     try { Invoke-Copier @renderArgs $TemplateClone $Folder | ForEach-Object { $copierOutput.Add("$_") }; $true }
     catch { Write-Warning ((@("Copier couldn't render template $Version with this project's answers: $_") + $copierOutput) -join "`n"); $false }
@@ -589,7 +595,8 @@ try {
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
-        Invoke-Copier recopy --force --quiet --vcs-ref :current: @exclude
+        $recopyData = @(); $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $recopyData = '--data', "csharp_format=$csharpFormat" }
+        Invoke-Copier recopy --force --quiet --vcs-ref :current: @recopyData @exclude
         $reset = @(Get-Change)
         # A template-owned file that the project's version skips only through a name without a /, which Copier matches in every folder,
         # and that the target version doesn't skip, was never updated, such as docs/decisions/project-template/README.md. Reset it to the
@@ -634,6 +641,7 @@ try {
 
         $copierArgs = @('update', '--defaults', '--quiet', '--vcs-ref', $to)
         foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
+        $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $copierArgs += '--data', "csharp_format=$csharpFormat" }
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
         foreach ($file in $deleted) { $copierArgs += '--exclude', "/$file" }

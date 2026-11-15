@@ -116,6 +116,8 @@ function Get-AdoptionAnswers([string]$Path) {
     # A .NET, Python or other repository with a frontend or Node.js tooling needs Node.js too; a Node.js stack's default is already yes.
     if ($stack -ne 'node' -and (Test-NodeUse $Path)) { $answers.uses_node = $true }
     if ($stack -eq 'dotnet') {
+        # An adopted repository keeps its formatting until it opts in: csharp_format = $true, then dotnet csharpier format .
+        $answers.csharp_format = $false
         $props = Join-Path $Path 'Directory.Build.props'
         if (Test-Path -LiteralPath $props) {
             $text = Get-Content -LiteralPath $props -Raw
