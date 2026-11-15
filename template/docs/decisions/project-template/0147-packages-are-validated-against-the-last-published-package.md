@@ -1,6 +1,6 @@
 # 0147. Each pack is validated against the last published package
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0150)
 - **Date:** 2026-11-14
 
 ## Context
