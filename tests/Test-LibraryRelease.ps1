@@ -196,7 +196,7 @@ foreach ($source in $sources.Keys) {
     }
 }
 
-# Get-PublishedPackageVersion exists only in .template\Update-Project.ps1; Fetch stands in for nuget.org.
+# Get-PublishedPackageVersion: Fetch stands in for nuget.org.
 $published = Join-Path $Work 'published'
 Write-Text (Join-Path $published 'src/Foo/Foo.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
 Write-Text (Join-Path $published 'src/Foo.Tests/Foo.Tests.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
@@ -211,13 +211,20 @@ $fetch = {
     if ($Uri -match '/broken/') { throw 'offline' }
     @{ versions = '1.0.0', '1.1.0', '2.0.0-rc.1' }
 }
-Push-Location $published
-try { $versions = @(Get-PublishedPackageVersion -Fetch $fetch) }
-finally { Pop-Location }
-$foo = @($versions | Where-Object Id -eq 'Foo')
-Check 'update: Get-PublishedPackageVersion: only the packable project is named, with the newest stable version' ($foo.Count -eq 1 -and $foo[0].Version -eq '1.1.0' -and -not ($versions | Where-Object { $_.Id -in 'Foo.Tests', 'Tool' })) "Got '$($versions | ForEach-Object { "$($_.Id) $($_.Version)" })'"
-Check 'update: Get-PublishedPackageVersion: a lookup that throws yields nothing' (-not ($versions | Where-Object Id -eq 'Broken')) "Got '$($versions | ForEach-Object { $_.Id })'"
-Check 'update: Get-PublishedPackageVersion: a PackageId is queried in lower case' ($queried -contains 'https://api.nuget.org/v3-flatcontainer/other.name/index.json') "Queried '$($queried -join ', ')'"
+$publishedCalls = [ordered]@{
+    update = { Get-PublishedPackageVersion -Fetch $fetch }
+    adopt  = { Adoption\Get-PublishedPackageVersion -Fetch $fetch }
+}
+foreach ($source in $publishedCalls.Keys) {
+    $queried.Clear()
+    Push-Location $published
+    try { $versions = @(& $publishedCalls[$source]) }
+    finally { Pop-Location }
+    $foo = @($versions | Where-Object Id -eq 'Foo')
+    Check "${source}: Get-PublishedPackageVersion: only the packable project is named, with the newest stable version" ($foo.Count -eq 1 -and $foo[0].Version -eq '1.1.0' -and -not ($versions | Where-Object { $_.Id -in 'Foo.Tests', 'Tool' })) "Got '$($versions | ForEach-Object { "$($_.Id) $($_.Version)" })'"
+    Check "${source}: Get-PublishedPackageVersion: a lookup that throws yields nothing" (-not ($versions | Where-Object Id -eq 'Broken')) "Got '$($versions | ForEach-Object { $_.Id })'"
+    Check "${source}: Get-PublishedPackageVersion: a PackageId is queried in lower case" ($queried -contains 'https://api.nuget.org/v3-flatcontainer/other.name/index.json') "Queried '$($queried -join ', ')'"
+}
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Library release check tests: FAILED ($($failures.Count))"; exit 1 }
