@@ -335,6 +335,53 @@ function Move-PackageVersionsToCentral([string]$Path) {
     $lines
 }
 
+# Drops the repository's own Nerdbank.GitVersioning reference, since build/ProjectTemplate.props references it too once
+# version.json exists and two references fail the build (NU1504, NU1506). A text edit, like Move-PackageVersionsToCentral.
+# Returns one File and Version object per edited file.
+function Remove-GitVersioningReference([string]$Path) {
+    $root = (Resolve-Path -LiteralPath $Path).Path.TrimEnd('\', '/')
+    $referenceRegex = [regex]::new('(?s)[ \t]*<PackageReference\b[^>]*?\bInclude="Nerdbank\.GitVersioning"(?:[^>/]|/(?!>))*(?:/>|>.*?</PackageReference>)[ \t]*\r?\n?')
+    $emptyGroupRegex = [regex]::new('(?s)[ \t]*<ItemGroup>\s*</ItemGroup>[ \t]*\r?\n?')
+    $versionTagRegex = [regex]::new('<PackageVersion\b[^>]*\bInclude="Nerdbank\.GitVersioning"[^>]*/>')
+    $versionLineRegex = [regex]::new('[ \t]*<PackageVersion\b[^>]*\bInclude="Nerdbank\.GitVersioning"[^>]*/>[ \t]*\r?\n?')
+    $dropped = [Collections.Generic.List[object]]::new()
+    foreach ($file in Get-MSBuildFile $Path) {
+        $text = [IO.File]::ReadAllText($file.FullName)
+        $version = $null
+        if ($file.Name -eq 'Directory.Packages.props') {
+            if ($versionTagRegex.Matches($text).Count -lt 2) { continue }
+            $state = @{ Count = 0; Version = $null }
+            $evaluator = [Text.RegularExpressions.MatchEvaluator] {
+                param($m)
+                $state.Count++
+                if ($state.Count -eq 1) { return $m.Value }
+                $v = [regex]::Match($m.Value, '\bVersion="([^"]*)"')
+                if ($v.Success) { $state.Version = $v.Groups[1].Value }
+                ''
+            }
+            $new = $versionLineRegex.Replace($text, $evaluator)
+            $version = $state.Version
+        }
+        else {
+            $state = @{ Version = $null }
+            $evaluator = [Text.RegularExpressions.MatchEvaluator] {
+                param($m)
+                $v = [regex]::Match($m.Value, '\bVersion="([^"]*)"')
+                if ($v.Success) { $state.Version = $v.Groups[1].Value }
+                ''
+            }
+            $new = $referenceRegex.Replace($text, $evaluator)
+            if ($new -ne $text) { $new = $emptyGroupRegex.Replace($new, '') }
+            $version = $state.Version
+        }
+        if ($new -eq $text) { continue }
+        [IO.File]::WriteAllText($file.FullName, $new, [Text.UTF8Encoding]::new($false))
+        $relative = $file.FullName.Substring($root.Length).TrimStart('\', '/') -replace '\\', '/'
+        $dropped.Add([pscustomobject]@{ File = $relative; Version = $version })
+    }
+    $dropped.ToArray()
+}
+
 # Files that list the build's files one by one, so a file the build newly imports must be added to each: the
 # .dockerignore files, and the CI files that name Directory.Build.props (such as in a cache key).
 function Get-BuildFileList([string]$Path) {
@@ -689,4 +736,4 @@ function Update-VersionFile {
     $result
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup
