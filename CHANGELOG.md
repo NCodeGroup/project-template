@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.95.0] - 2026-11-15
+
+### Added
+
+- Every project's template rules name the languages its tooling is written in: Node.js first, which nvs and `.node-version` already provide, then Go, for a tool that must ship as one self-contained binary, then PowerShell 7, for glue and for the scripts that set up the toolchain. Python is left out of the toolchain, so agents add no Python script, `requirements.txt` or `pip` or `uv` step for tooling and port a Python tool they change; a Python program such as Copier still runs as it is, and a project's own code stays in its stack's language. A project without `uses_node` is told how to turn it on. ([ADR-0021](template/docs/decisions/project-template/0021-tooling-is-written-in-nodejs-then-go-then-powershell.md))
+- `/plan-template-update` searches a project's own tooling for a language ADR-0021 doesn't list, such as a Python script or a `pip` step in CI, and lists a follow-up to port each one, so the rule reaches the tooling a project already has when it updates to this version.
+
+### Changed
+
+- The template's own tests run their YAML and `_exclude` checks on Node.js, with the yaml and nunjucks packages pinned in `tests/node/package.json`, in place of PyYAML and Jinja2 through uv; the YAML check reads a workflow's `on:` key as GitHub does. `tests/requirements.txt` pins only Copier and pre-commit, and contributors need the Node.js release the repository's `.node-version` names.
+- The logo kit generator is `brand/build.mjs`, on Node.js with no packages, drawing the same files pixel for pixel; `node brand/build.mjs --check` says whether every committed file matches, and CI runs it through `tests/Test-BrandKit.ps1`.
+
 ## [0.94.0] - 2026-11-15
 
 ### Added
@@ -1514,7 +1526,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.94.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.95.0...HEAD
+[0.95.0]: https://github.com/NCodeGroup/project-template/compare/v0.94.0...v0.95.0
 [0.94.0]: https://github.com/NCodeGroup/project-template/compare/v0.93.0...v0.94.0
 [0.93.0]: https://github.com/NCodeGroup/project-template/compare/v0.92.0...v0.93.0
 [0.92.0]: https://github.com/NCodeGroup/project-template/compare/v0.91.0...v0.92.0
