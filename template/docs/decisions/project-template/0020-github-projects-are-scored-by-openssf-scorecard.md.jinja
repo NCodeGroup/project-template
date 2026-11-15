@@ -12,8 +12,9 @@ person, a second reviewer or a registration the template cannot make.
 ## Decision
 
 Every GitHub project runs `.github/workflows/scorecard.yml`. The workflow publishes the score for the README badge and
-uploads its findings to code scanning. A private repository deletes the workflow with the `project_owned_files`
-answer, because publishing the score needs a public repository.
+uploads its findings to code scanning. A private repository must list `.github/workflows/scorecard.yml` in its
+`project_owned_files` answer and delete it, because publishing the score needs a public repository: the template cannot
+see a repository's visibility, so it does not leave the workflow out by itself.
 
 The table lists each check, what the template does for it and what needs a person.
 
@@ -22,7 +23,7 @@ The table lists each check, what the template does for it and what needs a perso
 | Binary-Artifacts | Commits no binary files. | Nothing. |
 | Dangerous-Workflow | No workflow runs untrusted pull request code with a privileged token. | Nothing. |
 | Pinned-Dependencies | Workflow actions are pinned by commit SHA (ADR-0008). | Nothing. |
-| Token-Permissions | Every workflow has a top-level read-only token; job-level write is only in `tag-release.yml`, `code-review-auto-merge.yml` and `release-provenance.yml`. | Nothing. |
+| Token-Permissions | Every workflow has a top-level read-only token; job-level write is only where a job needs it: `contents: write` in `tag-release.yml`, `code-review-auto-merge.yml` and, for a library, `release-provenance.yml`; `security-events: write` and `id-token: write` in `scorecard.yml`; `id-token: write` in a library's `publish.yml`. | Nothing. |
 | Dependency-Update-Tool | Dependabot is configured. | Nothing. |
 | Security-Policy | `SECURITY.md` ships. | Nothing. |
 | License | `LICENSE` ships. | Nothing. |
@@ -50,8 +51,8 @@ The table lists each check, what the template does for it and what needs a perso
 
 ## Consequences
 
-- A solo project's score tops out below 10, and the README says why.
-- A private repository deletes the workflow, and its score is not published.
+- A solo project's score tops out below 10, for the reasons in the table's last column: Code-Review and Contributors need other people, and Branch-Protection's approval tiers need a second reviewer.
+- A private repository lists the workflow in `project_owned_files` and deletes it; until it does, the workflow fails to publish its score.
 
 ## References
 
