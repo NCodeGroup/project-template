@@ -431,6 +431,73 @@ function Get-PublishedPackageVersion {
     }
 }
 
+# A deliberate copy of tools/adopt/Adoption.psm1's Get-NuGetLogistics: change both, or tests\Test-NuGetLogistics.ps1 fails.
+function Get-NuGetLogistics {
+    $root = (Get-Location).ProviderPath
+    $files = @(Get-ChildItem -LiteralPath . -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+            $path = $_.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
+            if ("/$path" -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]') { [pscustomobject]@{ Path = $path; Name = $_.Name; Full = $_.FullName } }
+        })
+    $files = @($files | Sort-Object { $_.Path } -CaseSensitive)
+    $projectFiles = @($files | Where-Object { $_.Path -ne 'build/ProjectTemplate.props' -and $_.Name -match '\.(csproj|props)$' })
+    $mentioning = @($files | Where-Object { $_.Name -match '\.(csproj|props|targets|slnx)$' } | ForEach-Object { [pscustomobject]@{ Path = $_.Path; Text = Get-Content -LiteralPath $_.Full -Raw } })
+
+    foreach ($file in $files | Where-Object { $_.Name -like '*.props' -and $_.Name -notlike 'Directory.*.props' -and $_.Name -ne 'ProjectTemplate.props' }) {
+        if ($mentioning | Where-Object { $_.Path -ne $file.Path -and $_.Text -and $_.Text.IndexOf($file.Name, [StringComparison]::OrdinalIgnoreCase) -ge 0 }) { continue }
+        $text = Get-Content -LiteralPath $file.Full -Raw
+        $settings = @('Description', 'PackageTags', 'Authors', 'PackageProjectUrl', 'PackageReleaseNotes', 'PackageIcon' | Where-Object { $text -match "<$_[\s>]" })
+        $message = if ($settings.Count) { "$($file.Path) is imported by no project, so the $($settings -join ', ') it sets no longer reach the package: import it from Directory.Build.props, after the import of build/ProjectTemplate.props, or move its settings into the project file." }
+        else { "$($file.Path) is imported by no project: import it or delete it." }
+        [pscustomobject]@{ Kind = 'OrphanProps'; Message = $message }
+    }
+
+    foreach ($file in $projectFiles) {
+        if ((Get-Content -LiteralPath $file.Full -Raw) -match '<GeneratePackageOnBuild>\s*true') {
+            [pscustomobject]@{ Kind = 'GeneratePackageOnBuild'; Message = "$($file.Path) sets GeneratePackageOnBuild to true, which races with dotnet pack from a clean tree (NU5026): delete it; build/dod.ps1 packs on its own." }
+        }
+    }
+
+    $elements = 'ImplicitUsings', 'Nullable', 'LangVersion', 'PublishRepositoryUrl', 'EmbedUntrackedSources', 'IncludeSymbols', 'SymbolPackageFormat', 'DocumentationFile'
+    foreach ($file in $projectFiles | Where-Object { $_.Name -like '*.csproj' -or $_.Name -in 'Directory.Build.props', 'Directory.Packages.props' }) {
+        $text = Get-Content -LiteralPath $file.Full -Raw
+        $repeated = @($elements | Where-Object { $text -match "<$_[\s>]" })
+        if ($text -match '<Package(Reference|Version)\b[^>]*\bInclude\s*=\s*"Microsoft\.SourceLink\.GitHub"') { $repeated += 'Microsoft.SourceLink.GitHub' }
+        if ($repeated.Count) {
+            [pscustomobject]@{ Kind = 'RepeatedSettings'; Message = "$($file.Path) repeats settings build/ProjectTemplate.props makes: $($repeated -join ', '). Delete them, or keep one only to differ from the template on purpose." }
+        }
+    }
+
+    foreach ($file in $files | Where-Object { $_.Name -like '*.sln' }) {
+        $folder = if ($file.Path.Contains('/')) { $file.Path.Substring(0, $file.Path.LastIndexOf('/') + 1) } else { '' }
+        if (($file.Path.Split('/').Count -le 3) -and -not ($files | Where-Object { $_.Name -like '*.slnx' -and $_.Path -eq "$folder$($_.Name)" })) {
+            $name = [IO.Path]::GetFileNameWithoutExtension($file.Name)
+            [pscustomobject]@{ Kind = 'Solution'; Message = "$($file.Path) is a .sln where the template and current SDKs use .slnx: run dotnet sln $($file.Path) migrate, delete the .sln, and rename $name.sln.DotSettings to $name.slnx.DotSettings if it exists." }
+        }
+    }
+
+    $bomExtensions = '.cs', '.csproj', '.props', '.targets', '.slnx', '.json', '.md', '.yml', '.yaml', '.xml', '.txt', '.editorconfig'
+    $withBom = [Collections.Generic.List[string]]::new()
+    foreach ($file in $files | Where-Object { [IO.Path]::GetExtension($_.Name) -in $bomExtensions }) {
+        $bytes = [byte[]]::new(3)
+        try {
+            $stream = [IO.File]::Open($file.Full, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+            try { $read = $stream.Read($bytes, 0, 3) } finally { $stream.Dispose() }
+        }
+        catch { continue }
+        if ($read -eq 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $withBom.Add($file.Path) }
+    }
+    if ($withBom.Count) {
+        $listed = ($withBom | Select-Object -First 5) -join ', '
+        if ($withBom.Count -gt 5) { $listed += ", and $($withBom.Count - 5) more" }
+        [pscustomobject]@{ Kind = 'ByteOrderMark'; Message = "$($withBom.Count) file(s) start with a UTF-8 byte order mark, which the template's encoding rule (UTF-8 without BOM) forbids: $listed. Save them without it." }
+    }
+
+    $rootProjects = @($files | Where-Object { $_.Name -like '*.csproj' -and -not $_.Path.Contains('/') })
+    if ($rootProjects.Count) {
+        [pscustomobject]@{ Kind = 'RootProject'; Message = "$($rootProjects.Name -join ', ') sit at the repository root: move each project into src/ (a test project into tests/), as the template's layout has it." }
+    }
+}
+
 # A deliberate copy of tools/adopt/Adoption.psm1's Update-VersionFile: change both, or tests\Test-LibraryRelease.ps1 fails.
 function Update-VersionFile {
     $path = Join-Path (Get-Location) 'version.json'
@@ -817,6 +884,15 @@ try {
                 Write-Warning "$($published.Id) is published on nuget.org at $($published.Version). The template now validates every pack against the last published package (ADR-0147): set <PackageValidationBaselineVersion>$($published.Version)</PackageValidationBaselineVersion> in Directory.Build.props after the import, or in the project's file."
             }
         }
+    }
+    # The stale NuGet logistics of an older library (ADR-0149): named, never fixed.
+    $logistics = @(if ((Get-Answer 'nuget_package') -eq 'true') { Get-NuGetLogistics })
+    if ($logistics.Count) {
+        ''
+        'Stale NuGet logistics, which the template now makes or checks itself:'
+        foreach ($finding in $logistics) { "  - $($finding.Message)" }
+        'To fix them in the repository, run:'
+        "  /plan-migration Bring the NuGet logistics up to the template: $(($logistics.Kind | Select-Object -Unique) -join ', ')"
     }
     if (Test-Path -LiteralPath version.json) {
         # Nerdbank.GitVersioning ignores -p:Version, and without PublicRelease it adds a -g<commit> suffix.

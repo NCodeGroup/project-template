@@ -95,9 +95,13 @@ $cases = [ordered]@{
     }
 }
 
+$updateAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+$updateDefinition = $updateAst.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-NuGetLogistics' }, $true) | Select-Object -First 1
+
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
 $sources = [ordered]@{
-    adopt = { Adoption\Get-NuGetLogistics }
+    update = { if ($updateDefinition) { . ([scriptblock]::Create($updateDefinition.Extent.Text)); Get-NuGetLogistics } }
+    adopt  = { Adoption\Get-NuGetLogistics }
 }
 
 foreach ($name in $cases.Keys) {
