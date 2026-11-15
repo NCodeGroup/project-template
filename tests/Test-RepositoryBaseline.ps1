@@ -306,6 +306,7 @@ $repos = @{
     oursLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false))
     oursStaleLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $true -Stale $false))
     ownedStaleLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $true -Stale $false))
+    ownedThenOursStaleLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $true -Stale $false), (New-Ruleset 'Protect main' -Threads $true -Stale $false))
     looseRefused = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false)) -WriteFails @{ 'rulesets/101' = 403 }
     ownedBare = New-Repo -Rulesets @($bareRuleset)
     twoOwnedLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $false), (New-Ruleset 'team rules' -Threads $false))
@@ -543,6 +544,10 @@ try {
     Check 'stale: -WhatIf sends nothing and says it would set them' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("${staleLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'ownedStaleLoose')
     Check 'stale: a ruleset of the owner''s is not written for them' (($r.Changes -join '|') -notmatch 'rulesets/101') ($r.Changes -join '|')
+    $r = Invoke-Baseline @('-Repo', 'ownedThenOursStaleLoose')
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' })
+    $sp = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'stale: a Protect main ruleset beside one of the owner''s gets both settings, and the owner''s ruleset is not written' ($puts.Count -eq 1 -and $puts[0].path -eq 'repos/NCodeGroup/ownedThenOursStaleLoose/rulesets/102' -and $sp.dismiss_stale_reviews_on_push -eq $true -and $sp.require_last_push_approval -eq $true) "$($r.Changes -join '|') $($r.Output)"
 
     # 6. -RequireChecks updates the ruleset the script made.
     $r = Invoke-Baseline @('-Repo', 'ours', '-RequireChecks', 'test')
