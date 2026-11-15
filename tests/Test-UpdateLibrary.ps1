@@ -135,6 +135,9 @@ foreach ($fixture in $headerless, $plain) {
         Invoke-Git init -q -b main
         $null = New-Item -ItemType Directory -Path src/Demo -Force
         [IO.File]::WriteAllText((Join-Path $fixture 'src/Demo/Plain.cs'), "namespace Demo;`n")
+        if ($fixture -eq $headerless) {
+            foreach ($n in 1..5) { [IO.File]::WriteAllText((Join-Path $fixture "src/Demo/Extra$n.cs"), "namespace Demo;`n") }
+        }
         $editorconfig = [IO.File]::ReadAllText((Join-Path $fixture '.editorconfig'))
         if ($editorconfig -notmatch '(?m)^file_header_template\s*=\s*(.+?)\r?$') { throw "$fixture/.editorconfig has no file_header_template." }
         $header = (($Matches[1] -split '\\n') | ForEach-Object { "// $_" }) -join "`n"
@@ -142,7 +145,7 @@ foreach ($fixture in $headerless, $plain) {
         Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
         if ($fixture -eq $headerless) {
             $on = Invoke-Update $headerless @{ csharp_format = 'true' }
-            Check 'headerless: turning csharp_format on counts the file without the header, and names it' ($on.ExitCode -eq 0 -and $on.Output.Contains('csharp_format is on, and 1 C# file don''t start with the header') -and $on.Output.Contains('src/Demo/Plain.cs') -and -not $on.Output.Contains('Headed.cs')) $on.Output
+            Check 'headerless: turning csharp_format on counts six files and names the first five, then ", ..."' ($on.ExitCode -eq 0 -and $on.Output.Contains('csharp_format is on, and 6 C# files don''t start with the header') -and $on.Output.Contains('src/Demo/Extra1.cs') -and -not $on.Output.Contains('src/Demo/Plain.cs') -and $on.Output.Contains(', ...') -and -not $on.Output.Contains('Headed.cs')) $on.Output
         }
         else {
             $ordinary = Invoke-Update $plain
