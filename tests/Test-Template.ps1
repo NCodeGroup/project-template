@@ -264,6 +264,9 @@ foreach ($case in $cases) {
         $ciFile = if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' }
         $ciText = Get-Content -LiteralPath (Join-Path $dest $ciFile) -Raw
         Check "${name}: CI runs the Definition of Done for the default commands" ($ciText.Contains('build/dod.ps1') -and -not ($ciText -match '(?m)^\s+(- )?dotnet (build|test)\s*$')) $ciText
+        $setupFile = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
+        $historyOk = if ($case.Host -eq 'github') { -not (Test-Path -LiteralPath $setupFile) -or ((Get-Content -LiteralPath $setupFile -Raw).Contains('fetch-depth: 0') -eq $library) } else { ($ciText -match 'NUGET_PACKAGES: \$CI_PROJECT_DIR/\.nuget/packages\r?\n(?:    #.*\r?\n)?    GIT_DEPTH: "0"') -eq $library }
+        Check "${name}: a library's builds fetch the full history Nerdbank.GitVersioning needs" $historyOk $ciText
         if ($case.Host -eq 'github') {
             Check "${name}: CI caches NuGet packages, keyed on the restore's inputs" ($ciText.Contains('uses: actions/cache@') -and $ciText.Contains('path: ~/.nuget/packages') -and $ciText.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $ciText.Contains('${{ runner.os }}-nuget-' + "`n")) $ciText
             Check "${name}: CI installs .NET with the install-dotnet action after the checkout and before the build" ([regex]::Matches($ciText, '(?m)^      - uses: \./\.github/actions/install-dotnet\r?$').Count -eq 1 -and $ciText.IndexOf('uses: actions/checkout@') -lt $ciText.IndexOf('./.github/actions/install-dotnet') -and $ciText.IndexOf('./.github/actions/install-dotnet') -lt $ciText.IndexOf('build/dod.ps1') -and -not $ciText.Contains('actions/setup-dotnet') -and -not $ciText.Contains('Get-TestRuntimes')) $ciText
