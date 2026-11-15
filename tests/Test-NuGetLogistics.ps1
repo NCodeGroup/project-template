@@ -100,7 +100,11 @@ $updateDefinition = $updateAst.FindAll({ param($n) $n -is [Management.Automation
 
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
 $sources = [ordered]@{
-    update = { if ($updateDefinition) { . ([scriptblock]::Create($updateDefinition.Extent.Text)); Get-NuGetLogistics } }
+    update = {
+        if (-not $updateDefinition) { throw 'Update-Project.ps1 has no Get-NuGetLogistics' }
+        . ([scriptblock]::Create($updateDefinition.Extent.Text))
+        Get-NuGetLogistics
+    }
     adopt  = { Adoption\Get-NuGetLogistics }
 }
 
@@ -115,13 +119,17 @@ foreach ($name in $cases.Keys) {
     }
     foreach ($source in $sources.Keys) {
         Push-Location $folder
+        $found = @()
+        $failure = $null
         try { $found = @(& $sources[$source]) }
+        catch { $failure = $_.Exception.Message }
         finally { Pop-Location }
-        $ok = $found.Count -eq $case.Expect.Count
+        $ok = -not $failure -and $found.Count -eq $case.Expect.Count
         for ($i = 0; $ok -and $i -lt $found.Count; $i++) {
             $ok = $found[$i].Kind -eq $case.Expect[$i].Kind -and $found[$i].Message -ceq $case.Expect[$i].Message
         }
-        $detail = "Got:`n$(($found | ForEach-Object { "$($_.Kind): $($_.Message)" }) -join "`n")`nExpected:`n$(($case.Expect | ForEach-Object { "$($_.Kind): $($_.Message)" }) -join "`n")"
+        $detail = $(if ($failure) { "Threw: $failure`n" })
+        $detail += "Got:`n$(($found | ForEach-Object { "$($_.Kind): $($_.Message)" }) -join "`n")`nExpected:`n$(($case.Expect | ForEach-Object { "$($_.Kind): $($_.Message)" }) -join "`n")"
         Check "${source}: Get-NuGetLogistics: $name" $ok $detail
     }
 }
