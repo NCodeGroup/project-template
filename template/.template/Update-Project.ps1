@@ -72,6 +72,7 @@
     trigger, it says what to add. When the project has version.json, it also warns about a publish.yml that packs
     without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning themselves (the template's
     ADR-0138).
+    When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
 
@@ -832,6 +833,14 @@ try {
             foreach ($published in @(Get-PublishedPackageVersion)) {
                 Write-Warning "$($published.Id) is published on nuget.org at $($published.Version). The template now validates every pack against the last published package (ADR-0147): set <PackageValidationBaselineVersion>$($published.Version)</PackageValidationBaselineVersion> in Directory.Build.props after the import, or in the project's file."
             }
+        }
+    }
+    # A project that has just turned the C# formatter on: the files IDE0073 now fails (Get-CSharpFileWithoutHeader).
+    if ($Data.ContainsKey('csharp_format') -and (Get-Answer 'csharp_format') -eq 'true') {
+        $headerless = @(Get-CSharpFileWithoutHeader)
+        if ($headerless.Count -gt 0) {
+            ''
+            "csharp_format is on, and $($headerless.Count) C# file$(if ($headerless.Count -ne 1) { 's' }) don't start with the header .editorconfig sets (file_header_template): IDE0073 is a warning, which fails the build, for each. Rewrite each once, as the template's ADR-0148 describes: replace its old header, such as a #region Copyright Preamble block, with the header's lines as // comments, and drop a UTF-8 byte order mark. $(($headerless | Select-Object -First 5) -join ', ')$(if ($headerless.Count -gt 5) { ', ...' })"
         }
     }
     if (Test-Path -LiteralPath version.json) {
