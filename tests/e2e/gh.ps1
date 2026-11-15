@@ -11,7 +11,7 @@ closing it, and a GraphQL mutation that resolves a thread, dismisses a review, m
 a branch. `pr view` of a branch with no pull request fails as gh does (logged as NOTFOUND). `pr view <branch>` picks the branch's open pull request, else its newest, and `pr list` without `--state` lists open pull requests, as gh does. An optional `forbidden.txt` names more commands to refuse, one `<command> <subcommand>` per line, such as
 `pr edit`. An optional `review-seed.json` holds the review threads, review summaries and top-level comments the first
 pull request gets when it is opened. An optional `review-seed-push.json` holds the review a pull request gets on the first
-read of its threads, comments or reviews, GraphQL or REST, after a /review comment posted once its branch on origin has moved past the head it was opened at, as NCode Review reviews a push only when a writer asks.
+read of its threads, comments or reviews, GraphQL or REST, after a /review comment posted once its branch on origin has moved past the head it was opened at, as NCode Review reviews a push only when a writer asks. Once that seed is given, or without one, a later /review comment on a newer head gets a review with no findings: the stand-in records the commit as reviewed, so its check run completes.
 `api repos/<owner>/<repo>/commits/<sha>/check-runs` answers one completed `Code review` check run of the app `ncode-review` for a commit whose push review it has given, giving it first when a /review comment asked for it, and evaluates only simple `--jq` paths and the count of completed check runs of one app.
 `api repos/<owner>/<repo>/issues/comments/<id>` answers a comment it holds by its id, as the commands read a post back
 after making it; with `-X PATCH` it saves the `body` field as given, and it refuses an edit of a `/review` comment and
@@ -205,14 +205,16 @@ function Add-ReviewSeed([int]$Number, [string]$PrUrl, [string]$SeedName = 'revie
 }
 # Gives a pull request the review in host/review-seed-push.json, as NCode Review reviews a push when a writer asks: on the first read
 # after a /review comment posted once its branch on origin has moved past the head it was opened at. Then deletes that seed
-# and records the commit it reviewed as the pull request's reviewedOid.
+# and records the commit it reviewed as the pull request's reviewedOid. Once that seed is given, or without one, a later /review
+# comment on a newer head gets a review with no findings: the commit is recorded as reviewed, so its check run completes.
 function Add-PushReview($Pr) {
     $originFile = Join-Path $hostDir 'origin.txt'
-    if (-not (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json')) -or -not (Test-Path -LiteralPath $originFile)) { return }
+    if (-not (Test-Path -LiteralPath $originFile)) { return }
     $oid = git --git-dir=$(([IO.File]::ReadAllText($originFile)).Trim()) rev-parse --verify -q "refs/heads/$($Pr.headRefName)"
     if ($LASTEXITCODE -ne 0 -or "$oid" -eq "$($Pr.headRefOid)") { return }
     if ("$($Pr.reviewRequestedOid)" -ne "$oid") { return }
-    Add-ReviewSeed ([int]$Pr.number) "$($Pr.url)" 'review-seed-push.json'
+    if ("$($Pr.reviewedOid)" -eq "$oid") { return }
+    if (Test-Path -LiteralPath (Join-Path $hostDir 'review-seed-push.json')) { Add-ReviewSeed ([int]$Pr.number) "$($Pr.url)" 'review-seed-push.json' }
     $prs = @(Read-Json 'prs.json' @())
     $current = $prs | Where-Object { "$($_.number)" -eq "$($Pr.number)" } | Select-Object -First 1
     if ($current) {

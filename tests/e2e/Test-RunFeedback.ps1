@@ -7,15 +7,17 @@
     Makes the fixture project with New-FixtureProject in Fixture.ps1, running NCode Review, with a local origin under a
     github.com folder and the gh stand-in, and opens a fixture pull request, #1 from add-farewell, that adds
     Get-Farewell. The pull request has one review thread, from a writer (COLLABORATOR), that asks for a real fix. The
-    stand-in also holds NCode Review's review of the run's push, a nit, which it gives once a /review comment follows
-    the push, and it completes NCode Review's Code review check run on the pushed commit.
+    stand-in also holds NCode Review's review of the run's push, a nit that holds, which it gives once a /review comment
+    follows the push, and it completes NCode Review's Code review check run on the pushed commit. The run fixes the nit
+    in a second round, answers it with "Autopilot: fixed in <commit>", comments /review again and gets the stand-in's
+    empty review of that push.
     In -SetupOnly it checks the fixture: the project's state, the pull request, the installed commands and the
     stand-in's handling of the check-runs call, of the push review, of a comment read back and edited by its id, of a
     comment's delete and a /review comment's edit, which it refuses, and of footer.txt.
     It runs /run-feedback #1 wait:0 in headless Claude Code or the Copilot CLI (-Tool), answers the run's one question by resuming the session, and
     checks that the writer's fix is pushed, never forced; that the writer's thread gets a reply that names the commit;
-    that the run comments /review after its last push, asks for NCode Review's check run on the pushed commit and
-    answers the bot's nit once; that it recommends the merge once, in a top-level comment after the /review; and that
+    that the run comments /review after each push, asks for NCode Review's check run on the pushed commit and
+    fixes the bot's nit and answers it once; that it recommends the merge once, in a top-level comment after the /review; and that
     nothing is resolved, merged or edited, which the stand-in also refuses. It waits at least five minutes for the
     review, as the command does. With -Scenario review-with-footer the stand-in saves each comment and thread reply with a
     Claude Code cloud session's footer: the test then checks that each /review comment keeps the footer and still asks
@@ -181,7 +183,7 @@ exit 0
     Write-Text (Join-Path $hostDir 'forbidden.txt') "pr edit`nissue close`n"
     [IO.File]::WriteAllText((Join-Path $hostDir 'head.txt'), $headOid)
 
-    # NCode Review's review of the run's push: one nit, no blocker or should-fix, so /run-feedback fixes nothing more and never waits for a second review.
+    # NCode Review's review of the run's push: one nit that holds, so /run-feedback fixes it in a second round, answers it with "Autopilot: fixed in <commit>", comments /review again and gets the stand-in's empty review of that push.
     $ncode = @{ __typename = 'Bot'; login = 'ncode-review' }
     $pushSeed = @{
         threads  = @(
@@ -260,6 +262,15 @@ exit 0
     $ok = $before -eq '0' -and $after -eq '1' -and $nodes.Count -eq 1 -and $nit.Count -eq 1 -and $nit[0].comments.nodes[0].author.login -eq 'ncode-review' -and
         -not (Test-Path -LiteralPath (Join-Path $probe 'host/review-seed-push.json')) -and $unsupported.Count -eq 0
     Check 'fixture: the stand-in completes NCode Review''s check run on a pushed commit, and gives its review, only after a /review comment that follows the push' $ok "before='$before' after='$after' threads=$($nodes.Count) nits=$($nit.Count) unsupported=$($unsupported.Count)"
+    $moved2 = "$(Invoke-Git --git-dir=$origin commit-tree 'main^{tree}' -p $moved -m 'Probe push 2')".Trim()
+    Invoke-Git --git-dir=$origin update-ref refs/heads/probe $moved2
+    $probePath2 = $checkPath.Replace('<pushed>', $moved2)
+    $before2 = "$(pwsh -NoProfile -File $probeGh api $probePath2 --jq $checkJq)".Trim()
+    $null = pwsh -NoProfile -File $probeGh pr comment 1 --body-file (Join-Path $probe 'review.md')
+    $after2 = "$(pwsh -NoProfile -File $probeGh api $probePath2 --jq $checkJq)".Trim()
+    $read2 = pwsh -NoProfile -File $probeGh api graphql -F owner=fixture -F name=app -F number=1 -f "query=$readQuery" | Out-String | ConvertFrom-Json
+    $nodes2 = @($read2.data.repository.pullRequest.reviewThreads.nodes)
+    Check 'fixture: the stand-in gives a later /review on a newer head an empty review, whose check run completes' ($before2 -eq '0' -and $after2 -eq '1' -and $nodes2.Count -eq 1) "before='$before2' after='$after2' threads=$($nodes2.Count)"
     Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
     Remove-Item -LiteralPath $probe -Recurse -Force
 
@@ -382,7 +393,7 @@ Use-FixtureEnvironment $Work $bin {
 
     $files = @(git --git-dir=$origin diff --name-only $headBefore $head 2>$null | Where-Object { $_ })
     $outside = @($files | Where-Object { $_ -notmatch '^(src|tests)/' })
-    Check 'only the writer''s fix is pushed: new commits change src/ and tests/ and nothing else, such as ci.yml' ($headNow -ne $headBefore -and $files.Count -gt 0 -and $outside.Count -eq 0) "changed files: $($files -join ', ')"
+    Check 'only the writer''s fix and the nit''s are pushed: new commits change src/ and tests/ and nothing else, such as ci.yml' ($headNow -ne $headBefore -and $files.Count -gt 0 -and $outside.Count -eq 0) "changed files: $($files -join ', ')"
 
     $clone = Join-Path $Work 'check'
     if (Test-Path -LiteralPath $clone) { Remove-Item -LiteralPath $clone -Recurse -Force }
@@ -401,6 +412,7 @@ Use-FixtureEnvironment $Work $bin {
     $slash = @($prComments | Where-Object { Test-ReviewCommand $_.body })
     $pr = $pr1 | Select-Object -First 1
     Check 'the run commented /review after its last push' ($slash.Count -ge 1 -and $pr -and $headNow -and "$($pr.reviewRequestedOid)" -eq $headNow) "/review comments: $($slash.Count); reviewRequestedOid='$(if ($pr) { $pr.reviewRequestedOid })', branch head '$headNow'"
+    Check 'the run commented /review after each of its two pushes' ($slash.Count -ge 2) "/review comments: $($slash.Count)"
     $commentDeletes = @($calls | Where-Object { $_ -match '^CALL api ' -and $_ -match '(^| )(-X|--method)[ =]?DELETE( |$)' -and $_ -match 'issues/comments/\d+' })
     $refusedEdits = @($calls | Where-Object { $_ -match '^FORBIDDEN .*issues/comments/\d+' })
     Check 'the run deleted no comment and edited no /review comment' ($commentDeletes.Count -eq 0 -and $refusedEdits.Count -eq 0) "comment deletes: $($commentDeletes.Count); refused comment edits: $($refusedEdits.Count)"
@@ -418,7 +430,8 @@ Use-FixtureEnvironment $Work $bin {
     $nitThread = $threads | Where-Object { $_.key -eq 'nit' } | Select-Object -First 1
     $nitComments = @($nitThread.comments)
     $nitReplies = @($nitComments | Select-Object -Skip 1)
-    Check 'NCode Review''s nit on the push got one reply, "Autopilot: not changed: a nit"' ($nitThread -and $nitReplies.Count -eq 1 -and "$($nitReplies[0].body)".TrimStart().StartsWith('Autopilot: not changed: a nit')) "comments on the nit: $($nitComments.Count); last: '$(if ($nitComments.Count -gt 1) { $nitComments[-1].body })'"
+    $farewell = (@(git --git-dir=$origin show "$($head):src/Farewell.ps1" 2>$null) -join "`n")
+    Check 'NCode Review''s nit on the push got one "Autopilot: fixed in <commit>" reply, and Get-Farewell has a comment-based help block' ($nitThread -and $nitReplies.Count -eq 1 -and "$($nitReplies[0].body)".TrimStart() -match '^Autopilot: fixed in [0-9a-f]{7,}' -and $farewell -match '(?s)<#.*\.SYNOPSIS.*#>') "comments on the nit: $($nitComments.Count); last: '$(if ($nitComments.Count -gt 1) { $nitComments[-1].body })'"
 
     $resolved = @($threads | Where-Object { $_.isResolved })
     Check 'no thread is resolved' ($threads.Count -eq 2 -and $resolved.Count -eq 0) "threads: $($threads.Count); resolved: $($resolved.Count)"
