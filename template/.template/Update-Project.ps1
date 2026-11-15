@@ -448,6 +448,13 @@ function Get-PublishedPackageVersion {
     }
 }
 
+# Whether Directory.Build.props, or a project file under the current folder, already sets PackageValidationBaselineVersion.
+# tools/adopt/Adoption.psm1 in the template has a deliberate copy of this function, not shared code: this script runs on its own, from an older template's copy. Change both together; tests/Test-LibraryRelease.ps1 keeps the two equal.
+function Test-PackageValidationBaseline {
+    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match 'PackageValidationBaselineVersion') { return $true }
+    @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
+}
+
 # A deliberate copy of tools/adopt/Adoption.psm1's Update-VersionFile: change both, or tests\Test-LibraryRelease.ps1 fails.
 function Update-VersionFile {
     $path = Join-Path (Get-Location) 'version.json'
@@ -827,9 +834,7 @@ try {
     }
     # A library without a package validation baseline (ADR-0147): name the published version to set.
     if ((Get-Answer 'nuget_package') -eq 'true') {
-        $hasBaseline = ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match 'PackageValidationBaselineVersion') -or
-            @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
-        if (-not $hasBaseline) {
+        if (-not (Test-PackageValidationBaseline)) {
             foreach ($published in @(Get-PublishedPackageVersion)) {
                 Write-Warning "$($published.Id) is published on nuget.org at $($published.Version). The template now validates every pack against the last published package (ADR-0147): set <PackageValidationBaselineVersion>$($published.Version)</PackageValidationBaselineVersion> in Directory.Build.props after the import, or in the project's file."
             }
