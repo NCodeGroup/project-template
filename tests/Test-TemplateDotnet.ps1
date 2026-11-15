@@ -34,6 +34,16 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
 }
 
+# IDE0073 is a warning in a rendered project, so a C# file must start with the header its .editorconfig sets: prepend it, in the current folder's project, to a file without it.
+function Add-FileHeader([string]$Path) {
+    $template = [regex]::Match([IO.File]::ReadAllText((Join-Path (Get-Location) '.editorconfig')), '(?m)^file_header_template = (.+?)\r?$').Groups[1].Value
+    if (-not $template) { throw "no file_header_template in $(Join-Path (Get-Location) '.editorconfig')" }
+    $header = (($template -split '\\n') | ForEach-Object { "// $_" }) -join "`n"
+    $text = [IO.File]::ReadAllText($Path).Replace("`r`n", "`n")
+    if (-not $text.StartsWith($header)) { $text = "$header`n`n$text" }
+    [IO.File]::WriteAllText($Path, $text, [Text.UTF8Encoding]::new($false))
+}
+
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 
 $stubRoot = Join-Path $Work 'installer'
@@ -223,6 +233,7 @@ Push-Location (Join-Path $Work 'dotnet')
 try {
     dotnet new classlib -o src/Demo | Out-Null
     dotnet new xunit -o tests/Demo.Tests --no-restore | Out-Null
+    foreach ($scaffolded in 'src/Demo/Class1.cs', 'tests/Demo.Tests/UnitTest1.cs') { Add-FileHeader (Join-Path (Get-Location) $scaffolded) }
     # As AGENTS.md tells the executor: move the template's PackageReference versions into Directory.Packages.props.
     $projPath = (Resolve-Path 'tests/Demo.Tests/Demo.Tests.csproj').Path
     $proj = [xml](Get-Content -LiteralPath $projPath -Raw)
@@ -311,6 +322,7 @@ if (Test-Path -LiteralPath $libraryDest) {
     try {
         dotnet new classlib -o src/Greetings | Out-Null
         [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Greetings/Class1.cs'), "namespace Greetings;`n`n/// <summary>`n/// A greeter.`n/// </summary>`npublic sealed class Greeter`n{`n    /// <summary>`n    /// Greets someone.`n    /// </summary>`n    /// <param name=`"name`">Who to greet.</param>`n    /// <returns>The greeting.</returns>`n    public static string Greet(string name) => `$`"Hello, {name}!`";`n}`n")
+        Add-FileHeader (Join-Path (Get-Location) 'src/Greetings/Class1.cs')
         dotnet new sln | Out-Null
         dotnet sln add src/Greetings | Out-Null
         $apiOutput = pwsh -NoProfile -File build/Update-PublicApi.ps1 2>&1 | Out-String
@@ -326,6 +338,7 @@ if (Test-Path -LiteralPath $libraryDest) {
         Check 'dotnet-library-apache: build/dod.ps1 builds, tests and packs the library at version.json''s version with its symbols' ($LASTEXITCODE -eq 0 -and $libDod.Contains('== Pack') -and @($packed -match '^Greetings\.0\.1\.0(-g[0-9a-f]*)?\.nupkg$').Count -eq 1 -and @($packed -match '^Greetings\.0\.1\.0(-g[0-9a-f]*)?\.snupkg$').Count -eq 1) "$($packed -join ', ') | $libDod"
         Check 'dotnet-library-apache: build/dod.ps1 runs the Format stage and passes on formatted C#' ($libDodExit -eq 0 -and $libDod.Contains('== Format')) $libDod
         [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Greetings/Extra.cs'), "namespace Greetings;`n`n/// <summary>`n/// Not recorded.`n/// </summary>`npublic sealed class Extra`n{`n}`n")
+        Add-FileHeader (Join-Path (Get-Location) 'src/Greetings/Extra.cs')
         $unrecorded = dotnet build src/Greetings 2>&1 | Out-String
         [IO.File]::Delete((Join-Path (Get-Location) 'src/Greetings/Extra.cs'))
         Check 'dotnet-library-apache: a public type the API files do not record fails the build' ($unrecorded -match "error RS0016: Symbol 'Greetings\.Extra'") (($unrecorded -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ')
