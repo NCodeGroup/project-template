@@ -20,6 +20,7 @@ no comment. A comment's id is never given again (`last-comment-id.txt`). A comme
 would read it as `/review`: its first line, once everything from a `---` line on is set aside, is `/review`. An optional
 `footer.txt` holds a footer it appends, after a blank line and a `---` line, to each top-level comment and thread reply
 it saves, as a Claude Code cloud session's tooling does, so a `/review` comment saved with it still asks for a review.
+`api repos/<owner>/<repo>/pulls/comments/<id>` answers a review comment or thread reply by its id, and with `-X PATCH` saves its body as given; it refuses a delete.
 An optional footer-pr-only.txt keeps the footer off issue comments, such as a plan snapshot, so the first post that comes back with it is one on the pull request.
 On that route it reads the method as gh does, from `-X PATCH`, `-XPATCH`, `-X=PATCH` or `--method=PATCH`, and takes a
 call with `-f`, `-F`, `--field`, `--raw-field` or `--input` and no method as the POST gh sends, which it refuses.
@@ -482,6 +483,28 @@ if ("$($args[0])" -eq 'api' -and $apiPath -match '^repos/[^/]+/[^/]+/pulls/(\d+)
     $forbiddenEdit = (Test-Path -LiteralPath $forbiddenFile) -and @([IO.File]::ReadAllLines($forbiddenFile) | Where-Object { $_.Trim() -eq 'pr edit' }).Count
     if ($forbiddenEdit) { Stop-Call FORBIDDEN 'gh stand-in: pr edit is not allowed in this test' }
     Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')"
+}
+
+# A review comment or thread reply read back or edited by its id, as the commands do after replying: a GET answers it,
+# -X PATCH saves its body field as given. Any other method, or an id it doesn't hold, is unsupported; -X DELETE is FORBIDDEN.
+$reviewCommentPath = @($args | Select-Object -Skip 1 | Where-Object { "$_" -match '^/?repos/[^/]+/[^/]+/pulls/comments/\d+$' }) | Select-Object -First 1
+if ("$($args[0])" -eq 'api' -and $reviewCommentPath) {
+    $commentId = "$reviewCommentPath".Split('/')[-1]
+    $method = Get-ApiMethod
+    $threads = @(Read-Json 'threads.json' @())
+    $comment = $null
+    foreach ($t in $threads) {
+        if (-not $comment) { $comment = @($t.comments) | Where-Object { "$($_.url)".EndsWith("#discussion_r$commentId") } | Select-Object -First 1 }
+    }
+    $newBody = Get-Field 'body'
+    if (-not $comment -or $method -notin 'GET', 'PATCH', 'DELETE' -or ($method -eq 'PATCH' -and $null -eq $newBody)) { Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')" }
+    if ($method -eq 'DELETE') { Stop-Call FORBIDDEN "gh stand-in: the workflow never deletes a comment ($commentId)" }
+    if ($method -eq 'PATCH') {
+        $comment.body = $newBody
+        Write-Json 'threads.json' $threads
+    }
+    Write-Result @{ id = [long]$commentId; body = $comment.body; html_url = $comment.url; user = @{ login = "$($comment.author.login)"; type = 'User' } }
+    exit 0
 }
 
 # A comment read back or edited by its id, as the commands do after posting one: a GET answers it, -X PATCH saves
