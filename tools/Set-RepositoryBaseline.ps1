@@ -332,14 +332,14 @@ function Set-BranchRuleset {
     }
     if ($others.Count) {
         foreach ($full in $others) { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full }
-        if ($own) { Enable-ThreadResolution $Name $own -Strict }
+        if ($own) { Enable-ThreadResolution $Name $own -Strict -Approver:$Approver }
         return $true
     }
 
     # A ruleset of this name that exists already is changed only when -RequireChecks asks for new checks.
     if ($own -and -not $RequireChecks.Count) {
         Write-Host "${Name}: left alone (already has '$rulesetName')"
-        Enable-ThreadResolution $Name $own -Strict
+        Enable-ThreadResolution $Name $own -Strict -Approver:$Approver
         if ($own.rules.type -contains 'code_scanning') { Write-SuiteNotice $Name }
         return $true
     }
@@ -469,21 +469,28 @@ function Write-LastPushNotice([string]$Name, $Ruleset) {
 # it: its other rules and their parameters are sent back as they were read. A ruleset without a pull request rule, or
 # with the setting on already, is left as it is. A refusal is reported, not thrown, like a security setting's. A pull
 # request rule that came without parameters is reported and left as it is: writing it would mean inventing its other
-# parameters. For the script's own ruleset (-Strict) it also turns on dismissing stale reviews on push, but never
-# approval of the last push: with no approval required, GitHub then wants a non-pusher to approve the newest push (#385).
+# parameters. For the script's own ruleset (-Strict) it also turns on dismissing stale reviews on push. With -Approver
+# too (the project's review passes approve: true) it requires one approval, of the last push, as a new ruleset does; it
+# never turns on approval of the last push without an approval, which blocks every merge (#385).
 function Enable-ThreadResolution {
     [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Name, $Ruleset, [switch]$Strict)
+    param([string]$Name, $Ruleset, [switch]$Strict, [switch]$Approver)
     $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
     if (-not $rule) { return }
-    Write-LastPushNotice $Name $Ruleset
+    $raise = $Strict -and $Approver
     $needThreads = $rule.parameters.required_review_thread_resolution -ne $true
     $needStale = $Strict -and $rule.parameters.dismiss_stale_reviews_on_push -ne $true
-    if (-not $needThreads -and -not $needStale) { return }
-    $label = if ($needThreads) { "'$($Ruleset.name)': require every conversation resolved" } else { "'$($Ruleset.name)': dismiss stale reviews on push" }
+    $needApproval = $raise -and ([int]$rule.parameters.required_approving_review_count -lt 1 -or $rule.parameters.require_last_push_approval -ne $true)
+    if (-not $needThreads -and -not $needStale -and -not $needApproval) { Write-LastPushNotice $Name $Ruleset; return }
+    $label = "'$($Ruleset.name)': " + (@(if ($needThreads) { 'require every conversation resolved' }; if ($needStale) { 'dismiss stale reviews on push' }; if ($needApproval) { 'require one approval, of the last push' }) -join ', and ')
     if ($null -eq $rule.parameters) { Write-Host "${Name}: ${label}: not set (its pull request rule came without parameters; turn it on in the ruleset's settings on GitHub)"; return }
     if ($needThreads) { $rule.parameters | Add-Member -NotePropertyName required_review_thread_resolution -NotePropertyValue $true -Force }
     if ($Strict) { $rule.parameters | Add-Member -NotePropertyName dismiss_stale_reviews_on_push -NotePropertyValue $true -Force }
+    if ($raise) {
+        $rule.parameters | Add-Member -NotePropertyName required_approving_review_count -NotePropertyValue ([Math]::Max([int]$rule.parameters.required_approving_review_count, 1)) -Force
+        $rule.parameters | Add-Member -NotePropertyName require_last_push_approval -NotePropertyValue $true -Force
+    }
+    Write-LastPushNotice $Name $Ruleset
     if (-not $PSCmdlet.ShouldProcess($Name, "turn on $label")) { Write-Host "${Name}: ${label}: would set"; return }
     $result = Invoke-HostWrite PUT "repos/$Owner/$Name/rulesets/$($Ruleset.id)" @{ rules = @($Ruleset.rules) }
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Name}: ${label}: set" }
