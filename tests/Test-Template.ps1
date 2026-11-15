@@ -139,7 +139,7 @@ $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\Pro
 $nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', '.template\install-nvs.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'docs\decisions\project-template\0147-*.md', 'build\Update-PublicApi.ps1', 'docs\api-compatibility.md'
-$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml'; gitlab = @('.gitlab-ci.yml') }
+$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml', '.github\workflows\scorecard.yml'; gitlab = @('.gitlab-ci.yml') }
 # tests\Test-TemplateDotnet.ps1 renders the dotnet and dotnet-library-apache cases again with the same answers: change both together.
 $cases = @(
     @{ Name = 'dotnet'; Stack = 'dotnet'; Host = 'github' }
@@ -364,7 +364,15 @@ foreach ($case in $cases) {
         $publish = Join-Path $dest '.github\workflows\publish.yml'
         $wantsPublish = $library -and $case.Host -eq 'github'
         Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)
+        $provenance = Join-Path $dest '.github\workflows\release-provenance.yml'
+        Check "${name}: the release provenance workflow only for a library on GitHub" ((Test-Path -LiteralPath $provenance) -eq $wantsPublish)
         if ($wantsPublish) {
+            $provenanceText = Get-Content -LiteralPath $provenance -Raw
+            $provenanceUses = [regex]::Matches($provenanceText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+            Check "${name}: the release provenance workflow pins each action to a full commit SHA, with its tag in a comment" ($provenanceUses.Count -ge 1 -and -not ($provenanceUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $provenanceText
+            $headBranchLines = @($provenanceText -split '\r?\n' | Where-Object { $_.Contains('github.event.workflow_run.head_branch') })
+            $headBranchSafe = -not ($headBranchLines | Where-Object { $_ -notmatch '^\s*TAG:' -and $_ -notmatch '^\s*group: release-provenance-' })
+            Check "${name}: the release provenance workflow follows Publish packages, holds no permission by default, attests, and keeps the tag out of scripts" ($provenanceText.Contains('workflows: [Publish packages]') -and $provenanceText -match '(?m)^permissions: \{\}\r?$' -and $provenanceText.Contains('attestations: write') -and $provenanceText.Contains('id-token: write') -and -not $provenanceText.Contains('actions/checkout') -and $provenanceText -notmatch '(?i)nuget(\.exe)?\s+push' -and $headBranchLines.Count -ge 1 -and $headBranchSafe -and $provenanceText.Contains('dependency-graph/sbom') -and $provenanceText.Contains('.spdx.json')) $provenanceText
             $workflow = Get-Content -LiteralPath $publish -Raw
             $uses = [regex]::Matches($workflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
             Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 4 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
@@ -398,7 +406,7 @@ foreach ($case in $cases) {
         $setup = Get-Content -LiteralPath $copilotSetup -Raw
         $setupUses = [regex]::Matches($setup, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         $setupCheckouts = [regex]::Matches($setup, '(?m)^\s+- uses: actions/checkout@').Count
-        Check "${name}: the Copilot setup workflow has the one job Copilot runs, runs by hand, reads only contents and stops at 59 minutes" ($setup -match '(?m)^jobs:\r?\n  copilot-setup-steps:\r?$' -and [regex]::Matches($setup, '(?m)^    runs-on: ').Count -eq 1 -and $setup.Contains('workflow_dispatch:') -and $setup -match '(?m)^    timeout-minutes: 59\r?$' -and $setup -match '(?m)^    permissions:\r?\n      contents: read\r?$' -and -not $setup.Contains(': write')) $setup
+        Check "${name}: the Copilot setup workflow has the one job Copilot runs, runs by hand, reads only contents and stops at 59 minutes" ($setup -match '(?m)^jobs:\r?\n  copilot-setup-steps:\r?$' -and [regex]::Matches($setup, '(?m)^    runs-on: ').Count -eq 1 -and $setup.Contains('workflow_dispatch:') -and $setup -match '(?m)^    timeout-minutes: 59\r?$' -and $setup -match '(?m)^    permissions:\r?\n      contents: read\r?$' -and $setup -match '(?m)^permissions:\r?\n  contents: read\r?$' -and -not $setup.Contains(': write')) $setup
         # Its push and pull_request triggers list it and each file of the project its steps run, so a change to any of them runs it.
         $setupLf = $setup -replace '\r\n', "`n"
         $wantPaths = @('.github/workflows/copilot-setup-steps.yml') + @(if ($case.Stack -eq 'dotnet') { '.github/actions/install-dotnet/**', 'build/Get-TestRuntimes.ps1' }) + @(if ($usesNode) { '.node-version' })
@@ -472,11 +480,15 @@ foreach ($case in $cases) {
         }
         $notice = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\template-update.yml') -Raw
         $uses = [regex]::Matches($notice, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
-        Check "${name}: the template update workflow runs weekly and by hand, with only contents: read and issues: write, and runs .template/Get-TemplateUpdate.ps1" ($notice.Contains("- cron: '0 7 * * 1'") -and $notice.Contains('workflow_dispatch:') -and $notice -match '(?m)^permissions:\r?\n  contents: read\r?\n  issues: write\r?\n\r?\n' -and $notice.Contains('GH_TOKEN: ${{ github.token }}') -and $notice.Contains('run: ./.template/Get-TemplateUpdate.ps1')) $notice
+        Check "${name}: the template update workflow runs weekly and by hand, with only contents: read and issues: write, and runs .template/Get-TemplateUpdate.ps1" ($notice.Contains("- cron: '0 7 * * 1'") -and $notice.Contains('workflow_dispatch:') -and $notice -match '(?m)^permissions:\r?\n  contents: read\r?\n\r?\n' -and $notice -match '(?m)^    permissions:\r?\n      contents: read\r?\n      issues: write\r?\n' -and $notice.Contains('GH_TOKEN: ${{ github.token }}') -and $notice.Contains('run: ./.template/Get-TemplateUpdate.ps1')) $notice
         Check "${name}: the template update workflow pins each action to a full commit SHA, with its tag in a comment, and persists no credentials" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($notice, '(?m)^\s+persist-credentials: false\r?$').Count -eq $uses.Count) $notice
         $releaseWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\tag-release.yml') -Raw
         $uses = [regex]::Matches($releaseWorkflow, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the release workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $releaseWorkflow
+        # The Scorecard workflow: every GitHub project gets it.
+        $scorecard = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\scorecard.yml') -Raw
+        $uses = [regex]::Matches($scorecard, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        Check "${name}: the Scorecard workflow pins each action to a full commit SHA with its tag in a comment, publishes its results with the OIDC and code scanning permissions, and reads contents by default" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and $scorecard.Contains('ossf/scorecard-action@') -and $scorecard.Contains('publish_results: true') -and $scorecard.Contains('id-token: write') -and $scorecard.Contains('security-events: write') -and $scorecard -match '(?m)^permissions:\r?\n  contents: read\r?$') $scorecard
         # The code review auto-merge workflow: every GitHub project gets it, and it merges nothing where no Dependabot pull
         # request moves the NCode Review pin.
         $autoMerge = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\code-review-auto-merge.yml') -Raw

@@ -31,6 +31,10 @@ on:
       - .node-version
 {%- endif %}
 
+# Read-only by default, so a job added later can't hold more without saying so.
+permissions:
+  contents: read
+
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest

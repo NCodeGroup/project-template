@@ -131,6 +131,8 @@ _exclude:
     {% if git_host is defined and stack is defined and nuget_package is defined and not (git_host == 'github' and stack == 'dotnet' and nuget_package) %}
     docs/decisions/project-template/0135-packages-are-published-from-a-github-release-through-trusted-publishing.md
     docs/decisions/project-template/0137-the-release-workflow-starts-package-publishing.md
+    docs/decisions/project-template/0139-releases-carry-build-provenance.md
+    .github/workflows/release-provenance.yml
     {% endif %}
   - |-
     {% if stack is defined and stack != 'dotnet' %}
@@ -166,8 +168,10 @@ _exclude:
   - |-
     {% if git_host is defined and git_host != 'github' %}
     .github/workflows/code-review-auto-merge.yml
+    .github/workflows/scorecard.yml
     .github/workflows/tag-release.yml
     .github/workflows/template-update.yml
+    docs/decisions/project-template/0020-github-projects-are-scored-by-openssf-scorecard.md
     {% endif %}
   - |-
     {% if git_host is defined and not (git_host == 'github' and (workflow_tools is not defined or 'copilot' in workflow_tools)) %}
