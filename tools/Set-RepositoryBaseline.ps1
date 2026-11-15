@@ -64,7 +64,7 @@
     -RequireChecks auto names them for you, for each repository: it reads the check runs on the head commit of the latest
     pull request merged into the default branch and requires the GitHub Actions jobs that a pull_request event ran there
     and that passed (a job that ran more than once counts by its latest run). It leaves out, and lists with the reason,
-    the review bot's advisory "Code review" and its pull_request_target job, CodeQL (the code-scanning rule covers it)
+    the review bot's advisory "Code review" and its pull_request_target job (the template's ADR-0019), CodeQL (the code-scanning rule covers it)
     and its Analyze jobs, a check another app reports, and any job that was skipped, neutral, failed or didn't finish,
     since a skipped required check counts as passing. A repository with no merged pull request, or none of whose checks
     qualify, is skipped with the reason and nothing changed. With -WhatIf it lists the checks and prints the command
@@ -123,7 +123,7 @@ $actionsAppId = 15368
 # (matched with -like) maps to the reason it lists. CodeQL's Analyze jobs go by name too: a repository's own CodeQL
 # workflow runs them on pull_request.
 $excludedChecks = [ordered]@{
-    'Code review' = "the review bot's advice"
+    'Code review' = "advice the person who merges waits for, as the template's ADR-0019 records"
     'CodeQL' = 'the code-scanning rule covers it'
     'Analyze (*)' = 'the code-scanning rule covers it'
 }
