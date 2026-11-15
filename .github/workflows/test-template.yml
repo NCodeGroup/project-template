@@ -73,6 +73,8 @@ jobs:
             run: ./tests/e2e/Test-RunFeedback.ps1 -SetupOnly
           - name: Set up the run-feedback end-to-end fixture for a /review comment with a footer
             run: ./tests/e2e/Test-RunFeedback.ps1 -SetupOnly -Scenario review-with-footer
+          - name: Set up the run-feedback end-to-end fixture for approving a protected-path change
+            run: ./tests/e2e/Test-RunFeedback.ps1 -SetupOnly -Scenario protected-approval
           - name: Test the Git hooks
             run: ./tests/Test-GitHooks.ps1
           - name: Test the Node.js setup scripts
