@@ -3,11 +3,14 @@
 # version.json must hold when the project has one, and pushes the packages, with their symbol packages, to nuget.org.
 # docs/decisions/project-template/ says why.
 #
-# Two jobs, so the job that builds the code never holds a publishing credential:
+# Four jobs, so the job that builds the code never holds a publishing credential:
 #   - pack checks the tag is a version (v1.2.3 or v1.2.3-rc.1) and names a commit the default branch holds, so a tag on
 #     an unreviewed commit publishes nothing; then it tests and packs in Release, and uploads the packages;
 #   - publish runs in the protected `nuget` environment, exchanges the job's OIDC token for a short-lived nuget.org API
-#     key through nuget.org trusted publishing, and pushes them. A rerun skips the packages already pushed.
+#     key through nuget.org trusted publishing, and pushes them. A rerun skips the packages already pushed;
+#   - provenance calls release-provenance.yml, which attests the packages and attaches them, the provenance and an SBOM
+#     to the release, and baseline calls raise-baseline.yml, which opens the pull request that raises the package
+#     validation baseline, for a stable version only (the template's ADR-0151).
 #
 # A release made with a workflow's GITHUB_TOKEN, as tag-release.yml makes it, starts no workflow, so tag-release.yml
 # starts this one through workflow_dispatch, on the tag and with the tag as input. To publish a release by hand:
@@ -148,3 +151,32 @@ jobs:
         run: |
           dotnet nuget push 'packages/*.nupkg' --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
           echo "Published $PUSHED of $TOTAL packages at **$VERSION** to nuget.org; the others were already there." >> "$GITHUB_STEP_SUMMARY"
+
+  # Attests the packages this run published and attaches them, the provenance and an SBOM to the release. It is a job
+  # of this run, not a workflow_run of its own, because tag-release.yml starts this run with GITHUB_TOKEN, and such a
+  # run fires no workflow_run event (the template's ADR-0151). Only this job holds the write permissions it needs.
+  provenance:
+    name: Attach release provenance
+    needs: [pack, publish]
+    permissions:
+      actions: read
+      attestations: write
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/release-provenance.yml
+    with:
+      tag: v${{ needs.pack.outputs.version }}
+
+  # Opens the draft pull request that raises the package validation baseline to this version (the template's ADR-0150), for a stable
+  # version only: a pre-release is never a baseline. A job of this run for the same reason as provenance (the template's ADR-0151).
+  baseline:
+    name: Raise the package validation baseline
+    needs: [pack, publish]
+    if: ${{ !contains(needs.pack.outputs.version, '-') }}
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/raise-baseline.yml
+    with:
+      tag: v${{ needs.pack.outputs.version }}
