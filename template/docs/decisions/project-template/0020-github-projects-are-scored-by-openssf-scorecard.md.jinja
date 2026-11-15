@@ -23,7 +23,7 @@ The table lists each check, what the template does for it and what needs a perso
 | Binary-Artifacts | Commits no binary files. | Nothing. |
 | Dangerous-Workflow | No workflow runs untrusted pull request code with a privileged token. | Nothing. |
 | Pinned-Dependencies | Workflow actions are pinned by commit SHA (ADR-0008). | Nothing. |
-| Token-Permissions | Every workflow's top-level token is read-only or empty. Job-level write is only where a job needs it: `issues: write` in `template-update.yml`; `contents: write` and `actions: write` in `tag-release.yml`; `contents: write` and `pull-requests: write` in `code-review-auto-merge.yml`; `id-token: write` in `code-review.yml`; `security-events: write` and `id-token: write` in `scorecard.yml`; and, for a library, `id-token: write` in `publish.yml` and `attestations: write`, `contents: write` and `id-token: write` in `release-provenance.yml`. | Nothing. |
+| Token-Permissions | Every workflow's top-level token is read-only or empty. Job-level write is only where a job needs it: `issues: write` in `template-update.yml`; `contents: write` and `actions: write` in `tag-release.yml`; `contents: write` and `pull-requests: write` in `code-review-auto-merge.yml`; `id-token: write` in `code-review.yml`; `security-events: write` and `id-token: write` in `scorecard.yml`; and, for a library, `id-token: write` in `publish.yml`; `attestations: write`, `contents: write` and `id-token: write` in `release-provenance.yml`; and `contents: write`, `pull-requests: write` and `actions: write` in `raise-baseline.yml`. | Nothing. |
 | Dependency-Update-Tool | Dependabot is configured. | Nothing. |
 | Security-Policy | `SECURITY.md` ships. | Nothing. |
 | License | `LICENSE` ships. | Nothing. |
