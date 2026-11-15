@@ -22,7 +22,7 @@
     .github/workflows/tag-release.yml, it prints the warning .\.template\Update-Project.ps1 prints: the Tag and publish
     release workflow starts publish.yml through that trigger, so until it has one, a release ships no packages.
 
-    For a library it lists the stale NuGet logistics it finds as follow-ups (Get-NuGetLogistics): a .props file no project imports, GeneratePackageOnBuild, settings the template already makes, a .sln, a UTF-8 BOM and projects at the repository root.
+    For a library it lists the stale NuGet logistics it finds as follow-ups (Get-NuGetLogistics): a .props file no project imports, GeneratePackageOnBuild, settings the template already makes, a .sln, a UTF-8 BOM and projects at the repository root, and the package Description and PackageTags that differ from the newest published package (Get-PackageMetadataDrift).
 
 .EXAMPLE
     .\Adopt-Project.ps1 -Path C:\src\buffers
@@ -225,6 +225,7 @@ try {
                     }
                 }
                 foreach ($finding in @(Get-NuGetLogistics)) { $followUps.Add($finding.Message) }
+                foreach ($drift in @(Get-PackageMetadataDrift)) { $followUps.Add($drift.Message) }
             }
             # A library's build fails on a public symbol its PublicAPI.*.txt files don't list; the verification below records the API as it is.
             if ($NoVerify -and (Test-Path -LiteralPath build/Update-PublicApi.ps1)) { $followUps.Add('record each packable project''s public API with ./build/Update-PublicApi.ps1, which the build now checks') }

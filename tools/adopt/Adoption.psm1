@@ -493,6 +493,63 @@ function Get-PublishedPackageVersion {
     }
 }
 
+# The Description and PackageTags each packable project would publish, where they differ from the newest stable package
+# on nuget.org, as Id, Version, Field and Message: metadata that stopped reaching a package, such as when a .props file was
+# dropped. A project that cannot be evaluated, a package never published, or a lookup that fails gives nothing. Fetch stands
+# in for nuget.org and Evaluate for MSBuild in tests. Nothing is edited.
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both
+# together; tests keep the two equal.
+function Get-PackageMetadataDrift {
+    param(
+        [scriptblock]$Fetch = { param($Uri) Invoke-RestMethod -Uri $Uri -TimeoutSec 20 },
+        [scriptblock]$Evaluate = {
+            param($Project)
+            try {
+                $json = & dotnet msbuild $Project -getProperty:Description -getProperty:PackageTags -nologo 2>$null
+                if ($LASTEXITCODE -ne 0) { return $null }
+                $properties = ($json -join "`n" | ConvertFrom-Json).Properties
+                @{ Description = $properties.Description; PackageTags = $properties.PackageTags }
+            }
+            catch { $null }
+        }
+    )
+    $root = (Get-Location).ProviderPath
+    foreach ($file in Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue) {
+        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
+        $text = Get-Content -LiteralPath $file.FullName -Raw
+        if ($text -match '<IsPackable>\s*false') { continue }
+        $id = if ($text -match '<PackageId>\s*([^<\s]+)\s*</PackageId>') { $Matches[1] } else { $file.BaseName }
+        $lower = $id.ToLowerInvariant()
+        try {
+            $response = & $Fetch "https://api.nuget.org/v3-flatcontainer/$lower/index.json"
+            $stable = @($response.versions | Where-Object { $_ -and $_ -notmatch '-' } | Sort-Object { [version]$_ })
+            if ($stable.Count -eq 0) { continue }
+            $version = $stable[-1]
+            $nuspec = & $Fetch "https://api.nuget.org/v3-flatcontainer/$lower/$version/$lower.nuspec"
+            if ($nuspec -is [string]) { $nuspec = [xml]$nuspec }
+            $metadata = $nuspec.package.metadata
+            $publishedValues = @{ Description = [string]$metadata.description; PackageTags = [string]$metadata.tags }
+            $local = & $Evaluate $file.FullName
+        }
+        catch { continue }
+        if (-not $local) { continue }
+        $relative = [IO.Path]::GetRelativePath($root, $file.FullName) -replace '\\', '/'
+        foreach ($field in 'Description', 'PackageTags') {
+            $publishedText = ($publishedValues[$field] -replace '\s+', ' ').Trim()
+            $localText = ([string]$local[$field] -replace '\s+', ' ').Trim()
+            if (-not $publishedText) { continue }
+            if ($field -eq 'PackageTags') {
+                $publishedKey = (@($publishedText -split '[;,\s]+' | Where-Object { $_ } | Sort-Object -Unique) -join ' ')
+                $localKey = (@($localText -split '[;,\s]+' | Where-Object { $_ } | Sort-Object -Unique) -join ' ')
+            }
+            else { $publishedKey = $publishedText; $localKey = $localText }
+            if ($publishedKey -ne $localKey) {
+                [pscustomobject]@{ Id = $id; Version = $version; Field = $field; Message = "$relative would publish $field '$localText' where $id $version published '$publishedText': restore it in the project or Directory.Build.props (NCodeGroup/Buffers#33 lost both when a .props file stopped being imported)." }
+            }
+        }
+    }
+}
+
 # Whether Directory.Build.props, or a project file under the current folder, already sets PackageValidationBaselineVersion.
 # template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests keep the two equal.
 function Test-PackageValidationBaseline {
@@ -632,4 +689,4 @@ function Update-VersionFile {
     $result
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup

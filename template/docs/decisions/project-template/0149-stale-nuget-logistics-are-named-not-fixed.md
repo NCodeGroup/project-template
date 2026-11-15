@@ -20,13 +20,24 @@ with the change to make. They fix none, as [ADR-0147](0147-packages-are-validate
 says for `PackageValidationBaselineVersion`.
 
 - Adoption prints each finding as a follow-up; the update prints them as one block with a `/plan-migration` request.
-- The check is offline and deterministic: it scans files with regular expressions and never loads a project as XML.
+- The logistics check is offline and deterministic: it scans files with regular expressions and never loads a project as XML.
+- The package metadata comparison, `Get-PackageMetadataDrift`, is the one part that isn't offline: for each packable
+  project whose package is published, it reads the newest stable version's nuspec from nuget.org, evaluates the project
+  with `dotnet msbuild -getProperty`, and names each of `Description` and `PackageTags` that differs, ignoring whitespace
+  and the order and separators of tags. A published package without that field, a package never published, a project
+  that doesn't evaluate and a failed lookup give nothing. Adoption lists each as a follow-up and the update prints them
+  as a block of their own; neither edits a project file.
 - It runs only when `nuget_package` is `true`.
 - It does not detect a transitive dependency that an older target framework doesn't support (issue #360's
-  `System.IO.Hashing` 11 on net8.0 through Nerdbank.Streams): that needs a restore, which an offline scan can't do. It is
-  filed as a follow-up to make the build gate name the warning, and the changelog and pull request leave it open.
-- `tools/adopt/Adoption.psm1` holds `Get-NuGetLogistics` and `.template/Update-Project.ps1` holds a deliberate copy;
-  `tests/Test-NuGetLogistics.ps1` keeps the two equal in behavior.
+  `System.IO.Hashing` 11 on net8.0 through Nerdbank.Streams): that needs a restore, which an offline scan can't do.
+  `build/ProjectTemplate.props` sets `TreatWarningsAsErrors`, so a project that follows the template already fails its
+  build on a package's unsupported-framework warning. A project that keeps its own settings is caught by the
+  `RepeatedSettings` finding only for the settings it lists, so its guidance names `TreatWarningsAsErrors` set to
+  `false` and `NoWarn` entries. It is filed as a follow-up to make the build gate name the warning, and the changelog and
+  pull request leave it open.
+- `tools/adopt/Adoption.psm1` holds `Get-NuGetLogistics` and `Get-PackageMetadataDrift`, and
+  `.template/Update-Project.ps1` holds a deliberate copy of each; `tests/Test-NuGetLogistics.ps1` and
+  `tests/Test-LibraryRelease.ps1` keep the copies equal in behavior.
 
 ## Options considered
 

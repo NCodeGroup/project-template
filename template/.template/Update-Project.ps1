@@ -448,6 +448,58 @@ function Get-PublishedPackageVersion {
     }
 }
 
+# A deliberate copy of tools/adopt/Adoption.psm1's Get-PackageMetadataDrift: change both, or tests\Test-LibraryRelease.ps1 fails.
+function Get-PackageMetadataDrift {
+    param(
+        [scriptblock]$Fetch = { param($Uri) Invoke-RestMethod -Uri $Uri -TimeoutSec 20 },
+        [scriptblock]$Evaluate = {
+            param($Project)
+            try {
+                $json = & dotnet msbuild $Project -getProperty:Description -getProperty:PackageTags -nologo 2>$null
+                if ($LASTEXITCODE -ne 0) { return $null }
+                $properties = ($json -join "`n" | ConvertFrom-Json).Properties
+                @{ Description = $properties.Description; PackageTags = $properties.PackageTags }
+            }
+            catch { $null }
+        }
+    )
+    $root = (Get-Location).ProviderPath
+    foreach ($file in Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue) {
+        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
+        $text = Get-Content -LiteralPath $file.FullName -Raw
+        if ($text -match '<IsPackable>\s*false') { continue }
+        $id = if ($text -match '<PackageId>\s*([^<\s]+)\s*</PackageId>') { $Matches[1] } else { $file.BaseName }
+        $lower = $id.ToLowerInvariant()
+        try {
+            $response = & $Fetch "https://api.nuget.org/v3-flatcontainer/$lower/index.json"
+            $stable = @($response.versions | Where-Object { $_ -and $_ -notmatch '-' } | Sort-Object { [version]$_ })
+            if ($stable.Count -eq 0) { continue }
+            $version = $stable[-1]
+            $nuspec = & $Fetch "https://api.nuget.org/v3-flatcontainer/$lower/$version/$lower.nuspec"
+            if ($nuspec -is [string]) { $nuspec = [xml]$nuspec }
+            $metadata = $nuspec.package.metadata
+            $publishedValues = @{ Description = [string]$metadata.description; PackageTags = [string]$metadata.tags }
+            $local = & $Evaluate $file.FullName
+        }
+        catch { continue }
+        if (-not $local) { continue }
+        $relative = [IO.Path]::GetRelativePath($root, $file.FullName) -replace '\\', '/'
+        foreach ($field in 'Description', 'PackageTags') {
+            $publishedText = ($publishedValues[$field] -replace '\s+', ' ').Trim()
+            $localText = ([string]$local[$field] -replace '\s+', ' ').Trim()
+            if (-not $publishedText) { continue }
+            if ($field -eq 'PackageTags') {
+                $publishedKey = (@($publishedText -split '[;,\s]+' | Where-Object { $_ } | Sort-Object -Unique) -join ' ')
+                $localKey = (@($localText -split '[;,\s]+' | Where-Object { $_ } | Sort-Object -Unique) -join ' ')
+            }
+            else { $publishedKey = $publishedText; $localKey = $localText }
+            if ($publishedKey -ne $localKey) {
+                [pscustomobject]@{ Id = $id; Version = $version; Field = $field; Message = "$relative would publish $field '$localText' where $id $version published '$publishedText': restore it in the project or Directory.Build.props (NCodeGroup/Buffers#33 lost both when a .props file stopped being imported)." }
+            }
+        }
+    }
+}
+
 # A deliberate copy of tools/adopt/Adoption.psm1's Get-NuGetLogistics: change both, or tests\Test-NuGetLogistics.ps1 fails.
 function Get-NuGetLogistics {
     $root = (Get-Location).ProviderPath
@@ -928,6 +980,12 @@ try {
         foreach ($finding in $logistics) { "  - $($finding.Message)" }
         'To fix them in the repository, run:'
         "  /plan-migration Bring the NuGet logistics up to the template: $(($logistics.Kind | Select-Object -Unique) -join ', ')"
+    }
+    $drifts = @(if ((Get-Answer 'nuget_package') -eq 'true') { Get-PackageMetadataDrift })
+    if ($drifts.Count) {
+        ''
+        'Package metadata that differs from the published package:'
+        foreach ($drift in $drifts) { "  - $($drift.Message)" }
     }
     # A project that has just turned the C# formatter on: the files IDE0073 now fails (Get-CSharpFileWithoutHeader).
     if ($Data.ContainsKey('csharp_format') -and (Get-Answer 'csharp_format') -eq 'true') {
