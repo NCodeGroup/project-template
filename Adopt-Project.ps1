@@ -188,7 +188,15 @@ try {
                 $report.Add($line)
             }
         }
-        if ((Test-Path -LiteralPath version.json -PathType Leaf) -and (Test-Path -LiteralPath build/ProjectTemplate.props -PathType Leaf)) { foreach ($dropped in @(Remove-GitVersioningReference $project)) { $report.Add("  Dropped $($dropped.File) $([char]0x2014) the template references Nerdbank.GitVersioning itself (ADR-0138)" + $(if ($dropped.Version) { "; it pinned version $($dropped.Version), so raise the template's PackageVersion in Directory.Packages.props if the project needs it" } else { '' })) } }
+        if ((Test-Path -LiteralPath version.json -PathType Leaf) -and (Test-Path -LiteralPath build/ProjectTemplate.props -PathType Leaf)) {
+            foreach ($dropped in @(Remove-GitVersioningReference $project)) {
+                $message = "  Dropped $($dropped.File) $([char]0x2014) the template references Nerdbank.GitVersioning itself (ADR-0138)"
+                if ($dropped.Version) {
+                    $message += "; it pinned version $($dropped.Version), so raise the template's PackageVersion in Directory.Packages.props if the project needs it"
+                }
+                $report.Add($message)
+            }
+        }
 
         $followUps = [Collections.Generic.List[string]]::new()
         if ($nvmrcText) { $followUps.Add("set .node-version to the Node.js version .nvmrc names ($nvmrcText); it holds the template's version until then") }
