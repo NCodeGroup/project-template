@@ -216,9 +216,7 @@ try {
             }
             # A library without a package validation baseline: name the published version to set.
             if ((Get-Answer 'nuget_package') -eq 'true') {
-                $hasBaseline = ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match 'PackageValidationBaselineVersion') -or
-                    @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
-                if (-not $hasBaseline) {
+                if (-not (Test-PackageValidationBaseline)) {
                     foreach ($published in @(Get-PublishedPackageVersion)) {
                         $followUps.Add("set <PackageValidationBaselineVersion>$($published.Version)</PackageValidationBaselineVersion> in Directory.Build.props, after the import: $($published.Id) is published on nuget.org at $($published.Version), and the build now validates every pack against it (ADR-0147)")
                     }

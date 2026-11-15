@@ -493,6 +493,12 @@ function Get-PublishedPackageVersion {
     }
 }
 
+# Whether Directory.Build.props, or a project file under the current folder, already sets PackageValidationBaselineVersion.
+function Test-PackageValidationBaseline {
+    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match 'PackageValidationBaselineVersion') { return $true }
+    @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
+}
+
 # Fills the version.json in the current folder from the repository: Version is the patch after the newest stable tag merged
 # into HEAD, and the assembly version is the one Directory.Build.props sets, else Get-AssemblyVersionFloor's. Returns Version,
 # Tag, AssemblyVersion and Precision, each $null when unchanged, and nothing without a version.json.
@@ -526,4 +532,4 @@ function Update-VersionFile {
     $result
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Test-PackageValidationBaseline, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Get-BuildFileList, Get-GitHooksSetup

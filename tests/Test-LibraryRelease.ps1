@@ -226,6 +226,26 @@ foreach ($source in $publishedCalls.Keys) {
     Check "${source}: Get-PublishedPackageVersion: a PackageId is queried in lower case" ($queried -contains 'https://api.nuget.org/v3-flatcontainer/other.name/index.json') "Queried '$($queried -join ', ')'"
 }
 
+# Test-PackageValidationBaseline: whether the project already sets a baseline.
+$baselineCases = [ordered]@{
+    'no mention gives false'                                 = @{ Files = @{ 'Directory.Build.props' = '<Project />'; 'src/A/A.csproj' = '<Project Sdk="Microsoft.NET.Sdk" />' }; Expect = $false }
+    'Directory.Build.props with the property gives true'     = @{ Files = @{ 'Directory.Build.props' = '<Project><PropertyGroup><PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion></PropertyGroup></Project>' }; Expect = $true }
+    'a project file with the property gives true'            = @{ Files = @{ 'src/A/A.csproj' = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion></PropertyGroup></Project>' }; Expect = $true }
+    'a project file under obj with the property gives false' = @{ Files = @{ 'src/A/obj/A.csproj' = '<Project><PropertyGroup><PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion></PropertyGroup></Project>' }; Expect = $false }
+}
+$baselineIndex = 0
+foreach ($name in $baselineCases.Keys) {
+    $baselineIndex++
+    $case = $baselineCases[$name]
+    $folder = Join-Path $Work "baseline$baselineIndex"
+    New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $folder $relative) $case.Files[$relative] }
+    Push-Location $folder
+    try { $result = Adoption\Test-PackageValidationBaseline }
+    finally { Pop-Location }
+    Check "adopt: Test-PackageValidationBaseline: $name" ($result -eq $case.Expect) "Got '$result'; expected '$($case.Expect)'"
+}
+
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Library release check tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
