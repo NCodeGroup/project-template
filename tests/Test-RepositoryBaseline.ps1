@@ -196,10 +196,10 @@ if ($path -match '^repos/[^/]+/([^/]+)$') { ConvertTo-Json -InputObject $data.re
 exit 1
 '@
 
-function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_forward', 'pull_request'), [string]$Include = '~DEFAULT_BRANCH', [bool]$Threads = $true, [bool]$Stale = $true) {
+function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_forward', 'pull_request'), [string]$Include = '~DEFAULT_BRANCH', [bool]$Threads = $true, [bool]$Stale = $true, [bool]$LastPush = $false) {
     @{ name = $Name; target = 'branch'; enforcement = 'active'
         conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
-        rules = @($Types | ForEach-Object { if ($_ -eq 'pull_request') { @{ type = $_; parameters = @{ required_approving_review_count = 0; required_review_thread_resolution = $Threads; dismiss_stale_reviews_on_push = $Stale; require_last_push_approval = $Stale } } } else { @{ type = $_ } } }) }
+        rules = @($Types | ForEach-Object { if ($_ -eq 'pull_request') { @{ type = $_; parameters = @{ required_approving_review_count = 0; required_review_thread_resolution = $Threads; dismiss_stale_reviews_on_push = $Stale; require_last_push_approval = $LastPush } } } else { @{ type = $_ } } }) }
 }
 function New-TagRuleset([string]$Name, [string[]]$Types = @('deletion', 'update'), [string]$Include = 'refs/tags/v*', [string]$Enforcement = 'active') {
     @{ name = $Name; target = 'tag'; enforcement = $Enforcement
@@ -303,6 +303,7 @@ $repos = @{
     legacy = New-Repo -Branch master
     owned = New-Repo -Rulesets @((New-Ruleset 'main'))
     ours = New-Repo -Rulesets @((New-Ruleset 'Protect main'))
+    oursBlocked = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true))
     ownedLoose = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false))
     oursLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false))
     oursStaleLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $true -Stale $false))
@@ -453,7 +454,8 @@ try {
     $pr = $r.Body.rules | Where-Object type -eq 'pull_request'
     Check 'create: no approvals, and merge-commit or rebase merges only, never squash' (($pr.parameters.required_approving_review_count -eq 0) -and ((@($pr.parameters.allowed_merge_methods) -join ',') -eq 'merge,rebase')) ($pr.parameters | ConvertTo-Json -Compress)
     Check 'create: every conversation must be resolved before a merge' ($pr.parameters.required_review_thread_resolution -eq $true) ($pr.parameters | ConvertTo-Json -Compress)
-    Check 'create: stale reviews are dismissed on push and the last push needs approval, which changes nothing while no approval is required' (($pr.parameters.dismiss_stale_reviews_on_push -eq $true) -and ($pr.parameters.require_last_push_approval -eq $true) -and ($pr.parameters.required_approving_review_count -eq 0)) ($pr.parameters | ConvertTo-Json -Compress)
+    # A stand-in can't show what GitHub enforces: on 2026-11-15 NCodeGroup/Buffers#62 was BLOCKED, "Approval required", with require_last_push_approval on and no approval required, and CLEAN once it was off (#385).
+    Check 'create: stale reviews are dismissed on push, and the last push needs no approval while no approval is required' (($pr.parameters.dismiss_stale_reviews_on_push -eq $true) -and ($pr.parameters.require_last_push_approval -eq $false) -and ($pr.parameters.required_approving_review_count -eq 0)) ($pr.parameters | ConvertTo-Json -Compress)
 
     $r = Invoke-Baseline @('-Repo', 'extendedAlready')
     Check 'create: a setup already on the extended suite is not changed' (($r.Changes -join '|') -notmatch 'default-setup' -and $r.Output -notmatch 'query suite') "$($r.Changes -join '|') $($r.Output)"
@@ -538,11 +540,11 @@ try {
     }
     $r = Invoke-Baseline @('-Repo', 'owned')
     Check 'threads: a ruleset that has it already is not written' (($r.Changes -join '|') -notmatch 'rulesets/101') ($r.Changes -join '|')
-    $staleLabel = "oursStaleLoose: 'Protect main': dismiss stale reviews on push and require approval of the last push"
+    $staleLabel = "oursStaleLoose: 'Protect main': dismiss stale reviews on push"
     $r = Invoke-Baseline @('-Repo', 'oursStaleLoose')
     $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursStaleLoose/rulesets/101' })
     $sp = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
-    Check 'stale: a Protect main ruleset without them gets both settings in one PUT' ($puts.Count -eq 1 -and $sp.dismiss_stale_reviews_on_push -eq $true -and $sp.require_last_push_approval -eq $true -and $r.Output.Contains("${staleLabel}: set")) "$($r.Changes -join '|') $($r.Output)"
+    Check 'stale: a Protect main ruleset without them gets both settings in one PUT' ($puts.Count -eq 1 -and $sp.dismiss_stale_reviews_on_push -eq $true -and $sp.require_last_push_approval -ne $true -and $r.Output.Contains("${staleLabel}: set")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'oursStaleLoose', '-WhatIf')
     Check 'stale: -WhatIf sends nothing and says it would set them' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("${staleLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'ownedStaleLoose')
@@ -550,11 +552,14 @@ try {
     $r = Invoke-Baseline @('-Repo', 'ownedThenOursStaleLoose')
     $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' })
     $sp = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
-    Check 'stale: a Protect main ruleset beside one of the owner''s gets both settings, and the owner''s ruleset is not written' ($puts.Count -eq 1 -and $puts[0].path -eq 'repos/NCodeGroup/ownedThenOursStaleLoose/rulesets/102' -and $sp.dismiss_stale_reviews_on_push -eq $true -and $sp.require_last_push_approval -eq $true) "$($r.Changes -join '|') $($r.Output)"
+    Check 'stale: a Protect main ruleset beside one of the owner''s gets both settings, and the owner''s ruleset is not written' ($puts.Count -eq 1 -and $puts[0].path -eq 'repos/NCodeGroup/ownedThenOursStaleLoose/rulesets/102' -and $sp.dismiss_stale_reviews_on_push -eq $true -and $sp.require_last_push_approval -ne $true) "$($r.Changes -join '|') $($r.Output)"
 
     # 6. -RequireChecks updates the ruleset the script made.
     $r = Invoke-Baseline @('-Repo', 'ours', '-RequireChecks', 'test')
     Check 'update: -RequireChecks changes the ruleset it made, in place' (($r.Changes -join '|') -like '*BODY PUT repos/NCodeGroup/ours/rulesets/101*') ($r.Changes -join '|')
+    $r1 = Invoke-Baseline @('-Repo', 'oursBlocked', '-RequireChecks', 'test')
+    $kp = ($r1.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'update: -RequireChecks keeps the approval settings of the ruleset it made, so it never loosens them' (($kp.require_last_push_approval -eq $true) -and ($kp.required_approving_review_count -eq 0)) ($kp | ConvertTo-Json -Compress)
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
     $r2 = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
     Check 'update: a ruleset with a code-scanning rule keeps it, whatever the default setup says (advanced setup runs CodeQL too)' ((@($r2.Body.rules.type) -contains 'code_scanning') -and $r2.Output -match 'keeps its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"

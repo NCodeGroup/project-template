@@ -7,8 +7,7 @@
     For each repository it:
       - adds a "Protect main" ruleset on the default branch, the same shape as project-template's: no deletion, no force
         push, a pull request required (no approvals, since the organization has one maintainer) with every conversation
-        resolved, with stale reviews dismissed on push and the last push needing approval (both harmless without
-        required approvals), so a review finding from the bot, CodeQL or a person can't be merged past, merge-commit or rebase
+        resolved, with stale reviews dismissed on push, so a review finding from the bot, CodeQL or a person can't be merged past, merge-commit or rebase
         merges only, never squash, so each commit of a plan stays on the branch, when CodeQL's default setup is
         configured for the repository a code-scanning rule that blocks a pull request whose CodeQL results add an alert
         at warning level or above or a security alert of any severity, and, when -RequireChecks names them, those CI
@@ -40,7 +39,7 @@
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
     main" ruleset an older version of this script made, when it is off, sending only the ruleset's rules with that one
     parameter changed, so no pull request merges past an unresolved discussion (in the "Protect main" ruleset it also turns
-    on dismissing stale reviews on push and requiring approval of the last push, harmless without required approvals); -WhatIf shows it, and a refusal is
+    on dismissing stale reviews on push); -WhatIf shows it, and a refusal is
     reported without failing the run. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's
     required checks in place. Either way the repository still gets the tag ruleset and the security settings, so a second run
     brings a repository protected by an older version of this script up to date. A ruleset named "Protect release tags",
@@ -351,6 +350,12 @@ function Set-BranchRuleset {
     }
     else { Write-SuiteNotice $Name }
 
+    # Approval of the last push stays off while no approval is required: GitHub then wants someone other than the pusher
+    # to approve the newest push, which blocks every merge where only the author can approve (#385). An update keeps the
+    # approval settings of the ruleset it made, so it never loosens them.
+    $ownPull = if ($own) { @($own.rules | Where-Object type -eq 'pull_request')[0].parameters } else { $null }
+    $approvals = if ($ownPull) { [int]$ownPull.required_approving_review_count } else { 0 }
+    $lastPush = $ownPull.require_last_push_approval -eq $true
     $rules = @(
         @{ type = 'deletion' },
         @{ type = 'non_fast_forward' },
@@ -358,8 +363,8 @@ function Set-BranchRuleset {
             allowed_merge_methods = @('merge', 'rebase')
             dismiss_stale_reviews_on_push = $true
             require_code_owner_review = $false
-            require_last_push_approval = $true
-            required_approving_review_count = 0
+            require_last_push_approval = $lastPush
+            required_approving_review_count = $approvals
             required_review_thread_resolution = $true
         } }
     )
@@ -428,23 +433,20 @@ function Set-BranchRuleset {
 # it: its other rules and their parameters are sent back as they were read. A ruleset without a pull request rule, or
 # with the setting on already, is left as it is. A refusal is reported, not thrown, like a security setting's. A pull
 # request rule that came without parameters is reported and left as it is: writing it would mean inventing its other
-# parameters. For the script's own ruleset (-Strict) it also turns on dismissing stale reviews on push and requiring
-# approval of the last push, which is harmless without required approvals.
+# parameters. For the script's own ruleset (-Strict) it also turns on dismissing stale reviews on push, but never
+# approval of the last push: with no approval required, GitHub then wants a non-pusher to approve the newest push (#385).
 function Enable-ThreadResolution {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Name, $Ruleset, [switch]$Strict)
     $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
     if (-not $rule) { return }
     $needThreads = $rule.parameters.required_review_thread_resolution -ne $true
-    $needStale = $Strict -and ($rule.parameters.dismiss_stale_reviews_on_push -ne $true -or $rule.parameters.require_last_push_approval -ne $true)
+    $needStale = $Strict -and $rule.parameters.dismiss_stale_reviews_on_push -ne $true
     if (-not $needThreads -and -not $needStale) { return }
-    $label = if ($needThreads) { "'$($Ruleset.name)': require every conversation resolved" } else { "'$($Ruleset.name)': dismiss stale reviews on push and require approval of the last push" }
+    $label = if ($needThreads) { "'$($Ruleset.name)': require every conversation resolved" } else { "'$($Ruleset.name)': dismiss stale reviews on push" }
     if ($null -eq $rule.parameters) { Write-Host "${Name}: ${label}: not set (its pull request rule came without parameters; turn it on in the ruleset's settings on GitHub)"; return }
     if ($needThreads) { $rule.parameters | Add-Member -NotePropertyName required_review_thread_resolution -NotePropertyValue $true -Force }
-    if ($Strict) {
-        $rule.parameters | Add-Member -NotePropertyName dismiss_stale_reviews_on_push -NotePropertyValue $true -Force
-        $rule.parameters | Add-Member -NotePropertyName require_last_push_approval -NotePropertyValue $true -Force
-    }
+    if ($Strict) { $rule.parameters | Add-Member -NotePropertyName dismiss_stale_reviews_on_push -NotePropertyValue $true -Force }
     if (-not $PSCmdlet.ShouldProcess($Name, "turn on $label")) { Write-Host "${Name}: ${label}: would set"; return }
     $result = Invoke-HostWrite PUT "repos/$Owner/$Name/rulesets/$($Ruleset.id)" @{ rules = @($Ruleset.rules) }
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Name}: ${label}: set" }
