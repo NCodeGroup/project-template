@@ -270,7 +270,7 @@ foreach ($case in $cases) {
         $wantFormat = $case.Data.csharp_format -ne 'false'
         $formatOk = (Test-Path -LiteralPath $toolManifest) -eq $wantFormat -and (Test-Path -LiteralPath $formatIgnore) -eq $wantFormat
         if ($formatOk -and $wantFormat) {
-            $formatOk = (Get-Content -LiteralPath $toolManifest -Raw).Contains('"csharpier"') -and (Get-Content -LiteralPath $toolManifest -Raw).Contains('"rollForward": false') -and (Get-Content -LiteralPath $formatIgnore -Raw).Contains('build/ProjectTemplate.props')
+            $formatOk = (Get-Content -LiteralPath $toolManifest -Raw).Contains('"csharpier"') -and (Get-Content -LiteralPath $toolManifest -Raw).Contains('"rollForward": false') -and (Get-Content -LiteralPath $formatIgnore -Raw).Contains('build/ProjectTemplate.props') -and (Get-Content -LiteralPath $formatIgnore -Raw).Contains('**/Migrations/')
         }
         Check "${name}: .config/dotnet-tools.json pins CSharpier and .csharpierignore skips the template-owned XML exactly when csharp_format is not false" $formatOk
     }
