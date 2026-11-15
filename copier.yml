@@ -124,6 +124,7 @@ _exclude:
     {% if git_host is defined and stack is defined and nuget_package is defined and not (git_host == 'github' and stack == 'dotnet' and nuget_package) %}
     docs/decisions/project-template/0135-packages-are-published-from-a-github-release-through-trusted-publishing.md
     docs/decisions/project-template/0137-the-release-workflow-starts-package-publishing.md
+    docs/decisions/project-template/0138-releases-carry-build-provenance.md
     .github/workflows/release-provenance.yml
     {% endif %}
   - |-
