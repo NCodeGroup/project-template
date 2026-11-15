@@ -28,9 +28,15 @@ _skip_if_exists:
   - /NCodeGroup.png
   - /SECURITY.md
   - /CONTRIBUTING.md
+  - /GOVERNANCE.md
+  - /CODE_OF_CONDUCT.md
+  - /ROADMAP.md
   - /docs/README.md
   - /docs/metrics.md
   - /docs/api-compatibility.md
+  - /docs/architecture.md
+  - /docs/assurance-case.md
+  - /docs/best-practices-badge.md
   - /.config/dotnet-tools.json
   - /.csharpierignore
   - /docs/designs/_template.md
@@ -322,6 +328,11 @@ test_command:
     {%- elif stack == 'node' -%}{{ package_manager | default('npm') }} run test
     {%- elif stack == 'powershell' -%}Invoke-Pester -CI
     {%- endif -%}
+
+conduct_contact:
+  type: str
+  default: ""
+  help: "Where to report a Code of Conduct violation privately, such as an email address or a URL, or blank for the repository's private report form: Report a vulnerability on GitHub's Security tab, or a confidential issue on GitLab"
 
 # Never asked or recorded: the pre-release line of the AGENTS.md the template writes (ADR-0015). A new project starts
 # untracked; Adopt-Project.ps1 answers tracked, since an adopted repository has a history.
