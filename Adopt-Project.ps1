@@ -214,6 +214,14 @@ try {
             if ((Test-Path -LiteralPath version.json) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -Raw -LiteralPath .github/workflows/publish.yml) -notmatch 'PublicRelease=true') {
                 $followUps.Add('add -p:PublicRelease=true to the dotnet test and dotnet pack commands of .github/workflows/publish.yml, which packs the version version.json holds only with it (ADR-0138)')
             }
+            # A library without a package validation baseline: name the published version to set.
+            if ((Get-Answer 'nuget_package') -eq 'true') {
+                if (-not (Test-PackageValidationBaseline)) {
+                    foreach ($published in @(Get-PublishedPackageVersion)) {
+                        $followUps.Add("set <PackageValidationBaselineVersion>$($published.Version)</PackageValidationBaselineVersion> in Directory.Build.props, after the import: $($published.Id) is published on nuget.org at $($published.Version), and the build now validates every pack against it (ADR-0147)")
+                    }
+                }
+            }
             # A library's build fails on a public symbol its PublicAPI.*.txt files don't list; the verification below records the API as it is.
             if ($NoVerify -and (Test-Path -LiteralPath build/Update-PublicApi.ps1)) { $followUps.Add('record each packable project''s public API with ./build/Update-PublicApi.ps1, which the build now checks') }
         }

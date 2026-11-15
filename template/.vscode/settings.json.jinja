@@ -6,4 +6,10 @@
 {%- if 'local' in workflow_tools %},
   "ollama.inferenceTimeoutMinutes": 20
 {%- endif %}
+{%- if stack == 'dotnet' and csharp_format is defined and csharp_format %},
+  "[csharp]": {
+    "editor.defaultFormatter": "csharpier.csharpier-vscode",
+    "editor.formatOnSave": true
+  }
+{%- endif %}
 }

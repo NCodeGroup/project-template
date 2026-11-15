@@ -1,6 +1,6 @@
 # 0117. One Definition of Done gates every change
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0148)
 - **Date:** 2026-10-31
 
 ## Context
@@ -20,6 +20,8 @@ judge whether it passed invites an agent to read success into a failure.
 
 1. It runs these stages in order and stops at the first failure, naming the stage that failed:
    - Tools: `dotnet tool restore`, when `.config/dotnet-tools.json` exists.
+   - Format: `dotnet csharpier check .`, when `.config/dotnet-tools.json` names CSharpier
+     ([ADR-0148](0148-csharp-is-formatted-in-the-gate-and-files-carry-the-spdx-header.md)).
    - Decisions: `.template/Test-AdrIndex.ps1`, which checks that `docs/decisions/README.md` indexes every `NNNN-*.md`
      record and links none that is missing.
    - Build: Release, with warnings as errors, the analyzers and the banned APIs
@@ -36,17 +38,15 @@ judge whether it passed invites an agent to read success into a failure.
 6. A new .NET project's `AGENTS.md` Landing section sets `gate: ./build/dod.ps1 -Fast`, which `/ship-plan`,
    `/run-issues`, `/address-feedback` and `/run-feedback` run before each push.
 
-No formatter check is in the gate. The formatting style that matters is enforced by the analyzers in the build, with
-`EnforceCodeStyleInBuild`, and the template does not pick a formatter such as CSharpier. `dod.ps1` is template-owned and
-never edited: a project that adopts a formatter, or needs any other stage, adds it as a tool and wraps `dod.ps1` in a
-script of its own that runs the extra stage, and names that script as its gate.
+A formatter is a stage when the project's tool manifest names it (ADR-0148). Any other stage a project needs, it adds as
+a tool and wraps `dod.ps1` in a script of its own that runs the extra stage, and names that script as its gate.
 
 ## Options considered
 
 - Each place runs its own commands. Rejected: they drift, and a change passes one check and fails the next.
 - The gate in CI only. Rejected: a failure found in CI costs a round trip, and an agent verifies its work locally.
-- A formatter stage in the template's gate. Rejected: the template would choose a formatter for every project, and the
-  style rules that matter already fail the build.
+- A formatter stage the template always runs. Rejected: a project with its own formatter would fail; the stage runs only
+  when the manifest names CSharpier (ADR-0148).
 - One script with named stages, a fixed last line and an exit code (chosen). The same command answers "is this done?"
   everywhere.
 

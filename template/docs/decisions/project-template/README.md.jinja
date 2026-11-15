@@ -60,7 +60,7 @@ never brings a number the project already uses
 | [0114](0114-one-activity-source-named-like-its-meter.md) | A project traces only its own mechanisms, through one activity source named like its meter |
 | [0115](0115-a-host-logs-to-standard-output.md) | A host logs to standard output, as one JSON line per entry where a collector reads it |
 | [0116](0116-visibility-starts-at-the-narrowest-that-works.md) | Every type and member starts at the narrowest visibility that works; `public` needs a reason |
-| [0117](0117-one-definition-of-done-gates-every-change.md) | `build/dod.ps1` is the one Definition of Done that people, agents and CI run |
+| [0117](0117-one-definition-of-done-gates-every-change.md) | `build/dod.ps1` is the one Definition of Done that people, agents and CI run (amended by 0148) |
 | [0118](0118-the-null-forgiving-operator-is-banned-outside-tests.md) | The null-forgiving operator `!` fails the build outside test projects |
 | [0119](0119-production-refuses-development-only-settings.md) | Development conveniences are inert unless configured, and Production refuses them, listing every finding at once |
 | [0140](0140-replicas-converge-through-reconciliation.md) | Caches expire absolutely, change notices are hints, and derived state is reconciled under a lease |
@@ -70,6 +70,7 @@ never brings a number the project already uses
 | [0144](0144-correctness-guards-fail-closed-capacity-guards-fail-open.md) | A correctness guard fails closed with `503`; a capacity guard fails open behind a timeout and a breaker |
 | [0145](0145-outbound-calls-are-bounded-and-caller-supplied-urls-are-guarded.md) | Outbound calls are bounded; caller-supplied URLs go through a client that refuses private addresses |
 | [0146](0146-secrets-are-never-logged-compared-in-constant-time-and-shown-once.md) | Secrets never reach diagnostics, are compared in constant time, and are shown once and stored hashed |
+| [0148](0148-csharp-is-formatted-in-the-gate-and-files-carry-the-spdx-header.md) | CSharpier checks C# in the gate when the project's tool manifest names it, and a file without the SPDX header fails the build (amends 0117) |
 
 ## ASP.NET Core
 
@@ -104,6 +105,7 @@ never brings a number the project already uses
 {%- endif %}
 | [0136](0136-packages-follow-semantic-versioning-and-the-assembly-version-moves-only-with-the-major.md) | Versions follow Semantic Versioning, from `version.json` (0138) or else the release tag; `AssemblyVersion` moves only with the major |
 | [0138](0138-package-versions-come-from-version-json-through-nerdbank-gitversioning.md) | Package versions come from `version.json` through Nerdbank.GitVersioning (amends 0136) |
+| [0147](0147-packages-are-validated-against-the-last-published-package.md) | Each pack is validated against the last published package, so a binary break fails before it ships (extends 0131) |
 {%- endif %}
 {%- if uses_node %}
 

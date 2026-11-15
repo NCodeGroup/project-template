@@ -37,8 +37,9 @@
   </ItemGroup>
 {%- if nuget_package %}
 
-  <!-- NuGet packages: license expression, README and icon in each package, Source Link (built into the .NET SDK) with untracked sources, symbol packages and XML documentation. A project's own README.md is its package's readme; without one, the repository's is. -->
+  <!-- NuGet packages: license expression, README and icon in each package, Source Link (built into the .NET SDK) with untracked sources, symbol packages and XML documentation. A project's own README.md is its package's readme; without one, the repository's is. Package validation compares each pack with its other target frameworks and with PackageValidationBaselineVersion, which the project sets. -->
   <PropertyGroup>
+    <EnablePackageValidation>true</EnablePackageValidation>
     <PackageLicenseExpression>{{ license }}</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 {%- if package_icon %}
