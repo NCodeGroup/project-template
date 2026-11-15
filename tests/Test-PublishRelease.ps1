@@ -268,6 +268,21 @@ try {
     $run = Invoke-Publish $work
     Check 'a Release: line that disagrees with the changelog: it fails, names both versions and tags nothing' ($run.Code -ne 0 -and $run.Output -match 'v0\.3\.0' -and $run.Output -match '0\.2\.0' -and -not (Get-OriginTag $work).Count) $run.Output
 
+    $work = New-Clone 'version-file-disagrees' '- release: tag+release' -Files @{ 'version.json' = '{ "version": "0.1.0" }' }
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $run = Invoke-Publish $work
+    Check 'a version.json that disagrees with the changelog: it fails, names both versions and tags nothing' ($run.Code -ne 0 -and $run.Output -match '0\.1\.0' -and $run.Output -match '0\.2\.0' -and -not (Get-OriginTag $work).Count) $run.Output
+
+    $work = New-Clone 'version-file-agrees' '- release: tag+release' -Files @{ 'version.json' = '{ "version": "0.2.0" }' }
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $run = Invoke-Publish $work
+    Check 'a version.json that agrees with the changelog: it tags v0.2.0' ($run.Code -eq 0 -and (Get-OriginTag $work) -ccontains 'v0.2.0') $run.Output
+
+    $work = New-Clone 'version-file-unreadable' '- release: tag+release' -Files @{ 'version.json' = 'not json' }
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $run = Invoke-Publish $work
+    Check 'a version.json that isn''t JSON: it fails and tags nothing' ($run.Code -ne 0 -and -not (Get-OriginTag $work).Count) $run.Output
+
     $work = New-Clone 'pulls-error' '- release: tag+release'
     Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
     $env:PUBLISH_RELEASE_TEST_PULLS_ERROR = '1'

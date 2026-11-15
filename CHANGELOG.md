@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.87.0] - 2026-11-14
+## [0.88.0] - 2026-11-14
 
 ### Added
 
@@ -17,6 +17,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - .github/workflows/copilot-setup-steps.yml sets read-only permissions at its top level, as Scorecard's Token-Permissions check wants.
 - tools/Set-RepositoryBaseline.ps1's Protect main ruleset dismisses stale approvals on a push and requires approval of the last push; this changes nothing while no approval is required. A repository that has the ruleset keeps it as it is.
+
+## [0.87.1] - 2026-11-14
+
+### Fixed
+
+- The `publish.yml` a .NET library gets parses in PowerShell: its "Check the version is new" step wrote `$id:` in a string, which PowerShell reads as a scope-qualified variable, so the step failed on every publish before it ran a line. It writes `${id}:`. ([#364](https://github.com/NCodeGroup/project-template/issues/364))
+
+### Changed
+
+- No change for other projects. `tests/Test-Template.ps1` parses every `shell: pwsh` `run:` block of the rendered workflows and of this repository's own, so a parse error like that one fails the template's CI and not a project's release. ([#364](https://github.com/NCodeGroup/project-template/issues/364))
+
+## [0.87.0] - 2026-11-14
+
+### Added
+
+- A .NET library versions every build from a root `version.json` through Nerdbank.GitVersioning: `version` is the version the next release ships, a build from its release tag packs exactly that version and any other commit `<version>-g<commit>`, and `assemblyVersion` keeps `AssemblyVersion` on the major version. A new library gets the file at `0.1.0`; `Update-Project.ps1` and `Adopt-Project.ps1` add it to an existing library at the patch after its newest release tag, with the `AssemblyVersion` its current major shipped. ([#357](https://github.com/NCodeGroup/project-template/issues/357), ADR-0138 in `docs/decisions/project-template/`)
+- A plan with a `Release:` line sets `version.json` to that version in its last step; the state script prints `version-file`, `/ship-plan` stops when the two differ and sets it when it renumbers the plan, and the Tag and publish release workflow refuses to tag a commit whose `version.json` holds another version or can't be read. ([#357](https://github.com/NCodeGroup/project-template/issues/357))
+
+### Changed
+
+- **Breaking:** A .NET library's `publish.yml` tests and packs with `-p:PublicRelease=true`: once `version.json` is there, a project's own `publish.yml` needs it too, or a release publishes nothing. `Update-Project.ps1` warns until it has it, and warns about a project's own reference to Nerdbank.GitVersioning, which fails the build beside the template's. ([#357](https://github.com/NCodeGroup/project-template/issues/357))
+- A library's Copilot setup steps and GitLab build job fetch the full history, which Nerdbank.GitVersioning needs, and ADR-0136 takes the version number from `version.json` (ADR-0138). ([#357](https://github.com/NCodeGroup/project-template/issues/357))
 
 ## [0.86.2] - 2026-11-14
 
@@ -1432,7 +1454,9 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.87.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.88.0...HEAD
+[0.88.0]: https://github.com/NCodeGroup/project-template/compare/v0.87.1...v0.88.0
+[0.87.1]: https://github.com/NCodeGroup/project-template/compare/v0.87.0...v0.87.1
 [0.87.0]: https://github.com/NCodeGroup/project-template/compare/v0.86.2...v0.87.0
 [0.86.2]: https://github.com/NCodeGroup/project-template/compare/v0.86.1...v0.86.2
 [0.86.1]: https://github.com/NCodeGroup/project-template/compare/v0.86.0...v0.86.1

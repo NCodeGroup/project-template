@@ -120,6 +120,7 @@ try {
         # Files the repository owns, merged or template-owned, stay exactly as they are.
         foreach ($file in $ownedFiles) { $copierArgs += '--exclude', "/$file" }
         $copierArgs += $Template, $project
+        $versionFileNew = -not (Test-Path -LiteralPath version.json)
         Invoke-Copier @copierArgs
 
         $utf8 = [Text.UTF8Encoding]::new($false)
@@ -169,6 +170,19 @@ try {
             Remove-Item -LiteralPath .github/workflows/publish.yml
             $report.Add("  Skipped .github/workflows/publish.yml $([char]0x2014) $($publishers -join ', ') already push NuGet packages")
         }
+        # A version.json this adoption brought in starts at the patch after the newest release tag, with the AssemblyVersion its current major shipped.
+        if ($versionFileNew -and (Test-Path -LiteralPath version.json -PathType Leaf)) {
+            $versionFile = Update-VersionFile
+            if ($versionFile -and ($versionFile.Version -or $versionFile.AssemblyVersion)) {
+                $line = "  Set version.json $([char]0x2014) "
+                if ($versionFile.Version) { $line += "version $($versionFile.Version), the patch after $($versionFile.Tag)" }
+                if ($versionFile.AssemblyVersion) {
+                    if ($versionFile.Version) { $line += '; ' }
+                    $line += "assemblyVersion $($versionFile.AssemblyVersion) ($($versionFile.Precision))"
+                }
+                $report.Add($line)
+            }
+        }
 
         $followUps = [Collections.Generic.List[string]]::new()
         if ($nvmrcText) { $followUps.Add("set .node-version to the Node.js version .nvmrc names ($nvmrcText); it holds the template's version until then") }
@@ -195,8 +209,11 @@ try {
                 $buildLists = @(Get-BuildFileList $project)
                 if ($buildLists.Count) { $followUps.Add("re-admit Directory.Build.props and build/ProjectTemplate.props, which it imports, in each list of the build's files: $($buildLists -join ', ')") }
             }
-            $floor = Get-AssemblyVersionFloor
+            $floor = if (-not (Test-Path -LiteralPath version.json)) { Get-AssemblyVersionFloor }
             if ($floor) { $followUps.Add("set <AssemblyVersion>$($floor.AssemblyVersion)</AssemblyVersion> in Directory.Build.props until the next major version, because $($floor.Tag) was released with that assembly version (ADR-0136)") }
+            if ((Test-Path -LiteralPath version.json) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -Raw -LiteralPath .github/workflows/publish.yml) -notmatch 'PublicRelease=true') {
+                $followUps.Add('add -p:PublicRelease=true to the dotnet test and dotnet pack commands of .github/workflows/publish.yml, which packs the version version.json holds only with it (ADR-0138)')
+            }
             # A library's build fails on a public symbol its PublicAPI.*.txt files don't list; the verification below records the API as it is.
             if ($NoVerify -and (Test-Path -LiteralPath build/Update-PublicApi.ps1)) { $followUps.Add('record each packable project''s public API with ./build/Update-PublicApi.ps1, which the build now checks') }
         }

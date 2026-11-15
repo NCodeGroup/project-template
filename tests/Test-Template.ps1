@@ -38,6 +38,17 @@ function Invoke-Git {
     git -c user.name=template-test -c user.email=template-test@example.invalid @args
     if ($LASTEXITCODE) { throw "git $($args -join ' ') failed." }
 }
+# One message per pwsh run: block in the YAML files that PowerShell can't parse, with ${{ }} expressions swapped for text.
+function Get-PwshParseError([string[]]$Files) {
+    $out = uv run --quiet --no-project --with $pyyamlPin python -c $pwshRunCheck @Files 2>&1 | Out-String
+    if ($LASTEXITCODE) { throw $out }
+    foreach ($entry in @($out | ConvertFrom-Json)) {
+        $script = [regex]::Replace($entry.run, '\$\{\{.*?\}\}', 'x', 'Singleline')
+        $errors = $null
+        [Management.Automation.Language.Parser]::ParseInput($script, [ref]$null, [ref]$errors) | Out-Null
+        if ($errors) { "$([IO.Path]::GetFileName($entry.file)) ($($entry.step)): $(($errors | ForEach-Object { "line $($_.Extent.StartLineNumber): $($_.Message)" }) -join '; ')" }
+    }
+}
 # The run: block of the step with the given id in a workflow, dedented as YAML reads a block scalar: its lines up to the
 # next line indented no deeper than run: itself. Empty when the step or its run: | block isn't there.
 function Get-StepScript([string]$Workflow, [string]$Id) {
@@ -163,6 +174,35 @@ $cases = @(
 )
 if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
 $yamlCheck = 'import sys, yaml; [yaml.safe_load(open(p, encoding="utf-8")) for p in sys.argv[1:]]'
+# Prints, as JSON, every step that runs under pwsh (its own shell or its job's default) with its run: script.
+$pwshRunCheck = @'
+import sys, json, yaml
+out = []
+for path in sys.argv[1:]:
+    doc = yaml.safe_load(open(path, encoding="utf-8"))
+    if not isinstance(doc, dict):
+        continue
+    groups = []
+    doc_defaults = doc.get("defaults")
+    doc_run_defaults = doc_defaults.get("run") if isinstance(doc_defaults, dict) else None
+    doc_shell = doc_run_defaults.get("shell") if isinstance(doc_run_defaults, dict) else None
+    jobs = doc.get("jobs")
+    for job in (jobs.values() if isinstance(jobs, dict) else []):
+        if not isinstance(job, dict):
+            continue
+        defaults = job.get("defaults")
+        run_defaults = defaults.get("run") if isinstance(defaults, dict) else None
+        shell = run_defaults.get("shell") if isinstance(run_defaults, dict) else None
+        groups.append((job.get("steps"), shell or doc_shell))
+    runs = doc.get("runs")
+    if isinstance(runs, dict):
+        groups.append((runs.get("steps"), None))
+    for steps, default in groups:
+        for step in (steps if isinstance(steps, list) else []):
+            if isinstance(step, dict) and (step.get("shell") or default) == "pwsh" and isinstance(step.get("run"), str):
+                out.append({"file": path, "step": step.get("name") or step.get("id") or "", "run": step["run"]})
+print(json.dumps(out))
+'@
 # The YAML and _exclude checks run PyYAML and Jinja2 at the exact versions tests/requirements.txt pins, which Dependabot's pip entry for /tests moves, not the newest release.
 $pythonPins = [IO.File]::ReadAllLines((Join-Path $repoRoot 'tests\requirements.txt'))
 $pyyamlPin = @($pythonPins -match '^pyyaml==\d+(\.\d+)+$')[0]
@@ -248,6 +288,11 @@ foreach ($case in $cases) {
         $apiTracked = ($packages -match '<PackageVersion Include="Microsoft\.CodeAnalysis\.PublicApiAnalyzers" Version="\d+\.\d+\.\d+" />') -and $buildProps.Contains('<PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers"')
         $versionPinned = $buildProps.Contains('Name="ProjectTemplatePinAssemblyVersion"')
         Check "${name}: the public API is tracked and AssemblyVersion pinned to the major version only for a library" ($apiTracked -eq $library -and $versionPinned -eq $library) "$packages | $buildProps"
+        $versionFile = Join-Path $dest 'version.json'
+        $versionJson = if (Test-Path -LiteralPath $versionFile) { Get-Content -LiteralPath $versionFile -Raw | ConvertFrom-Json }
+        $nbgvWired = ($packages -match '<PackageVersion Include="Nerdbank\.GitVersioning" Version="\d+\.\d+\.\d+" />') -and $buildProps.Contains('<PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />') -and $buildProps.Contains("Exists('`$(MSBuildThisFileDirectory)../version.json')")
+        $versionFileOk = if ($library) { $versionJson -and $versionJson.version -eq '0.1.0' -and $versionJson.assemblyVersion.precision -eq 'major' -and $versionJson.nuGetPackageVersion.semVer -eq 2 -and $versionJson.cloudBuild.setVersionVariables -eq $false -and (@($versionJson.publicReleaseRefSpec) -contains '^refs/tags/v\d+\.\d+\.\d+') } else { $true }
+        Check "${name}: a library versions from version.json through Nerdbank.GitVersioning, and only a library" ((Test-Path -LiteralPath $versionFile) -eq $library -and $nbgvWired -eq $library -and $versionFileOk) "$packages | $buildProps"
         $agentsText = Get-Content -LiteralPath (Join-Path $dest 'AGENTS.md') -Raw
         Check "${name}: AGENTS.md names the Definition of Done and gates each push with it" ($agentsText.Contains('- Definition of Done: `./build/dod.ps1`') -and $agentsText -match '(?m)^- gate: \./build/dod\.ps1 -Fast\r?$' -and ($agentsText.Contains('./build/Update-PublicApi.ps1') -eq $library)) $agentsText
         # A context's migrations folder named for its class becomes a namespace segment that hides the class (CS0118).
@@ -259,6 +304,9 @@ foreach ($case in $cases) {
         $ciFile = if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' }
         $ciText = Get-Content -LiteralPath (Join-Path $dest $ciFile) -Raw
         Check "${name}: CI runs the Definition of Done for the default commands" ($ciText.Contains('build/dod.ps1') -and -not ($ciText -match '(?m)^\s+(- )?dotnet (build|test)\s*$')) $ciText
+        $setupFile = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
+        $historyOk = if ($case.Host -eq 'github') { -not (Test-Path -LiteralPath $setupFile) -or ((Get-Content -LiteralPath $setupFile -Raw).Contains('fetch-depth: 0') -eq $library) } else { ($ciText -match 'NUGET_PACKAGES: \$CI_PROJECT_DIR/\.nuget/packages\r?\n(?:    #.*\r?\n)?    GIT_DEPTH: "0"') -eq $library }
+        Check "${name}: a library's builds fetch the full history Nerdbank.GitVersioning needs" $historyOk $ciText
         if ($case.Host -eq 'github') {
             Check "${name}: CI caches NuGet packages, keyed on the restore's inputs" ($ciText.Contains('uses: actions/cache@') -and $ciText.Contains('path: ~/.nuget/packages') -and $ciText.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $ciText.Contains('${{ runner.os }}-nuget-' + "`n")) $ciText
             Check "${name}: CI installs .NET with the install-dotnet action after the checkout and before the build" ([regex]::Matches($ciText, '(?m)^      - uses: \./\.github/actions/install-dotnet\r?$').Count -eq 1 -and $ciText.IndexOf('uses: actions/checkout@') -lt $ciText.IndexOf('./.github/actions/install-dotnet') -and $ciText.IndexOf('./.github/actions/install-dotnet') -lt $ciText.IndexOf('build/dod.ps1') -and -not $ciText.Contains('actions/setup-dotnet') -and -not $ciText.Contains('Get-TestRuntimes')) $ciText
@@ -316,6 +364,7 @@ foreach ($case in $cases) {
             Check "${name}: the publish workflow packs only a tag whose commit the default branch holds" ($workflow.Contains('fetch-depth: 0') -and $workflow.Contains('DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}') -and $workflow.Contains('git merge-base --is-ancestor HEAD "origin/$env:DEFAULT_BRANCH"') -and $workflow.IndexOf('merge-base --is-ancestor') -lt $workflow.IndexOf('dotnet pack')) $workflow
             Check "${name}: the publish workflow also runs by hand or from the Tag and publish release workflow, with a tag input, and checks out that tag" ($workflow -match '(?m)^  workflow_dispatch:\r?\n    inputs:\r?\n      tag:\r?$' -and $workflow.Contains('TAG: ${{ github.event.release.tag_name || inputs.tag }}') -and $workflow.Contains('ref: refs/tags/${{ steps.version.outputs.tag }}')) $workflow
             Check "${name}: the publish workflow installs .NET with the install-dotnet action once the tagged commit is checked, before testing, and counts only a 404 as unpublished" ($workflow.Contains('      - uses: ./.github/actions/install-dotnet') -and $workflow.IndexOf('git merge-base --is-ancestor') -lt $workflow.IndexOf('./.github/actions/install-dotnet') -and $workflow.IndexOf('./.github/actions/install-dotnet') -lt $workflow.IndexOf('dotnet test') -and -not $workflow.Contains('actions/setup-dotnet') -and -not $workflow.Contains('Get-TestRuntimes') -and $workflow.Contains('-SkipHttpErrorCheck -StatusCodeVariable status') -and $workflow.Contains('$status -eq 404') -and -not $workflow.Contains('catch { $versions = @() }')) $workflow
+            Check "${name}: the publish workflow tests and packs a public release, with the tag's version for a library without version.json" ($workflow.Contains('run: dotnet test --configuration Release -p:PublicRelease=true') -and $workflow.Contains('run: dotnet pack --configuration Release --output artifacts/packages -p:PublicRelease=true "-p:Version=$VERSION"')) $workflow
         }
     }
     $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
@@ -564,6 +613,8 @@ foreach ($case in $cases) {
     $yamlFiles = @($files | Where-Object Extension -In '.yml', '.yaml' | ForEach-Object FullName)
     $yamlOutput = uv run --quiet --no-project --with $pyyamlPin python -c $yamlCheck @yamlFiles 2>&1 | Out-String
     Check "${name}: valid YAML ($($yamlFiles.Count) files)" ($LASTEXITCODE -eq 0) $yamlOutput.Trim()
+    $parseErrors = @(Get-PwshParseError $yamlFiles)
+    Check "${name}: every pwsh run: block parses ($($yamlFiles.Count) files)" (-not $parseErrors) ($parseErrors -join '; ')
     $extensions = Get-Content -LiteralPath (Join-Path $dest '.vscode/extensions.json') -Raw
     $settings = Get-Content -LiteralPath (Join-Path $dest '.vscode/settings.json') -Raw
     $local = 'local' -in $tools
@@ -622,6 +673,9 @@ $stale = @(Get-StaleWorkflowFile (Join-Path $repoRoot 'template') | Select-Objec
 Check 'generated workflow files match workflow/templates (else run tools\Update-Template.ps1)' (-not $stale) ($stale -join ', ')
 $stale = @(Get-StaleWorkflowFile $repoRoot | Select-Object -Unique)
 Check 'this repository''s own workflow files match workflow/templates (else run tools\Update-Template.ps1)' (-not $stale) ($stale -join ', ')
+$ownYaml = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot '.github') -Recurse -File | Where-Object Extension -In '.yml', '.yaml' | ForEach-Object FullName)
+$ownParseErrors = @(Get-PwshParseError $ownYaml)
+Check 'repository: every pwsh run: block of the workflows parses' (-not $ownParseErrors) ($ownParseErrors -join '; ')
 # Text files Git tracks with LF endings; binary files are left out.
 $ownFiles = git -C $repoRoot -c core.quotePath=false ls-files --eol | Where-Object { $_ -match '^i/lf\s' } | ForEach-Object { Join-Path $repoRoot (($_ -split "`t", 2)[1]) }
 $badEnd = $ownFiles | Where-Object { $b = [IO.File]::ReadAllBytes($_); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.Substring($repoRoot.Length).TrimStart('\', '/') }
@@ -883,6 +937,9 @@ $m = @(Get-MissingText ($shipFiles + ('template\.claude\commands\plan-feature.md
 $m += @(Get-MissingText $shipFiles ('never under two headings of the same name'))
 Check 'workflow: the changelog step merges a heading changelog-duplicates names in [Unreleased] at the first one''s place, and a merge step never writes a heading twice' (-not $m) ($m -join '; ')
 $planCopies = 'template\.claude\commands\plan-feature.md', 'template\.github\prompts\plan-bugfix.prompt.md', 'template\.github\skills\plan-tests\SKILL.md'
+$m = @(Get-MissingText $shipFiles ('starts with `mismatch`', '## The Version File Step', 'Set version.json to <renumber>', 'In that case, when `version-file` is `-`, go on: no step is added.', 'also when it reads `match`', 'then, when `version-file` isn''t `-`, the step The Version File Step below gives, numbered after it; then stop and say that replan-step comes next', '`<major>` (`<renumber>`''s major version)'))
+$m += @(Get-MissingText $planCopies ('sets that file''s `version` to the `Release:` version'))
+Check 'workflow: a plan keeps version.json equal to its Release: version, and ship-plan stops on a mismatch and sets it when it renumbers' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ($shipFiles + $planCopies) ('Until the first stable release, the [Unreleased] section describes the product as it is, not its changes.', 'The state script prints `pre-release: yes` for it', 'a tag below the first stable version never counts', 'ends the pre-release'))
 $m += @(Get-MissingText $planCopies ('a raise keeps the major version at 0', 'except in a pre-release project, which has none'))
 $m += @(Get-MissingText $shipFiles ('Stop when `pre-release` is `invalid`', 'the state script''s `pre-release` is `no` and its `changelog-version` isn''t `<version>`', 'Write the <renumber> changelog section', 'that section is `## [Unreleased]`', 'In a pre-release changelog, keep the catalog entries of both sides'))

@@ -13,7 +13,8 @@
                      both workflows publish, and warns that publish.yml has no workflow_dispatch trigger.
       own-publisher  A release.yml that runs dotnet nuget push and no publish.yml, and a v2.3.0 tag on a commit
                      without build/ProjectTemplate.props. The update leaves publish.yml out and says so, without a
-                     workflow_dispatch warning, and names AssemblyVersion 2.3.0.0 to set in Directory.Build.props.
+                     workflow_dispatch warning. It adds version.json at the patch after v2.3.0 (2.3.1), with the
+                     assemblyVersion 2.3 (precision minor) that v2.3.0 shipped, and says so; v0.1.0 predates version.json.
       with-trigger   The template's own publish.yml, with its workflow_dispatch trigger. The update adds tag-release.yml
                      and prints no workflow_dispatch warning.
     Prints PASS or FAIL per check and exits 1 on any failure.
@@ -70,10 +71,13 @@ $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl -BeforeCommi
     $text = [IO.File]::ReadAllText((Join-Path (Get-Location) 'copier.yml'))
     if ($text -notmatch $validator) { throw "copier.yml has no license validator." }
     [IO.File]::WriteAllText((Join-Path (Get-Location) 'copier.yml'), [regex]::Replace($text, $validator, ''))
+    # v0.1.0 predates version.json, so an update adds it.
+    Remove-Item -LiteralPath (Join-Path (Get-Location) 'template/version.json')
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot 'copier.yml') -Destination (Join-Path $tpl 'copier.yml') -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot 'template\version.json') -Destination (Join-Path $tpl 'template\') -Force
 Push-Location $tpl
-try { Invoke-Git commit -q -am 'Require a license for a NuGet package'; Invoke-Git tag v0.2.0 }
+try { Invoke-Git add -A; Invoke-Git commit -q -m 'Require a license for a NuGet package, and version from version.json'; Invoke-Git tag v0.2.0 }
 finally { Pop-Location }
 
 $release = "name: release`non: release`njobs:`n  push:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push out/*.nupkg`n"
@@ -84,7 +88,7 @@ Push-Location $unlicensed
 try {
     [IO.File]::WriteAllText((Join-Path $unlicensed '.github/workflows/release.yml'), $release)
     $publishYml = Join-Path $unlicensed '.github/workflows/publish.yml'
-    [IO.File]::WriteAllText($publishYml, [regex]::Replace([IO.File]::ReadAllText($publishYml), '(?m)^  workflow_dispatch:\r?\n(?:    .*\r?\n)*', ''))
+    [IO.File]::WriteAllText($publishYml, [regex]::Replace([IO.File]::ReadAllText($publishYml), '(?m)^  workflow_dispatch:\r?\n(?:    .*\r?\n)*', '').Replace(' -p:PublicRelease=true', ''))
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     Check 'fixture: unlicensed has no license answer, and publish.yml' (-not (Select-String -LiteralPath .copier-answers.yml -Pattern '^license: *[^\s'']' -Quiet) -and (Test-Path -LiteralPath .github/workflows/publish.yml))
     $head = git rev-parse HEAD
@@ -99,6 +103,7 @@ try {
     Check 'unlicensed: with -Data @{ license = ''MIT'' } the update commits v0.2.0 and records the license' ($result.ExitCode -eq 0 -and (git log -1 --format=%s) -eq 'Update from project-template v0.2.0' -and (Select-String -LiteralPath .copier-answers.yml -Pattern '^license: MIT$' -Quiet) -and -not (git status --porcelain)) $result.Output
     Check 'unlicensed: the update warns that publish.yml and release.yml both push NuGet packages' ($result.Output.Contains('Both .github/workflows/publish.yml and .github/workflows/release.yml push NuGet packages') -and (Test-Path -LiteralPath .github/workflows/publish.yml)) $result.Output
     Check 'unlicensed: the update warns that publish.yml has no workflow_dispatch trigger' ($result.Output.Contains('.github/workflows/publish.yml has no workflow_dispatch trigger') -and (Test-Path -LiteralPath .github/workflows/tag-release.yml)) $result.Output
+    Check 'unlicensed: the update warns that publish.yml packs without -p:PublicRelease=true' ($result.Output.Contains('.github/workflows/publish.yml packs without -p:PublicRelease=true')) $result.Output
 }
 finally { Pop-Location }
 
@@ -111,19 +116,24 @@ try {
     [IO.File]::WriteAllText((Join-Path $ownPublisher '.github/workflows/release.yml'), $release)
     Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $ownPublisher
+    $versionJson = Get-Content -Raw -LiteralPath version.json | ConvertFrom-Json
     Check 'own-publisher: the update leaves publish.yml out beside release.yml, and says so' ($result.ExitCode -eq 0 -and -not (Test-Path -LiteralPath .github/workflows/publish.yml) -and $result.Output.Contains('Left out .github/workflows/publish.yml: .github/workflows/release.yml already push NuGet packages')) $result.Output
     Check 'own-publisher: without publish.yml, no workflow_dispatch warning' (-not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
-    Check 'own-publisher: the update names the AssemblyVersion v2.3.0 shipped' ($result.Output.Contains('v2.3.0 was released with AssemblyVersion 2.3.0.0') -and $result.Output.Contains('  <PropertyGroup><AssemblyVersion>2.3.0.0</AssemblyVersion></PropertyGroup>')) $result.Output
+    Check 'own-publisher: the update adds version.json at the patch after v2.3.0, with the AssemblyVersion v2.3.0 shipped, and says so' (($versionJson.version -eq '2.3.1') -and ($versionJson.assemblyVersion.version -eq '2.3') -and ($versionJson.assemblyVersion.precision -eq 'minor') -and $result.Output.Contains('Added version.json') -and $result.Output.Contains('the patch after v2.3.0') -and -not $result.Output.Contains('<PropertyGroup><AssemblyVersion>')) $result.Output
 }
 finally { Pop-Location }
 
-# with-trigger: the template's publish.yml keeps its workflow_dispatch trigger, so the update has nothing to warn about.
+# with-trigger: the template's publish.yml keeps its workflow_dispatch trigger, so no publish.yml warning; its Directory.Build.props references Nerdbank.GitVersioning and sets AssemblyVersion, which the update warns about.
 $withTrigger = New-Library 'with-trigger' 'license=MIT'
 Push-Location $withTrigger
 try {
+    $buildProps = Join-Path $withTrigger 'Directory.Build.props'
+    [IO.File]::WriteAllText($buildProps, [IO.File]::ReadAllText($buildProps).Replace('</Project>', '<PropertyGroup><AssemblyVersion>1.2.0.0</AssemblyVersion></PropertyGroup><ItemGroup><PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" /></ItemGroup></Project>'))
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $withTrigger
     Check 'with-trigger: a publish.yml with workflow_dispatch gets no warning' ($result.ExitCode -eq 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Test-Path -LiteralPath .github/workflows/tag-release.yml) -and -not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
+    Check 'with-trigger: the update adds version.json, has no PublicRelease warning, and names the file that references Nerdbank.GitVersioning' ($result.Output.Contains('Added version.json') -and $result.Output.Contains('Its version is 0.1.0') -and -not $result.Output.Contains('packs without -p:PublicRelease=true') -and $result.Output.Contains('These files reference Nerdbank.GitVersioning') -and $result.Output.Contains('Directory.Build.props')) $result.Output
+    Check 'with-trigger: the update says to delete the AssemblyVersion that Directory.Build.props sets' ($result.Output.Contains('Directory.Build.props sets AssemblyVersion') -and $result.Output.Contains('delete it from Directory.Build.props')) $result.Output
 }
 finally { Pop-Location }
 
