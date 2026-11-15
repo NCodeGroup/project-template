@@ -478,6 +478,7 @@ foreach ($case in $cases) {
     $reviewCaller = Join-Path $dest '.github\workflows\code-review.yml'
     $wantsReview = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
     Check "${name}: the code review caller is there only when asked for" ((Test-Path -LiteralPath $reviewCaller) -eq $wantsReview) "exists=$(Test-Path -LiteralPath $reviewCaller) wanted=$wantsReview"
+    Check "${name}: AGENTS.md opens every pull request as a draft exactly when the project runs NCode Review" ((Select-String -LiteralPath (Join-Path $dest 'AGENTS.md') -Pattern '^- draft: yes$' -Quiet) -eq $wantsReview)
     if ($wantsReview) {
         $caller = Get-Content -LiteralPath $reviewCaller -Raw
         $uses = [regex]::Matches($caller, '(?m)^\s+uses: NCodeGroup/code-review@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
@@ -989,7 +990,7 @@ $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.git
 $m += @(if (-not ((git -C $repoRoot ls-files -s template/.githooks/pre-push) -join '').StartsWith('100755')) { 'template/.githooks/pre-push: not executable in the index' })
 Check 'workflow: ship-plan opens a draft pull request when asked or when the Landing section says draft: yes, and the pre-push hook is executable' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md', '.claude\commands\ship-plan.md') ('the default when the Landing section has no `- draft:` line', 'a project that wants drafts writes `- draft: yes`'))
-$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- draft: no', '`draft`: `no`, the default, which a template update never changes'))
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- draft: {% if git_host == ''github'' and code_review is defined and code_review %}yes{% else %}no{% endif %}', '`draft`: `no`, the default when the line is missing, which a template update never changes'))
 Check 'workflow: draft stays no by default, and ship-plan and AGENTS.md say how a project opts in with draft: yes' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('`gate` is `none` or the command to run before a push', 'if (-not $? -or $LASTEXITCODE) { exit 1 } else { exit 0 }', 'stop before pushing: say the gate failed', 'the gate changed files'))
 Check 'workflow: ship-plan runs the Landing section''s gate before it pushes and stops when it fails or changes a file' (-not $m) ($m -join '; ')
