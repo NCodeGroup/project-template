@@ -134,6 +134,7 @@ _exclude:
     docs/decisions/project-template/0135-packages-are-published-from-a-github-release-through-trusted-publishing.md
     docs/decisions/project-template/0137-the-release-workflow-starts-package-publishing.md
     docs/decisions/project-template/0139-releases-carry-build-provenance.md
+    docs/decisions/project-template/0151-release-follow-ups-are-jobs-publish-calls.md
     .github/workflows/release-provenance.yml
     .github/workflows/raise-baseline.yml
     {% endif %}
