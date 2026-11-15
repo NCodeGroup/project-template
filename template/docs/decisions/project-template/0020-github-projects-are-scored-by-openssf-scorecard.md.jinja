@@ -31,7 +31,7 @@ The table lists each check, what the template does for it and what needs a perso
 | CI-Tests | Pull requests run the CI workflow. | Nothing. |
 | Maintained | Scheduled automation keeps the repository active. | Keep committing and answering issues. |
 {%- if stack == 'dotnet' and nuget_package %}
-| Signed-Releases | A GitHub .NET library attaches build provenance to its releases (ADR-0138). | Nothing. |
+| Signed-Releases | A GitHub .NET library attaches build provenance to its releases (ADR-0139). | Nothing. |
 {%- else %}
 | Signed-Releases | Nothing: the template attaches no signature or provenance to this project's releases. | A signature or a *.intoto.jsonl provenance file among each release's assets. |
 {%- endif %}
@@ -59,6 +59,6 @@ The table lists each check, what the template does for it and what needs a perso
   only through pull requests.
 - [ADR-0008](0008-external-inputs-are-pinned-and-kept-current.md): external inputs are pinned and kept current.
 {%- if stack == 'dotnet' and nuget_package %}
-- [ADR-0138](0138-releases-carry-build-provenance.md): releases carry build provenance.
+- [ADR-0139](0139-releases-carry-build-provenance.md): releases carry build provenance.
 {%- endif %}
 - `.github/workflows/scorecard.yml`

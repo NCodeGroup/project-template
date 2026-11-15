@@ -1,4 +1,4 @@
-# 0138. Releases carry build provenance
+# 0139. Releases carry build provenance
 
 - **Status:** Accepted
 - **Date:** 2026-11-14

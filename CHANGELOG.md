@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Every GitHub project gets .github/workflows/scorecard.yml, which runs OpenSSF Scorecard on each push to the default branch and weekly, publishes the score and uploads its findings to code scanning; the template's ADR-0020 lists what the template controls and what needs a person.
-- A GitHub .NET library gets .github/workflows/release-provenance.yml: after Publish packages succeeds, it attests the packages with GitHub's build provenance and attaches them and <tag>.intoto.jsonl to the release, so a consumer runs gh attestation verify and Scorecard's Signed-Releases check scores (the template's ADR-0138).
+- A GitHub .NET library gets .github/workflows/release-provenance.yml: after Publish packages succeeds, it attests the packages with GitHub's build provenance and attaches them and <tag>.intoto.jsonl to the release, so a consumer runs gh attestation verify and Scorecard's Signed-Releases check scores (the template's ADR-0139).
 
 ### Changed
 
