@@ -172,6 +172,27 @@ try {
 }
 finally { Pop-Location }
 
+# gitlab-pack: a .gitlab-ci.yml that packs without PublicRelease or GIT_DEPTH "0" gets the warning; gitlab-pack-ok has both and gets none.
+$gitlabPack = New-Library 'gitlab-pack' 'license=MIT'
+Push-Location $gitlabPack
+try {
+    [IO.File]::WriteAllText((Join-Path $gitlabPack '.gitlab-ci.yml'), "pack:`n  script:`n    - dotnet pack -c Release -p:Version=1.0.0`n")
+    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
+    $result = Invoke-Update $gitlabPack
+    Check 'gitlab-pack: a .gitlab-ci.yml that packs without PublicRelease or GIT_DEPTH gets the warning' ($result.ExitCode -eq 0 -and $result.Output.Contains('.gitlab-ci.yml packs or pushes packages without -p:PublicRelease=true and GIT_DEPTH: "0"')) $result.Output
+}
+finally { Pop-Location }
+
+$gitlabPackOk = New-Library 'gitlab-pack-ok' 'license=MIT'
+Push-Location $gitlabPackOk
+try {
+    [IO.File]::WriteAllText((Join-Path $gitlabPackOk '.gitlab-ci.yml'), "variables:`n  GIT_DEPTH: `"0`"`npack:`n  script:`n    - dotnet pack -c Release -p:PublicRelease=true`n")
+    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
+    $result = Invoke-Update $gitlabPackOk
+    Check 'gitlab-pack-ok: a .gitlab-ci.yml with PublicRelease and GIT_DEPTH gets no warning' ($result.ExitCode -eq 0 -and -not $result.Output.Contains('.gitlab-ci.yml packs or pushes packages')) $result.Output
+}
+finally { Pop-Location }
+
 ''
 $env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Library update tests: FAILED ($($failures.Count))"; exit 1 }
