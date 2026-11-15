@@ -40,6 +40,10 @@ succeeds, so the raise cannot run in the release itself.
 - The first set of the baseline stays manual.
 - A GitLab library runs the script by hand.
 - A merge of the pull request needs CI to pass, as any change does.
+- The same setting lets any workflow's token approve a pull request. The ruleset `tools/Set-RepositoryBaseline.ps1`
+  makes requires no approving review, so such an approval satisfies nothing there; a project whose ruleset requires
+  approvals would count an approval from `github-actions[bot]`, so it raises the baseline by hand and deletes this
+  workflow instead, which turns the setting off on the next `Set-RepositoryBaseline.ps1` run.
 
 ## References
 
