@@ -6,7 +6,8 @@
     Checks that `node brand/build.mjs --check` passes on the committed kit, so every file in brand/ and
     template/NCodeGroup.png holds what the script draws. Then builds the kit into an empty folder with --output and
     checks that it writes every file the committed kit has and that its own --check passes there, and that the
-    check fails, naming the file, once one file is removed. Prints PASS or FAIL per check and exits 1 on any failure.
+    check fails, naming the file, once one file is removed or holds something else. Prints PASS or FAIL per check
+    and exits 1 on any failure.
     Needs the Node.js release .node-version names on PATH, and no packages. The checks take about half a minute.
 
 .PARAMETER Work
@@ -61,6 +62,14 @@ Remove-Item -LiteralPath (Join-Path $out $removed)
 $broken = Invoke-Build @('--output', $out, '--check')
 Check 'the check fails, naming the file, once one is removed' ($broken.Code -eq 1 -and $broken.Output -match "(?m)^$([regex]::Escape($removed))\s.*missing") $broken.Output.Trim()
 Check 'the check writes nothing' (-not (Test-Path -LiteralPath (Join-Path $out $removed)))
+
+$changed = 'mark/ncode-mark-blue.svg'
+$changedPath = Join-Path $out $changed
+$drifted = [IO.File]::ReadAllText($changedPath).Replace('#0033CC', '#0033CD')
+[IO.File]::WriteAllText($changedPath, $drifted)
+$drift = Invoke-Build @('--output', $out, '--check')
+Check 'the check fails, naming the file, once a file holds something else' ($drift.Code -eq 1 -and $drift.Output -match "(?m)^$([regex]::Escape($changed))\s.*would change") $drift.Output.Trim()
+Check 'the check leaves a file that holds something else as it is' ([IO.File]::ReadAllText($changedPath) -eq $drifted)
 
 if ($failures.Count) { "Kept the work folder: $Work"; "Brand kit tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }

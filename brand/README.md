@@ -57,7 +57,7 @@ Contrast, as WCAG measures it: NCode Blue on white, and white on NCode Blue, 8.9
 
 - The master is drawn on a grid of 64 units from straight lines and circular arcs. The braces are a stroke of 4 units, 48 high; the N is 24 wide and 32 high, with stems of 5. Every stem lies on a whole unit, so the mark is sharp at 64 pixels and at its multiples.
 - At 16, 20, 24, 32, 40 and 48 pixels the mark has a drawing of its own, with each stem on whole pixels. A scaled-down master puts them between pixels, which is what makes a small icon look soft. The ICO files and `favicon.svg` use these drawings.
-- The wordmark is "NCode" in Inter Display Medium, version 4.000, converted to outlines, with capitals as tall and stems about as heavy as the mark's N. Inter is copyright The Inter Project Authors and licensed under the SIL Open Font License 1.1; `build.py` names the exact font file beside the outlines.
+- The wordmark is "NCode" in Inter Display Medium, version 4.000, converted to outlines, with capitals as tall and stems about as heavy as the mark's N. Inter is copyright The Inter Project Authors and licensed under the SIL Open Font License 1.1; `build.mjs` names the exact font file beside the outlines.
 - Leave clear space around the mark of at least the width of one brace, 12 of its 64 units. The files in `mark/` already hold 4 units of it at the sides and 8 above and below.
 - The smallest drawing is 16 pixels, 14 across its ink, which is also the size a badge shows the cropped mark at. Below that the braces no longer read. Keep the lockup at least 24 pixels high.
 - Don't stretch the mark, recolor it outside the palette, outline it, or set the braces in a font: a font's braces and the mark's differ.
