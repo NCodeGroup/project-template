@@ -135,6 +135,7 @@ _exclude:
     docs/decisions/project-template/0137-the-release-workflow-starts-package-publishing.md
     docs/decisions/project-template/0139-releases-carry-build-provenance.md
     .github/workflows/release-provenance.yml
+    .github/workflows/raise-baseline.yml
     {% endif %}
   - |-
     {% if stack is defined and stack != 'dotnet' %}
