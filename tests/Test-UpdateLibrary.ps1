@@ -114,8 +114,10 @@ try {
     Invoke-Git init -q -b main; Invoke-Git commit -q --allow-empty -m 'Release 2.3.0'; Invoke-Git tag v2.3.0
     Remove-Item -LiteralPath .github/workflows/publish.yml
     [IO.File]::WriteAllText((Join-Path $ownPublisher '.github/workflows/release.yml'), $release)
+    [IO.File]::WriteAllText((Join-Path $ownPublisher 'legacy.sln'), "Microsoft Visual Studio Solution File, Format Version 12.00`n")
     Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $ownPublisher
+    Check 'own-publisher: the update names the stale legacy.sln and asks for a /plan-migration' ($result.ExitCode -eq 0 -and $result.Output.Contains('Stale NuGet logistics') -and $result.Output.Contains('legacy.sln is a .sln') -and ($result.Output -match '(?m)^\s*/plan-migration .*\bsolution\b|(?m)^\s*/plan-migration .*\bSolution\b')) $result.Output
     $versionJson = Get-Content -Raw -LiteralPath version.json | ConvertFrom-Json
     Check 'own-publisher: the update leaves publish.yml out beside release.yml, and says so' ($result.ExitCode -eq 0 -and -not (Test-Path -LiteralPath .github/workflows/publish.yml) -and $result.Output.Contains('Left out .github/workflows/publish.yml: .github/workflows/release.yml already push NuGet packages')) $result.Output
     Check 'own-publisher: without publish.yml, no workflow_dispatch warning' (-not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
@@ -132,6 +134,7 @@ try {
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $withTrigger
     Check 'with-trigger: a publish.yml with workflow_dispatch gets no warning' ($result.ExitCode -eq 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Test-Path -LiteralPath .github/workflows/tag-release.yml) -and -not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
+    Check 'with-trigger: a library with no stale file gets no stale NuGet logistics block' ($result.ExitCode -eq 0 -and -not $result.Output.Contains('Stale NuGet logistics')) $result.Output
     Check 'with-trigger: the update adds version.json, has no PublicRelease warning, and names the file that references Nerdbank.GitVersioning' ($result.Output.Contains('Added version.json') -and $result.Output.Contains('Its version is 0.1.0') -and -not $result.Output.Contains('packs without -p:PublicRelease=true') -and $result.Output.Contains('These files reference Nerdbank.GitVersioning') -and $result.Output.Contains('Directory.Build.props')) $result.Output
     Check 'with-trigger: the update says to delete the AssemblyVersion that Directory.Build.props sets' ($result.Output.Contains('Directory.Build.props sets AssemblyVersion') -and $result.Output.Contains('delete it from Directory.Build.props')) $result.Output
 }
