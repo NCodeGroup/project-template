@@ -434,11 +434,21 @@ function Get-PublishedPackageVersion {
 # A deliberate copy of tools/adopt/Adoption.psm1's Get-NuGetLogistics: change both, or tests\Test-NuGetLogistics.ps1 fails.
 function Get-NuGetLogistics {
     $root = (Get-Location).ProviderPath
-    $files = @(Get-ChildItem -LiteralPath . -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
-            $path = $_.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
-            if ("/$path" -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]') { [pscustomobject]@{ Path = $path; Name = $_.Name; Full = $_.FullName } }
-        })
-    $files = @($files | Sort-Object { $_.Path } -CaseSensitive)
+    $excluded = 'bin', 'obj', 'node_modules', 'artifacts', '.git'
+    $found = [Collections.Generic.List[object]]::new()
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $pending.Push($root)
+    while ($pending.Count) {
+        foreach ($entry in Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction SilentlyContinue) {
+            if ($entry.PSIsContainer) {
+                if ($entry.Name -notin $excluded) { $pending.Push($entry.FullName) }
+                continue
+            }
+            $path = $entry.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
+            $found.Add([pscustomobject]@{ Path = $path; Name = $entry.Name; Full = $entry.FullName })
+        }
+    }
+    $files = @($found | Sort-Object { $_.Path } -CaseSensitive)
     $projectFiles = @($files | Where-Object { $_.Path -ne 'build/ProjectTemplate.props' -and $_.Name -match '\.(csproj|props)$' })
     $mentioning = @($files | Where-Object { $_.Name -match '\.(csproj|props|targets|slnx)$' } | ForEach-Object { [pscustomobject]@{ Path = $_.Path; Text = Get-Content -LiteralPath $_.Full -Raw } })
 
@@ -483,7 +493,10 @@ function Get-NuGetLogistics {
             $stream = [IO.File]::Open($file.Full, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
             try { $read = $stream.Read($bytes, 0, 3) } finally { $stream.Dispose() }
         }
-        catch { continue }
+        catch [IO.IOException], [UnauthorizedAccessException] {
+            Write-Verbose "Skipped $($file.Path), which can't be read for a byte order mark: $($_.Exception.Message)"
+            continue
+        }
         if ($read -eq 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $withBom.Add($file.Path) }
     }
     if ($withBom.Count) {
@@ -494,7 +507,7 @@ function Get-NuGetLogistics {
 
     $rootProjects = @($files | Where-Object { $_.Name -like '*.csproj' -and -not $_.Path.Contains('/') })
     if ($rootProjects.Count) {
-        [pscustomobject]@{ Kind = 'RootProject'; Message = "$($rootProjects.Name -join ', ') sit at the repository root: move each project into src/ (a test project into tests/), as the template's layout has it." }
+        [pscustomobject]@{ Kind = 'RootProject'; Message = "$($rootProjects.Name -join ', ') $(if ($rootProjects.Count -eq 1) { 'is' } else { 'are' }) at the repository root: move each project into src/ (a test project into tests/), as the template's layout has it." }
     }
 }
 

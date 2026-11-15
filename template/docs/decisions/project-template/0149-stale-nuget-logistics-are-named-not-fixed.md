@@ -15,7 +15,7 @@ projects at the repository root. Adopting or updating one of many NuGet reposito
 
 ## Decision
 
-`Adopt-Project.ps1` and `.template/Update-Project.ps1` look for these six findings in a .NET library and name each one
+The template's `Adopt-Project.ps1` and `.template/Update-Project.ps1` look for these six findings in a .NET library and name each one
 with the change to make. They fix none, as [ADR-0147](0147-packages-are-validated-against-the-last-published-package.md)
 says for `PackageValidationBaselineVersion`.
 

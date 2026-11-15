@@ -99,7 +99,7 @@ $cases = [ordered]@{
     }
     'root-project' = @{
         Files  = @{ 'A.csproj' = $project }
-        Expect = @(@{ Kind = 'RootProject'; Message = 'A.csproj sit at the repository root: move each project into src/ (a test project into tests/), as the template''s layout has it.' })
+        Expect = @(@{ Kind = 'RootProject'; Message = 'A.csproj is at the repository root: move each project into src/ (a test project into tests/), as the template''s layout has it.' })
     }
     'skipped' = @{
         Files  = @{ 'src/A/obj/Generated.cs' = @{ Text = 'class G { }'; Bom = $true } }
