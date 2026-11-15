@@ -40,7 +40,9 @@
     main" ruleset an older version of this script made, when it is off, sending only the ruleset's rules with that one
     parameter changed, so no pull request merges past an unresolved discussion (in the "Protect main" ruleset it also turns
     on dismissing stale reviews on push); -WhatIf shows it, and a refusal is
-    reported without failing the run. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's
+    reported without failing the run. A ruleset that requires approval of the last push but no approving review blocks every merge
+    where only the author can approve: the script never loosens a ruleset, so it prints a notice with the command that
+    turns that off, which -All -WhatIf lists for every repository. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's
     required checks in place. Either way the repository still gets the tag ruleset and the security settings, so a second run
     brings a repository protected by an older version of this script up to date. A ruleset named "Protect release tags",
     whatever its state, is left alone, and so is an active tag ruleset on v* tags that already refuses both deletion and
@@ -322,6 +324,7 @@ function Set-BranchRuleset {
         if ($own.rules.type -contains 'code_scanning') { Write-SuiteNotice $Name }
         return $true
     }
+    if ($own) { Write-LastPushNotice $Name $own }
     $checks = @($RequireChecks)
     if ($autoChecks) {
         $found = Get-PassingChecks $Name $Branch
@@ -429,6 +432,17 @@ function Set-BranchRuleset {
     $true
 }
 
+# Prints the command that turns off approval of the last push in a ruleset that has it on with no approving review
+# required: GitHub then wants someone other than the pusher to approve the newest push, which blocks every merge where
+# only the author can approve (#385). This script never loosens a ruleset, and an agent that loosens protection is
+# refused, so the maintainer runs the printed command.
+function Write-LastPushNotice([string]$Name, $Ruleset) {
+    $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
+    if (-not $rule -or $rule.parameters.require_last_push_approval -ne $true -or [int]$rule.parameters.required_approving_review_count -ge 1) { return }
+    $path = "repos/$Owner/$Name/rulesets/$($Ruleset.id)"
+    Write-Host "${Name}: notice: '$($Ruleset.name)' requires approval of the last push but no approving review, which blocks every merge where nobody but the author can approve. This script never loosens a ruleset; to turn it off, run: `$rs = gh api $path | ConvertFrom-Json; (`$rs.rules | Where-Object type -eq 'pull_request').parameters.require_last_push_approval = `$false; @{ rules = `$rs.rules } | ConvertTo-Json -Depth 20 | gh api -X PUT $path --input -"
+}
+
 # Turns on "require conversations resolved" in a ruleset that already requires pull requests, and changes nothing else in
 # it: its other rules and their parameters are sent back as they were read. A ruleset without a pull request rule, or
 # with the setting on already, is left as it is. A refusal is reported, not thrown, like a security setting's. A pull
@@ -440,6 +454,7 @@ function Enable-ThreadResolution {
     param([string]$Name, $Ruleset, [switch]$Strict)
     $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
     if (-not $rule) { return }
+    Write-LastPushNotice $Name $Ruleset
     $needThreads = $rule.parameters.required_review_thread_resolution -ne $true
     $needStale = $Strict -and $rule.parameters.dismiss_stale_reviews_on_push -ne $true
     if (-not $needThreads -and -not $needStale) { return }

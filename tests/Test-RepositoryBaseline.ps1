@@ -304,6 +304,7 @@ $repos = @{
     owned = New-Repo -Rulesets @((New-Ruleset 'main'))
     ours = New-Repo -Rulesets @((New-Ruleset 'Protect main'))
     oursBlocked = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true))
+    ownedBlocked = New-Repo -Rulesets @((New-Ruleset 'owner rules' -LastPush $true))
     ownedLoose = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false))
     oursLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false))
     oursStaleLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $true -Stale $false))
@@ -560,12 +561,28 @@ try {
     $r1 = Invoke-Baseline @('-Repo', 'oursBlocked', '-RequireChecks', 'test')
     $kp = ($r1.Body.rules | Where-Object type -eq 'pull_request').parameters
     Check 'update: -RequireChecks keeps the approval settings of the ruleset it made, so it never loosens them' (($kp.require_last_push_approval -eq $true) -and ($kp.required_approving_review_count -eq 0)) ($kp | ConvertTo-Json -Compress)
+    Check 'last push: -RequireChecks run on a ruleset with last-push approval and no approval prints the notice' ($r1.Output.Contains("oursBlocked: notice: 'Protect main' requires approval of the last push")) $r1.Output
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
     $r2 = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
     Check 'update: a ruleset with a code-scanning rule keeps it, whatever the default setup says (advanced setup runs CodeQL too)' ((@($r2.Body.rules.type) -contains 'code_scanning') -and $r2.Output -match 'keeps its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"
     $r3 = Invoke-Baseline @('-Repo', 'oursCodeQL404', '-RequireChecks', 'test')
     Check 'update: a 404 from the CodeQL setup doesn''t touch the rule a ruleset has' ((@($r3.Body.rules.type) -contains 'code_scanning') -and $r3.Output -match 'keeps its code-scanning rule') "$(@($r3.Body.rules.type) -join ',') $($r3.Output)"
     Check 'update: a ruleset without a code-scanning rule gets one, with the baseline thresholds' (($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors_and_warnings') -and ($scan[0].security_alerts_threshold -eq 'all')) (@($r.Body.rules.type) -join ',')
+
+    # 6b. Approval of the last push with no approving review blocks every merge, so the script prints the command that
+    # turns it off and never writes it itself.
+    $r = Invoke-Baseline @('-Repo', 'oursBlocked')
+    Check 'last push: Protect main with last-push approval and no approval is not written, and the notice is printed' (($r.Changes -join '|') -notmatch 'rulesets/101' -and $r.Output.Contains("oursBlocked: notice: 'Protect main' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
+    $line = ($r.Output -split "`r?`n" | Where-Object { $_ -like '*to turn it off, run: *' } | Select-Object -First 1) -replace '^.*to turn it off, run: ', ''
+    $parseErrors = $null
+    $null = [Management.Automation.Language.Parser]::ParseInput("$line", [ref]$null, [ref]$parseErrors)
+    Check 'last push: the printed command parses and names the ruleset' ($line -and -not $parseErrors.Count -and $line.Contains('repos/NCodeGroup/oursBlocked/rulesets/101')) "$line $($parseErrors -join '; ')"
+    $r = Invoke-Baseline @('-Repo', 'oursBlocked', '-WhatIf')
+    Check 'last push: -WhatIf prints the notice and writes nothing' ($r.Changes.Count -eq 0 -and $r.Output.Contains("oursBlocked: notice: 'Protect main' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedBlocked')
+    Check 'last push: a ruleset of the owner''s gets the notice, and is not written' (($r.Changes -join '|') -notmatch 'rulesets/101' -and $r.Output.Contains("ownedBlocked: notice: 'owner rules' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ours')
+    Check 'last push: a ruleset without last-push approval prints no notice' ($r.Output -notmatch 'notice:') $r.Output
 
     # 6a. A ruleset that already has a code-scanning rule: its repository's suite is reported, never switched.
     $r = Invoke-Baseline @('-Repo', 'oursScanDefault')
