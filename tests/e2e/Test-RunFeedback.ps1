@@ -384,7 +384,7 @@ if (-not $CheckOnly) {
         $replied = (Test-Path -LiteralPath $callsPath) -and @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -match '^CALL (pr comment|api graphql .*addPullRequestReviewThreadReply)' }).Count
         if (-not $replied -and $agent.SessionId) {
             $answer = if ($Scenario -eq 'protected-approval') { 'Yes, all: go ahead with the run you summarized, and approve each change to a protected path it lists.' } else { 'Yes, go ahead with the run you summarized.' }
-        Invoke-Agent $agent -Prompt $answer -SessionId $agent.SessionId -Index 2
+            Invoke-Agent $agent -Prompt $answer -SessionId $agent.SessionId -Index 2
         }
     }
     Write-AgentSummary $agent
