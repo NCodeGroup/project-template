@@ -106,7 +106,7 @@ $head = 'add-farewell'
 $prUrl = 'https://github.com/fixture/app/pull/1'
 $commandFile = Get-CommandFile $app $Tool 'run-feedback'
 $addressFile = Get-CommandFile $app $Tool 'address-feedback'
-$nitReply = 'Autopilot: not changed: a nit, left for the maintainer to judge.'
+$judgeText = 'a nit gets the same judgment as a blocker'
 
 function Read-Threads {
     @(Read-HostJson $hostDir 'threads.json' | Where-Object { $_ })
@@ -217,8 +217,8 @@ exit 0
         $ok = $view.state -eq 'OPEN' -and $view.headRefName -eq $head -and $view.headRefOid -eq $headOid -and $view.isCrossRepository -eq $false -and $view.baseRefName -eq 'main'
         Check 'fixture: pull request #1 is open, from add-farewell at its head on origin, not from a fork' $ok "state='$($view.state)' head='$($view.headRefName)' oid='$($view.headRefOid)' cross=$($view.isCrossRepository)"
 
-        Check 'fixture: the installed commands ask for NCode Review''s check run, answer a nit as mandated and read the pull request with a query' ($checkPath -and $checkJq -and $commandText.Contains($nitReply) -and $readQuery) "check path: '$checkPath' jq: '$checkJq' command file: $commandFile read query: $([bool]$readQuery)"
-        Test-InstalledCommand $app 'run-feedback' 'the check-runs call and the nit reply the checks match' @("gh api ""$checkPath"" --jq '$checkJq'", $nitReply)
+        Check 'fixture: the installed commands ask for NCode Review''s check run, judge a nit as any finding and read the pull request with a query' ($checkPath -and $checkJq -and $commandText.Contains($judgeText) -and $readQuery) "check path: '$checkPath' jq: '$checkJq' command file: $commandFile read query: $([bool]$readQuery)"
+        Test-InstalledCommand $app 'run-feedback' 'the check-runs call and the nit rule the checks match' @("gh api ""$checkPath"" --jq '$checkJq'", $judgeText)
         Test-InstalledCommand $app 'address-feedback' 'the read query' @($readQuery)
 
         $data = $null
