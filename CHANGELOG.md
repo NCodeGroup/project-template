@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - A .NET library gets `build/Update-Baseline.ps1`, which waits for nuget.org to list a release for every packable project, raises each lower `PackageValidationBaselineVersion` the project sets to it, never lowering one, and adds a `### Changed` entry to the changelog's `## [Unreleased]`; on GitHub, `.github/workflows/raise-baseline.yml` runs it after Publish packages succeeds, opens a pull request ready for review and starts CI on its branch, so a release needs no manual baseline raise and its plan no follow-up for one. ([#378](https://github.com/NCodeGroup/project-template/issues/378), [ADR-0150](template/docs/decisions/project-template/0150-a-workflow-raises-the-package-validation-baseline-after-each-release.md))
-- `.template/Update-Project.ps1` names the project's own `build/*.ps1` scripts that run `dotnet csharpier check`, which `build/dod.ps1` already runs in its Format stage once `.config/dotnet-tools.json` names CSharpier, and `/plan-template-update` searches a project's own scripts for checks a template script now runs. ([#378](https://github.com/NCodeGroup/project-template/issues/378))
+- `.template/Update-Project.ps1` and `Adopt-Project.ps1` name the project's own `build/*.ps1` scripts that run `dotnet csharpier check`, which `build/dod.ps1` already runs in its Format stage once `.config/dotnet-tools.json` names CSharpier, and `/plan-template-update` searches a project's own scripts for checks a template script now runs. ([#378](https://github.com/NCodeGroup/project-template/issues/378))
 
 ### Changed
 

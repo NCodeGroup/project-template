@@ -1,10 +1,11 @@
 <#
 .SYNOPSIS
-    Test Get-CSharpierWrapper, the check in template\.template\Update-Project.ps1 for a project's own build script that runs
-    CSharpier's check a second time.
+    Test both copies of Get-CSharpierWrapper, the check in template\.template\Update-Project.ps1 and tools\adopt\Adoption.psm1
+    for a project's own build script that runs CSharpier's check a second time.
 
 .DESCRIPTION
-    Builds one fixture folder per case and calls the function from it. Prints PASS or FAIL per check and exits 1 on any failure.
+    Builds one fixture folder per case and calls each copy of the function from it. A check passes only when both copies give
+    the expected output. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-csharpier-wrapper-test-<process ID> in the
@@ -73,6 +74,16 @@ $cases = [ordered]@{
 $updateAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
 $updateDefinition = $updateAst.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-CSharpierWrapper' }, $true) | Select-Object -First 1
 
+Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
+$sources = [ordered]@{
+    update = {
+        if (-not $updateDefinition) { throw 'Update-Project.ps1 has no Get-CSharpierWrapper' }
+        . ([scriptblock]::Create($updateDefinition.Extent.Text))
+        Get-CSharpierWrapper -TemplateFiles $templateFiles
+    }
+    adopt  = { Adoption\Get-CSharpierWrapper -TemplateFiles $templateFiles }
+}
+
 $index = 0
 foreach ($name in $cases.Keys) {
     $case = $cases[$name]
@@ -80,19 +91,20 @@ foreach ($name in $cases.Keys) {
     $folder = Join-Path $Work "case$index"
     New-Item -ItemType Directory -Force $folder | Out-Null
     foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $folder $relative) $case.Files[$relative] }
-    Push-Location $folder
-    $found = @()
-    $failure = $null
-    try {
-        if (-not $updateDefinition) { throw 'Update-Project.ps1 has no Get-CSharpierWrapper' }
-        . ([scriptblock]::Create($updateDefinition.Extent.Text))
-        $found = @(Get-CSharpierWrapper -TemplateFiles $templateFiles)
+    $ok = $true
+    $detail = ''
+    foreach ($source in $sources.Keys) {
+        Push-Location $folder
+        $found = @()
+        $failure = $null
+        try { $found = @(& $sources[$source]) }
+        catch { $failure = $_.Exception.Message }
+        finally { Pop-Location }
+        $ok = $ok -and -not $failure -and ($found -join '|') -ceq ($case.Expect -join '|')
+        $detail += "${source}: "
+        if ($failure) { $detail += "Threw: $failure " }
+        $detail += "Got: $($found -join ', ') Expected: $($case.Expect -join ', ')  "
     }
-    catch { $failure = $_.Exception.Message }
-    finally { Pop-Location }
-    $ok = -not $failure -and ($found -join '|') -ceq ($case.Expect -join '|')
-    $detail = $(if ($failure) { "Threw: $failure " })
-    $detail += "Got: $($found -join ', ') Expected: $($case.Expect -join ', ')"
     Check "Get-CSharpierWrapper: $name" $ok $detail
 }
 

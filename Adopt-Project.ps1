@@ -24,6 +24,8 @@
 
     For a library it lists the stale NuGet logistics it finds as follow-ups (Get-NuGetLogistics): a .props file no project imports, GeneratePackageOnBuild, settings the template already makes, a .sln, a UTF-8 BOM and projects at the repository root, and the package Description and PackageTags that differ from the newest published package (Get-PackageMetadataDrift).
 
+    For a .NET repository whose .config/dotnet-tools.json names CSharpier, it lists each of the repository's own build/*.ps1 scripts that runs dotnet csharpier check as a follow-up (Get-CSharpierWrapper), because the adopted build/dod.ps1 runs that check in its Format stage.
+
     When the repository references Nerdbank.GitVersioning itself, which build/ProjectTemplate.props references once version.json exists, it drops the repository's own PackageReference (and a second PackageVersion in Directory.Packages.props) and reports it, because two references fail the build with NU1504 or NU1506 (ADR-0138).
 
 .EXAMPLE
@@ -218,6 +220,7 @@ try {
         if ((Get-Answer 'stack') -eq 'dotnet') {
             $otherInstructions = @(Get-ChildItem -LiteralPath .github/instructions -Filter '*.instructions.md' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin 'csharp.instructions.md', 'csharp-tests.instructions.md', 'project-template.instructions.md' } | Sort-Object Name | ForEach-Object Name)
             if ($otherInstructions.Count) { $followUps.Add("reconcile .github/instructions/csharp.instructions.md with $($otherInstructions -join ', ')") }
+            foreach ($wrapper in @(Get-CSharpierWrapper $ownable)) { $followUps.Add("drop dotnet csharpier check from $wrapper, which build/dod.ps1 already runs in its Format stage now that .config/dotnet-tools.json names CSharpier (ADR-0148), and update any comment or decision record of the repository's that says build/dod.ps1 doesn't check the formatting") }
             # The template's build settings are a new import, so each list of the build's files must admit them.
             if (Test-Path -LiteralPath build/ProjectTemplate.props) {
                 $buildLists = @(Get-BuildFileList $project)
