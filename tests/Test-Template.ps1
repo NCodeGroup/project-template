@@ -46,7 +46,7 @@ function Get-PwshParseError([string[]]$Files) {
         $script = [regex]::Replace($entry.run, '\$\{\{.*?\}\}', 'x', 'Singleline')
         $errors = $null
         [Management.Automation.Language.Parser]::ParseInput($script, [ref]$null, [ref]$errors) | Out-Null
-        if ($errors) { "$([IO.Path]::GetFileName($entry.file)) ($($entry.step)): $($errors[0].Message)" }
+        if ($errors) { "$([IO.Path]::GetFileName($entry.file)) ($($entry.step)): $(($errors | ForEach-Object { "line $($_.Extent.StartLineNumber): $($_.Message)" }) -join '; ')" }
     }
 }
 # The run: block of the step with the given id in a workflow, dedented as YAML reads a block scalar: its lines up to the
