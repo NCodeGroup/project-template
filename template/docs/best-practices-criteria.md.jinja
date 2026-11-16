@@ -211,6 +211,31 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `tests_documented_added` | MUST | yes | no | **Met**: the same item, in the instructions for a change. |
 | `warnings_strict` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: warnings as errors, nullable reference types, and the analyzers at `latest-recommended` with code style enforced in the build.{% else %}**Check**: Met when the strictest practical settings are on.{% endif %} |
 
+### Security
+
+| Criterion | Req | N/A | URL | Answer and evidence |
+| --- | --- | --- | --- | --- |
+| `implement_secure_design` | MUST | yes | no | **Check**: [assurance-case.md](assurance-case.md) and the Design Rules of [architecture.md](architecture.md); Met once written. |
+| `crypto_weaknesses` | MUST | yes | no | **Check**: N/A unless the code does cryptography ([Checks](#checks)); then Met when it relies on no weak algorithm, such as SHA-1. |
+| `crypto_algorithm_agility` | SHOULD | yes | no | **Check**: N/A unless the project chooses cryptographic algorithms itself. |
+| `crypto_credential_agility` | MUST | yes | no | **Check**: N/A unless the software handles credentials or private keys; then Met when they are kept apart from code and configuration and can be replaced without a rebuild. |
+| `crypto_used_network` | SHOULD | yes | no | **Check**: N/A without network calls; otherwise Met when every call uses HTTPS or another secure protocol ([Checks](#checks)). |
+| `crypto_tls12` | SHOULD | yes | no | **Check**: N/A without TLS; otherwise Met when nothing pins a protocol older than TLS 1.2. |
+| `crypto_certificate_verification` | MUST | yes | no | **Check**: N/A without TLS; otherwise Met when nothing turns certificate verification off ([Checks](#checks)). |
+| `crypto_verification_private` | MUST | yes | no | **Check**: the same evidence. |
+| `signed_releases` | MUST | yes | no | {% if ghlib %}**Met**: nuget.org signs each package, and each release carries build provenance; [SECURITY.md](../SECURITY.md#verify-a-package) says how to verify both.{% else %}**Gap**: Unmet until the project signs its releases and documents how to verify them; the template does so only for a NuGet library on GitHub. N/A when the releases aren't meant for wide use.{% endif %} |
+| `version_tags_signed` | SUGGESTED | no | no | **Unmet**: the template's release automation doesn't sign tags. |
+| `input_validation` | MUST | yes | no | **Check**: list the entry points that take untrusted input and the checks each one makes. |
+| `hardening` | SHOULD | yes | no | **Check**: name the hardening in place, such as least-privilege workflow tokens, path guards and scoped credentials. |
+| `assurance_case` | MUST | no | yes | **Check**: [assurance-case.md](assurance-case.md); Met once its threat model, trust boundary, principles and weaknesses are written. |
+
+### Analysis
+
+| Criterion | Req | N/A | URL | Answer and evidence |
+| --- | --- | --- | --- | --- |
+| `static_analysis_common_vulnerabilities` | MUST | yes | no | {% if codeql %}**Check**: CodeQL's security queries, while its default setup runs.{% else %}**Check**: Met when that tool has rules for common vulnerabilities.{% endif %} |
+| `dynamic_analysis_unsafe` | MUST | yes | no | **N/A**: {% if stack == 'dotnet' %}C# is memory-safe; it applies only to `unsafe` code{% else %}it applies only to code in a memory-unsafe language, such as C or C++{% endif %}. |
+
 ## Gold
 
 The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
