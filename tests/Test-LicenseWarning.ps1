@@ -20,6 +20,7 @@
       named-no-file
                    An answer, GPL-3.0-only, the template writes no license file for, and no license file: the update
                    says to add that license's text, without the blank answer's command.
+      adopt-unlicensed
                    Adopting a repository without a license: Adopt-Project.ps1 answers blank, not the Apache-2.0
                    default, adds no license file and prints the same warning, with the command that adds Apache-2.0.
       adopt-own-license
