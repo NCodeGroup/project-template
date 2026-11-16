@@ -3,7 +3,7 @@
 {% set licensed = (license | default('')) in ['Apache-2.0', 'MIT'] -%}
 # 0020. A GitHub project is scored by OpenSSF Scorecard
 
-- **Status:** Accepted (amended by 0022)
+- **Status:** Accepted (amended by 0022 and 0025)
 - **Date:** 2026-11-14
 
 ## Context
@@ -54,7 +54,7 @@ The table lists each check, what the template does for it and what needs a perso
 {%- endif %}
 | Contributors | None. | Contributors from other organizations. |
 | Fuzzing | A .NET project adds FsCheck property tests to its test project. | Write the property tests. |
-| CII-Best-Practices | The six documents ([ADR-0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)). | Register at https://www.bestpractices.dev: in progress 2, passing 5, silver 7, gold 10; silver needs `access_continuity`, a second owner of the organization{% if library %} and the package registry{% endif %}; gold needs two-person review. |
+| CII-Best-Practices | The six documents ([ADR-0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)) and `docs/best-practices-criteria.md`, which maps every criterion to the answer to expect and its evidence ([ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md)). | Register at https://www.bestpractices.dev: in progress 2, passing 5, silver 7, gold 10; silver needs `access_continuity`, a second owner of the organization{% if library %} and the package registry{% endif %}; gold needs two-person review, two unassociated contributors, the organization's two-factor settings and a security review. |
 
 ## Options considered
 
@@ -88,6 +88,8 @@ The table lists each check, what the template does for it and what needs a perso
   approval.
 - [ADR-0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md): a project ships the
   documents the Best Practices silver level asks for.
+- [ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md): every Best Practices criterion is
+  mapped in a template-owned page.
 {%- if library %}
 - [ADR-0151](0151-release-follow-ups-are-jobs-publish-calls.md): release follow-ups are jobs `publish.yml` calls.
 {%- endif %}
