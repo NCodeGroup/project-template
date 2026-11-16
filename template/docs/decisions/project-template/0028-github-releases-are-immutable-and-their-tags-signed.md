@@ -19,7 +19,8 @@ A GitHub repository's releases are immutable, and a public repository's release 
   `gh release verify-asset <tag> <file>`.
 - A repository whose default branch has `.github/workflows/release-provenance.yml` keeps mutable releases: that workflow
   attaches a library's packages to its release after it is published, which an immutable release refuses. How a
-  library's release works with immutability is decided apart (#393).
+  library's release works with immutability is decided apart
+  ([project-template#393](https://github.com/NCodeGroup/project-template/issues/393)).
 - In a public repository, `tag-release.yml` signs each tag with gitsign, Sigstore's keyless signing through the job's
   OIDC token (`id-token: write`), installed by `chainguard-dev/actions/setup-gitsign` pinned to a commit.
   `.template/Publish-Release.ps1 -Sign` tags with `git tag -s`.
