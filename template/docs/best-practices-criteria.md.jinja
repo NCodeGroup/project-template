@@ -113,6 +113,40 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `warnings_fixed` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: a warning fails the build.{% elif '-EnableExit' in build_command %}**Met**: `-EnableExit` fails the build on a finding.{% else %}**Check**: Met when CI fails on a warning.{% endif %} |
 | `warnings_strict` | SUGGESTED | yes | no | {% if stack == 'dotnet' %}**Met**: warnings as errors, nullable reference types, and the analyzers at `latest-recommended` with code style enforced in the build.{% else %}**Check**: Met when the strictest practical settings are on.{% endif %} |
 
+### Security
+
+| Criterion | Req | N/A | URL | Answer and evidence |
+| --- | --- | --- | --- | --- |
+| `know_secure_design` | MUST | no | no | **Check**: Met once [assurance-case.md](assurance-case.md), Secure Design Principles Applied, is written. |
+| `know_common_errors` | MUST | no | no | **Check**: Met once [assurance-case.md](assurance-case.md), Common Weaknesses Countered, is written. |
+| `crypto_published` | MUST | yes | no | **Check**: N/A unless the code does cryptography ([Checks](#checks)); then Met when it uses only published, reviewed algorithms. |
+| `crypto_call` | SHOULD | yes | no | **Check**: N/A unless the code does cryptography; then Met when it calls a cryptography library and implements none itself. |
+| `crypto_floss` | MUST | yes | no | **Check**: N/A unless the code does cryptography; then Met when that library is FLOSS. |
+| `crypto_keylength` | MUST | yes | no | **Check**: N/A unless the code does cryptography; then Met when its key lengths meet NIST's minimums through 2030. |
+| `crypto_working` | MUST | yes | no | **Check**: N/A unless the code does cryptography; then Met when it relies on no broken algorithm, such as MD5, DES or RC4. |
+| `crypto_weaknesses` | SHOULD | yes | no | **Check**: N/A unless the code does cryptography; then Met when it relies on no weak algorithm, such as SHA-1. |
+| `crypto_pfs` | SHOULD | yes | no | **Check**: N/A unless the code implements a key agreement protocol. |
+| `crypto_password_storage` | MUST | yes | no | **Check**: N/A unless the software stores users' passwords; then Met with a salted, iterated hash, such as Argon2id or PBKDF2. |
+| `crypto_random` | MUST | yes | no | **Check**: N/A unless the code makes keys or nonces; then Met when it uses a cryptographically secure generator. |
+| `delivery_mitm` | MUST | no | no | **Met**: {{ host }}{% if library %} and nuget.org{% endif %} deliver over HTTPS; autofill. |
+| `delivery_unsigned` | MUST | no | no | **Met**: no hash is fetched over HTTP; dependencies install over HTTPS. |
+| `vulnerabilities_fixed_60_days` | MUST | no | no | **Check**: no vulnerability of medium or higher severity has been public and unfixed for more than 60 days{% if github %}: no unfixed published advisory, and no open Dependabot or CodeQL alert of that severity{% endif %}. |
+| `vulnerabilities_critical_fixed` | SHOULD | no | no | **Check**: the same evidence. |
+| `no_leaked_credentials` | MUST | no | no | **Check**: a scan of the whole history finds no valid credential ([Checks](#checks)). |
+
+### Analysis
+
+| Criterion | Req | N/A | URL | Answer and evidence |
+| --- | --- | --- | --- | --- |
+| `static_analysis` | MUST | yes | no | {% if codeql %}**Check**: Met while CodeQL's default setup runs; the ruleset the template's `tools/Set-RepositoryBaseline.ps1` writes then blocks a {{ pr }} that adds an alert ([assurance-case.md](assurance-case.md), Evidence).{% elif 'Invoke-ScriptAnalyzer' in build_command %}**Met**: PSScriptAnalyzer runs in the build, before every release.{% else %}**Check**: Met once a static analysis tool beyond the compiler runs before each release.{% endif %} |
+| `static_analysis_common_vulnerabilities` | SUGGESTED | yes | no | {% if codeql %}**Check**: CodeQL's security queries, while its default setup runs.{% else %}**Check**: Met when that tool has rules for common vulnerabilities.{% endif %} |
+| `static_analysis_fixed` | MUST | yes | no | **Check**: Met when no confirmed finding of medium or higher severity is open{% if codeql %}: Security > Code scanning with `tool:CodeQL` shows none, and Scorecard's alerts there are posture checks, not code findings{% endif %}. Name any finding dismissed as won't fix. |
+| `static_analysis_often` | SUGGESTED | yes | no | {% if codeql %}**Check**: Met while CodeQL runs on every {{ pr }}; Scorecard also runs on every push to the default branch and weekly.{% else %}**Check**: Met when the analysis runs on every change or daily.{% endif %} |
+| `dynamic_analysis` | SUGGESTED | no | no | **Gap**: Unmet until a fuzzer, property tests or another dynamic tool runs before each release; the template runs none. |
+| `dynamic_analysis_unsafe` | SUGGESTED | yes | no | **N/A**: {% if stack == 'dotnet' %}C# is memory-safe; it applies only to `unsafe` code{% else %}it applies only to code in a memory-unsafe language, such as C or C++{% endif %}. |
+| `dynamic_analysis_enable_assertions` | SUGGESTED | no | no | **Gap**: Unmet without dynamic analysis. |
+| `dynamic_analysis_fixed` | MUST | yes | no | **N/A**: while no dynamic analysis runs; then Met when its confirmed findings are fixed. |
+
 ## Silver
 
 The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
