@@ -77,9 +77,10 @@
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
-    When the license answer is blank and the project has no LICENSE or COPYING file at its root, it warns, also when
-    the project is already up to date, and prints the -Data @{ license = 'Apache-2.0' } that adds one (the template's
-    ADR-0024). A project from before the license question gets a blank answer, never copier.yml's Apache-2.0 default.
+    When the project has no LICENSE or COPYING file at its root, it warns, also when the project is already up to
+    date: for a blank license answer it prints the -Data @{ license = 'Apache-2.0' } that adds one, and for any other
+    answer it says to add that license's text (the template's ADR-0024). A project from before the license question
+    gets a blank answer, never copier.yml's Apache-2.0 default.
 
     On Windows it stops before it changes anything when the project's template version has a path Git for Windows
     refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
@@ -147,13 +148,18 @@ function Get-LicenseData {
     if (-not $Data.ContainsKey('license') -and -not (Select-String -LiteralPath .copier-answers.yml -Pattern '^license:' -Quiet)) { '--data', 'license=' }
 }
 
-# No license (ADR-0024): a blank license answer and no LICENSE or COPYING file at the project's root. The template's Adopt-Project.ps1 prints the same lines; tests/Test-LicenseWarning.ps1 keeps them equal.
+# No license (ADR-0024): no LICENSE or COPYING file at the project's root. A blank answer gets the command that adds Apache-2.0; any other answer, one the template writes no file for or whose LICENSE.txt was deleted, is told to add that license's text. The template's Adopt-Project.ps1 prints the same lines; tests/Test-LicenseWarning.ps1 keeps them equal.
 function Get-LicenseWarning {
-    if ("$(Get-Answer 'license')".Trim()) { return }
     if (Get-ChildItem -LiteralPath $project -File | Where-Object Name -Match '^(LICEN[CS]E|COPYING)(\.\w+)?$') { return }
+    $licenseAnswer = "$(Get-Answer 'license')".Trim()
     ''
-    'No license: the license answer is blank and the repository has no LICENSE or COPYING file, so no one else may use, copy or change its code, and the OpenSSF Best Practices criteria for a license can''t be met. To license it under Apache-2.0, NCode Group''s license, which adds LICENSE.txt and COPYRIGHT.txt, or under another SPDX license expression, such as MIT, run in the repository:'
-    "  .\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }"
+    if (-not $licenseAnswer) {
+        'No license: the license answer is blank and the repository has no LICENSE or COPYING file, so no one else may use, copy or change its code, and the OpenSSF Best Practices criteria for a license can''t be met. To license it under Apache-2.0, NCode Group''s license, which adds LICENSE.txt and COPYRIGHT.txt, run the command below in the repository; for another SPDX license expression, such as MIT, put it in place of Apache-2.0:'
+        "  .\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }"
+    }
+    else {
+        "No license file: the license answer is $licenseAnswer, but the repository has no LICENSE or COPYING file, so no one else may use, copy or change its code, and the OpenSSF Best Practices criteria for a license can't be met. Add the text of the $licenseAnswer license as LICENSE.txt at the repository's root."
+    }
 }
 
 # Render the template at a version into a folder with the project's answers;

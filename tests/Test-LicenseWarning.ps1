@@ -6,8 +6,8 @@
     Tests a tagged snapshot of the working tree, which tests/New-TemplateSnapshot.ps1 builds. It runs apart from
     tests/Test-ProjectUpdate.ps1 and tests/Test-AdoptEdgeCases.ps1, which are slow enough already. Prints PASS or FAIL
     per check and exits 1 on any failure (ADR-0024).
-      scripts      Adopt-Project.ps1 prints the update script's license warning word for word, under the same
-                   condition.
+      scripts      Adopt-Project.ps1 prints the update script's license warning and its no-license-file warning word for
+                   word, under the same condition.
       unit         Invoke-TemplateRender passes license= only for answers without a license line, and -Data's
                    license when given.
       no-answer    A project from before the license question, without a license answer: the update records a blank
@@ -17,7 +17,9 @@
       own-license  A blank answer beside a LICENSE file of the repository's own: no warning, and the file is kept.
       licensed     The default Apache-2.0 answer: the update keeps the answer, LICENSE.txt and COPYRIGHT.txt, and
                    doesn't warn.
-      adopt-unlicensed
+      named-no-file
+                   An answer, GPL-3.0-only, the template writes no license file for, and no license file: the update
+                   says to add that license's text, without the blank answer's command.
                    Adopting a repository without a license: Adopt-Project.ps1 answers blank, not the Apache-2.0
                    default, adds no license file and prints the same warning, with the command that adds Apache-2.0.
       adopt-own-license
@@ -76,6 +78,10 @@ $adoptText = [IO.File]::ReadAllText((Join-Path $repoRoot 'Adopt-Project.ps1'))
 $updatePattern = [regex]::Match($updateText, $patternRe).Groups[1].Value
 $adoptPattern = [regex]::Match($adoptText, $patternRe).Groups[1].Value
 Check 'scripts: Adopt-Project.ps1 looks for a license file with the update''s pattern, after the same blank-answer check' ($updatePattern.StartsWith('^(LICEN') -and $adoptPattern -eq $updatePattern -and $updateText.Contains('"$(Get-Answer ''license'')".Trim()') -and $adoptText.Contains('"$(Get-Answer ''license'')".Trim()')) "$updatePattern | $adoptPattern"
+$fileRe = '(?m)^\s*"(No license file: [^"]*)"\s*$'
+$fileWarning = [regex]::Match($updateText, $fileRe).Groups[1].Value
+$adoptFileWarning = [regex]::Match($adoptText, $fileRe).Groups[1].Value
+Check 'scripts: Adopt-Project.ps1 prints the update''s no-license-file warning word for word' ($fileWarning.StartsWith('No license file: the license answer is $licenseAnswer,') -and $adoptFileWarning -eq $fileWarning) "$fileWarning | $adoptFileWarning"
 
 # unit: Invoke-TemplateRender with a stand-in Copier that records its arguments: license= only for answers without a license line, -Data's license when given.
 $licenseRender = & {
@@ -123,7 +129,7 @@ try {
     $result = Invoke-Update $noAnswer
     Check 'no-answer: an update that is already up to date still warns' ($result.ExitCode -eq 0 -and $result.Output.Contains('Already up to date') -and $result.Output.Contains($warning) -and $result.Output.Contains($command) -and -not (git status --porcelain)) $result.Output
     $result = Invoke-Update $noAnswer @{ license = 'Apache-2.0' }
-    Check 'no-answer: -Data @{ license = ''Apache-2.0'' } adds LICENSE.txt and COPYRIGHT.txt, records the license and warns no more' ($result.ExitCode -eq 0 -and (Test-Path -LiteralPath LICENSE.txt) -and (Test-Path -LiteralPath COPYRIGHT.txt) -and (Get-Content -Raw -LiteralPath .copier-answers.yml) -match '(?m)^license: Apache-2\.0\r?$' -and -not $result.Output.Contains('No license:')) $result.Output
+    Check 'no-answer: -Data @{ license = ''Apache-2.0'' } adds LICENSE.txt and COPYRIGHT.txt, records the license and warns no more' ($result.ExitCode -eq 0 -and (Test-Path -LiteralPath LICENSE.txt) -and (Test-Path -LiteralPath COPYRIGHT.txt) -and (Get-Content -Raw -LiteralPath .copier-answers.yml) -match '(?m)^license: Apache-2\.0\r?$' -and -not $result.Output.Contains('No license')) $result.Output
 }
 finally { Pop-Location }
 
@@ -135,7 +141,7 @@ try {
     [IO.File]::WriteAllText((Join-Path $ownLicense 'LICENSE'), "Own license.`n", [Text.UTF8Encoding]::new($false))
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $ownLicense
-    Check 'own-license: a blank answer beside a LICENSE file of the repository''s own gets no warning' ($result.ExitCode -eq 0 -and -not $result.Output.Contains('No license:') -and [IO.File]::ReadAllText((Join-Path $ownLicense 'LICENSE')) -eq "Own license.`n") $result.Output
+    Check 'own-license: a blank answer beside a LICENSE file of the repository''s own gets no warning' ($result.ExitCode -eq 0 -and -not $result.Output.Contains('No license') -and [IO.File]::ReadAllText((Join-Path $ownLicense 'LICENSE')) -eq "Own license.`n") $result.Output
 }
 finally { Pop-Location }
 
@@ -151,6 +157,17 @@ try {
 }
 finally { Pop-Location }
 
+# named-no-file: an answer the template writes no license file for, and no license file of the repository's own.
+$namedNoFile = Join-Path $Work 'named-no-file'
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test named-no-file' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' --data 'license=GPL-3.0-only' $tplUrl $namedNoFile
+Push-Location $namedNoFile
+try {
+    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
+    $result = Invoke-Update $namedNoFile
+    Check 'named-no-file: the update says the GPL-3.0-only license has no file, without the blank answer''s command' ($result.ExitCode -eq 0 -and -not (Test-Path -LiteralPath LICENSE.txt) -and $result.Output.Contains('No license file: the license answer is GPL-3.0-only, but the repository has no LICENSE or COPYING file') -and $result.Output.Contains('Add the text of the GPL-3.0-only license as LICENSE.txt') -and -not $result.Output.Contains($command)) $result.Output
+}
+finally { Pop-Location }
+
 # adopt-unlicensed: Adopt-Project.ps1 on a repository without a license, answering nothing about one.
 $adopt = Join-Path $repoRoot 'Adopt-Project.ps1'
 $adoptUnlicensed = New-Fixture 'adopt-unlicensed' @{ 'README.md' = "# Adopt Unlicensed`n" } 'https://github.com/example/adopt-unlicensed.git'
@@ -161,7 +178,7 @@ Check 'adopt-unlicensed: warns, word for word as the update does, with the comma
 # adopt-own-license: a LICENSE file of the repository's own.
 $adoptOwn = New-Fixture 'adopt-own-license' @{ 'README.md' = "# Adopt Own License`n"; 'LICENSE' = "Own license.`n" } 'https://github.com/example/adopt-own-license.git'
 $adoptOwnOut = & $adopt -Path $adoptOwn -Template $tpl -Ref v0.1.0 -NoVerify | Out-String
-Check 'adopt-own-license: a repository with a LICENSE file of its own gets no warning' (-not $adoptOwnOut.Contains('No license:') -and [IO.File]::ReadAllText((Join-Path $adoptOwn 'LICENSE')) -eq "Own license.`n") $adoptOwnOut
+Check 'adopt-own-license: a repository with a LICENSE file of its own gets no warning' (-not $adoptOwnOut.Contains('No license') -and [IO.File]::ReadAllText((Join-Path $adoptOwn 'LICENSE')) -eq "Own license.`n") $adoptOwnOut
 
 ''
 $env:COPIER_CACHE_DIR = $copierCache
