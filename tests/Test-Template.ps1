@@ -125,7 +125,7 @@ $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
-    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md'
+    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'GOVERNANCE.md', 'ROADMAP.md', 'docs\architecture.md', 'docs\assurance-case.md', 'docs\best-practices-badge.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
     claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
@@ -171,7 +171,7 @@ $cases = @(
     @{ Name = 'dotnet-library-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT' } }
     @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true' }; Refused = 'Required for a NuGet package' }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
-    @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT' } }
+    @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT'; conduct_contact = 'conduct@example.test' } }
     @{ Name = 'python-claude'; Stack = 'python'; Host = 'github'; Tools = @('claude') }
     @{ Name = 'dotnet-author-comment'; Stack = 'dotnet'; Host = 'github'; Data = @{ author_name = 'C# Tools; Inc.' } }
 )
@@ -266,6 +266,24 @@ foreach ($case in $cases) {
 
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
+    $conduct = [IO.File]::ReadAllText((Join-Path $dest 'CODE_OF_CONDUCT.md'))
+    $conductWant = if ($case.Data.conduct_contact) { 'lists, at ' + $case.Data.conduct_contact + '. All complaints' } elseif ($case.Host -eq 'gitlab') { '**This issue is confidential**' } else { 'choose **Report a vulnerability** and start the title with' }
+    Check "${name}: CODE_OF_CONDUCT.md sends a report to the conduct contact, or else to the host's private form" ($conduct.Contains($conductWant) -and $conduct.Contains('version 2.1')) $conductWant
+    $governance = [IO.File]::ReadAllText((Join-Path $dest 'GOVERNANCE.md'))
+    $governanceHeadings = '## Roles', '## Decisions', '## Releases', '## Continuity', '## Changing This Document'
+    $governanceWantsBot = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
+    Check "${name}: GOVERNANCE.md has its sections" (-not ($governanceHeadings | Where-Object { -not $governance.Contains($_) }) -and $governance.Contains('ncode-review[bot]') -eq $governanceWantsBot) $governance
+    $roadmap = [IO.File]::ReadAllText((Join-Path $dest 'ROADMAP.md'))
+    $architecture = [IO.File]::ReadAllText((Join-Path $dest 'docs\architecture.md'))
+    $roadmapHeadings = '## Scope', '## Next Twelve Months', '## Not Planned'
+    $architectureHeadings = '## Components', '## Design Rules', '## Build and Release'
+    Check "${name}: ROADMAP.md and docs/architecture.md have their sections" (-not ($roadmapHeadings | Where-Object { -not $roadmap.Contains($_) }) -and -not ($architectureHeadings | Where-Object { -not $architecture.Contains($_) })) ($roadmap + $architecture)
+    $assurance = [IO.File]::ReadAllText((Join-Path $dest 'docs\assurance-case.md'))
+    $assuranceHeadings = '## Security Requirements', '## Threat Model', '## Secure Design Principles Applied', '## Common Weaknesses Countered', '## Evidence'
+    $assuranceWantsPublishing = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package -and $case.Host -eq 'github'
+    Check "${name}: docs/assurance-case.md has its sections" (-not ($assuranceHeadings | Where-Object { -not $assurance.Contains($_) }) -and $assurance.Contains('trusted publishing') -eq $assuranceWantsPublishing) $assurance
+    $badge = [IO.File]::ReadAllText((Join-Path $dest 'docs\best-practices-badge.md'))
+    Check "${name}: docs/best-practices-badge.md maps the silver criteria" ($badge.Contains('## Toward Silver') -and $badge.Contains('access_continuity') -and $badge.Contains('PROJECT_ID') -and $badge.Contains('signed_releases') -eq $assuranceWantsPublishing) $badge
     # Every template decision record a rendered Markdown file cites by number is one the project has.
     $recordNumbers = @(Get-ChildItem -LiteralPath (Join-Path $dest 'docs\decisions'), (Join-Path $dest 'docs\decisions\project-template') -File -Filter '*.md' | ForEach-Object { if ($_.Name -match '^(\d{4})-') { $Matches[1] } })
     $unknownCitations = @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force -Filter '*.md' | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } | ForEach-Object {
@@ -387,19 +405,20 @@ foreach ($case in $cases) {
         Check "${name}: build/Update-Baseline.ps1 only for a library" ((Test-Path -LiteralPath (Join-Path $dest 'build\Update-Baseline.ps1')) -eq $library)
         $raise = Join-Path $dest '.github\workflows\raise-baseline.yml'
         Check "${name}: the raise-baseline workflow only for a library on GitHub" ((Test-Path -LiteralPath $raise) -eq $wantsPublish)
+        Check "${name}: ADR-0151 only for a library on GitHub" ([bool](Get-ChildItem -Path (Join-Path $dest 'docs\decisions\project-template\0151-*.md') -ErrorAction SilentlyContinue) -eq $wantsPublish)
         if ($wantsPublish) {
             $provenanceText = Get-Content -LiteralPath $provenance -Raw
             $provenanceUses = [regex]::Matches($provenanceText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
             Check "${name}: the release provenance workflow pins each action to a full commit SHA, with its tag in a comment" ($provenanceUses.Count -ge 1 -and -not ($provenanceUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $provenanceText
-            $headBranchLines = @($provenanceText -split '\r?\n' | Where-Object { $_.Contains('github.event.workflow_run.head_branch') })
-            $headBranchSafe = -not ($headBranchLines | Where-Object { $_ -notmatch '^\s*TAG:' -and $_ -notmatch '^\s*group: release-provenance-' })
-            Check "${name}: the release provenance workflow follows Publish packages, holds no permission by default, attests, and keeps the tag out of scripts" ($provenanceText.Contains('workflows: [Publish packages]') -and $provenanceText -match '(?m)^permissions: \{\}\r?$' -and $provenanceText.Contains('attestations: write') -and $provenanceText.Contains('id-token: write') -and -not $provenanceText.Contains('actions/checkout') -and $provenanceText -notmatch '(?i)nuget(\.exe)?\s+push' -and $headBranchLines.Count -ge 1 -and $headBranchSafe -and $provenanceText.Contains('dependency-graph/sbom') -and $provenanceText.Contains('.spdx.json')) $provenanceText
+            $tagLines = @($provenanceText -split '\r?\n' | Where-Object { $_.Contains('inputs.tag') })
+            $tagSafe = -not ($tagLines | Where-Object { $_ -notmatch '^\s*TAG:' -and $_ -notmatch '^\s*group: release-provenance-' })
+            Check "${name}: the release provenance workflow is called by publish.yml or run by hand, holds no permission by default, attests, checks a backfill's run and versions, and keeps the tag out of scripts" ($provenanceText.Contains('workflow_call:') -and $provenanceText.Contains('workflow_dispatch:') -and -not $provenanceText.Contains('workflow_run') -and $provenanceText.Contains('group: release-provenance-${{ inputs.tag }}') -and $provenanceText.Contains("if: inputs.run-id != ''") -and $provenanceText.Contains("`$run.path -ne '.github/workflows/publish.yml'") -and $provenanceText.Contains("-notmatch '^\d+$'") -and $provenanceText.Contains("`$run.conclusion -ne 'success'") -and $provenanceText.Contains('EndsWith(".$env:VERSION.nupkg"') -and $provenanceText.Contains('ADR-0151') -and $provenanceText -match '(?m)^permissions: \{\}\r?$' -and $provenanceText.Contains('attestations: write') -and $provenanceText.Contains('id-token: write') -and -not $provenanceText.Contains('actions/checkout') -and $provenanceText -notmatch '(?i)nuget(\.exe)?\s+push' -and $tagLines.Count -ge 1 -and $tagSafe -and $provenanceText.Contains('dependency-graph/sbom') -and $provenanceText.Contains('.spdx.json')) $provenanceText
             $raiseText = Get-Content -LiteralPath $raise -Raw
             $raiseUses = [regex]::Matches($raiseText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
             Check "${name}: the raise-baseline workflow pins each action to a full commit SHA, with its tag in a comment" ($raiseUses.Count -ge 1 -and -not ($raiseUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $raiseText
-            $raiseTagLines = @($raiseText -split '\r?\n' | Where-Object { $_.Contains('github.event.workflow_run.head_branch') -or $_.Contains('inputs.tag') })
+            $raiseTagLines = @($raiseText -split '\r?\n' | Where-Object { $_.Contains('inputs.tag') })
             $raiseTagSafe = -not ($raiseTagLines | Where-Object { $_ -notmatch '^\s*TAG:' })
-            Check "${name}: the raise-baseline workflow follows Publish packages, holds no permission by default, keeps no credential after checkout, and keeps the tag out of scripts" ($raiseText.Contains('workflows: [Publish packages]') -and $raiseText -match '(?m)^permissions: \{\}\r?$' -and $raiseText.Contains('persist-credentials: false') -and $raiseText.Contains('http.https://github.com/.extraheader') -and $raiseText -match '(?m)^\s*git -c "http\.https://github\.com/\.extraheader=[^"]*" ls-remote --exit-code --heads origin \$branch' -and $raiseText.Contains('./build/Update-Baseline.ps1 -Version $env:VERSION') -and $raiseText.Contains('gh workflow run ci.yml --ref $branch') -and $raiseText -match '(?m)^\s*gh pr create .*--draft' -and $raiseText.Contains('contents: write') -and $raiseText.Contains('pull-requests: write') -and $raiseText.Contains('actions: write') -and -not $raiseText.Contains('secrets.') -and $raiseTagLines.Count -ge 1 -and $raiseTagSafe) $raiseText
+            Check "${name}: the raise-baseline workflow is called by publish.yml or run by hand, holds no permission by default, keeps no credential after checkout, and keeps the tag out of scripts" ($raiseText.Contains('workflow_call:') -and -not $raiseText.Contains('workflow_run') -and $raiseText -match '(?m)^permissions: \{\}\r?$' -and $raiseText.Contains('persist-credentials: false') -and $raiseText.Contains('http.https://github.com/.extraheader') -and $raiseText -match '(?m)^\s*git -c "http\.https://github\.com/\.extraheader=[^"]*" ls-remote --exit-code --heads origin \$branch' -and $raiseText.Contains('./build/Update-Baseline.ps1 -Version $env:VERSION') -and $raiseText.Contains('gh workflow run ci.yml --ref $branch') -and $raiseText -match '(?m)^\s*gh pr create .*--draft' -and $raiseText.Contains('contents: write') -and $raiseText.Contains('pull-requests: write') -and $raiseText.Contains('actions: write') -and -not $raiseText.Contains('secrets.') -and $raiseTagLines.Count -ge 1 -and $raiseTagSafe) $raiseText
             $workflow = Get-Content -LiteralPath $publish -Raw
             $uses = [regex]::Matches($workflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
             Check "${name}: the publish workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -ge 4 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $workflow
@@ -408,6 +427,7 @@ foreach ($case in $cases) {
             Check "${name}: the publish workflow also runs by hand or from the Tag and publish release workflow, with a tag input, and checks out that tag" ($workflow -match '(?m)^  workflow_dispatch:\r?\n    inputs:\r?\n      tag:\r?$' -and $workflow.Contains('TAG: ${{ github.event.release.tag_name || inputs.tag }}') -and $workflow.Contains('ref: refs/tags/${{ steps.version.outputs.tag }}')) $workflow
             Check "${name}: the publish workflow installs .NET with the install-dotnet action once the tagged commit is checked, before testing, and counts only a 404 as unpublished" ($workflow.Contains('      - uses: ./.github/actions/install-dotnet') -and $workflow.IndexOf('git merge-base --is-ancestor') -lt $workflow.IndexOf('./.github/actions/install-dotnet') -and $workflow.IndexOf('./.github/actions/install-dotnet') -lt $workflow.IndexOf('dotnet test') -and -not $workflow.Contains('actions/setup-dotnet') -and -not $workflow.Contains('Get-TestRuntimes') -and $workflow.Contains('-SkipHttpErrorCheck -StatusCodeVariable status') -and $workflow.Contains('$status -eq 404') -and -not $workflow.Contains('catch { $versions = @() }')) $workflow
             Check "${name}: the publish workflow tests and packs a public release, with the tag's version for a library without version.json" ($workflow.Contains('run: dotnet test --configuration Release -p:PublicRelease=true') -and $workflow.Contains('run: dotnet pack --configuration Release --output artifacts/packages -p:PublicRelease=true "-p:Version=$VERSION"')) $workflow
+            Check "${name}: the publish workflow calls release-provenance.yml and raise-baseline.yml after its publish job, granting each the permissions it declares, the baseline for a stable version only" ($workflow.Contains('    uses: ./.github/workflows/release-provenance.yml') -and $workflow.Contains('    uses: ./.github/workflows/raise-baseline.yml') -and [regex]::Matches($workflow, 'needs: \[pack, publish\]').Count -eq 2 -and $workflow.Contains("if: `${{ !contains(needs.pack.outputs.version, '-') }}") -and $workflow.Contains('attestations: write') -and [regex]::Matches($workflow, [regex]::Escape('tag: v${{ needs.pack.outputs.version }}')).Count -eq 2) $workflow
         }
     }
     $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
@@ -457,6 +477,8 @@ foreach ($case in $cases) {
     $reviewCaller = Join-Path $dest '.github\workflows\code-review.yml'
     $wantsReview = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
     Check "${name}: the code review caller is there only when asked for" ((Test-Path -LiteralPath $reviewCaller) -eq $wantsReview) "exists=$(Test-Path -LiteralPath $reviewCaller) wanted=$wantsReview"
+    Check "${name}: AGENTS.md opens every pull request as a draft exactly when the project runs NCode Review" ((Select-String -LiteralPath (Join-Path $dest 'AGENTS.md') -Pattern '^- draft: yes$' -Quiet) -eq $wantsReview)
+    Check "${name}: CONTRIBUTING.md says to comment /review after a push exactly when the project runs NCode Review" ((Get-Content -LiteralPath (Join-Path $dest 'CONTRIBUTING.md') -Raw).Contains('comments `/review` after one') -eq $wantsReview)
     if ($wantsReview) {
         $caller = Get-Content -LiteralPath $reviewCaller -Raw
         $uses = [regex]::Matches($caller, '(?m)^\s+uses: NCodeGroup/code-review@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
@@ -469,6 +491,7 @@ foreach ($case in $cases) {
         Check "${name}: the code review caller's review job leaves a closed pull request alone, a plain /review on one included, and cancels a superseded review" ($caller -match '(?m)^\s+types: \[[^\]\r\n]*\bclosed\b[^\]\r\n]*\]\r?$' -and $reviewJob.Contains("(github.event_name == 'pull_request_target' && github.event.action != 'closed' &&") -and $reviewJob -match "\(github\.event\.issue\.state == 'open' \|\| startsWith\(github\.event\.comment\.body, '/review explain'\) \|\|\s+startsWith\(github\.event\.comment\.body, '/review teach'\)\) &&" -and $reviewJob -match '(?m)^      cancel-in-progress: true\r?$' -and $reviewJob.Contains('id-token: write') -and $reviewJob.Contains('issues: read')) $reviewJob
         $v112Group = '      group: code-review-${{ github.event_name == ''issue_comment'' && !(github.event.comment.body == ''/review'' || startsWith(github.event.comment.body, format(''/review{0}'', fromJSON(''"\n"''))) || startsWith(github.event.comment.body, format(''/review{0}'', fromJSON(''"\r\n"'')))) && format(''command-{0}'', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}'
         Check "${name}: the code review caller's review job puts only a comment whose first line is exactly /review in the pull request's concurrency group" ($reviewJob.Contains($v112Group)) $reviewJob
+        Check "${name}: the code review caller passes approve: true in the review job alone" ([regex]::Matches($reviewJob, '(?m)^\s+approve: true\r?$').Count -eq 1 -and -not $outcomesJob.Contains('approve:')) $caller
         Check "${name}: the code review caller's outcomes job runs only on a closed pull request from the repository, outside the environment, reading contents and pull requests, with only the app key and without cancelling a review" ($outcomesJob.Contains("github.event_name == 'pull_request_target' && github.event.action == 'closed' &&") -and $outcomesJob.Contains('github.event.pull_request.head.repo.full_name == github.repository') -and $outcomesJob -match '(?m)^      group: code-review-\$\{\{ github\.event\.pull_request\.number \}\}\r?\n      cancel-in-progress: false\r?$' -and $outcomesJob -match '(?m)^    permissions:\r?\n      contents: read\r?\n      pull-requests: read\r?\n    steps:\r?$' -and $outcomesJob -notmatch '(?m)^\s+environment:' -and $outcomesJob -notmatch '(?m)^\s+id-token:' -and -not $outcomesJob.Contains('actions/checkout') -and $outcomesJob.Contains('app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}') -and -not $outcomesJob.Contains('bedrock-api-key')) $outcomesJob
         $checkouts = [regex]::Matches($caller, '(?m)^\s+uses: actions/checkout@').Count
         Check "${name}: the code review caller checks out only the default branch, without persisted credentials, and never the pull request's head" ($checkouts -eq 1 -and [regex]::Matches($caller, '(?m)^\s+persist-credentials: false\r?$').Count -eq 1 -and -not $caller.Contains('refs/pull/') -and -not $caller.Contains('head.sha')) $caller
@@ -967,7 +990,7 @@ $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.git
 $m += @(if (-not ((git -C $repoRoot ls-files -s template/.githooks/pre-push) -join '').StartsWith('100755')) { 'template/.githooks/pre-push: not executable in the index' })
 Check 'workflow: ship-plan opens a draft pull request when asked or when the Landing section says draft: yes, and the pre-push hook is executable' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md', '.claude\commands\ship-plan.md') ('the default when the Landing section has no `- draft:` line', 'a project that wants drafts writes `- draft: yes`'))
-$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- draft: no', '`draft`: `no`, the default, which a template update never changes'))
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- draft: {% if git_host == ''github'' and code_review is defined and code_review %}yes{% else %}no{% endif %}', '`draft`: `no`, the default when the line is missing, which a template update never changes'))
 Check 'workflow: draft stays no by default, and ship-plan and AGENTS.md say how a project opts in with draft: yes' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('`gate` is `none` or the command to run before a push', 'if (-not $? -or $LASTEXITCODE) { exit 1 } else { exit 0 }', 'stop before pushing: say the gate failed', 'the gate changed files'))
 Check 'workflow: ship-plan runs the Landing section''s gate before it pushes and stops when it fails or changes a file' (-not $m) ($m -join '; ')

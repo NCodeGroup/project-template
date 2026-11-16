@@ -1,15 +1,23 @@
 name: Code review
 
-# Reviews each pull request with NCode Review (NCodeGroup/code-review), which posts as ncode-review[bot]: a "Code review"
-# check run, a summary comment with a verdict, and inline threads. Nothing requires it; its findings are advice. It
-# reviews a pull request when it opens (drafts included, since that's when its author reviews it) and when it's marked
-# ready, unless that commit was already reviewed; pushes in between start nothing. A top-level comment from someone
+# Reviews each pull request with NCode Review (NCodeGroup/code-review), which posts as ncode-review[bot]: a
+# "Code review" check run, a summary comment with a verdict, and inline threads. Its findings are advice, and nothing
+# requires its check run; its approval is another matter, below. It reviews a pull request when it opens (drafts
+# included, since that's when its author reviews it) and when it's marked ready, unless that commit was already
+# reviewed; pushes in between start nothing. A top-level comment from someone
 # with write access whose first line is `/review` reviews the latest commit on demand, also with a footer below it,
 # such as an agent's `---` line and attribution, which NCode Review sets aside; `/review explain F3` says whether a
 # finding still holds, and `/review teach <rule>` files a rule as an issue, both on a closed pull request too. A
 # `skip-review` label skips the automatic reviews. When a pull request closes, merged or not, the outcomes job only
 # records each posted finding's outcome, with no model call. It needs no environment: the app's key is an organization
 # secret, and the code-review environment holds none; it only lets Anthropic's federation rule trust the review job.
+#
+# approve: true (v1.4.0 on) approves a pull request whose review leaves no blocker or should-fix finding open;
+# tools/Set-RepositoryBaseline.ps1 in the project template then requires one approval. A push dismisses it, so comment
+# /review after one; a maintainer approves a bot's pull request, which NCode Review skips.
+# docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md says why. v1.4.0 was released on
+# 2026-11-15, under the three days ADR-0009 waits: approve needs it, so it is pinned by that record's commented
+# exception, and this sentence goes once 2026-11-18 has passed (NCodeGroup/project-template#392).
 #
 # pull_request_target and issue_comment both run this file from the default branch, so a pull request can't change its
 # own review. The engine fetches its code only to read it: nothing from it is built, run or installed.
@@ -33,10 +41,11 @@ permissions: {}
 
 jobs:
   review:
-    # The engine checks a comment again (`/review`, `/review explain` or `/review teach`, from a writer, on a pull request
-    # that isn't from a fork) and stops before any model call when it isn't one. A closed pull request goes to the
-    # outcomes job below instead, and a plain `/review` on one doesn't run, so it can't cancel or displace the outcomes
-    # job, which shares its concurrency group. The concurrency group below decides which comments can cancel a review.
+    # The engine checks a comment again (`/review`, `/review explain` or `/review teach`, from a writer, on a pull
+    # request that isn't from a fork) and stops before any model call when it isn't one. A closed pull request goes to
+    # the outcomes job below instead, and a plain `/review` on one doesn't run, so it can't cancel or displace the
+    # outcomes job, which shares its concurrency group. The concurrency group below decides which comments can cancel a
+    # review.
     if: >-
       (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
@@ -72,10 +81,12 @@ jobs:
           persist-credentials: false
 
       - name: Review
-        uses: NCodeGroup/code-review@564bb16f8f4f25f88dcc47baae10d7edf55ca504 # v1.1.2
+        uses: NCodeGroup/code-review@d1233665998b66af6ec3d9e40d90a4638c235a67 # v1.4.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          # A review that leaves no blocker or should-fix finding open approves the pull request.
+          approve: true
 
   outcomes:
     # A closed pull request, merged or not, whoever closed it (a merge queue merges as a bot) and whatever its labels:
@@ -96,6 +107,6 @@ jobs:
       pull-requests: read
     steps:
       - name: Record the outcomes
-        uses: NCodeGroup/code-review@564bb16f8f4f25f88dcc47baae10d7edf55ca504 # v1.1.2
+        uses: NCodeGroup/code-review@d1233665998b66af6ec3d9e40d90a4638c235a67 # v1.4.0
         with:
           app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}

@@ -1,19 +1,24 @@
-# Raise the package validation baseline: after Publish packages succeeds for a stable release, or when run by hand
-# with a release tag, runs build/Update-Baseline.ps1, which waits for nuget.org to list the version and raises
-# PackageValidationBaselineVersion to it, then pushes baseline-<version>, opens it as a draft pull request, which a
-# person marks ready and merges, and starts CI on its branch, because a pull request opened with the workflow's token
-# starts no workflow. The template's ADR-0150 says why; it changes nothing until the project sets the baseline once
-# (ADR-0147).
+# Raise the package validation baseline: publish.yml calls this workflow as its baseline job after it publishes a stable
+# release, or a person runs it by hand with a release tag. It runs build/Update-Baseline.ps1, which waits for nuget.org
+# to list the version and raises PackageValidationBaselineVersion to it, then pushes baseline-<version>, opens it as a
+# draft pull request, which a person marks ready and merges, and starts CI on its branch, because a pull request opened
+# with the workflow's token starts no workflow. It is not started by a workflow-run trigger, which GitHub never fires
+# for the run tag-release.yml starts with GITHUB_TOKEN. The template's ADR-0150 and ADR-0151 say why; it changes
+# nothing until the project sets the baseline once (ADR-0147).
 #
 # Needs Settings > Actions > General > Workflow permissions > "Allow GitHub Actions to create and approve pull
 # requests", which tools/Set-RepositoryBaseline.ps1 in the project template turns on for a repository with this file.
-# The checkout keeps no credential; the branch check and the push get the token for that one command. The template owns this file.
+# The checkout keeps no credential; the branch check and the push get the token for that one command. The template
+# owns this file.
 name: Raise the package validation baseline
 
 on:
-  workflow_run:
-    workflows: [Publish packages]
-    types: [completed]
+  workflow_call:
+    inputs:
+      tag:
+        description: The release tag whose version becomes the baseline, such as v1.2.3
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
@@ -23,17 +28,15 @@ on:
 
 permissions: {}
 
-# One raise at a time; a second waits, so two releases never race to one branch.
-concurrency:
-  group: raise-baseline
-  cancel-in-progress: false
-
 jobs:
   raise:
     name: Open the baseline pull request
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # One raise at a time; a second waits, so two releases never race to one branch.
+    concurrency:
+      group: raise-baseline
+      cancel-in-progress: false
     permissions:
       # To push the branch.
       contents: write
@@ -47,7 +50,7 @@ jobs:
         id: tag
         shell: pwsh
         env:
-          TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
+          TAG: ${{ inputs.tag }}
         run: |
           if ($env:TAG -match '^v(\d+\.\d+\.\d+)$') { "version=$($Matches[1])" >> $env:GITHUB_OUTPUT; exit 0 }
           if ($env:TAG -match '^v\d+\.\d+\.\d+-[0-9A-Za-z.-]+$') { "$env:TAG is a prerelease, which is never a baseline." >> $env:GITHUB_STEP_SUMMARY; exit 0 }

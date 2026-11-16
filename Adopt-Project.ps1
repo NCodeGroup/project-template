@@ -22,6 +22,11 @@
     .github/workflows/tag-release.yml, it prints the warning .\.template\Update-Project.ps1 prints: the Tag and publish
     release workflow starts publish.yml through that trigger, so until it has one, a release ships no packages.
 
+    When that publish.yml doesn't call .github/workflows/release-provenance.yml or
+    .github/workflows/raise-baseline.yml, or both, which the adoption added and which no longer start on workflow_run,
+    it prints the warning .\.template\Update-Project.ps1 prints (ADR-0151): until publish.yml calls each, no release
+    gets the provenance or the baseline pull request the missing one makes.
+
     For a library it lists the stale NuGet logistics it finds as follow-ups (Get-NuGetLogistics): a .props file no project imports, GeneratePackageOnBuild, settings the template already makes, a .sln, a UTF-8 BOM and projects at the repository root, and the package Description and PackageTags that differ from the newest published package (Get-PackageMetadataDrift).
 
     For a .NET repository whose .config/dotnet-tools.json names CSharpier, it lists each of the repository's own build/*.ps1 scripts that runs dotnet csharpier check as a follow-up (Get-CSharpierWrapper), because the adopted build/dod.ps1 runs that check in its Format stage.
@@ -280,6 +285,14 @@ try {
     if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
+    }
+    # A publish.yml that doesn't call one of the release follow-ups, or either (ADR-0151): they no longer start on
+    # workflow_run, so a release misses what each one it doesn't call makes. The warning is
+    # .template/Update-Project.ps1's, word for word; tests/Test-AdoptEdgeCases.ps1 keeps the two equal.
+    $publishText = if (Test-Path -LiteralPath .github/workflows/publish.yml) { Get-Content -LiteralPath .github/workflows/publish.yml -Raw } else { '' }
+    if ($publishText -and (((Test-Path -LiteralPath .github/workflows/release-provenance.yml) -and $publishText -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/release-provenance\.yml\s*(#.*)?$') -or ((Test-Path -LiteralPath .github/workflows/raise-baseline.yml) -and $publishText -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/raise-baseline\.yml\s*(#.*)?$'))) {
+        ''
+        '.github/workflows/publish.yml doesn''t call .github/workflows/release-provenance.yml or .github/workflows/raise-baseline.yml, or both, which no longer start on workflow_run, since GitHub starts none for the run tag-release.yml starts: until it calls each, no release gets the provenance or the baseline pull request the missing one makes. Add the provenance and baseline jobs of the template''s publish.yml (the template''s ADR-0151). To attest an earlier release while its Publish packages run''s artifact is kept (14 days): gh workflow run release-provenance.yml -f tag=<tag> -f run-id=<run id>'
     }
 
     # A GitHub repository's default branch should take changes only through pull requests. The baseline script changes the

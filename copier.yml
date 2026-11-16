@@ -28,9 +28,15 @@ _skip_if_exists:
   - /NCodeGroup.png
   - /SECURITY.md
   - /CONTRIBUTING.md
+  - /GOVERNANCE.md
+  - /CODE_OF_CONDUCT.md
+  - /ROADMAP.md
   - /docs/README.md
   - /docs/metrics.md
   - /docs/api-compatibility.md
+  - /docs/architecture.md
+  - /docs/assurance-case.md
+  - /docs/best-practices-badge.md
   - /.config/dotnet-tools.json
   - /.csharpierignore
   - /docs/designs/_template.md
@@ -134,6 +140,7 @@ _exclude:
     docs/decisions/project-template/0135-packages-are-published-from-a-github-release-through-trusted-publishing.md
     docs/decisions/project-template/0137-the-release-workflow-starts-package-publishing.md
     docs/decisions/project-template/0139-releases-carry-build-provenance.md
+    docs/decisions/project-template/0151-release-follow-ups-are-jobs-publish-calls.md
     .github/workflows/release-provenance.yml
     .github/workflows/raise-baseline.yml
     {% endif %}
@@ -322,6 +329,11 @@ test_command:
     {%- elif stack == 'powershell' -%}Invoke-Pester -CI
     {%- endif -%}
 
+conduct_contact:
+  type: str
+  default: ""
+  help: "Where to report a Code of Conduct violation privately, such as an email address or a URL, or blank for the repository's private report form: Report a vulnerability on GitHub's Security tab, or a confidential issue on GitLab"
+
 # Never asked or recorded: the pre-release line of the AGENTS.md the template writes (ADR-0015). A new project starts
 # untracked; Adopt-Project.ps1 answers tracked, since an adopted repository has a history.
 pre_release:
@@ -342,5 +354,5 @@ _message_after_copy: |
   Created {{ project_name }}. Next: open it through the shack PC's VS Code tunnel, review AGENTS.md, and plan the first change with /plan-feature in the Claude Code panel.
   {%- if code_review is defined and code_review %}
 
-  Code review: .github/workflows/code-review.yml reviews each pull request with the NCode Review bot once the repository has the organization's secrets. From a clone of NCodeGroup/code-review, run tools/Enable-CodeReview.ps1 -Repo <the repository's name>. Until then the review job fails.
+  Code review: .github/workflows/code-review.yml reviews each pull request with the NCode Review bot once the repository has the organization's secrets. From a clone of NCodeGroup/code-review, run tools/Enable-CodeReview.ps1 -Repo <the repository's name>. Until then the review job fails, and once tools/Set-RepositoryBaseline.ps1 protects the default branch, nothing merges without NCode Review's approval, and a pull request it skips, a bot's or a fork's, merges once a maintainer approves it.
   {%- endif -%}

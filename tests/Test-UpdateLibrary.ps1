@@ -10,7 +10,9 @@
       unlicensed     No license answer, and a release.yml beside a publish.yml without a workflow_dispatch trigger;
                      release.yml runs dotnet nuget push. The update stops before it changes anything, exits 1 and
                      prints the -Data that gives a license; with -Data @{ license = 'MIT' } it updates, warns that
-                     both workflows publish, and warns that publish.yml has no workflow_dispatch trigger.
+                     both workflows publish, and warns that publish.yml has no workflow_dispatch trigger. Its publish.yml
+                     also lacks the provenance and baseline jobs, so the update warns that publish.yml doesn't call the
+                     release follow-ups.
       own-publisher  A release.yml that runs dotnet nuget push and no publish.yml, and a v2.3.0 tag on a commit
                      without build/ProjectTemplate.props. The update leaves publish.yml out and says so, without a
                      workflow_dispatch warning. It adds version.json at the patch after v2.3.0 (2.3.1), with the
@@ -19,7 +21,8 @@
                      -Data counts the first, names it, and not the second.
       headerless-ordinary  The same two files; an ordinary update prints no header note.
       with-trigger   The template's own publish.yml, with its workflow_dispatch trigger. The update adds tag-release.yml
-                     and prints no workflow_dispatch warning.
+                     and prints no workflow_dispatch warning, and none for the release follow-ups, which that
+                     publish.yml calls.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -91,7 +94,7 @@ Push-Location $unlicensed
 try {
     [IO.File]::WriteAllText((Join-Path $unlicensed '.github/workflows/release.yml'), $release)
     $publishYml = Join-Path $unlicensed '.github/workflows/publish.yml'
-    [IO.File]::WriteAllText($publishYml, [regex]::Replace([IO.File]::ReadAllText($publishYml), '(?m)^  workflow_dispatch:\r?\n(?:    .*\r?\n)*', '').Replace(' -p:PublicRelease=true', ''))
+    [IO.File]::WriteAllText($publishYml, [regex]::Replace([regex]::Replace([IO.File]::ReadAllText($publishYml), '(?m)^  workflow_dispatch:\r?\n(?:    .*\r?\n)*', '').Replace(' -p:PublicRelease=true', ''), '(?ms)^  provenance:\r?\n.*\z', ''))
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     Check 'fixture: unlicensed has no license answer, and publish.yml' (-not (Select-String -LiteralPath .copier-answers.yml -Pattern '^license: *[^\s'']' -Quiet) -and (Test-Path -LiteralPath .github/workflows/publish.yml))
     $head = git rev-parse HEAD
@@ -107,6 +110,7 @@ try {
     Check 'unlicensed: the update warns that publish.yml and release.yml both push NuGet packages' ($result.Output.Contains('Both .github/workflows/publish.yml and .github/workflows/release.yml push NuGet packages') -and (Test-Path -LiteralPath .github/workflows/publish.yml)) $result.Output
     Check 'unlicensed: the update warns that publish.yml has no workflow_dispatch trigger' ($result.Output.Contains('.github/workflows/publish.yml has no workflow_dispatch trigger') -and (Test-Path -LiteralPath .github/workflows/tag-release.yml)) $result.Output
     Check 'unlicensed: the update warns that publish.yml packs without -p:PublicRelease=true' ($result.Output.Contains('.github/workflows/publish.yml packs without -p:PublicRelease=true')) $result.Output
+    Check 'unlicensed: the update warns that publish.yml doesn''t call the release follow-ups' ($result.Output.Contains('.github/workflows/publish.yml doesn''t call .github/workflows/release-provenance.yml')) $result.Output
 }
 finally { Pop-Location }
 
@@ -166,6 +170,7 @@ try {
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $withTrigger
     Check 'with-trigger: a publish.yml with workflow_dispatch gets no warning' ($result.ExitCode -eq 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Test-Path -LiteralPath .github/workflows/tag-release.yml) -and -not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
+    Check 'with-trigger: the template''s publish.yml, which calls the release follow-ups, gets no such warning' ($result.ExitCode -eq 0 -and -not $result.Output.Contains('.github/workflows/publish.yml doesn''t call')) $result.Output
     Check 'with-trigger: a library with no stale file gets no stale NuGet logistics block' ($result.ExitCode -eq 0 -and -not $result.Output.Contains('Stale NuGet logistics')) $result.Output
     Check 'with-trigger: the update adds version.json, has no PublicRelease warning, and names the file that references Nerdbank.GitVersioning' ($result.Output.Contains('Added version.json') -and $result.Output.Contains('Its version is 0.1.0') -and -not $result.Output.Contains('packs without -p:PublicRelease=true') -and $result.Output.Contains('These files reference Nerdbank.GitVersioning') -and $result.Output.Contains('Directory.Build.props')) $result.Output
     Check 'with-trigger: the update says to delete the AssemblyVersion that Directory.Build.props sets' ($result.Output.Contains('Directory.Build.props sets AssemblyVersion') -and $result.Output.Contains('delete it from Directory.Build.props')) $result.Output
