@@ -290,6 +290,7 @@ try {
     dotnet csharpier format . | Out-Null
     $dodOutput = pwsh -NoProfile -File build/dod.ps1 2>&1 | Out-String
     Check 'dotnet: build/dod.ps1 passes and says so' ($LASTEXITCODE -eq 0 -and $dodOutput.TrimEnd().EndsWith('Definition of Done: PASSED') -and $dodOutput.Contains('== Decisions') -and $dodOutput.Contains('== Test') -and -not $dodOutput.Contains('== Pack')) $dodOutput
+    Check 'dotnet: build/dod.ps1 checks the coverage of the tests' ($dodOutput.Contains('== Coverage')) $dodOutput
 
     # The runtimes script names the older framework a test project targets, and nothing for the SDK's own.
     $runtimesNone = @(pwsh -NoProfile -File build/Get-TestRuntimes.ps1 2>&1)
@@ -337,6 +338,7 @@ if (Test-Path -LiteralPath $libraryDest) {
         $packed = @(Get-ChildItem -LiteralPath (Join-Path (Get-Location) 'artifacts/packages') -Filter 'Greetings.*' -ErrorAction SilentlyContinue | ForEach-Object Name)
         Check 'dotnet-library-apache: build/dod.ps1 builds, tests and packs the library at version.json''s version with its symbols' ($LASTEXITCODE -eq 0 -and $libDod.Contains('== Pack') -and @($packed -match '^Greetings\.0\.1\.0(-g[0-9a-f]*)?\.nupkg$').Count -eq 1 -and @($packed -match '^Greetings\.0\.1\.0(-g[0-9a-f]*)?\.snupkg$').Count -eq 1) "$($packed -join ', ') | $libDod"
         Check 'dotnet-library-apache: build/dod.ps1 runs the Format stage and passes on formatted C#' ($libDodExit -eq 0 -and $libDod.Contains('== Format')) $libDod
+        Check 'dotnet-library-apache: build/dod.ps1 skips the coverage stage without a test project' (-not $libDod.Contains('== Coverage')) $libDod
         [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Greetings/Extra.cs'), "namespace Greetings;`n`n/// <summary>`n/// Not recorded.`n/// </summary>`npublic sealed class Extra`n{`n}`n")
         Add-FileHeader (Join-Path (Get-Location) 'src/Greetings/Extra.cs')
         $unrecorded = dotnet build src/Greetings 2>&1 | Out-String
