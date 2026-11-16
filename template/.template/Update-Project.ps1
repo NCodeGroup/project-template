@@ -75,6 +75,7 @@
     .gitlab-ci.yml that packs without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning
     themselves (the template's ADR-0138).
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
+    An existing project keeps off the checks a new one starts with until -Data turns them on: csharp_format, node_lint, coverage_gate and file_headers are false when its answers lack them.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
     When the project has no LICENSE or COPYING file at its root, it warns, also when the project is already up to
@@ -138,9 +139,12 @@ function Get-PreReleaseAnswer {
     'tracked'
 }
 
-# An existing project is not opted in to the C# formatter: false when its answers have no csharp_format and -Data sets none.
-function Get-CSharpFormatAnswer {
-    if (-not (Get-Answer 'csharp_format') -and -not $Data.ContainsKey('csharp_format')) { 'false' }
+# The checks a new project starts with and an existing one keeps off until it opts in (the template's ADR-0148 and
+# ADR-0201): --data <answer>=false for each the answers file lacks and -Data doesn't set.
+function Get-OptInData {
+    foreach ($key in 'csharp_format', 'node_lint') {
+        if (-not (Get-Answer $key) -and -not $Data.ContainsKey($key)) { '--data', "$key=false" }
+    }
 }
 
 # A project from before the license question has no license answer: an update keeps it without a license rather than giving it copier.yml's Apache-2.0 default (ADR-0024); -Data sets one.
@@ -168,7 +172,7 @@ function Invoke-TemplateRender([string]$Version, [string]$Folder) {
     $renderArgs = @('copy', '--defaults', '--quiet', '--vcs-ref', $Version, '--data-file', (Join-Path $project '.copier-answers.yml'))
     foreach ($k in $Data.Keys) { $renderArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
     if (-not $Data.ContainsKey('pre_release')) { $renderArgs += '--data', "pre_release=$(Get-PreReleaseAnswer)" }
-    $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $renderArgs += '--data', "csharp_format=$csharpFormat" }
+    $renderArgs += @(Get-OptInData)
     $renderArgs += @(Get-LicenseData)
     $copierOutput = [Collections.Generic.List[string]]::new()
     try { Invoke-Copier @renderArgs $TemplateClone $Folder | ForEach-Object { $copierOutput.Add("$_") }; $true }
@@ -786,7 +790,7 @@ try {
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
-        $recopyData = @(); $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $recopyData = '--data', "csharp_format=$csharpFormat" }; $recopyData += @(Get-LicenseData)
+        $recopyData = @(Get-OptInData) + @(Get-LicenseData)
         Invoke-Copier recopy --force --quiet --vcs-ref :current: @recopyData @exclude
         $reset = @(Get-Change)
         # A template-owned file that the project's version skips only through a name without a /, which Copier matches in every folder,
@@ -832,7 +836,7 @@ try {
 
         $copierArgs = @('update', '--defaults', '--quiet', '--vcs-ref', $to)
         foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
-        $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $copierArgs += '--data', "csharp_format=$csharpFormat" }
+        $copierArgs += @(Get-OptInData)
         $copierArgs += @(Get-LicenseData)
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
