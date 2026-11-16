@@ -22,8 +22,9 @@ reconfigured ("Configuring default setup for code scanning", read 2026-11-16).
 
 The baseline also switches a configured setup to the extended query suite, with an update that sends `query_suite`
 alone. The REST reference makes every field of that update optional and describes `languages` only as "CodeQL
-languages to be analyzed" ("Update a code scanning default setup configuration", read 2026-11-16). An update that names
-no language sets none up: the two repositories kept `"languages": []` after the baseline switched them.
+languages to be analyzed" ("Update a code scanning default setup configuration", read 2026-11-16), so an update that
+names no language sets none up. The two repositories kept `"languages": []` on the extended suite, which most likely
+came from the baseline's switch: their organization's security configuration sets no query suite.
 
 ## Decision
 
@@ -33,9 +34,10 @@ at least one language.
 1. Where the setup is configured with no language, or its answer lists none, the baseline gives "Protect main" no
    code-scanning rule, leaves the query suite as it is, and says why. A later run with `-RequireChecks` adds the rule
    once the repository's settings give CodeQL a language.
-2. A "Protect main" ruleset that already has a code-scanning rule keeps it: an update never removes it. Where the setup
-   analyzes no language, the baseline warns that every pull request stays blocked and names the fix: set up CodeQL's
-   languages in the repository's settings, or remove the rule.
+2. A "Protect main" ruleset that already has a code-scanning rule keeps it: an update never removes it. Where that rule
+   requires CodeQL's results and the setup is configured but analyzes no language, the baseline warns that every pull
+   request stays blocked and names the fix: set up CodeQL's languages in the repository's settings, or remove the rule.
+   A setup that isn't configured gets no warning, since CodeQL can run through the repository's own workflow.
 3. The switch to the extended suite runs only for a setup that analyzes a language, and names no language itself.
 
 ## Options considered
@@ -46,6 +48,12 @@ at least one language.
 - Read the setup back after the switch. Rejected: an update can start a CodeQL setup run, which it answers with HTTP 202
   and the run's id, and the stored setup follows the run's end (on 2026-11-16 NCodeGroup/docs's `updated_at` came 2
   seconds after its 45-second setup run finished), so a read right after the switch can show the setup as it was.
+  Where no run starts, as no run followed on NCodeGroup/docs or NCodeGroup/brand, a read back shows what the read
+  before the switch already showed.
+- Start a setup run, with an update that sends `state` `configured`, so GitHub detects the repository's languages, and
+  add the rule once they appear. Deferred: the baseline would wait for the run, 45 seconds on NCodeGroup/docs, on every
+  such repository, or decide before it ends, and no such update has been tried, so nothing shows that it sets a
+  language up. The owner's settings, then a later run with `-RequireChecks`, do the same.
 - Remove a kept rule where the setup analyzes no language. Rejected: the baseline never loosens a ruleset, and the
   branch would have no code scanning once the languages are set up.
 - Leave the rule out, and warn where one is kept (chosen).
@@ -54,6 +62,11 @@ at least one language.
 
 - A repository whose setup analyzes no language gets no code-scanning rule until its owner sets up the languages and
   reruns the baseline with `-RequireChecks`.
+- A new project can end without code scanning: `New-Project.ps1 -CreateRemote` runs the baseline right after the first
+  push, and where an organization's security configuration turns default setup on, the setup may analyze no language
+  yet, as on NCodeGroup/docs and NCodeGroup/brand, where no setup run came for hours. The run then prints the notice
+  and adds no rule; the owner sets up CodeQL's languages and runs the baseline again with
+  `-RequireChecks build-and-test`. One rule that blocks every merge is the worse outcome.
 - A repository that already has the rule stays blocked until its owner acts on the warning; `-All -WhatIf` prints the
   warning for each such repository.
 - A setup that loses its languages after the rule is added blocks merges too; the next run of the baseline warns about
