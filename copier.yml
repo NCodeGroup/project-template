@@ -275,10 +275,11 @@ csharp_format:
   default: true
   when: "{{ stack == 'dotnet' }}"
 
+# Apache-2.0 unless answered otherwise (ADR-0024). .template/Update-Project.ps1 and Adopt-Project.ps1 never give existing code this default: they answer blank and warn.
 license:
   type: str
-  help: "SPDX license expression for the repository and its packages, such as MIT or Apache-2.0, or blank for none; MIT and Apache-2.0 get their LICENSE.txt written"
-  default: ""
+  help: "Whether the repository has a license, and which: an SPDX license expression for the repository and its packages. Apache-2.0, NCode Group's license, and MIT get their LICENSE.txt written; another expression, such as MIT OR Apache-2.0, needs a license file of your own; blank for no license, so no one else may use the code"
+  default: Apache-2.0
   validator: "{% if (nuget_package | default(false)) and not license.strip() %}Required for a NuGet package: the SPDX license expression its packages carry, such as MIT or Apache-2.0{% endif %}"
 
 author_name:

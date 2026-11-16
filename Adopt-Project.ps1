@@ -27,6 +27,8 @@
     it prints the warning .\.template\Update-Project.ps1 prints (ADR-0151): until publish.yml calls each, no release
     gets the provenance or the baseline pull request the missing one makes.
 
+    It answers license blank, never copier.yml's Apache-2.0 default, when it works out no license and -Data gives none, so it never chooses a license for existing code (ADR-0024). With no LICENSE or COPYING file at the root, it prints the warning .\.template\Update-Project.ps1 prints: for a blank answer with the command that adds Apache-2.0, for any other answer saying to add that license's text.
+
     For a library it lists the stale NuGet logistics it finds as follow-ups (Get-NuGetLogistics): a .props file no project imports, GeneratePackageOnBuild, settings the template already makes, a .sln, a UTF-8 BOM and projects at the repository root, and the package Description and PackageTags that differ from the newest published package (Get-PackageMetadataDrift).
 
     For a .NET repository whose .config/dotnet-tools.json names CSharpier, it lists each of the repository's own build/*.ps1 scripts that runs dotnet csharpier check as a follow-up (Get-CSharpierWrapper), because the adopted build/dod.ps1 runs that check in its Format stage.
@@ -103,6 +105,8 @@ try {
         foreach ($k in $adapterAnswers.Keys) { $answers[$k] = $adapterAnswers[$k] }
     }
     foreach ($k in $Data.Keys) { $answers[$k] = $Data[$k] }
+    # Never copier.yml's Apache-2.0 default for existing code (ADR-0024): without a license worked out or given, the answer is blank, and the warning below says how to add one.
+    if (-not $answers.Contains('license')) { $answers['license'] = '' }
     # Files the repository owns, merged or template-owned (its project_owned_files answer): Copier leaves them as they are, and updates show the template's changes to them.
     $ownedFiles = @()
     if ($answers.Contains('project_owned_files')) { $ownedFiles = Get-OwnedFile $answers['project_owned_files'] $ownable; $answers['project_owned_files'] = $ownedFiles }
@@ -293,6 +297,18 @@ try {
     if ($publishText -and (((Test-Path -LiteralPath .github/workflows/release-provenance.yml) -and $publishText -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/release-provenance\.yml\s*(#.*)?$') -or ((Test-Path -LiteralPath .github/workflows/raise-baseline.yml) -and $publishText -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/raise-baseline\.yml\s*(#.*)?$'))) {
         ''
         '.github/workflows/publish.yml doesn''t call .github/workflows/release-provenance.yml or .github/workflows/raise-baseline.yml, or both, which no longer start on workflow_run, since GitHub starts none for the run tag-release.yml starts: until it calls each, no release gets the provenance or the baseline pull request the missing one makes. Add the provenance and baseline jobs of the template''s publish.yml (the template''s ADR-0151). To attest an earlier release while its Publish packages run''s artifact is kept (14 days): gh workflow run release-provenance.yml -f tag=<tag> -f run-id=<run id>'
+    }
+    # No license (ADR-0024): the warnings are .template/Update-Project.ps1's, word for word; tests/Test-LicenseWarning.ps1 keeps them equal.
+    if (-not (Get-ChildItem -LiteralPath $project -File | Where-Object Name -Match '^(LICEN[CS]E|COPYING)(\.\w+)?$')) {
+        $licenseAnswer = "$(Get-Answer 'license')".Trim()
+        ''
+        if (-not $licenseAnswer) {
+            'No license: the license answer is blank and the repository has no LICENSE or COPYING file, so no one else may use, copy or change its code, and the OpenSSF Best Practices criteria for a license can''t be met. To license it under Apache-2.0, NCode Group''s license, which adds LICENSE.txt and COPYRIGHT.txt, run the command below in the repository; for another SPDX license expression, such as MIT, put it in place of Apache-2.0:'
+            "  .\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }"
+        }
+        else {
+            "No license file: the license answer is $licenseAnswer, but the repository has no LICENSE or COPYING file, so no one else may use, copy or change its code, and the OpenSSF Best Practices criteria for a license can't be met. Add the text of the $licenseAnswer license as LICENSE.txt at the repository's root."
+        }
     }
 
     # A GitHub repository's default branch should take changes only through pull requests. The baseline script changes the

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.97.0] - 2026-11-15
+
+### Added
+
+- `.template\Update-Project.ps1`, also when the project is already up to date, and `Adopt-Project.ps1` warn when the repository has no `LICENSE` or `COPYING` file: for a blank `license` answer they print the command that adds Apache-2.0, `.\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }`, in which another SPDX expression can take its place, and for any other answer they say to add that license's text as `LICENSE.txt`. ([#397](https://github.com/NCodeGroup/project-template/issues/397), [ADR-0024](template/docs/decisions/project-template/0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md))
+
+### Changed
+
+- The `license` question defaults to `Apache-2.0`, NCode Group's license, so a new project gets `LICENSE.txt` and `COPYRIGHT.txt`; answer another SPDX expression, such as `MIT`, or blank for none. A project keeps the answer it has, and one from before the question, or adopted without a license the adoption can read, gets a blank answer, never the default. ([#397](https://github.com/NCodeGroup/project-template/issues/397), [ADR-0024](template/docs/decisions/project-template/0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md))
+
+### Fixed
+
+- ADR-0020's License row no longer says every GitHub project ships a license file: it names `LICENSE.txt` for an Apache-2.0 or MIT `license`, and otherwise the command that adds one. ([#397](https://github.com/NCodeGroup/project-template/issues/397), [ADR-0020](template/docs/decisions/project-template/0020-github-projects-are-scored-by-openssf-scorecard.md.jinja))
+
 ## [0.96.0] - 2026-11-15
 
 ### Added
@@ -1543,7 +1557,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.96.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.97.0...HEAD
+[0.97.0]: https://github.com/NCodeGroup/project-template/compare/v0.96.0...v0.97.0
 [0.96.0]: https://github.com/NCodeGroup/project-template/compare/v0.95.0...v0.96.0
 [0.95.0]: https://github.com/NCodeGroup/project-template/compare/v0.94.0...v0.95.0
 [0.94.0]: https://github.com/NCodeGroup/project-template/compare/v0.93.0...v0.94.0

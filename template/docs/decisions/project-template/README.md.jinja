@@ -40,6 +40,7 @@ never brings a number the project already uses
 | [0021](0021-tooling-is-written-in-nodejs-then-go-then-powershell.md) | Tooling is written in Node.js first, then Go, then PowerShell 7; Python is left out of the toolchain, except for Python programs such as Copier |
 | [0022](0022-ncode-reviews-approval-gates-the-merge.md) | Where `code-review.yml` passes NCode Review's `approve: true`, the ruleset requires one approval and approval of the last push, never the latter alone, and a new such project opens every pull request as a draft (amends 0005, 0006, 0019{% if git_host == 'github' %} and 0020{% endif %}) |
 | [0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md) | Every project ships the governance, conduct, roadmap, architecture and assurance documents the OpenSSF Best Practices silver level asks for, with a map from each criterion to its evidence |
+| [0024](0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md) | A project's `license` answer defaults to Apache-2.0; an update or an adoption never chooses a license for existing code, and both warn when the repository has none |
 {%- if stack == 'dotnet' %}
 
 ## .NET

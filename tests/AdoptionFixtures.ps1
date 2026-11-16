@@ -3,9 +3,9 @@
     The helpers the adoption suites dot-source: Git with a test identity, fixture folders and repositories, and a PNG.
 
 .DESCRIPTION
-    Dot-source it from tests/Test-Adoption.ps1 or tests/Test-AdoptEdgeCases.ps1, which set $Work: New-TestFolder and
-    New-Fixture create their folders in it. $png is a 1x1 PNG image, base64-encoded, for a fixture file whose name
-    ends in .png.
+    Dot-source it from tests/Test-Adoption.ps1, tests/Test-AdoptEdgeCases.ps1 or tests/Test-LicenseWarning.ps1, which
+    set $Work: New-TestFolder and New-Fixture create their folders in it. $png is a 1x1 PNG image, base64-encoded, for
+    a fixture file whose name ends in .png.
 #>
 
 function Invoke-Git {
