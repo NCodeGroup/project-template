@@ -349,4 +349,30 @@ RULES
 - Answer Unmet for each criterion the map marks Gap, with the map's reason.
 - Only a person can meet these, so mark them Unmet unless I say otherwise: access_continuity, bus_factor, contributors_unassociated, two_person_review, dco (unless the repository requires Signed-off-by), security_review, and require_2FA and secure_2FA (unless I confirm the organization's settings).
 - Before saving each level, show me a table of criterion, answer and evidence, grouped into: from ANSWERS, from the map that you verified, and left open. List the MUST criteria that keep that level from being earned. Save only after I say "go". Never claim a level: report what the site shows.
+
+STEPS
+1. Find an existing entry: open https://www.bestpractices.dev/en/projects?q={{ project_name | urlencode }}. Text search matches names and descriptions, not repository URLs. If the project is there, note its number and go to step 3.
+2. Register: open https://www.bestpractices.dev/en/projects/new, choose OWNER/REPO under "Select a GitHub repository", set the home page to the repository URL unless I give another, keep the Metal series, and submit. Wait for the redirect to /en/projects/<number>/passing/edit; autofill takes about 10 seconds.
+3. For each level (passing, silver, gold), open /en/projects/<number>/<level>/edit, click "Expand all panels" and read the form with JavaScript:
+   - each criterion's radios are project[<id>_status], with values Met, Unmet, N/A and ?;
+   - its justification is project[<id>_justification];
+   - N/A exists only where the form offers it.
+   Note the answers autofill already saved, and check each justification against the evidence. For example, report_process may be autofilled from SECURITY.md, which is the vulnerability policy, not the bug-report process.
+4. Check, read-only, in a second tab you close afterwards:
+   - https://github.com/OWNER/REPO/security: is private vulnerability reporting enabled?
+   - /security/advisories: the count in every state.
+   - /security/code-scanning?query=tool%3ACodeQL: open and closed alerts. Scorecard alerts are posture checks, not code findings.
+   - /security/dependabot and /security/secret-scanning: open alerts.
+   - /releases and /tags.
+   - Issues labelled bug and enhancement: were they answered?
+   - The last 6 bug-fix pull requests: did each add a test?
+5. Build the level's answers: ANSWERS first, then each map default whose evidence you confirmed. Show me the table (see RULES) and wait for "go".
+6. After "go", set every answer in one JavaScript pass: click the radio, set the textarea with the native value setter, and dispatch input and change events. Read the form back and check that no criterion you meant to answer is still "?" and that no Met or N/A has an empty justification. Then click the last "Submit (and exit)" and confirm the saved page: its banner, and the badge's alt text "Badge level for project <number> is ...".
+7. Go on to the next level whether or not this one was earned. Its answers count toward the percentage, and I decide what to fix.
+
+REPORT AT THE END
+1. The project number and URL.
+2. The level the site shows, and each level's percentage.
+3. Every criterion left "?" or Unmet, with why, MUST blockers first.
+4. The repository changes that would raise the level, such as adding the badge to README.md within 48 hours of earning a level (documentation_achievements) or closing a Gap row of the map.
 ```
