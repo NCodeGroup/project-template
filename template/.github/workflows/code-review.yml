@@ -17,7 +17,7 @@ name: Code review
 # /review after one; a maintainer approves a bot's pull request, which NCode Review skips.
 # docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md says why. v1.4.0 was released on
 # 2026-11-15, under the three days ADR-0009 waits: approve needs it, so it is pinned by that record's commented
-# exception, and this sentence goes once 2026-11-18 has passed.
+# exception, and this sentence goes once 2026-11-18 has passed (NCodeGroup/project-template#392).
 #
 # pull_request_target and issue_comment both run this file from the default branch, so a pull request can't change its
 # own review. The engine fetches its code only to read it: nothing from it is built, run or installed.
