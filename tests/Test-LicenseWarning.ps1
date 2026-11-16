@@ -12,8 +12,8 @@
                    license when given.
       no-answer    A project from before the license question, without a license answer: the update records a blank
                    answer, not the Apache-2.0 default, adds no license file and warns with the command that adds
-                   Apache-2.0; with -Data @{ license = 'Apache-2.0' } it adds LICENSE.txt and COPYRIGHT.txt, records
-                   the license and warns no more.
+                   Apache-2.0; a second update, already up to date, still warns; with -Data @{ license =
+                   'Apache-2.0' } it adds LICENSE.txt and COPYRIGHT.txt, records the license and warns no more.
       own-license  A blank answer beside a LICENSE file of the repository's own: no warning, and the file is kept.
       licensed     The default Apache-2.0 answer: the update keeps the answer, LICENSE.txt and COPYRIGHT.txt, and
                    doesn't warn.
@@ -119,6 +119,9 @@ try {
     $result = Invoke-Update $noAnswer
     Check 'no-answer: the update records a blank license answer, not the Apache-2.0 default, and adds no license file' ($result.ExitCode -eq 0 -and (Get-Content -Raw -LiteralPath .copier-answers.yml) -match "(?m)^license: ''\r?$" -and -not (Test-Path -LiteralPath LICENSE.txt) -and -not (Test-Path -LiteralPath COPYRIGHT.txt)) $result.Output
     Check 'no-answer: the update warns with the command that adds Apache-2.0' ($result.Output.Contains($warning) -and $result.Output.Contains($command)) $result.Output
+    # A second update finds nothing to change, and still warns.
+    $result = Invoke-Update $noAnswer
+    Check 'no-answer: an update that is already up to date still warns' ($result.ExitCode -eq 0 -and $result.Output.Contains('Already up to date') -and $result.Output.Contains($warning) -and $result.Output.Contains($command) -and -not (git status --porcelain)) $result.Output
     $result = Invoke-Update $noAnswer @{ license = 'Apache-2.0' }
     Check 'no-answer: -Data @{ license = ''Apache-2.0'' } adds LICENSE.txt and COPYRIGHT.txt, records the license and warns no more' ($result.ExitCode -eq 0 -and (Test-Path -LiteralPath LICENSE.txt) -and (Test-Path -LiteralPath COPYRIGHT.txt) -and (Get-Content -Raw -LiteralPath .copier-answers.yml) -match '(?m)^license: Apache-2\.0\r?$' -and -not $result.Output.Contains('No license:')) $result.Output
 }
