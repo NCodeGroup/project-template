@@ -354,5 +354,5 @@ _message_after_copy: |
   Created {{ project_name }}. Next: open it through the shack PC's VS Code tunnel, review AGENTS.md, and plan the first change with /plan-feature in the Claude Code panel.
   {%- if code_review is defined and code_review %}
 
-  Code review: .github/workflows/code-review.yml reviews each pull request with the NCode Review bot once the repository has the organization's secrets. From a clone of NCodeGroup/code-review, run tools/Enable-CodeReview.ps1 -Repo <the repository's name>. Until then the review job fails, and once tools/Set-RepositoryBaseline.ps1 protects the default branch, nothing merges without NCode Review's approval.
+  Code review: .github/workflows/code-review.yml reviews each pull request with the NCode Review bot once the repository has the organization's secrets. From a clone of NCodeGroup/code-review, run tools/Enable-CodeReview.ps1 -Repo <the repository's name>. Until then the review job fails, and once tools/Set-RepositoryBaseline.ps1 protects the default branch, nothing merges without NCode Review's approval, and a pull request it skips, a bot's or a fork's, merges once a maintainer approves it.
   {%- endif -%}

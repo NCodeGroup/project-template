@@ -19,11 +19,12 @@ when the review is clean. Last-push approval at zero approvals blocked NCodeGrou
 2. Where the default branch's `code-review.yml` has `approve: true`, `tools/Set-RepositoryBaseline.ps1` in the project
    template gives the "Protect main" ruleset one required approval, dismissal of stale approvals on push, and approval
    of the last push together, with no bypass. Where it doesn't, the ruleset requires zero approvals and never
-   last-push approval. The script never loosens a ruleset: when one is stricter than it would set, it prints the fix.
+   last-push approval. The script never loosens a ruleset: it prints the fix only for approval of the last push with no
+   required approval.
 3. A new project with NCode Review sets `draft: yes`, so its workflows open pull requests as drafts. Marking one ready is
    the maintainer's review.
-4. A maintainer approves the pull requests of bots, which NCode Review skips. No template workflow approves a pull
-   request, though a token's approval would count.
+4. A maintainer approves the pull requests of bots, which NCode Review skips, and those from forks, which it skips too.
+   No template workflow approves a pull request, though a token's approval would count.
 5. A push dismisses the approval. The maintainer comments `/review` to get a new one, as `/run-feedback` and
    `/run-issues` do.
 6. A project without NCode Review has no approvals.

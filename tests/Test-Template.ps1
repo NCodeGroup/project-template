@@ -479,7 +479,7 @@ foreach ($case in $cases) {
     $wantsReview = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
     Check "${name}: the code review caller is there only when asked for" ((Test-Path -LiteralPath $reviewCaller) -eq $wantsReview) "exists=$(Test-Path -LiteralPath $reviewCaller) wanted=$wantsReview"
     Check "${name}: AGENTS.md opens every pull request as a draft exactly when the project runs NCode Review" ((Select-String -LiteralPath (Join-Path $dest 'AGENTS.md') -Pattern '^- draft: yes$' -Quiet) -eq $wantsReview)
-    Check "${name}: CONTRIBUTING.md says to comment /review after a push exactly when the project runs NCode Review" ((Get-Content -LiteralPath (Join-Path $dest 'CONTRIBUTING.md') -Raw).Contains('comment `/review` after one') -eq $wantsReview)
+    Check "${name}: CONTRIBUTING.md says to comment /review after a push exactly when the project runs NCode Review" ((Get-Content -LiteralPath (Join-Path $dest 'CONTRIBUTING.md') -Raw).Contains('comments `/review` after one') -eq $wantsReview)
     if ($wantsReview) {
         $caller = Get-Content -LiteralPath $reviewCaller -Raw
         $uses = [regex]::Matches($caller, '(?m)^\s+uses: NCodeGroup/code-review@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
