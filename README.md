@@ -628,7 +628,7 @@ Copier picks the newest tag, so a change reaches projects only once it is tagged
 | `tests/Test-AdoptOwnedFiles.ps1` | Adopt a repository that owns a merged and a template-owned file, then update it |
 | `tests/Test-UpdateIgnoredFiles.ps1` | Update a project whose own `.gitignore` ignores a large folder |
 | `tests/Test-UpdateExitCode.ps1` | Check that a successful update exits 0 |
-| `tests/Test-UpdateLibrary.ps1` | Update a .NET library without a license answer, and one with a NuGet publishing workflow of its own and a release that the assembly version pin would lower; the warning for a library's updated `publish.yml` that doesn't call the release follow-ups, word for word as the other script does, and none for the template's, which calls them |
+| `tests/Test-UpdateLibrary.ps1` | Update a .NET library without a license answer, and one with a NuGet publishing workflow of its own and a release that the assembly version pin would lower; the warning for a library's updated `publish.yml` that doesn't call the release follow-ups, and none for the template's, which calls them |
 | `tests/Test-UpdateWindowsCheckout.ps1` | Check that an update on Windows stops early for a project on a template version Windows can't check out |
 | `tests/Test-WindowsFileNames.ps1` | Check that Windows can check out every path in the repository |
 | `tests/Test-UpdateKeptLines.ps1` | Update an adopted project whose merged files end with the lines it kept |

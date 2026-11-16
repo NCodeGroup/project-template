@@ -16,7 +16,7 @@
 | Maintainer | The repository's owners | Sets direction, triages issues, reviews and merges {{ pr }}s, {% if ghlib %}approves each publication in the `nuget` environment, {% endif %}answers vulnerability reports, owns the repository's settings{% if library %} and the nuget.org packages{% endif %} |
 | Contributor | Anyone | Opens issues and {{ pr }}s, under [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md) |
 {% if git_host == 'github' -%}
-| Automation | {% if review %}`ncode-review[bot]`, {% endif %}Dependabot, GitHub Actions | {% if review %}Reviews and approves a clean pull request, proposes dependency updates, runs CI, {% if ghlib %}tags and publishes releases{% else %}tags and publishes releases where `AGENTS.md`'s Landing section sets a release policy{% endif %}; never merges a pull request except the pin bump `code-review-auto-merge.yml` merges once a maintainer approves it{% else %}Proposes dependency updates, runs CI, {% if ghlib %}tags and publishes releases{% else %}tags and publishes releases where `AGENTS.md`'s Landing section sets a release policy{% endif %}; never merges a pull request{% endif %} |
+| Automation | {% if review %}`ncode-review[bot]`, {% endif %}Dependabot, GitHub Actions | {% if review %}Reviews and approves a clean pull request, proposes dependency updates, runs CI, {% if ghlib %}tags and publishes releases{% else %}tags and publishes releases where `AGENTS.md`'s Landing section sets `release: tag+release`{% endif %}; never merges a pull request except the pin bump `code-review-auto-merge.yml` merges once a maintainer approves it{% else %}Proposes dependency updates, runs CI, {% if ghlib %}tags and publishes releases{% else %}tags and publishes releases where `AGENTS.md`'s Landing section sets `release: tag+release`{% endif %}; never merges a pull request{% endif %} |
 {% else -%}
 | Automation | GitLab CI/CD | Runs CI; never merges a merge request |
 {% endif %}
@@ -30,7 +30,7 @@ Only a maintainer has write access. A contributor who keeps contributing reviewe
 
 ## Releases
 
-Versions follow Semantic Versioning. {% if ghlib %}Releases are tagged and published as [ADR-0016](docs/decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md) records.{% else %}Releases are tagged, and published, once `AGENTS.md`'s Landing section sets `release: tag` or `tag+release`, as [ADR-0016](docs/decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md) records; it starts with `release: none`.{% endif %}
+Versions follow Semantic Versioning. {% if ghlib %}Releases are tagged and published as [ADR-0016](docs/decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md) records.{% else %}Releases are tagged once `AGENTS.md`'s Landing section sets `release: tag`, and published too with `tag+release`, as [ADR-0016](docs/decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md) records; it starts with `release: none`.{% endif %}
 {%- if ghlib %} Packages reach nuget.org only after a maintainer approves the `nuget` environment. [SECURITY.md](SECURITY.md) says how to verify a package.{% endif %}
 
 ## Continuity
