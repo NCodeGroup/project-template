@@ -83,6 +83,8 @@
     date: for a blank license answer it prints the -Data @{ license = 'Apache-2.0' } that adds one, and for any other
     answer it says to add that license's text (the template's ADR-0024). A project from before the license question
     gets a blank answer, never copier.yml's Apache-2.0 default.
+    When best_practices_project is set and README.md doesn't show the project's OpenSSF Best Practices badge, it prints
+    the line to add, also when the project is already up to date.
 
     On Windows it stops before it changes anything when the project's template version has a path Git for Windows
     refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
@@ -165,6 +167,19 @@ function Get-LicenseWarning {
     else {
         "No license file: the license answer is $licenseAnswer, but the repository has no LICENSE or COPYING file, so no one else may use, copy or change its code, and the OpenSSF Best Practices criteria for a license can't be met. Add the text of the $licenseAnswer license as LICENSE.txt at the repository's root."
     }
+}
+
+# documentation_achievements asks for the badge in README.md within 48 hours of earning a level, and README.md is
+# project-owned, so recording best_practices_project never adds it there (the template's ADR-0025).
+function Get-BadgeReminder {
+    $number = "$(Get-Answer 'best_practices_project')".Trim()
+    if (-not $number) { return }
+    $badge = "https://www.bestpractices.dev/projects/$number/badge"
+    $readme = Join-Path $project 'README.md'
+    if ((Test-Path -LiteralPath $readme) -and (Get-Content -LiteralPath $readme -Raw).Contains($badge)) { return }
+    ''
+    "README.md doesn't show the OpenSSF Best Practices badge of project $number, which documentation_achievements asks for within 48 hours of earning a level. Add this line near its top (the template's ADR-0025, in docs/decisions/project-template/):"
+    "  [![OpenSSF Best Practices]($badge)](https://www.bestpractices.dev/projects/$number)"
 }
 
 # tag-release.yml runs ci.yml as a reusable workflow before it tags a release (ADR-0026): without the trigger, no release is tagged.
@@ -915,7 +930,7 @@ try {
         })
 
     # A success ends with exit 0, not return, which would hand a caller that runs this with & the exit code of the last git command, such as git apply --check's 1 for a hunk the project lacks.
-    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; exit 0 }
+    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; Get-BadgeReminder; exit 0 }
     "Template $from -> ${to}:"
     $changes | Sort-Object Kind, File | ForEach-Object { '  {0,-9} {1}' -f $_.Kind, $_.File }
     $edited = @($reset | Where-Object Kind -NE 'added' | ForEach-Object File)
@@ -1084,6 +1099,7 @@ try {
 
     Get-AttributionCheckNote $changes
     Get-LicenseWarning
+    Get-BadgeReminder
 
     # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).
     $backfill = Get-ChangelogBackfill

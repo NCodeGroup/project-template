@@ -10,7 +10,9 @@
       adopt     Get-AdoptionAnswers answers node_lint = $false for a Node.js repository, and coverage_gate = $false
                 and file_headers = $false for every repository.
       ci-call   Get-CiCallNote says to add workflow_call to ci.yml when tag-release.yml calls it and it lacks the
-                trigger, and says nothing when it has the trigger or the project has no tag-release.yml.
+                 trigger, and says nothing when it has the trigger or the project has no tag-release.yml.
+      badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
+                the badge, and nothing when README.md has it or the answer is unset.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notes-test-<process ID> in the temp
@@ -110,6 +112,35 @@ $ciCallNote = & {
     }
 }
 $ciCallNote
+
+# badge: Get-BadgeReminder, run from inside each fixture folder, which is also the project.
+$badgeReminder = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'Get-Answer', 'Get-BadgeReminder') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $line = '[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16752/badge)](https://www.bestpractices.dev/projects/16752)'
+    $badgeCases = [ordered]@{
+        'registered, no badge'   = @{ Answers = "best_practices_project: '16752'`n"; Readme = "# Title`n"; Line = $true }
+        'registered, has badge'  = @{ Answers = "best_practices_project: '16752'`n"; Readme = "$line`n# Title`n"; Line = $false }
+        'not registered'         = @{ Answers = "stack: node`n"; Readme = "# Title`n"; Line = $false }
+    }
+    foreach ($name in $badgeCases.Keys) {
+        $folder = Join-Path $Work "badge-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path $folder -Force
+        [IO.File]::WriteAllText((Join-Path $folder '.copier-answers.yml'), $badgeCases[$name].Answers)
+        [IO.File]::WriteAllText((Join-Path $folder 'README.md'), $badgeCases[$name].Readme)
+        # Set-Variable: only the loaded function reads project, which the script analyzer can't see.
+        Set-Variable -Name project -Value $folder
+        Push-Location $folder
+        try { $note = (Get-BadgeReminder) -join "`n" }
+        finally { Pop-Location }
+        if ($badgeCases[$name].Line) { Check "badge: $name" ($note.Contains($line)) "got [$note]" }
+        else { Check "badge: $name" (-not $note.Trim()) "got [$note]" }
+    }
+}
+$badgeReminder
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Update notes tests: FAILED ($($failures.Count))"; exit 1 }
