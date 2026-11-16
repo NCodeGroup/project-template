@@ -1,0 +1,59 @@
+{%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
+{%- set github = git_host == 'github' %}
+{%- set ghlib = github and library %}
+{%- set review = github and (code_review | default(false)) %}
+{%- set codeql = github and stack in ['dotnet', 'node', 'python'] %}
+{%- set csharp = stack == 'dotnet' and (csharp_format | default(false)) %}
+{%- set spdx = license | default('') %}
+{%- set ci = '.github/workflows/ci.yml' if github else '.gitlab-ci.yml' %}
+{%- set pr = 'pull request' if github else 'merge request' %}
+{%- set host = 'GitHub' if github else 'GitLab' %}
+{%- set project = best_practices_project | default('') | string %}
+{%- set number = project if project else 'NUMBER' -%}
+# OpenSSF Best Practices Criteria
+
+Every criterion of the OpenSSF Best Practices badge's passing, silver and gold levels, with the answer a project made
+from the project template should expect and where its evidence is. [bestpractices.dev](https://www.bestpractices.dev)
+holds the saved answers and each criterion's full text: this page holds the defaults and the evidence, never the
+answers. The template owns this page and replaces it on every update
+([ADR-0025](decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md));
+[best-practices-badge.md](best-practices-badge.md) is the project's own. To register, see
+[Register and Answer](#register-and-answer).
+
+{% if project -%}
+{{ project_name }} is [project {{ project }}](https://www.bestpractices.dev/projects/{{ project }}). Show this badge in
+[README.md](../README.md), as `documentation_achievements` asks within 48 hours of earning a level:
+
+```markdown
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/{{ project }}/badge)](https://www.bestpractices.dev/projects/{{ project }})
+```
+{%- else -%}
+{{ project_name }} isn't registered yet. Once it is, record its number, which this page then uses:
+`.\.template\Update-Project.ps1 -Data @{ best_practices_project = '<number>' }`.
+{%- endif %}
+
+## Reading the Tables
+
+Each level has a table per section of its form. *Req* is the criterion's requirement at that level: MUST, SHOULD or
+SUGGESTED. *N/A* says whether the form offers N/A, and *URL* whether a Met answer needs a link. Each answer starts
+with its kind:
+
+- **Met**: the files the template wrote meet it; cite them.
+- **Check**: the answer depends on what only the code, the repository's history or its host shows; the cell says what
+  to look at, and [Checks](#checks) says how.
+- **N/A**: the form offers N/A, and its condition holds for this project; the cell names the exception.
+- **Gap**: the template doesn't meet it for this project yet; it stays Unmet until the project closes it.
+- **Person**: only a person, or a setting a person changes, meets it.
+- **Unmet**: unmet by the template's choice; the cell says why.
+
+## Passing
+
+The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
+
+## Silver
+
+The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
+
+## Gold
+
+The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
