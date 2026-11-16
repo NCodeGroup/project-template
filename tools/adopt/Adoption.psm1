@@ -132,6 +132,8 @@ function Get-AdoptionAnswers([string]$Path) {
         }
     }
     if ($stack -eq 'node') {
+        # An adopted repository keeps its own linting until it opts in: node_lint = $true, then <package_manager> run format.
+        $answers.node_lint = $false
         # Only the scripts package.json has: the template's npm defaults fail where there is no such script.
         $package = Get-Content -LiteralPath (Join-Path $Path 'package.json') -Raw | ConvertFrom-Json -AsHashtable
         $scripts = if ($package.scripts -is [System.Collections.IDictionary]) { $package.scripts } else { @{} }
