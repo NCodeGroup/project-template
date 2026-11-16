@@ -693,8 +693,11 @@ function Set-SecuritySettings([string]$Name, $Info) {
     # (the template's ADR-0028). release-provenance.yml attaches a library's packages to its release after it is
     # published, which an immutable release refuses, so such a repository is left as it is.
     $state = Get-SettingState (Invoke-HostApi gh "$base/immutable-releases") { param($answer) $answer.enabled }
-    if ($state -is [bool] -and -not $state -and (Invoke-HostApi gh "$base/contents/.github/workflows/release-provenance.yml?ref=$($Info.default_branch)").Status -eq 200) {
-        $state = 'release-provenance.yml attaches packages to a release after it is published, which an immutable release refuses'
+    if ($state -is [bool] -and -not $state) {
+        # Only a 404 says the file is absent: any other answer leaves the setting as it is, and says why.
+        $provenance = (Invoke-HostApi gh "$base/contents/.github/workflows/release-provenance.yml?ref=$($Info.default_branch)").Status
+        if ($provenance -eq 200) { $state = 'release-provenance.yml attaches packages to a release after it is published, which an immutable release refuses' }
+        elseif ($provenance -ne 404) { $state = "couldn't read .github/workflows/release-provenance.yml: $(if ($provenance) { "HTTP $provenance" } else { 'no response' })" }
     }
     Set-SecuritySetting $Name 'immutable releases' $state PUT "$base/immutable-releases"
 }

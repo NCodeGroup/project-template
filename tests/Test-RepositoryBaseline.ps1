@@ -762,6 +762,9 @@ try {
     $r = Invoke-Baseline @('-Repo', 'provenance')
     Check 'security: a repository with release-provenance.yml keeps mutable releases, and says why' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape('provenance: immutable releases: not available (release-provenance.yml attaches packages')) "$($r.Changes -join '|') $($r.Output)"
 
+    $r = Invoke-Baseline @('-Repo', 'workflowsUnreadable')
+    Check 'security: a repository whose workflows can''t be read keeps mutable releases, and says why' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape("workflowsUnreadable: immutable releases: not available (couldn't read .github/workflows/release-provenance.yml: HTTP 500")) "$($r.Changes -join '|') $($r.Output)"
+
     $r = Invoke-Baseline @('-Repo', 'private')
     Check 'security: secret scanning is left out of a repository that is not public, with the reason, since it would be paid there' (@($r.Bodies | Where-Object { $_.body.security_and_analysis }).Count -eq 0 -and $r.Output -match [regex]::Escape("private: secret scanning: not available (the repository isn't public") -and $r.Output -match [regex]::Escape("private: secret scanning push protection: not available (the repository isn't public")) $r.Output
     Check 'security: a setting the API will not read is reported, with its answer, and not written' (($r.Changes -join '|') -notmatch 'private-vulnerability-reporting' -and $r.Output -match [regex]::Escape("private: private vulnerability reporting: not available (couldn't read it: HTTP 422: Stand-in refused to read it)")) "$($r.Changes -join '|') $($r.Output)"
