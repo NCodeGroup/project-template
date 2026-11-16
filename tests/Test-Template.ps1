@@ -157,6 +157,7 @@ $cases = @(
     @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
     @{ Name = 'node-pnpm'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'pnpm' } }
     @{ Name = 'node-bun'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'bun' } }
+    @{ Name = 'node-no-lint'; Stack = 'node'; Host = 'github'; Data = @{ node_lint = 'false' } }
     @{ Name = 'node-yarn-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'yarn' } }
     @{ Name = 'node-bun-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'bun' } }
     @{ Name = 'dotnet-node'; Stack = 'dotnet'; Host = 'github'; Data = @{ uses_node = 'true' } }
@@ -651,6 +652,9 @@ foreach ($case in $cases) {
     }
     if ($case.Stack -eq 'node') {
         $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }
+        $lint = $case.Data.node_lint -ne 'false'
+        $agentsForLint = Get-Content -LiteralPath (Join-Path $dest 'AGENTS.md') -Raw
+        Check "${name}: biome.json, the CI lint step and the Landing gate exactly when node_lint is not false" ((Test-Path -LiteralPath (Join-Path $dest 'biome.json')) -eq $lint -and $ci.Contains("$pm run lint") -eq $lint -and ($agentsForLint -match "(?m)^- gate: $([regex]::Escape("$pm run lint"))\r?$") -eq $lint) $ci
         $install = @{ npm = 'npm ci'; pnpm = 'pnpm install --frozen-lockfile'; yarn = 'yarn install'; bun = 'bun install --frozen-lockfile' }[$pm]
         $setup = @{ npm = ''; pnpm = 'corepack enable pnpm'; yarn = 'corepack enable yarn'; bun = if ($case.Host -eq 'github') { 'oven-sh/setup-bun@' } else { 'image: oven/bun:1' } }[$pm]
         $otherManagers = @('npm', 'pnpm', 'yarn', 'bun') | Where-Object { $_ -ne $pm }

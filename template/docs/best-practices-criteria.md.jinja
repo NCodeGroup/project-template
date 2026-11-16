@@ -4,6 +4,8 @@
 {%- set review = github and (code_review | default(false)) %}
 {%- set codeql = github and stack in ['dotnet', 'node', 'python'] %}
 {%- set csharp = stack == 'dotnet' and (csharp_format | default(false)) %}
+{%- set biome = stack == 'node' and (node_lint | default(false)) %}
+{%- set pm = package_manager | default('npm') %}
 {%- set spdx = license | default('') %}
 {%- set ci = '.github/workflows/ci.yml' if github else '.gitlab-ci.yml' %}
 {%- set pr = 'pull request' if github else 'merge request' %}
@@ -109,8 +111,8 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `test_policy` | MUST | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
 | `tests_are_added` | MUST | no | no | **Check**: cite recent {{ pr }}s that added a feature and its tests. |
 | `tests_documented_added` | SUGGESTED | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
-| `warnings` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: warnings are errors, and the .NET analyzers run at `latest-recommended` (`build/ProjectTemplate.props`).{% elif 'Invoke-ScriptAnalyzer' in build_command %}**Met**: the build command runs PSScriptAnalyzer.{% else %}**Check**: Met once a compiler's strict mode or a linter runs in CI; the template adds none for this stack.{% endif %} |
-| `warnings_fixed` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: a warning fails the build.{% elif '-EnableExit' in build_command %}**Met**: `-EnableExit` fails the build on a finding.{% else %}**Check**: Met when CI fails on a warning.{% endif %} |
+| `warnings` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: warnings are errors, and the .NET analyzers run at `latest-recommended` (`build/ProjectTemplate.props`).{% elif 'Invoke-ScriptAnalyzer' in build_command %}**Met**: the build command runs PSScriptAnalyzer.{% elif biome %}**Met**: CI and the Landing gate run Biome's linter, `{{ pm }} run lint`.{% else %}**Check**: Met once a compiler's strict mode or a linter runs in CI; the template adds none for this stack.{% endif %} |
+| `warnings_fixed` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: a warning fails the build.{% elif '-EnableExit' in build_command %}**Met**: `-EnableExit` fails the build on a finding.{% elif biome %}**Met**: `biome ci --error-on-warnings` fails CI on a warning.{% else %}**Check**: Met when CI fails on a warning.{% endif %} |
 | `warnings_strict` | SUGGESTED | yes | no | {% if stack == 'dotnet' %}**Met**: warnings as errors, nullable reference types, and the analyzers at `latest-recommended` with code style enforced in the build.{% else %}**Check**: Met when the strictest practical settings are on.{% endif %} |
 
 ### Security
@@ -192,7 +194,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
 | `coding_standards` | MUST | yes | yes | **Met**: [AGENTS.md](../AGENTS.md) and the instruction files it lists, and `.editorconfig`{% if stack == 'dotnet' %}, with the C# conventions in `.github/instructions/csharp.instructions.md`{% endif %}. |
-| `coding_standards_enforced` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: the build enforces code style through the analyzers{% if csharp %}, and `./build/dod.ps1` checks the formatting with CSharpier{% endif %}.{% elif 'Invoke-ScriptAnalyzer' in build_command %}**Met**: the build runs PSScriptAnalyzer.{% else %}**Gap**: Unmet until a linter or formatter runs in CI; the template adds none for this stack.{% endif %} |
+| `coding_standards_enforced` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: the build enforces code style through the analyzers{% if csharp %}, and `./build/dod.ps1` checks the formatting with CSharpier{% endif %}.{% elif 'Invoke-ScriptAnalyzer' in build_command %}**Met**: the build runs PSScriptAnalyzer.{% elif biome %}**Met**: CI and the Landing gate run `{{ pm }} run lint`, Biome's formatter and linter, with the rules in `biome.json` ([ADR-0201](decisions/project-template/0201-biome-lints-and-formats-javascript-and-typescript.md)).{% elif stack == 'node' %}**Gap**: Unmet until a linter or formatter runs in CI: `.\.template\Update-Project.ps1 -Data @{ node_lint = $true }` adds Biome.{% else %}**Gap**: Unmet until a linter or formatter runs in CI; the template adds none for this stack.{% endif %} |
 | `build_standard_variables` | MUST | yes | no | **N/A**: it applies only to a build that makes native binaries. |
 | `build_preserve_debug` | SHOULD | yes | no | {% if stack == 'dotnet' %}**Met**: Release builds keep their PDB files{% if library %}, and each package has a symbol package{% endif %}.{% else %}**Check**: N/A without a build or an installation step.{% endif %} |
 | `build_non_recursive` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: one solution build, with MSBuild's project references.{% else %}**Check**: N/A without a build system.{% endif %} |
