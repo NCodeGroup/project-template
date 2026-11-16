@@ -50,6 +50,12 @@ The packages are built in CI from a tagged commit of this repository, determinis
 {%- else %}
 Fixes go into the default branch and the next release. Only the latest release is supported: update to it to get a fix.
 {%- endif %}
+{%- if git_host == 'github' and not library %}
+
+## Verify a Release
+
+Releases are immutable: once one is published, its tag and files can't change, and GitHub signs an attestation of them. `gh release verify <tag> --repo OWNER/REPO` checks a release's attestation, and `gh release verify-asset <tag> <file> --repo OWNER/REPO` checks a file downloaded from it. Replace OWNER/REPO with this repository's path.
+{%- endif %}
 
 ## Scope
 
