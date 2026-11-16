@@ -563,6 +563,7 @@ foreach ($case in $cases) {
         $releaseWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\tag-release.yml') -Raw
         $uses = [regex]::Matches($releaseWorkflow, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the release workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $releaseWorkflow
+        Check "${name}: the release workflow runs CI again before it tags, and CI can be called" ($releaseWorkflow -match '(?m)^    uses: \./\.github/workflows/ci\.yml\r?$' -and $releaseWorkflow -match '(?m)^    needs: \[policy, test\]\r?$' -and $ci.Contains('workflow_call:')) $releaseWorkflow
         # The Scorecard workflow: every GitHub project gets it.
         $scorecard = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\scorecard.yml') -Raw
         $uses = [regex]::Matches($scorecard, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')

@@ -7,7 +7,8 @@ name: Tag and publish release
 #
 # Named for what it does, so it never shares its name with a release workflow of the project's own. The policy job, with
 # only contents: read and a checkout that keeps no token, reads release: from AGENTS.md's Landing section; the release
-# job, the only one that can write, runs only for release: tag or tag+release. It runs on every push to main because the
+# job, the only one that can write, runs only for release: tag or tag+release. Before it, the test job runs ci.yml on the
+# same commit, and the release job waits for it to pass. It runs on every push to main because the
 # script does nothing when the tag and the release exist. For a .NET library, the script starts publish.yml through
 # workflow_dispatch after it publishes the release, because the workflow's token starts no other workflow.
 #
@@ -49,9 +50,21 @@ jobs:
           "release=$release" >> $env:GITHUB_OUTPUT
           "AGENTS.md's Landing section says release: $release."
 
+  # CI's build and tests, run again on the commit about to be tagged, with the coverage gate when the project has it:
+  # a release is tagged only once they pass, the dynamic analysis the OpenSSF Best Practices criteria ask for before
+  # a release (the template's ADR-0026).
+  test:
+    name: Test before the release
+    needs: policy
+    if: needs.policy.outputs.release == 'tag' || needs.policy.outputs.release == 'tag+release'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
   release:
     name: Tag and publish
-    needs: policy
+    needs: [policy, test]
     if: needs.policy.outputs.release == 'tag' || needs.policy.outputs.release == 'tag+release'
     runs-on: ubuntu-latest
     timeout-minutes: 5
