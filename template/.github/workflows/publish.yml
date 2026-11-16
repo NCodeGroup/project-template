@@ -79,12 +79,14 @@ jobs:
       - uses: ./.github/actions/install-dotnet
       - name: Test
         run: dotnet test --configuration Release -p:PublicRelease=true
-      # With version.json, Nerdbank.GitVersioning packs its version and ignores -p:Version, and PublicRelease drops the -g<commit> suffix, as this is the tagged commit; without version.json, -p:Version is the tag's (ADR-0138).
+      # With version.json, Nerdbank.GitVersioning packs its version and ignores -p:Version, and PublicRelease drops
+      # the -g<commit> suffix, as this is the tagged commit; without version.json, -p:Version is the tag's (ADR-0138).
       - name: Pack
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: dotnet pack --configuration Release --output artifacts/packages -p:PublicRelease=true "-p:Version=$VERSION"
-      # A version.json that holds another version, or a project that sets its own Version, would pack a version the tag doesn't name.
+      # A version.json that holds another version, or a project that sets its own Version, would pack a version the tag
+      # doesn't name.
       - name: Check every package has the tag's version
         shell: pwsh
         env:
@@ -167,8 +169,9 @@ jobs:
     with:
       tag: v${{ needs.pack.outputs.version }}
 
-  # Opens the draft pull request that raises the package validation baseline to this version (the template's ADR-0150), for a stable
-  # version only: a pre-release is never a baseline. A job of this run for the same reason as provenance (the template's ADR-0151).
+  # Opens the draft pull request that raises the package validation baseline to this version (the template's ADR-0150),
+  # for a stable version only: a pre-release is never a baseline. A job of this run for the same reason as provenance
+  # (the template's ADR-0151).
   baseline:
     name: Raise the package validation baseline
     needs: [pack, publish]
