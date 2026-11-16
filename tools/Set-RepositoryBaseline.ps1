@@ -21,8 +21,9 @@
       - turns on the security settings a public project should have, each where it is off: the workflow token
         (GITHUB_TOKEN) read-only by default, with GitHub Actions not allowed to create and approve pull requests, except
         where the default branch has .github/workflows/raise-baseline.yml, which opens a pull request; secret scanning
-        and its push protection; Dependabot alerts and Dependabot security updates, which need the alerts; and private
-        vulnerability reporting;
+        and its push protection; Dependabot alerts and Dependabot security updates, which need the alerts; private
+        vulnerability reporting; and immutable releases, except where the default branch has
+        .github/workflows/release-provenance.yml, which attaches packages to a release after it is published;
       - turns on "Allow auto-merge" where it is off, so the template's code-review-auto-merge.yml workflow can turn on
         auto-merge for a Dependabot pull request that only moves the NCode Review pin. Allowing it merges nothing by
         itself: a pull request merges itself only once someone, or that workflow, turns it on, and still waits for what
@@ -688,6 +689,14 @@ function Set-SecuritySettings([string]$Name, $Info) {
     Set-SecuritySetting $Name 'Dependabot security updates' $state PUT "$base/automated-security-fixes"
     $state = Get-SettingState (Invoke-HostApi gh "$base/private-vulnerability-reporting") { param($answer) $answer.enabled }
     Set-SecuritySetting $Name 'private vulnerability reporting' $state PUT "$base/private-vulnerability-reporting"
+    # Immutable releases: GitHub then signs an attestation of each release it publishes, which gh release verify checks
+    # (the template's ADR-0028). release-provenance.yml attaches a library's packages to its release after it is
+    # published, which an immutable release refuses, so such a repository is left as it is.
+    $state = Get-SettingState (Invoke-HostApi gh "$base/immutable-releases") { param($answer) $answer.enabled }
+    if ($state -is [bool] -and -not $state -and (Invoke-HostApi gh "$base/contents/.github/workflows/release-provenance.yml?ref=$($Info.default_branch)").Status -eq 200) {
+        $state = 'release-provenance.yml attaches packages to a release after it is published, which an immutable release refuses'
+    }
+    Set-SecuritySetting $Name 'immutable releases' $state PUT "$base/immutable-releases"
 }
 
 # "Allow auto-merge", which the template's code-review-auto-merge.yml needs to have a Dependabot bump of NCode Review
