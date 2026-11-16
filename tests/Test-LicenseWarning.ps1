@@ -1,0 +1,96 @@
+<#
+.SYNOPSIS
+    Test the warning .template\Update-Project.ps1 and Adopt-Project.ps1 print for a repository without a license.
+
+.DESCRIPTION
+    Tests a tagged snapshot of the working tree, which tests/New-TemplateSnapshot.ps1 builds. It runs apart from
+    tests/Test-ProjectUpdate.ps1 and tests/Test-AdoptEdgeCases.ps1, which are slow enough already. Prints PASS or FAIL
+    per check and exits 1 on any failure (ADR-0024).
+      scripts      Adopt-Project.ps1 prints the update script's license warning word for word.
+      no-answer    A project from before the license question, without a license answer: the update records a blank
+                   answer, not the Apache-2.0 default, adds no license file and warns with the command that adds
+                   Apache-2.0; with -Data @{ license = 'Apache-2.0' } it adds LICENSE.txt and COPYRIGHT.txt, records
+                   the license and warns no more.
+      own-license  A blank answer beside a LICENSE file of the repository's own: no warning, and the file is kept.
+
+.PARAMETER Work
+    The scratch folder, deleted and recreated. Defaults to project-template-license-warning-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
+
+.EXAMPLE
+    .\tests\Test-LicenseWarning.ps1
+#>
+[CmdletBinding()]
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-license-warning-test-$PID"))
+$ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
+trap { "Kept the work folder: $Work"; break }
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$failures = [Collections.Generic.List[string]]::new()
+
+function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
+    if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
+}
+function Invoke-Copier {
+    if (Get-Command copier -ErrorAction SilentlyContinue) { & copier @args }
+    elseif (Get-Command uvx -ErrorAction SilentlyContinue) { & uvx --from copier copier @args }
+    else { throw 'Copier not found. Install it with: uv tool install copier' }
+    if ($LASTEXITCODE) { throw "copier $($args[0]) exited with code $LASTEXITCODE." }
+}
+# Run a project's own update script with &, collecting its output and its exit code, or -1 when it throws.
+function Invoke-Update([string]$Project, [hashtable]$Data = @{}) {
+    $lines = [Collections.Generic.List[string]]::new()
+    try { & (Join-Path $Project '.template\Update-Project.ps1') -Data $Data 2>&1 | ForEach-Object { $lines.Add("$_") }; $code = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $code = -1 }
+    [pscustomobject]@{ ExitCode = $code; Output = $lines -join "`n" }
+}
+. (Join-Path $PSScriptRoot 'AdoptionFixtures.ps1')
+
+if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
+# A direct run keeps its Copier mirror in its own work folder, not in the user's cache; under tests\Invoke-AllTests.ps1 it keeps the runner's folder.
+$copierCache = $env:COPIER_CACHE_DIR
+if (-not $copierCache) { $env:COPIER_CACHE_DIR = Join-Path $Work 'copier-cache' }
+New-Item -ItemType Directory -Force $Work | Out-Null
+$tpl = Join-Path $Work 'template-repo'
+$tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
+
+# The update script's warning, from its first line, and the command it prints; Adopt-Project.ps1 prints the same.
+$re = "(?m)^\s*'(No license: (?:[^']|'')*)'\s*$"
+$warning = [regex]::Match([IO.File]::ReadAllText((Join-Path $repoRoot 'template/.template/Update-Project.ps1')), $re).Groups[1].Value.Replace("''", "'")
+$adoptWarning = [regex]::Match([IO.File]::ReadAllText((Join-Path $repoRoot 'Adopt-Project.ps1')), $re).Groups[1].Value.Replace("''", "'")
+$command = "  .\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }"
+Check 'scripts: Adopt-Project.ps1 prints the update''s license warning word for word' ($warning.Length -gt 100 -and $adoptWarning -eq $warning) "$warning | $adoptWarning"
+
+# no-answer: a project whose answers have no license line, as one from before the license question.
+$noAnswer = Join-Path $Work 'no-answer'
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test no-answer' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' --data 'license=' $tplUrl $noAnswer
+Push-Location $noAnswer
+try {
+    $answersFile = (Resolve-Path -LiteralPath .copier-answers.yml).Path
+    [IO.File]::WriteAllText($answersFile, ([IO.File]::ReadAllText($answersFile) -replace '(?m)^license:.*\r?\n', ''))
+    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
+    $result = Invoke-Update $noAnswer
+    Check 'no-answer: the update records a blank license answer, not the Apache-2.0 default, and adds no license file' ($result.ExitCode -eq 0 -and (Get-Content -Raw -LiteralPath .copier-answers.yml) -match "(?m)^license: ''\r?$" -and -not (Test-Path -LiteralPath LICENSE.txt) -and -not (Test-Path -LiteralPath COPYRIGHT.txt)) $result.Output
+    Check 'no-answer: the update warns with the command that adds Apache-2.0' ($result.Output.Contains($warning) -and $result.Output.Contains($command)) $result.Output
+    $result = Invoke-Update $noAnswer @{ license = 'Apache-2.0' }
+    Check 'no-answer: -Data @{ license = ''Apache-2.0'' } adds LICENSE.txt and COPYRIGHT.txt, records the license and warns no more' ($result.ExitCode -eq 0 -and (Test-Path -LiteralPath LICENSE.txt) -and (Test-Path -LiteralPath COPYRIGHT.txt) -and (Get-Content -Raw -LiteralPath .copier-answers.yml) -match '(?m)^license: Apache-2\.0\r?$' -and -not $result.Output.Contains('No license:')) $result.Output
+}
+finally { Pop-Location }
+
+# own-license: a blank answer, and a LICENSE file of the repository's own.
+$ownLicense = Join-Path $Work 'own-license'
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test own-license' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' --data 'license=' $tplUrl $ownLicense
+Push-Location $ownLicense
+try {
+    [IO.File]::WriteAllText((Join-Path $ownLicense 'LICENSE'), "Own license.`n", [Text.UTF8Encoding]::new($false))
+    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
+    $result = Invoke-Update $ownLicense
+    Check 'own-license: a blank answer beside a LICENSE file of the repository''s own gets no warning' ($result.ExitCode -eq 0 -and -not $result.Output.Contains('No license:') -and [IO.File]::ReadAllText((Join-Path $ownLicense 'LICENSE')) -eq "Own license.`n") $result.Output
+}
+finally { Pop-Location }
+
+''
+$env:COPIER_CACHE_DIR = $copierCache
+if ($failures.Count) { "Kept the work folder: $Work"; "License warning tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
+'License warning tests: PASSED'
+exit 0
