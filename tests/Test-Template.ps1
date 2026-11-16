@@ -448,6 +448,17 @@ foreach ($case in $cases) {
     $licenseText = if (Test-Path -LiteralPath $licensePath) { Get-Content -LiteralPath $licensePath -Raw } else { '' }
     $licenseRight = switch ($licenseAnswer) { 'MIT' { $licenseText.StartsWith("MIT License`n`nCopyright (c) NCode Group`n") } 'Apache-2.0' { $licenseText.Contains('Apache License') } default { -not $licenseText } }
     Check "${name}: LICENSE.txt for an MIT or Apache-2.0 license, on any stack" $licenseRight $licenseText
+    # ADR-0020's License row follows the license answer.
+    $scorecardRecord = Join-Path $dest 'docs\decisions\project-template\0020-github-projects-are-scored-by-openssf-scorecard.md'
+    if (Test-Path -LiteralPath $scorecardRecord) {
+        $licenseRow = @(Get-Content -LiteralPath $scorecardRecord | Where-Object { $_.StartsWith('| License |') })
+        $licenseRowRight = if ($licenseAnswer -in 'Apache-2.0', 'MIT') {
+            $licenseRow.Count -eq 1 -and $licenseRow[0].Contains("``LICENSE.txt`` ships, for the ``$licenseAnswer`` license") -and $licenseRow[0].EndsWith('| Nothing. |')
+        } else {
+            $licenseRow.Count -eq 1 -and $licenseRow[0].Contains("-Data @{ license = 'Apache-2.0' }")
+        }
+        Check "${name}: ADR-0020's License row says whether LICENSE.txt ships" $licenseRowRight ($licenseRow -join ' | ')
+    }
     # The Copilot cloud agent's environment: only for a GitHub project that uses Copilot.
     $copilotSetup = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
     $wantsSetup = $case.Host -eq 'github' -and 'copilot' -in $tools
