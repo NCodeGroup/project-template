@@ -77,6 +77,9 @@
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
+    When the license answer is blank and the project has no LICENSE or COPYING file at its root, it warns, also when
+    the project is already up to date, and prints the -Data @{ license = 'Apache-2.0' } that adds one (the template's
+    ADR-0024). A project from before the license question gets a blank answer, never copier.yml's Apache-2.0 default.
 
     On Windows it stops before it changes anything when the project's template version has a path Git for Windows
     refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
@@ -139,6 +142,20 @@ function Get-CSharpFormatAnswer {
     if (-not (Get-Answer 'csharp_format') -and -not $Data.ContainsKey('csharp_format')) { 'false' }
 }
 
+# A project from before the license question has no license answer: an update keeps it without a license rather than giving it copier.yml's Apache-2.0 default (ADR-0024); -Data sets one.
+function Get-LicenseData {
+    if (-not $Data.ContainsKey('license') -and -not (Select-String -LiteralPath .copier-answers.yml -Pattern '^license:' -Quiet)) { '--data', 'license=' }
+}
+
+# No license (ADR-0024): a blank license answer and no LICENSE or COPYING file at the project's root. The template's Adopt-Project.ps1 prints the same lines; tests/Test-LicenseWarning.ps1 keeps them equal.
+function Get-LicenseWarning {
+    if ("$(Get-Answer 'license')".Trim()) { return }
+    if (Get-ChildItem -LiteralPath $project -File | Where-Object Name -Match '^(LICEN[CS]E|COPYING)(\.\w+)?$') { return }
+    ''
+    'No license: the license answer is blank and the repository has no LICENSE or COPYING file, so no one else may use, copy or change its code, and the OpenSSF Best Practices criteria for a license can''t be met. To license it under Apache-2.0, NCode Group''s license, which adds LICENSE.txt and COPYRIGHT.txt, or under another SPDX license expression, such as MIT, run in the repository:'
+    "  .\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }"
+}
+
 # Render the template at a version into a folder with the project's answers;
 # false, with a warning that says why, when Copier can't.
 function Invoke-TemplateRender([string]$Version, [string]$Folder) {
@@ -146,6 +163,7 @@ function Invoke-TemplateRender([string]$Version, [string]$Folder) {
     foreach ($k in $Data.Keys) { $renderArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
     if (-not $Data.ContainsKey('pre_release')) { $renderArgs += '--data', "pre_release=$(Get-PreReleaseAnswer)" }
     $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $renderArgs += '--data', "csharp_format=$csharpFormat" }
+    $renderArgs += @(Get-LicenseData)
     $copierOutput = [Collections.Generic.List[string]]::new()
     try { Invoke-Copier @renderArgs $TemplateClone $Folder | ForEach-Object { $copierOutput.Add("$_") }; $true }
     catch { Write-Warning ((@("Copier couldn't render template $Version with this project's answers: $_") + $copierOutput) -join "`n"); $false }
@@ -762,7 +780,7 @@ try {
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
-        $recopyData = @(); $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $recopyData = '--data', "csharp_format=$csharpFormat" }
+        $recopyData = @(); $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $recopyData = '--data', "csharp_format=$csharpFormat" }; $recopyData += @(Get-LicenseData)
         Invoke-Copier recopy --force --quiet --vcs-ref :current: @recopyData @exclude
         $reset = @(Get-Change)
         # A template-owned file that the project's version skips only through a name without a /, which Copier matches in every folder,
@@ -809,6 +827,7 @@ try {
         $copierArgs = @('update', '--defaults', '--quiet', '--vcs-ref', $to)
         foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
         $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $copierArgs += '--data', "csharp_format=$csharpFormat" }
+        $copierArgs += @(Get-LicenseData)
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
         foreach ($file in $deleted) { $copierArgs += '--exclude', "/$file" }
@@ -875,7 +894,7 @@ try {
         })
 
     # A success ends with exit 0, not return, which would hand a caller that runs this with & the exit code of the last git command, such as git apply --check's 1 for a hunk the project lacks.
-    if (-not (git status --porcelain)) { "Already up to date: template $to."; exit 0 }
+    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; exit 0 }
     "Template $from -> ${to}:"
     $changes | Sort-Object Kind, File | ForEach-Object { '  {0,-9} {1}' -f $_.Kind, $_.File }
     $edited = @($reset | Where-Object Kind -NE 'added' | ForEach-Object File)
@@ -1042,6 +1061,7 @@ try {
     }
 
     Get-AttributionCheckNote $changes
+    Get-LicenseWarning
 
     # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).
     $backfill = Get-ChangelogBackfill
