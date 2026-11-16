@@ -421,6 +421,8 @@ No license: the license answer is blank and the repository has no LICENSE or COP
   .\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }
 ```
 
+When the `best_practices_project` answer is set and `README.md` doesn't show the project's OpenSSF Best Practices badge, the update says so, also when the project is already up to date, and prints the line to add near the top of `README.md`, which `documentation_achievements` asks for within 48 hours of earning a level: `README.md` is project-owned, so the template never adds it there ([ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md)).
+
 When the project has version tags merged into the current branch that its changelog has no section for, such as releases from before it had a changelog, the update ends with a request to backfill them:
 
 ```text
