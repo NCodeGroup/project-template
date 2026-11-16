@@ -680,6 +680,11 @@ foreach ($case in $cases) {
         $gate = $case.Data.coverage_gate -ne 'false'
         Check "${name}: CI checks the coverage exactly when coverage_gate is not false" ($ci.Contains('Test-Coverage.ps1') -eq $gate) $ci
     }
+    if ($case.Host -eq 'gitlab') {
+        $audit = @{ npm = 'npm audit --audit-level=moderate'; pnpm = 'pnpm audit --audit-level moderate'; yarn = 'yarn npm audit --all --recursive --severity moderate'; bun = 'bun audit --audit-level=moderate' }
+        $wantAudit = if ($case.Stack -eq 'node') { $audit[$(if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' })] } elseif ($case.Stack -eq 'python') { 'pip-audit -r requirements.txt' } else { '' }
+        Check "${name}: GitLab CI audits the dependencies exactly for Node.js and Python" ($ci.Contains('dependency-audit:') -eq [bool]$wantAudit -and (-not $wantAudit -or $ci.Contains($wantAudit))) $ci
+    }
     $licensed = -not ($case.Data -and $case.Data.ContainsKey('license') -and $case.Data.license -eq '')
     $wantHeaders = $case.Stack -ne 'dotnet' -and $licensed -and $case.Data.file_headers -ne 'false'
     Check "${name}: CI checks the file headers exactly when file_headers is on" ($ci.Contains('Test-FileHeaders.ps1') -eq $wantHeaders) $ci

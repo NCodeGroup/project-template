@@ -120,6 +120,32 @@ coverage:
   script:
     - pwsh -NoProfile -File .template/Test-Coverage.ps1
 {%- endif %}
+{%- if stack in ['node', 'python'] %}
+
+# Checks the dependencies against the known vulnerabilities on every pipeline, the weekly one the template's
+# tools/Set-GitLabBaseline.ps1 schedules included, and fails on one of moderate severity or above (ADR-0029).
+dependency-audit:
+{%- if stack == 'node' %}
+  image: {{ 'oven/bun:1' if package_manager == 'bun' else 'node:lts' }}
+  rules:
+    - exists: [{% if package_manager == 'pnpm' %}"pnpm-lock.yaml"{% elif package_manager == 'yarn' %}"yarn.lock"{% elif package_manager == 'bun' %}"bun.lock", "bun.lockb"{% else %}"package-lock.json"{% endif %}]
+{%- if package_manager in ['pnpm', 'yarn'] %}
+  before_script:
+    - npm install --global corepack@latest
+    - corepack enable {{ package_manager }}
+{%- endif %}
+  script:
+    - {% if package_manager == 'pnpm' %}pnpm audit --audit-level moderate{% elif package_manager == 'yarn' %}yarn npm audit --all --recursive --severity moderate{% elif package_manager == 'bun' %}bun audit --audit-level=moderate{% else %}npm audit --audit-level=moderate{% endif %}
+{%- else %}
+  image: python:3
+  rules:
+    - exists: ["requirements.txt", "pyproject.toml"]
+  script:
+    - python -m pip install --upgrade pip pip-audit
+    - if [ -f requirements.txt ]; then pip-audit -r requirements.txt; fi
+    - if [ -f pyproject.toml ]; then pip-audit .; fi
+{%- endif %}
+{%- endif %}
 
 # The .NET SDK image has git and PowerShell. The job checks the decision index, which every project has, code or not,
 # against the merge request's base: a merge request pipeline fetches no default-branch ref. It runs on every pipeline,
