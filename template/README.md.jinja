@@ -12,6 +12,11 @@
 [//]: # "Badges: to show the OpenSSF Scorecard, add this line below, with the repository's owner and name:"
 [//]: # "[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/OWNER/REPO/badge)](https://scorecard.dev/viewer/?uri=github.com/OWNER/REPO)"
 {%- endif %}
+{%- if best_practices_project | default('') %}
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/{{ best_practices_project }}/badge)](https://www.bestpractices.dev/projects/{{ best_practices_project }})
+{%- else %}
+[//]: # "Badges: once the project is registered at bestpractices.dev, add the OpenSSF Best Practices badge that docs/best-practices-criteria.md shows."
+{%- endif %}
 
 ## Development
 
