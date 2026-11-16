@@ -291,6 +291,8 @@ try {
     $dodOutput = pwsh -NoProfile -File build/dod.ps1 2>&1 | Out-String
     Check 'dotnet: build/dod.ps1 passes and says so' ($LASTEXITCODE -eq 0 -and $dodOutput.TrimEnd().EndsWith('Definition of Done: PASSED') -and $dodOutput.Contains('== Decisions') -and $dodOutput.Contains('== Test') -and -not $dodOutput.Contains('== Pack')) $dodOutput
     Check 'dotnet: build/dod.ps1 checks the coverage of the tests' ($dodOutput.Contains('== Coverage')) $dodOutput
+    $filterOutput = pwsh -NoProfile -File build/dod.ps1 -Fast -Filter 'FullyQualifiedName~UnitTest1' 2>&1 | Out-String
+    Check 'dotnet: build/dod.ps1 -Filter runs the tests it matches and skips the coverage stage' ($LASTEXITCODE -eq 0 -and $filterOutput.Contains('== Test') -and -not $filterOutput.Contains('== Coverage')) $filterOutput
 
     # The runtimes script names the older framework a test project targets, and nothing for the SDK's own.
     $runtimesNone = @(pwsh -NoProfile -File build/Get-TestRuntimes.ps1 2>&1)
