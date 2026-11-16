@@ -115,11 +115,16 @@ never brings a number the project already uses
 | [0149](0149-stale-nuget-logistics-are-named-not-fixed.md) | Adoption and update name the stale NuGet logistics of an older library and fix none (extends 0147) |
 | [0150](0150-a-workflow-raises-the-package-validation-baseline-after-each-release.md) | Once a release is on nuget.org, `build/Update-Baseline.ps1` raises the package validation baseline; on GitHub, `raise-baseline.yml` opens its pull request (amends 0147) |
 {%- endif %}
-{%- if uses_node %}
+{%- if uses_node or stack == 'node' %}
 
 ## Node.js
 
 | ADR | Decision |
 | --- | --- |
+{%- if uses_node %}
 | [0200](0200-nodejs-comes-from-nvs-and-a-node-version-file.md) | A project that needs Node.js selects it with nvs and a `.node-version` file; scripts put it on `PATH` for agents |
+{%- endif %}
+{%- if stack == 'node' %}
+| [0201](0201-biome-lints-and-formats-javascript-and-typescript.md) | With `node_lint`, Biome formats and lints the JavaScript and TypeScript in CI and the Landing gate, with the rules in a project-owned `biome.json` |
+{%- endif %}
 {%- endif %}
