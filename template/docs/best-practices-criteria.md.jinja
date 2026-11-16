@@ -82,6 +82,37 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `release_notes` | MUST | yes | yes | **Check**: Met once each release has notes written for users, never a Git log: `CHANGELOG.md`, in the Keep a Changelog format{% if github %}, and each GitHub release's notes{% endif %}. |
 | `release_notes_vulns` | MUST | yes | no | **Check**: N/A while no release fixed a vulnerability with a CVE or an advisory; otherwise Met, with each one under `### Security` in `CHANGELOG.md`. |
 
+### Reporting
+
+| Criterion | Req | N/A | URL | Answer and evidence |
+| --- | --- | --- | --- | --- |
+| `report_process` | MUST | no | yes | **Met**: the {{ host }} issue tracker, as [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 1, says. Autofill may cite `SECURITY.md`, the vulnerability process: replace that justification. |
+| `report_tracker` | SHOULD | no | no | **Met**: the {{ host }} issue tracker. |
+| `report_responses` | MUST | no | no | **Check**: most bug reports of the last 2 to 12 months were answered; cite closed bug issues, and say so when every report came from a maintainer. |
+| `enhancement_responses` | SHOULD | no | no | **Check**: most enhancement requests of the last 2 to 12 months were answered; cite one and its {{ pr }}. |
+| `report_archive` | MUST | no | yes | **Met**: the issues are public and searchable. |
+| `vulnerability_report_process` | MUST | no | yes | **Met**: [SECURITY.md](../SECURITY.md), Report a Vulnerability. |
+| `vulnerability_report_private` | MUST | yes | yes | {% if github %}**Check**: [SECURITY.md](../SECURITY.md) says how to report privately; Met once the Security tab shows private vulnerability reporting enabled, which the template's `tools/Set-RepositoryBaseline.ps1` turns on.{% else %}**Met**: [SECURITY.md](../SECURITY.md): a confidential issue.{% endif %} |
+| `vulnerability_report_response` | MUST | yes | no | **Check**: N/A when no vulnerability was reported in the last 6 months{% if github %}, which Security > Advisories shows{% endif %}; otherwise Met when each report was acknowledged within 14 days, as [SECURITY.md](../SECURITY.md), What to Expect, promises. |
+
+### Quality
+
+| Criterion | Req | N/A | URL | Answer and evidence |
+| --- | --- | --- | --- | --- |
+| `build` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: `dotnet build`, and `./build/dod.ps1` in CI.{% else %}**Check**: Met with the build command in [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test; N/A when the source runs as it is, since a typecheck or a lint is not a build.{% endif %} |
+| `build_common_tools` | SUGGESTED | yes | no | {% if stack == 'dotnet' %}**Met**: the .NET SDK and MSBuild.{% else %}**Check**: Met with the language's usual build tools; N/A without a build.{% endif %} |
+| `build_floss_tools` | SHOULD | yes | no | {% if stack == 'dotnet' %}**Met**: the .NET SDK is FLOSS.{% else %}**Check**: Met when every build tool is FLOSS; N/A without a build.{% endif %} |
+| `test` | MUST | no | no | **Check**: Met once the project has an automated test suite: [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test, names its command, and `{{ ci }}` runs it. |
+| `test_invocation` | SHOULD | no | no | {% if test_command %}**Met**: `{{ test_command }}`, in [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test.{% else %}**Gap**: the project has no test command yet.{% endif %} |
+| `test_most` | SUGGESTED | no | no | **Check**: a measured coverage figure ([Checks](#checks)), even when CI doesn't gate on it. |
+| `test_continuous_integration` | SUGGESTED | no | no | **Met**: `{{ ci }}` runs the build and the tests on every {{ pr }}. |
+| `test_policy` | MUST | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
+| `tests_are_added` | MUST | no | no | **Check**: cite recent {{ pr }}s that added a feature and its tests. |
+| `tests_documented_added` | SUGGESTED | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
+| `warnings` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: warnings are errors, and the .NET analyzers run at `latest-recommended` (`build/ProjectTemplate.props`).{% elif 'Invoke-ScriptAnalyzer' in build_command %}**Met**: the build command runs PSScriptAnalyzer.{% else %}**Check**: Met once a compiler's strict mode or a linter runs in CI; the template adds none for this stack.{% endif %} |
+| `warnings_fixed` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: a warning fails the build.{% elif '-EnableExit' in build_command %}**Met**: `-EnableExit` fails the build on a finding.{% else %}**Check**: Met when CI fails on a warning.{% endif %} |
+| `warnings_strict` | SUGGESTED | yes | no | {% if stack == 'dotnet' %}**Met**: warnings as errors, nullable reference types, and the analyzers at `latest-recommended` with code style enforced in the build.{% else %}**Check**: Met when the strictest practical settings are on.{% endif %} |
+
 ## Silver
 
 The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
