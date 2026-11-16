@@ -91,6 +91,13 @@ if ($rest -like '/protected_branches/*') {
     if (-not $project.branch) { Out-Answer 404 '{"message":"404 Not found"}' }
     Out-Answer 200 (ConvertTo-Json -Compress -Depth 5 -InputObject $project.branch)
 }
+if ($rest -like '/pipeline_schedules*') {
+    if ($method -eq 'POST') {
+        if ($project.scheduleFails) { Out-Answer ([int]$project.scheduleFails) '{"message":"Stand-in refused schedule"}' }
+        Out-Answer 201 '{}'
+    }
+    Out-Answer 200 (ConvertTo-Json -Compress -Depth 5 -InputObject @(if ($project.schedules) { $project.schedules }))
+}
 if ($rest -eq '/protected_branches') {
     $posts = @(Get-Content -LiteralPath (Join-Path $PSScriptRoot 'calls.log') | Where-Object { $_ -like '*--method POST*' }).Count
     $postFails = @($project.postFails)
@@ -126,7 +133,7 @@ $codeOwnerBranch = $openBranch.Clone(); $codeOwnerBranch.code_owner_approval_req
 $unprotectUserBranch = $openBranch.Clone(); $unprotectUserBranch.unprotect_access_levels = @(@{ id = 6; access_level = $null; user_id = 7 })
 Write-Text (Join-Path $bin 'projects.json') (ConvertTo-Json -Depth 6 -InputObject @{
     'gitlab.com/grp/fresh' = @{ info = @{ archived = $false; $threads = $false; $pipelines = $false } }
-    'gitlab.com/grp/complete' = @{ info = @{ archived = $false; $threads = $true; $pipelines = $true; squash_option = 'never'; default_branch = 'main' }; branch = @{ name = 'main'; push_access_levels = @(@{ access_level = 0 }); merge_access_levels = @(@{ access_level = 40 }) } }
+    'gitlab.com/grp/complete' = @{ info = @{ archived = $false; $threads = $true; $pipelines = $true; squash_option = 'never'; default_branch = 'main' }; branch = @{ name = 'main'; push_access_levels = @(@{ access_level = 0 }); merge_access_levels = @(@{ access_level = 40 }) }; schedules = @(@{ description = 'Weekly dependency audit' }) }
     'gitlab.com/grp/squash' = @{ info = @{ archived = $false; $threads = $true; $pipelines = $true; squash_option = 'default_off' } }
     'gitlab.com/grp/open' = @{ info = $merged; branch = $openBranch }
     'gitlab.com/grp/unprotected' = @{ info = $merged }
@@ -138,6 +145,7 @@ Write-Text (Join-Path $bin 'projects.json') (ConvertTo-Json -Depth 6 -InputObjec
     'gitlab.com/grp/nodelete' = @{ info = $merged; branch = $openBranch; deleteFails = 403 }
     'gitlab.com/grp/restored' = @{ info = $merged; branch = $openBranch; postFails = @(422) }
     'gitlab.com/grp/lost' = @{ info = $merged; branch = $openBranch; postFails = @(422, 500) }
+    'gitlab.com/grp/noschedule' = @{ info = $merged; branch = @{ name = 'main'; push_access_levels = @(@{ access_level = 0 }); merge_access_levels = @(@{ access_level = 40 }) }; scheduleFails = 403 }
     'gitlab.com/grp/partial' = @{ info = @{ archived = $false; $threads = $false; $pipelines = $true } }
     'gitlab.com/grp/refused' = @{
         info = @{ archived = $false; $threads = $false; $pipelines = $false }
@@ -167,7 +175,8 @@ function Invoke-GitLabBaseline([string[]]$Arguments, [string]$In = $Work) {
         Output = $output
         ExitCode = $exitCode
         Puts = @($log | Where-Object { $_ -like '*--method PUT*' })
-        Writes = @($log | Where-Object { $_ -match '--method (PUT|POST|DELETE) ' })
+        Writes = @($log | Where-Object { $_ -match '--method (PUT|POST|DELETE) ' -and $_ -notlike '*pipeline_schedules*' })
+        Schedules = @($log | Where-Object { $_ -like '*--method POST*pipeline_schedules*' })
     }
 }
 
@@ -257,6 +266,18 @@ try {
 
     $r = Invoke-GitLabBaseline @('-Project', 'grp/complete')
     Check 'complete: squash commits already not allowed and no one allowed to push to main are reported and nothing is written' ($r.ExitCode -eq 0 -and $r.Writes.Count -eq 0 -and $r.Output -match [regex]::Escape('grp/complete: Do not allow squash commits: already set') -and $r.Output -match [regex]::Escape('grp/complete: No one allowed to push to main: already set')) "writes=$($r.Writes -join '|') output=$($r.Output)"
+
+    # 9b. The weekly pipeline.
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/open')
+    Check 'schedule: a project with none gets one POST with the description, the default branch and the Monday 06:00 cron' ($r.ExitCode -eq 0 -and $r.Schedules.Count -eq 1 -and $r.Schedules[0] -like '*description=Weekly dependency audit*' -and $r.Schedules[0] -like '*ref=main*' -and $r.Schedules[0] -like '*cron=0 6 * * 1*' -and $r.Output -match [regex]::Escape('grp/open: weekly pipeline: set')) "schedules=$($r.Schedules -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/complete')
+    Check 'schedule already: a project with that schedule gets none' ($r.ExitCode -eq 0 -and $r.Schedules.Count -eq 0 -and $r.Output -match [regex]::Escape('weekly pipeline: already set')) "schedules=$($r.Schedules -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/fresh')
+    Check 'schedule no branch: a project with no default branch is reported and gets none' ($r.ExitCode -eq 0 -and $r.Schedules.Count -eq 0 -and $r.Output -match [regex]::Escape('weekly pipeline: not available (the project has no default branch yet)')) "schedules=$($r.Schedules -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/open', '-WhatIf')
+    Check 'schedule whatif: nothing is scheduled and the schedule is shown as would set' ($r.ExitCode -eq 0 -and $r.Schedules.Count -eq 0 -and $r.Output -match [regex]::Escape('weekly pipeline: would set')) "schedules=$($r.Schedules -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/noschedule')
+    Check 'schedule refused: a refused schedule is reported as not available, with its answer, and the run succeeds' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape('weekly pipeline: not available (HTTP 403: Stand-in refused schedule)')) "output=$($r.Output)"
 
     # 10. A project named by a clone's origin remote.
     $httpsClone = Join-Path $Work 'clone-https'
