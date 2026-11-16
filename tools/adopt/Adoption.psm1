@@ -113,6 +113,8 @@ function Get-AdoptionAnswers([string]$Path) {
     }
     # An adopted repository's CI doesn't start failing on coverage: coverage_gate = $true opts it in (the template's ADR-0026).
     $answers.coverage_gate = $false
+    # Nor on file headers it never had: file_headers = $true, then ./.template/Test-FileHeaders.ps1 -Fix (the template's ADR-0027).
+    $answers.file_headers = $false
     $tools = @(Get-WorkflowTools $Path)
     if ($tools.Count) { $answers.workflow_tools = $tools }
     # A .NET, Python or other repository with a frontend or Node.js tooling needs Node.js too; a Node.js stack's default is already yes.

@@ -140,9 +140,9 @@ function Get-PreReleaseAnswer {
 }
 
 # The checks a new project starts with and an existing one keeps off until it opts in (the template's ADR-0148,
-# ADR-0201 and ADR-0026): --data <answer>=false for each the answers file lacks and -Data doesn't set.
+# ADR-0201, ADR-0026 and ADR-0027): --data <answer>=false for each the answers file lacks and -Data doesn't set.
 function Get-OptInData {
-    foreach ($key in 'csharp_format', 'node_lint', 'coverage_gate') {
+    foreach ($key in 'csharp_format', 'node_lint', 'coverage_gate', 'file_headers') {
         if (-not (Get-Answer $key) -and -not $Data.ContainsKey($key)) { '--data', "$key=false" }
     }
 }
