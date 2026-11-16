@@ -2,10 +2,11 @@
 .SYNOPSIS
     Test adopting repositories with edge cases: a rollback, CI and a hooks path of their own, catch-all attributes,
     Copilot-only agents, a failing build, Node.js without build or test scripts, and a publish.yml of
-    their own without a workflow_dispatch trigger, and a library whose publish.yml doesn't call the release follow-ups.
+    their own without a workflow_dispatch trigger, a library whose publish.yml doesn't call the release follow-ups,
+    and a library whose publish.yml calls both.
 
 .DESCRIPTION
-    Adopts seven small fixture repositories from a tagged snapshot of the working tree, which
+    Adopts eight small fixture repositories from a tagged snapshot of the working tree, which
     tests/New-TemplateSnapshot.ps1 builds. They run apart from tests/Test-Adoption.ps1, which adopts the plain and
     scaffold fixtures, so a parallel tests/Invoke-AllTests.ps1 run ends sooner. Prints PASS or FAIL per check and exits
     1 on any failure. A library's kept publish.yml that doesn't call release-provenance.yml and raise-baseline.yml gets
@@ -102,6 +103,13 @@ $libraryOut = & $adopt -Path $libraryPublish -Template $tpl -Ref v0.1.0 -Data @{
 $followUpWarning = [regex]::Match($updateScript, "(?m)^\s*'(\.github/workflows/publish\.yml doesn''t call (?:[^']|'')*)'\s*$").Groups[1].Value.Replace("''", "'")
 Check 'library-publish: warns, word for word as the update does, that the kept publish.yml doesn''t call the release follow-ups' ($followUpWarning.Length -gt 100 -and $libraryOut.Contains($followUpWarning)) $libraryOut
 Check 'ci-existing: a repository that isn''t a library gets no follow-up warning' (-not $ciOut.Contains('doesn''t call .github/workflows/release-provenance.yml')) $ciOut
+$libraryCalls = New-Fixture 'library-calls' @{
+    'README.md'                     = "# Library Calls`n"
+    'Lib.csproj'                    = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n</Project>`n"
+    '.github/workflows/publish.yml' = "name: Publish`non:`n  release:`n    types: [published]`n  workflow_dispatch:`n    inputs:`n      tag:`n        required: true`n        type: string`njobs:`n  provenance:`n    uses: ./.github/workflows/release-provenance.yml`n  baseline:`n    uses: ./.github/workflows/raise-baseline.yml`n"
+} 'https://github.com/example/library-calls.git'
+$callsOut = & $adopt -Path $libraryCalls -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = @('claude'); nuget_package = 'true'; license = 'MIT' } -NoVerify | Out-String
+Check 'library-calls: a kept publish.yml that calls both release follow-ups gets no follow-up warning' (-not $callsOut.Contains('doesn''t call .github/workflows/release-provenance.yml')) $callsOut
 
 # Copilot agents and no Hybrid ones, like a public repository: the adoption leaves out the local model's files.
 $copilotOnly = New-Fixture 'copilot-only' @{
