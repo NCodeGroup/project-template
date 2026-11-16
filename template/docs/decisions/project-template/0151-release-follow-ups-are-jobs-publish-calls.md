@@ -55,7 +55,9 @@ neither.
 - The attestation of a release published through `publish.yml` names the tag's ref and commit, because the call runs in
   the `Publish packages` run. A backfilled one names the commit the backfill was started on.
 - A rerun of a failed follow-up job reruns only that job.
-- The `Publish packages` run lasts as long as `raise-baseline.yml`'s wait for nuget.org, up to 45 minutes.
+- The `Publish packages` run lasts as long as `raise-baseline.yml`'s wait for nuget.org, 30 minutes by default
+  ([ADR-0150](0150-a-workflow-raises-the-package-validation-baseline-after-each-release.md)), and at most the baseline
+  job's 45-minute timeout.
 - Scorecard's Signed-Releases check averages the last five releases with assets, and an old build can't honestly get
   provenance afterwards. A project deletes the older unsigned release assets (the packages stay on nuget.org) or waits
   for five releases.
