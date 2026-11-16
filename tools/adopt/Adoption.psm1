@@ -111,6 +111,8 @@ function Get-AdoptionAnswers([string]$Path) {
         # A repository with a history tracks its changes (ADR-0015): an AGENTS.md the template writes for it says pre-release: tracked.
         pre_release  = 'tracked'
     }
+    # An adopted repository's CI doesn't start failing on coverage: coverage_gate = $true opts it in (the template's ADR-0026).
+    $answers.coverage_gate = $false
     $tools = @(Get-WorkflowTools $Path)
     if ($tools.Count) { $answers.workflow_tools = $tools }
     # A .NET, Python or other repository with a frontend or Node.js tooling needs Node.js too; a Node.js stack's default is already yes.

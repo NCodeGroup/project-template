@@ -7,7 +7,8 @@
     Needs no template snapshot, Copier or network. Prints PASS or FAIL per check and exits 1 on any failure (ADR-0024).
       opt-in    Invoke-TemplateRender, with a stand-in Copier that records its arguments, passes <answer>=false for
                 each opt-in answer the answers file lacks and -Data doesn't set, and nothing for one it has.
-      adopt     Get-AdoptionAnswers answers node_lint = $false for a Node.js repository.
+      adopt     Get-AdoptionAnswers answers node_lint = $false for a Node.js repository, and coverage_gate = $false
+                for every repository.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notes-test-<process ID> in the temp
@@ -32,7 +33,7 @@ if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 New-Item -ItemType Directory -Force $Work | Out-Null
 
 # opt-in: Invoke-TemplateRender with a stand-in Copier that records its arguments.
-$optIns = 'csharp_format', 'node_lint'
+$optIns = 'csharp_format', 'node_lint', 'coverage_gate'
 $optInRender = & {
     $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
     foreach ($fnName in 'ConvertTo-CopierValue', 'Get-PreReleaseAnswer', 'Get-Answer', 'Get-OptInData', 'Get-LicenseData', 'Invoke-TemplateRender') {
@@ -65,13 +66,19 @@ $optInRender = & {
 }
 $optInRender
 
-# adopt: a Node.js repository is adopted with node_lint off.
+# adopt: a Node.js repository is adopted with node_lint off, and every repository with coverage_gate off.
 Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
 $adoptNode = Join-Path $Work 'adopt-node'
 New-Item -ItemType Directory -Force $adoptNode | Out-Null
 [IO.File]::WriteAllText((Join-Path $adoptNode 'package.json'), '{"name":"adopt-node","scripts":{"test":"node --test"}}', [Text.UTF8Encoding]::new($false))
 $adoptAnswers = Get-AdoptionAnswers $adoptNode
 Check 'adopt: a Node.js repository is adopted with node_lint off' ($adoptAnswers.node_lint -eq $false) ($adoptAnswers | ConvertTo-Json -Compress)
+Check 'adopt: a Node.js repository is adopted with coverage_gate off' ($adoptAnswers.coverage_gate -eq $false) ($adoptAnswers | ConvertTo-Json -Compress)
+$adoptPython = Join-Path $Work 'adopt-python'
+New-Item -ItemType Directory -Force $adoptPython | Out-Null
+[IO.File]::WriteAllText((Join-Path $adoptPython 'requirements.txt'), "pytest`n", [Text.UTF8Encoding]::new($false))
+$pythonAnswers = Get-AdoptionAnswers $adoptPython
+Check 'adopt: a Python repository is adopted with coverage_gate off' ($pythonAnswers.stack -eq 'python' -and $pythonAnswers.coverage_gate -eq $false) ($pythonAnswers | ConvertTo-Json -Compress)
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Update notes tests: FAILED ($($failures.Count))"; exit 1 }
