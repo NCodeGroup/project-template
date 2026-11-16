@@ -6,8 +6,9 @@
 .DESCRIPTION
     For each repository it:
       - adds a "Protect main" ruleset on the default branch, the same shape as project-template's: no deletion, no force
-        push, a pull request required (no approvals, since the organization has one maintainer) with every conversation
-        resolved, with stale reviews dismissed on push, so a review finding from the bot, CodeQL or a person can't be merged past, merge-commit or rebase
+        push, a pull request required (no approvals, since the organization has one maintainer, except where
+        code-review.yml passes approve: true, as below) with every conversation resolved, with stale reviews dismissed
+        on push, so a review finding from the bot, CodeQL or a person can't be merged past, merge-commit or rebase
         merges only, never squash, so each commit of a plan stays on the branch, when CodeQL's default setup is
         configured for the repository a code-scanning rule that blocks a pull request whose CodeQL results add an alert
         at warning level or above or a security alert of any severity, and, when -RequireChecks names them, those CI
@@ -36,19 +37,20 @@
         default policy blocks pull_request_target on a public repository without one from December 2, 2026.
 
     Where the default branch's .github/workflows/code-review.yml passes approve: true (NCode Review approves a clean
-    review, ADR-0022), the "Protect main" ruleset it makes requires one approval, with approval of the last push; it
+    review, ADR-0022), the "Protect main" ruleset it makes, and one an earlier run made, requires at least one approval, with approval of the last push; it
     never requires approval of the last push without an approval. A file it can't read is named, and the ruleset then
     requires no approval.
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
-    main" ruleset an older version of this script made, when it is off, sending only the ruleset's rules with that one
-    parameter changed, so no pull request merges past an unresolved discussion (in the "Protect main" ruleset it also turns
-    on dismissing stale reviews on push); -WhatIf shows it, and a refusal is
-    reported without failing the run. A ruleset that requires approval of the last push but no approving review blocks every merge
-    where only the author can approve: the script never loosens a ruleset, so it prints a notice with the command that
-    turns that off, which -All -WhatIf lists for every repository. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's
-    required checks in place. Either way the repository still gets the tag ruleset and the security settings, so a second run
+    main" ruleset an older version of this script made, when it is off, sending only the ruleset's rules with those
+    parameters changed, so no pull request merges past an unresolved discussion (in the "Protect main" ruleset it also
+    turns on dismissing stale reviews on push and, where code-review.yml passes approve: true, requires at least one
+    approval, of the last push); -WhatIf shows it, and a refusal is reported without failing the run. A ruleset that
+    requires approval of the last push but no approving review blocks every merge where only the author can approve: the
+    script never loosens a ruleset, so it prints a notice with the command that turns that off, which -All -WhatIf lists
+    for every repository. A ruleset it made earlier is kept too; pass -RequireChecks to update that one's required checks
+    in place. Either way the repository still gets the tag ruleset and the security settings, so a second run
     brings a repository protected by an older version of this script up to date. A ruleset named "Protect release tags",
     whatever its state, is left alone, and so is an active tag ruleset on v* tags that already refuses both deletion and
     update. An archived repository and a fork are skipped, and so is a repository whose default branch it skips with a
@@ -274,9 +276,9 @@ function Set-Baseline([string]$Name) {
     $rulesets = @(foreach ($summary in @(Invoke-GhJson @('api', "repos/$Owner/$Name/rulesets"))) {
         Invoke-GhJson @('api', "repos/$Owner/$Name/rulesets/$($summary.id)")
     })
-    # A repository skipped for its default branch gets nothing else either: the reason printed says what to fix first.
     $review = Read-ReviewApproval $Name $info.default_branch
     if ($review.Why) { Write-Host "${Name}: couldn't read .github/workflows/code-review.yml to see whether NCode Review approves ($($review.Why)); the ruleset requires no approval" }
+    # A repository skipped for its default branch gets nothing else either: the reason printed says what to fix first.
     if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets -Approver $review.Approver)) { return }
     Set-TagRuleset $Name $rulesets
     Set-SecuritySettings $Name $info
@@ -374,7 +376,7 @@ function Set-BranchRuleset {
 
     # Approval of the last push stays off while no approval is required: GitHub then wants someone other than the pusher
     # to approve the newest push, which blocks every merge where only the author can approve (#385). An update keeps the
-    # approval settings of the ruleset it made, so it never loosens them. Where code-review.yml passes approve: true,
+    # approval count, last-push approval and code-owner review of the ruleset it made, so it never loosens them. Where code-review.yml passes approve: true,
     # one approval is required, and then approval of the last push too (ADR-0022).
     $ownPull = if ($own) { @($own.rules | Where-Object type -eq 'pull_request')[0].parameters } else { $null }
     $approvals = if ($ownPull) { [int]$ownPull.required_approving_review_count } else { 0 }
@@ -387,7 +389,7 @@ function Set-BranchRuleset {
         @{ type = 'pull_request'; parameters = @{
             allowed_merge_methods = @('merge', 'rebase')
             dismiss_stale_reviews_on_push = $true
-            require_code_owner_review = $false
+            require_code_owner_review = $ownPull.require_code_owner_review -eq $true
             require_last_push_approval = $lastPush
             required_approving_review_count = $approvals
             required_review_thread_resolution = $true
@@ -418,7 +420,7 @@ function Set-BranchRuleset {
     } | ConvertTo-Json -Depth 10
 
     $verb = if ($own) { 'update' } else { 'create' }
-    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($Approver) { ', one required approval, as code-review.yml passes approve: true' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
+    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($Approver) { ', at least one required approval, as code-review.yml passes approve: true' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) {
         Write-Host "would: $summary"
         if ($autoChecks) {
