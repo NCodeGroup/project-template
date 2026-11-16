@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - A new project's `SECURITY.md` promises an acknowledgement within 14 days, its `CONTRIBUTING.md` has a Review Requirements section and names the `good first issue` label, its `docs/assurance-case.md` has a Security Reviews section, and its `docs/best-practices-badge.md` links the criteria page, says where the project stands and lists the gold criteria that need a person. These files are project-owned: an update shows the template's changes to them, to take what fits. ([#398](https://github.com/NCodeGroup/project-template/issues/398), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
 - ADR-0023 and, on GitHub, ADR-0020 name the criteria page and what the gold level needs from people. ([#398](https://github.com/NCodeGroup/project-template/issues/398), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
+- On GitHub, a new .NET, Node.js or Python project's `CONTRIBUTING.md` says that a reformat or a large move brings back dismissed CodeQL alerts, which need dismissing again, and to keep a dismissal's reason that the code doesn't show in a comment beside it. ([#398](https://github.com/NCodeGroup/project-template/issues/398))
 
 ## [0.97.0] - 2026-11-15
 
