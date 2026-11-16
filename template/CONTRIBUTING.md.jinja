@@ -1,6 +1,8 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
 {%- set spdx = license %}
 {%- set pm = package_manager | default('npm') %}
+{%- set biome = stack == 'node' and (node_lint | default(false)) %}
+{%- set coverage = (coverage_gate | default(false)) and stack in ['dotnet', 'python', 'node', 'powershell'] %}
 {%- set pr = 'merge request' if git_host == 'gitlab' else 'pull request' -%}
 # Contributing to {{ project_name }}
 
@@ -12,7 +14,7 @@ Issues and {{ pr }}s are welcome. [README.md](README.md) explains the project, a
 {%- if stack == 'dotnet' %}
 - The .NET SDK that [global.json](global.json) selects, and the runtime of each older .NET a test project targets, which `./build/Get-TestRuntimes.ps1` names. `./build/Install-Dotnet.ps1` installs both beside the .NET that runs `dotnet`, or into the folder `-InstallDir` names; run it as an administrator, or with `sudo`, when .NET is installed system-wide.
 {%- elif stack == 'python' %}
-- Python 3 with pytest: `python -m pip install pytest`, then `python -m pip install -r requirements.txt` or `python -m pip install -e .` when the project has a `requirements.txt` or a `pyproject.toml`.
+- Python 3 with pytest: `python -m pip install pytest pytest-cov`, then `python -m pip install -r requirements.txt` or `python -m pip install -e .` when the project has a `requirements.txt` or a `pyproject.toml`.
 {%- elif stack == 'node' %}
 - {% if pm == 'bun' %}Bun{% else %}Node.js LTS and {{ pm }}{% endif %}.
 {%- if pm in ['pnpm', 'yarn'] %} Corepack runs the {{ pm }} version that `package.json`'s `packageManager` field names: `npm install --global corepack@latest`, then `corepack enable {{ pm }}`.
@@ -34,6 +36,10 @@ Once in each clone, run `git config core.hooksPath .githooks`. It turns on `.git
 | --- | --- |
 | Build | {% if build_command %}`{{ build_command }}`{% else %}none{% endif %} |
 | Test | {% if test_command %}`{{ test_command }}`{% else %}none yet{% endif %} |
+{%- if biome %}
+| Lint and check the formatting | `{{ pm }} run lint` |
+| Format, with Biome's safe fixes | `{{ pm }} run format` |
+{%- endif %}
 {%- if stack == 'dotnet' %}
 | Definition of Done, the full gate | `./build/dod.ps1` |
 | The local gate before a push | `./build/dod.ps1 -Fast` |
@@ -49,6 +55,14 @@ CI runs the same commands on every {{ pr }}.
 {%- else %}
 
 There are no commands yet. When the project gets them, add them here, under Commands in `AGENTS.md`, and to CI.
+{%- endif %}
+{%- if biome %}
+
+Biome lints and formats the JavaScript and TypeScript, with the rules in `biome.json` ([the decision](docs/decisions/project-template/0201-biome-lints-and-formats-javascript-and-typescript.md)). `package.json` pins it exactly and holds its two scripts: add them once, with `{% if pm == 'pnpm' %}pnpm add --save-dev --save-exact @biomejs/biome@2{% elif pm == 'yarn' %}yarn add --dev --exact @biomejs/biome@2{% elif pm == 'bun' %}bun add --dev --exact @biomejs/biome@2{% else %}npm install --save-dev --save-exact @biomejs/biome@2{% endif %}`, then `"lint": "biome ci --error-on-warnings ."` and `"format": "biome check --write ."` under `scripts`. Commit the lock file, which holds Biome's binary for each platform. After a large change, run `{{ pm }} run format` twice: the second pass formats what the first pass's fixes left. CI runs `{{ pm }} run lint` before the build once `package.json` exists, and so does the Landing `gate` in `AGENTS.md`.
+{%- endif %}
+{%- if coverage %}
+
+CI fails when the tests cover less than 90% of the statements or 80% of the branches, the OpenSSF Best Practices gold thresholds, as `./.template/Test-Coverage.ps1` reports from the coverage the tests write ([the decision](docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)). {% if stack == 'dotnet' %}`./build/dod.ps1` collects it and runs the check in its Coverage stage once the solution has a `*.Tests` project.{% elif stack == 'python' %}The test command writes `coverage.xml` with pytest-cov.{% elif stack == 'powershell' %}The test command has Pester write `coverage.xml`; Pester measures no branches.{% else %}The `test` script in `package.json` must write `lcov.info` or `coverage/lcov.info`, such as `node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=lcov.info`.{% endif %} Run `./.template/Test-Coverage.ps1` after the tests to see the figures.
 {%- endif %}
 
 ## Make a Change
@@ -92,6 +106,10 @@ Commits record the people who wrote them, so avoid AI agent attribution: don't a
 {%- if git_host == 'github' and stack in ['dotnet', 'node', 'python'] %}
 
 A reformat or a large move brings back the CodeQL alerts dismissed on the code it moves, since a dismissal follows the alert's location, not the code: dismiss each again, with its reason. When that reason isn't obvious from the code, put it in a comment beside the code, so the next dismissal takes a minute.
+{%- endif %}
+{%- if file_headers is defined and file_headers and stack != 'dotnet' %}
+
+Each source file starts with two comment lines, `Copyright © {{ author_name }}` and `SPDX-License-Identifier: {{ spdx }}`. CI checks them with `./.template/Test-FileHeaders.ps1`, and `./.template/Test-FileHeaders.ps1 -Fix` adds them to every file without them ([the decision](docs/decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md)).
 {%- endif %}
 
 ## AI-Assisted Work

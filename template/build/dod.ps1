@@ -17,7 +17,9 @@
        vulnerability advisories are errors here, as in CI.
     5. Test: every test project, without building again, writing TRX results to artifacts/test-results; -Filter
        narrows the run, and a filter that matches no test fails it.
-    6. Pack: for a library (the nuget_package answer), every packable project into artifacts/packages, with its symbols.
+    6. Coverage: with the coverage_gate answer, the Test stage collects coverage, and .template/Test-Coverage.ps1 fails
+       below 90% of the statements or 80% of the branches; skipped with -Filter and while no *.Tests project exists.
+    7. Pack: for a library (the nuget_package answer), every packable project into artifacts/packages, with its symbols.
 
     -Fast is the local gate: Debug, no pack, no test results, and advisories as warnings; the Format stage runs there too. CI runs the full gate.
 
@@ -46,6 +48,7 @@ try {
     $configuration = if ($Fast) { 'Debug' } else { 'Release' }
     $answers = if (Test-Path -LiteralPath .copier-answers.yml) { [IO.File]::ReadAllText((Join-Path $root '.copier-answers.yml')) } else { '' }
     $library = $answers -match '(?m)^nuget_package:\s*true\s*$'
+    $coverage = $answers -match '(?m)^coverage_gate:\s*true\s*$' -and -not $Filter
 
     function Invoke-Stage([string]$Name, [scriptblock]$Command) {
         "== $Name"
@@ -72,7 +75,15 @@ try {
     Invoke-Stage 'Build' { dotnet build @buildArgs }
     $testArgs = @('--configuration', $configuration, '--no-build', '--nologo')
     if ($Filter) { $testArgs += '--filter', $Filter }
-    if (-not $Fast) { $testArgs += '--logger', 'trx', '--results-directory', 'artifacts/test-results' }
+    $hasTests = [bool](Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.Tests.csproj' | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|artifacts|\.claude)[\\/]' } | Select-Object -First 1)
+    $coverage = $coverage -and $hasTests
+    if (-not $Fast) { $testArgs += '--logger', 'trx' }
+    if ($coverage -or -not $Fast) { $testArgs += '--results-directory', 'artifacts/test-results' }
+    if ($coverage) {
+        # Microsoft.CodeCoverage, which Microsoft.NET.Test.Sdk brings, writes one Cobertura report per test project; an earlier run's would count again.
+        $testArgs += '--collect', 'Code Coverage;Format=cobertura'
+        Get-ChildItem -LiteralPath artifacts/test-results -Recurse -File -Filter '*.cobertura.xml' -ErrorAction SilentlyContinue | Remove-Item -Force
+    }
     Invoke-Stage 'Test' {
         dotnet test @testArgs 2>&1 | Tee-Object -Variable testOutput
         # A filter that matches no test exits 0, which would pass the stage before its test exists. Each test project
@@ -82,6 +93,7 @@ try {
             $global:LASTEXITCODE = 1
         }
     }
+    if ($coverage) { Invoke-Stage 'Coverage' { pwsh -NoProfile -File .template/Test-Coverage.ps1 -Report artifacts/test-results } }
     if ($library -and -not $Fast) { Invoke-Stage 'Pack' { dotnet pack --configuration $configuration --no-build --nologo --output artifacts/packages } }
     ''
     'Definition of Done: PASSED'

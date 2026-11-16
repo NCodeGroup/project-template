@@ -124,7 +124,7 @@ $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.template\Test-Coverage.ps1', '.template\Test-FileHeaders.ps1', '.vscode\settings.json', '.vscode\extensions.json',
     'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'GOVERNANCE.md', 'ROADMAP.md', 'docs\architecture.md', 'docs\assurance-case.md', 'docs\best-practices-badge.md', 'docs\best-practices-criteria.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
@@ -154,9 +154,11 @@ $cases = @(
     @{ Name = 'dotnet-no-format'; Stack = 'dotnet'; Host = 'github'; Data = @{ csharp_format = 'false' } }
     @{ Name = 'other-gitlab-code-review'; Stack = 'other'; Host = 'gitlab'; Data = @{ code_review = 'true' } }
     @{ Name = 'python-gitlab'; Stack = 'python'; Host = 'gitlab' }
+    @{ Name = 'python-no-gate'; Stack = 'python'; Host = 'gitlab'; Data = @{ coverage_gate = 'false'; file_headers = 'false' } }
     @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
     @{ Name = 'node-pnpm'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'pnpm' } }
     @{ Name = 'node-bun'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'bun' } }
+    @{ Name = 'node-no-lint'; Stack = 'node'; Host = 'github'; Data = @{ node_lint = 'false' } }
     @{ Name = 'node-yarn-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'yarn' } }
     @{ Name = 'node-bun-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'bun' } }
     @{ Name = 'dotnet-node'; Stack = 'dotnet'; Host = 'github'; Data = @{ uses_node = 'true' } }
@@ -561,6 +563,8 @@ foreach ($case in $cases) {
         $releaseWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\tag-release.yml') -Raw
         $uses = [regex]::Matches($releaseWorkflow, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the release workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $releaseWorkflow
+        Check "${name}: the release workflow runs CI again before it tags, and CI can be called" ($releaseWorkflow -match '(?m)^    uses: \./\.github/workflows/ci\.yml\r?$' -and $releaseWorkflow -match '(?m)^    needs: \[policy, test\]\r?$' -and $ci.Contains('workflow_call:')) $releaseWorkflow
+        Check "${name}: the release workflow signs a public repository's tag with a pinned gitsign" ($releaseWorkflow.Contains('chainguard-dev/actions/setup-gitsign@d496b2ab65497cac13d77ccd5038b8aae7e8c43b # v1.8.2') -and $releaseWorkflow.Contains('if: ${{ !github.event.repository.private }}') -and $releaseWorkflow.Contains('id-token: write') -and $releaseWorkflow.Contains("-Sign:(`$env:SIGN -eq 'true')")) $releaseWorkflow
         # The Scorecard workflow: every GitHub project gets it.
         $scorecard = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\scorecard.yml') -Raw
         $uses = [regex]::Matches($scorecard, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
@@ -613,13 +617,13 @@ foreach ($case in $cases) {
                 'two pins removed and one added' = @(, @((New-ChangedFile -Patch "@@ -60,3 +60,2 @@`n-$oldPin`n-$oldPin`n+$newPin")))
                 'no file at all' = @(, @())
             }
-            foreach ($case in $passes.Keys) {
-                $r = Invoke-AutoMergeDiffCheck $diffCheck $passes[$case] $diffFolder
-                Check "${name}: the auto-merge diff check passes $case" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=true' -and -not $r.Printed -and ($r.Calls -join '|') -eq 'api --paginate --slurp repos/o/r/pulls/7/files') "output=$($r.Output) printed=$($r.Printed) calls=$($r.Calls -join '|') error=$($r.Error)"
+            foreach ($scenario in $passes.Keys) {
+                $r = Invoke-AutoMergeDiffCheck $diffCheck $passes[$scenario] $diffFolder
+                Check "${name}: the auto-merge diff check passes $scenario" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=true' -and -not $r.Printed -and ($r.Calls -join '|') -eq 'api --paginate --slurp repos/o/r/pulls/7/files') "output=$($r.Output) printed=$($r.Printed) calls=$($r.Calls -join '|') error=$($r.Error)"
             }
-            foreach ($case in $refuses.Keys) {
-                $r = Invoke-AutoMergeDiffCheck $diffCheck $refuses[$case] $diffFolder
-                Check "${name}: the auto-merge diff check refuses $case" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=false' -and $r.Printed -like 'Left for a person to merge: *') "output=$($r.Output) printed=$($r.Printed) error=$($r.Error)"
+            foreach ($scenario in $refuses.Keys) {
+                $r = Invoke-AutoMergeDiffCheck $diffCheck $refuses[$scenario] $diffFolder
+                Check "${name}: the auto-merge diff check refuses $scenario" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=false' -and $r.Printed -like 'Left for a person to merge: *') "output=$($r.Output) printed=$($r.Printed) error=$($r.Error)"
             }
             # The merge step that picks the merge method, against fixture repository settings and branch rules.
             $mergeScript = Get-StepScript $autoMerge 'merge'
@@ -636,10 +640,10 @@ foreach ($case in $cases) {
                 'a pull request rule that lists no merge methods' = @($all, @(, @(@{ type = 'pull_request'; parameters = @{ required_approving_review_count = 0 } })), 'merge')
                 'a squash-only repository whose rules, on two pages, require linear history and allow only squash' = @($squashOnly, @(@(@{ type = 'required_linear_history' }), @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('squash') } })), 'squash')
             }
-            foreach ($case in $picks.Keys) {
-                $method = $picks[$case][2]
-                $r = Invoke-AutoMergeMethod $mergeScript $picks[$case][0] $picks[$case][1]
-                Check "${name}: the auto-merge method check picks $method for $case" ($mergeScript -and -not $r.Error -and ($r.Calls -join '|') -eq "repo view o/r --json mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed|api --paginate --slurp repos/o/r/rules/branches/main|pr merge --auto --$method --match-head-commit 0123456789abcdef0123456789abcdef01234567 https://github.com/o/r/pull/7") "calls=$($r.Calls -join '|') error=$($r.Error)"
+            foreach ($scenario in $picks.Keys) {
+                $method = $picks[$scenario][2]
+                $r = Invoke-AutoMergeMethod $mergeScript $picks[$scenario][0] $picks[$scenario][1]
+                Check "${name}: the auto-merge method check picks $method for $scenario" ($mergeScript -and -not $r.Error -and ($r.Calls -join '|') -eq "repo view o/r --json mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed|api --paginate --slurp repos/o/r/rules/branches/main|pr merge --auto --$method --match-head-commit 0123456789abcdef0123456789abcdef01234567 https://github.com/o/r/pull/7") "calls=$($r.Calls -join '|') error=$($r.Error)"
             }
             $r = Invoke-AutoMergeMethod $mergeScript $squashOnly @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('merge') } }))
             Check "${name}: the auto-merge method check turns on nothing for a squash-only repository whose ruleset allows only merge commits" ($mergeScript -and $r.Error -like 'No merge method is allowed by both*' -and -not ($r.Calls -like 'pr merge*')) "calls=$($r.Calls -join '|') error=$($r.Error)"
@@ -651,6 +655,9 @@ foreach ($case in $cases) {
     }
     if ($case.Stack -eq 'node') {
         $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }
+        $lint = $case.Data.node_lint -ne 'false'
+        $agentsForLint = Get-Content -LiteralPath (Join-Path $dest 'AGENTS.md') -Raw
+        Check "${name}: biome.json, the CI lint step and the Landing gate exactly when node_lint is not false" ((Test-Path -LiteralPath (Join-Path $dest 'biome.json')) -eq $lint -and $ci.Contains("$pm run lint") -eq $lint -and ($agentsForLint -match "(?m)^- gate: $([regex]::Escape("if (Test-Path package.json) { $pm run lint }"))\r?$") -eq $lint) $ci
         $install = @{ npm = 'npm ci'; pnpm = 'pnpm install --frozen-lockfile'; yarn = 'yarn install'; bun = 'bun install --frozen-lockfile' }[$pm]
         $setup = @{ npm = ''; pnpm = 'corepack enable pnpm'; yarn = 'corepack enable yarn'; bun = if ($case.Host -eq 'github') { 'oven-sh/setup-bun@' } else { 'image: oven/bun:1' } }[$pm]
         $otherManagers = @('npm', 'pnpm', 'yarn', 'bun') | Where-Object { $_ -ne $pm }
@@ -669,6 +676,21 @@ foreach ($case in $cases) {
             Check "${name}: GitLab CI selects the .node-version Node.js through use-node.sh, installing the pinned nvs only when needed, before it installs anything" ($ci.Contains('bash ./.template/install-nvs.sh') -and -not $ci.Contains('jasongin/nvs') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf($install) -and ($pm -notin 'pnpm', 'yarn' -or $useNode -lt $ci.IndexOf('corepack'))) $ci
         }
         else { Check "${name}: GitLab CI runs Bun without nvs" (-not $ci.Contains('install-nvs.sh') -and -not $ci.Contains('use-node.sh')) $ci }
+    }
+    if ($case.Stack -in 'python', 'node', 'powershell') {
+        $gate = $case.Data.coverage_gate -ne 'false'
+        Check "${name}: CI checks the coverage exactly when coverage_gate is not false" ($ci.Contains('Test-Coverage.ps1') -eq $gate) $ci
+    }
+    if ($case.Host -eq 'gitlab') {
+        $audit = @{ npm = 'npm audit --audit-level=moderate'; pnpm = 'pnpm audit --audit-level moderate'; yarn = 'yarn npm audit --all --recursive --severity moderate'; bun = 'bun audit --audit-level=moderate' }
+        $wantAudit = if ($case.Stack -eq 'node') { $audit[$(if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' })] } elseif ($case.Stack -eq 'python') { 'pip-audit -r requirements.txt' } else { '' }
+        Check "${name}: GitLab CI audits the dependencies exactly for Node.js and Python" ($ci.Contains('dependency-audit:') -eq [bool]$wantAudit -and (-not $wantAudit -or $ci.Contains($wantAudit))) $ci
+    }
+    $licensed = -not ($case.Data -and $case.Data.ContainsKey('license') -and $case.Data.license -eq '')
+    $wantHeaders = $case.Stack -ne 'dotnet' -and $licensed -and $case.Data.file_headers -ne 'false'
+    Check "${name}: CI checks the file headers exactly when file_headers is on" ($ci.Contains('Test-FileHeaders.ps1') -eq $wantHeaders) $ci
+    if ($case.Stack -eq 'python') {
+        Check "${name}: the default test command writes coverage.xml exactly when coverage_gate is not false" ((Get-Content -Raw -LiteralPath (Join-Path $dest 'AGENTS.md')).Contains('--cov --cov-branch --cov-report=xml') -eq ($case.Data.coverage_gate -ne 'false')) ''
     }
     if ($case.Host -eq 'gitlab' -and $case.Stack -in 'dotnet', 'python', 'powershell', 'other') {
         $useNode = $ci.IndexOf('. ./.template/use-node.sh')

@@ -23,6 +23,9 @@ PLAN.md
 # The analysis in progress: a local working file, never committed
 ANALYSIS.md
 
+# The OpenSSF Best Practices prompt /best-practices writes: a local working file, never committed
+best-practices-prompt.txt
+
 # Secrets
 .env
 .env.*
@@ -50,6 +53,9 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
 build/
 dist/
 *.egg-info/
@@ -59,4 +65,9 @@ dist/
 node_modules/
 dist/
 coverage/
+lcov.info
+{%- elif stack == 'powershell' %}
+
+# PowerShell
+coverage.xml
 {%- endif %}

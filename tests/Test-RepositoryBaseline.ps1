@@ -126,7 +126,7 @@ if ($method -ne 'GET') {
 }
 # The security settings' reads: on, off, readApproves (the workflow token read-only, but Actions may approve pull
 # requests) or fail:<code>, as GitHub answers each.
-if ($path -match '^repos/[^/]+/([^/]+)/(actions/permissions/workflow|vulnerability-alerts|automated-security-fixes|private-vulnerability-reporting)$') {
+if ($path -match '^repos/[^/]+/([^/]+)/(actions/permissions/workflow|vulnerability-alerts|automated-security-fixes|private-vulnerability-reporting|immutable-releases)$') {
     $key = $Matches[2]
     $state = "$($data.repos[$Matches[1]].security[$key])"
     if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
@@ -226,7 +226,7 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
     $id = 100
     foreach ($ruleset in $Rulesets) { $id++; $ruleset.id = $id; $full["$id"] = $ruleset; $summaries += @{ id = $id; name = $ruleset.name } }
     if ($Policies -isnot [string]) { $policyId = 200; foreach ($policy in $Policies) { $policyId++; $policy.id = $policyId } }
-    $settings = @{ 'actions/permissions/workflow' = 'off'; 'vulnerability-alerts' = 'off'; 'automated-security-fixes' = 'off'; 'private-vulnerability-reporting' = 'off' }
+    $settings = @{ 'actions/permissions/workflow' = 'off'; 'vulnerability-alerts' = 'off'; 'automated-security-fixes' = 'off'; 'private-vulnerability-reporting' = 'off'; 'immutable-releases' = 'off' }
     foreach ($key in $Security.Keys) { $settings[$key] = $Security[$key] }
     $analysis = @{ secret_scanning = @{ status = $SecretScanning }; secret_scanning_push_protection = @{ status = $PushProtection } }
     $info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork; private = $Visibility -ne 'public'; visibility = $Visibility; security_and_analysis = $analysis }
@@ -236,7 +236,7 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
         pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails
         workflows = @($Workflows); workflowText = $WorkflowText; policies = if ($Policies -is [string]) { $Policies } else { @($Policies) } }
 }
-$allSecurityOn = @{ 'actions/permissions/workflow' = 'on'; 'vulnerability-alerts' = 'on'; 'automated-security-fixes' = 'on'; 'private-vulnerability-reporting' = 'on' }
+$allSecurityOn = @{ 'actions/permissions/workflow' = 'on'; 'vulnerability-alerts' = 'on'; 'automated-security-fixes' = 'on'; 'private-vulnerability-reporting' = 'on'; 'immutable-releases' = 'on' }
 function New-Pull([int]$Number, [string]$Sha, [string]$MergedAt) { @{ number = $Number; head = @{ sha = $Sha }; merged_at = if ($MergedAt) { $MergedAt } else { $null } } }
 function New-CheckRun([long]$Id, [string]$Name, [string]$Conclusion = 'success', [long]$Suite = 1, [long]$App = 15368, [string]$Slug = 'github-actions', [string]$Status = 'completed') {
     @{ id = $Id; name = $Name; status = $Status; conclusion = if ($Status -eq 'completed') { $Conclusion } else { $null }; app = @{ id = $App; slug = $Slug }; check_suite = @{ id = $Suite } }
@@ -351,6 +351,7 @@ $repos = @{
     workflowUnreadable = New-Repo -Security @{ 'actions/permissions/workflow' = 'fail:403' }
     baselineRaiser = New-Repo -Workflows @('.github/workflows/raise-baseline.yml')
     baselineRaiserSet = New-Repo -Workflows @('.github/workflows/raise-baseline.yml') -Security @{ 'actions/permissions/workflow' = 'readApproves' }
+    provenance = New-Repo -Workflows @('.github/workflows/release-provenance.yml')
     partial = New-Repo -SecretScanning 'enabled' -Security @{ 'actions/permissions/workflow' = 'readApproves'; 'vulnerability-alerts' = 'on'; 'private-vulnerability-reporting' = 'on' } -AutoMerge $true
     # Auto-merge: an answer that leaves allow_auto_merge out, as GitHub's does for someone who can't change it.
     autoMergeUnread = New-Repo -AutoMerge $null
@@ -444,7 +445,7 @@ try {
     $r = Invoke-Baseline @('-Repo', 'fresh', '-WhatIf')
     Check 'whatif: changes nothing' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output -match "would: fresh \(main\): create 'Protect main'") "changes=$($r.Changes -join '|') output=$($r.Output)"
     Check 'whatif: shows the release tags ruleset it would create' ($r.Output -match [regex]::Escape("would: fresh: create 'Protect release tags' on v* tags: no deletion, no update")) $r.Output
-    foreach ($label in 'read-only workflow token, and Actions not approving pull requests', 'secret scanning', 'secret scanning push protection', 'Dependabot alerts', 'Dependabot security updates', 'private vulnerability reporting') {
+    foreach ($label in 'read-only workflow token, and Actions not approving pull requests', 'secret scanning', 'secret scanning push protection', 'Dependabot alerts', 'Dependabot security updates', 'private vulnerability reporting', 'immutable releases') {
         Check "whatif: shows the security setting it would turn on ($label)" ($r.Output -match [regex]::Escape("fresh: ${label}: would set")) $r.Output
     }
     Check 'whatif: shows that it would allow auto-merge' ($r.Output -match [regex]::Escape('fresh: allow auto-merge: would set')) $r.Output
@@ -453,7 +454,7 @@ try {
     $r = Invoke-Baseline @('-Repo', 'fresh')
     $types = @($r.Body.rules.type)
     Check 'create: switches CodeQL to the extended suite first, then posts one ruleset and turns on delete-branch-on-merge' (($r.Changes[0..2] -join '|') -eq 'api -X PATCH repos/NCodeGroup/fresh/code-scanning/default-setup -f query_suite=extended|BODY POST repos/NCodeGroup/fresh/rulesets|api -X PATCH repos/NCodeGroup/fresh -F delete_branch_on_merge=true' -and $r.Bodies[0].body.name -eq 'Protect main') ($r.Changes -join '|')
-    Check 'create: then the release tags ruleset, then each security setting, Dependabot alerts before its security updates, then auto-merge' (($r.Changes[3..($r.Changes.Count - 1)] -join '|') -eq 'BODY POST repos/NCodeGroup/fresh/rulesets|BODY PUT repos/NCodeGroup/fresh/actions/permissions/workflow|BODY PATCH repos/NCodeGroup/fresh|BODY PATCH repos/NCodeGroup/fresh|api -X PUT repos/NCodeGroup/fresh/vulnerability-alerts|api -X PUT repos/NCodeGroup/fresh/automated-security-fixes|api -X PUT repos/NCodeGroup/fresh/private-vulnerability-reporting|BODY PATCH repos/NCodeGroup/fresh') ($r.Changes -join '|')
+    Check 'create: then the release tags ruleset, then each security setting, Dependabot alerts before its security updates, then auto-merge' (($r.Changes[3..($r.Changes.Count - 1)] -join '|') -eq 'BODY POST repos/NCodeGroup/fresh/rulesets|BODY PUT repos/NCodeGroup/fresh/actions/permissions/workflow|BODY PATCH repos/NCodeGroup/fresh|BODY PATCH repos/NCodeGroup/fresh|api -X PUT repos/NCodeGroup/fresh/vulnerability-alerts|api -X PUT repos/NCodeGroup/fresh/automated-security-fixes|api -X PUT repos/NCodeGroup/fresh/private-vulnerability-reporting|api -X PUT repos/NCodeGroup/fresh/immutable-releases|BODY PATCH repos/NCodeGroup/fresh') ($r.Changes -join '|')
     Check 'create: the summary says CodeQL moves to the extended suite' ($r.Output -match 'switch CodeQL from the default query suite to extended') $r.Output
     Check 'create: protects the default branch and cannot be bypassed' (($r.Body.name -eq 'Protect main') -and ($r.Body.target -eq 'branch') -and ($r.Body.enforcement -eq 'active') -and ($r.Body.conditions.ref_name.include -contains '~DEFAULT_BRANCH') -and ($r.Body.bypass_actors.Count -eq 0))
     Check 'create: no deletion, no force push, a pull request, a code-scanning rule, and nothing more' (($types -join ',') -eq 'deletion,non_fast_forward,pull_request,code_scanning') ($types -join ',')
@@ -735,19 +736,19 @@ try {
     Check 'security: the workflow token is read-only by default and Actions may not approve pull requests' ($workflow.method -eq 'PUT' -and $workflow.body.default_workflow_permissions -eq 'read' -and $workflow.body.can_approve_pull_request_reviews -eq $false -and @($workflow.body.PSObject.Properties).Count -eq 2) ($workflow | ConvertTo-Json -Depth 6 -Compress)
     $analysis = @($settings | Where-Object { $_.path -eq 'repos/NCodeGroup/fresh' -and $_.method -eq 'PATCH' -and $_.body.security_and_analysis } | ForEach-Object { $_.body.security_and_analysis | ConvertTo-Json -Depth 6 -Compress })
     Check 'security: secret scanning, then its push protection, each turned on in its own PATCH of the repository' (($analysis -join '|') -eq '{"secret_scanning":{"status":"enabled"}}|{"secret_scanning_push_protection":{"status":"enabled"}}') ($analysis -join '|')
-    Check 'security: Dependabot alerts, Dependabot security updates and private vulnerability reporting are turned on with a PUT and no body' (@($settings | Where-Object { $_.path -match 'vulnerability-alerts|automated-security-fixes|private-vulnerability-reporting' }).Count -eq 0 -and (@($r.Changes | Where-Object { $_ -like 'api -X PUT *' }) -join '|') -eq 'api -X PUT repos/NCodeGroup/fresh/vulnerability-alerts|api -X PUT repos/NCodeGroup/fresh/automated-security-fixes|api -X PUT repos/NCodeGroup/fresh/private-vulnerability-reporting') ($r.Changes -join '|')
-    foreach ($label in 'read-only workflow token, and Actions not approving pull requests', 'secret scanning', 'secret scanning push protection', 'Dependabot alerts', 'Dependabot security updates', 'private vulnerability reporting') {
+    Check 'security: Dependabot alerts, Dependabot security updates and private vulnerability reporting are turned on with a PUT and no body' (@($settings | Where-Object { $_.path -match 'vulnerability-alerts|automated-security-fixes|private-vulnerability-reporting|immutable-releases' }).Count -eq 0 -and (@($r.Changes | Where-Object { $_ -like 'api -X PUT *' }) -join '|') -eq 'api -X PUT repos/NCodeGroup/fresh/vulnerability-alerts|api -X PUT repos/NCodeGroup/fresh/automated-security-fixes|api -X PUT repos/NCodeGroup/fresh/private-vulnerability-reporting|api -X PUT repos/NCodeGroup/fresh/immutable-releases') ($r.Changes -join '|')
+    foreach ($label in 'read-only workflow token, and Actions not approving pull requests', 'secret scanning', 'secret scanning push protection', 'Dependabot alerts', 'Dependabot security updates', 'private vulnerability reporting', 'immutable releases') {
         Check "security: reports the setting as set ($label)" ($r.Output -match [regex]::Escape("fresh: ${label}: set")) $r.Output
     }
 
     $r = Invoke-Baseline @('-Repo', 'complete')
     Check 'security: a repository with everything on already changes nothing' ($r.Changes.Count -eq 0) ($r.Changes -join '|')
-    foreach ($label in 'read-only workflow token, and Actions not approving pull requests', 'secret scanning', 'secret scanning push protection', 'Dependabot alerts', 'Dependabot security updates', 'private vulnerability reporting') {
+    foreach ($label in 'read-only workflow token, and Actions not approving pull requests', 'secret scanning', 'secret scanning push protection', 'Dependabot alerts', 'Dependabot security updates', 'private vulnerability reporting', 'immutable releases') {
         Check "security: reports a setting that is on as already set ($label)" ($r.Output -match [regex]::Escape("complete: ${label}: already set")) $r.Output
     }
 
     $r = Invoke-Baseline @('-Repo', 'partial')
-    Check 'security: only the settings that are off are changed' ((@($r.Changes | Where-Object { $_ -notlike '*rulesets*' -and $_ -notlike '*default-setup*' -and $_ -notlike '*delete_branch_on_merge*' }) -join '|') -eq 'BODY PUT repos/NCodeGroup/partial/actions/permissions/workflow|BODY PATCH repos/NCodeGroup/partial|api -X PUT repos/NCodeGroup/partial/automated-security-fixes') ($r.Changes -join '|')
+    Check 'security: only the settings that are off are changed' ((@($r.Changes | Where-Object { $_ -notlike '*rulesets*' -and $_ -notlike '*default-setup*' -and $_ -notlike '*delete_branch_on_merge*' }) -join '|') -eq 'BODY PUT repos/NCodeGroup/partial/actions/permissions/workflow|BODY PATCH repos/NCodeGroup/partial|api -X PUT repos/NCodeGroup/partial/automated-security-fixes|api -X PUT repos/NCodeGroup/partial/immutable-releases') ($r.Changes -join '|')
     Check 'security: a read-only token that may still approve pull requests counts as off' ($r.Output -match [regex]::Escape('partial: read-only workflow token, and Actions not approving pull requests: set')) $r.Output
     Check 'security: with secret scanning on, only its push protection is turned on' ((@($r.Bodies | Where-Object { $_.path -eq 'repos/NCodeGroup/partial' } | ForEach-Object { $_.body.security_and_analysis | ConvertTo-Json -Depth 6 -Compress }) -join '|') -eq '{"secret_scanning_push_protection":{"status":"enabled"}}' -and $r.Output -match 'partial: secret scanning: already set') $r.Output
 
@@ -757,6 +758,12 @@ try {
 
     $r = Invoke-Baseline @('-Repo', 'baselineRaiserSet')
     Check 'security: a repository with raise-baseline.yml whose Actions may open pull requests already changes nothing there' (@($r.Bodies | Where-Object { $_.path -match 'actions/permissions/workflow' }).Count -eq 0 -and $r.Output -match [regex]::Escape('baselineRaiserSet: read-only workflow token, and Actions opening the baseline pull request: already set')) "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'provenance')
+    Check 'security: a repository with release-provenance.yml keeps mutable releases, and says why' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape('provenance: immutable releases: not available (release-provenance.yml attaches packages')) "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'workflowsUnreadable')
+    Check 'security: a repository whose workflows can''t be read keeps mutable releases, and says why' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape("workflowsUnreadable: immutable releases: not available (couldn't read .github/workflows/release-provenance.yml: HTTP 500")) "$($r.Changes -join '|') $($r.Output)"
 
     $r = Invoke-Baseline @('-Repo', 'private')
     Check 'security: secret scanning is left out of a repository that is not public, with the reason, since it would be paid there' (@($r.Bodies | Where-Object { $_.body.security_and_analysis }).Count -eq 0 -and $r.Output -match [regex]::Escape("private: secret scanning: not available (the repository isn't public") -and $r.Output -match [regex]::Escape("private: secret scanning push protection: not available (the repository isn't public")) $r.Output

@@ -111,6 +111,10 @@ function Get-AdoptionAnswers([string]$Path) {
         # A repository with a history tracks its changes (ADR-0015): an AGENTS.md the template writes for it says pre-release: tracked.
         pre_release  = 'tracked'
     }
+    # An adopted repository's CI doesn't start failing on coverage: coverage_gate = $true opts it in (the template's ADR-0026).
+    $answers.coverage_gate = $false
+    # Nor on file headers it never had: file_headers = $true, then ./.template/Test-FileHeaders.ps1 -Fix (the template's ADR-0027).
+    $answers.file_headers = $false
     $tools = @(Get-WorkflowTools $Path)
     if ($tools.Count) { $answers.workflow_tools = $tools }
     # A .NET, Python or other repository with a frontend or Node.js tooling needs Node.js too; a Node.js stack's default is already yes.
@@ -132,6 +136,8 @@ function Get-AdoptionAnswers([string]$Path) {
         }
     }
     if ($stack -eq 'node') {
+        # An adopted repository keeps its own linting until it opts in: node_lint = $true, then <package_manager> run format.
+        $answers.node_lint = $false
         # Only the scripts package.json has: the template's npm defaults fail where there is no such script.
         $package = Get-Content -LiteralPath (Join-Path $Path 'package.json') -Raw | ConvertFrom-Json -AsHashtable
         $scripts = if ($package.scripts -is [System.Collections.IDictionary]) { $package.scripts } else { @{} }

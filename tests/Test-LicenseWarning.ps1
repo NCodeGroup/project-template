@@ -87,7 +87,7 @@ Check 'scripts: Adopt-Project.ps1 prints the update''s no-license-file warning w
 # unit: Invoke-TemplateRender with a stand-in Copier that records its arguments: license= only for answers without a license line, -Data's license when given.
 $licenseRender = & {
     $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
-    foreach ($fnName in 'ConvertTo-CopierValue', 'Get-PreReleaseAnswer', 'Get-Answer', 'Get-CSharpFormatAnswer', 'Get-LicenseData', 'Invoke-TemplateRender') {
+    foreach ($fnName in 'ConvertTo-CopierValue', 'Get-PreReleaseAnswer', 'Get-Answer', 'Get-OptInData', 'Get-LicenseData', 'Invoke-TemplateRender') {
         $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
         . ([scriptblock]::Create($fn.Extent.Text))
     }

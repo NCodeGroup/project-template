@@ -143,6 +143,12 @@ jobs:
             run: ./tests/Test-UpdateWindowsCheckout.ps1
           - name: Test the brand kit generator
             run: ./tests/Test-BrandKit.ps1
+          - name: Test the update's opt-in answers and notes
+            run: ./tests/Test-UpdateNotes.ps1
+          - name: Test the coverage check every project gets
+            run: ./tests/Test-Coverage.ps1
+          - name: Test the file header check every project gets
+            run: ./tests/Test-FileHeaders.ps1
     defaults:
       run:
         shell: pwsh

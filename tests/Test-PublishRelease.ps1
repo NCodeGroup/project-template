@@ -49,9 +49,9 @@ Check 'tag-release.yml runs on every push to main and by hand' ($templateWorkflo
 Check 'tag-release.yml gives its job contents: write, actions: write and pull-requests: read' ($templateWorkflow -match '(?m)^    permissions:\r?\n      contents: write\r?\n      actions: write\r?\n      pull-requests: read\r?$')
 Check 'tag-release.yml runs the template''s script on the merged commit and names no nuget push' ($templateWorkflow.Contains('run: ./.template/Publish-Release.ps1 -Commit $env:GITHUB_SHA') -and $templateWorkflow -notmatch '(?i)\bnuget(?:\.exe)?\s+push\b')
 Check 'tag-release.yml is named Tag and publish release, not Release' ($templateWorkflow -match '(?m)^name: Tag and publish release\r?$')
-$policyJob = [regex]::Match($templateWorkflow, '(?ms)^  policy:\r?\n.*?(?=^  release:\r?$)').Value
+$policyJob = [regex]::Match($templateWorkflow, '(?ms)^  policy:\r?\n.*?(?=^  (?:test|release):\r?$)').Value
 Check 'tag-release.yml reads the release policy on main in a job with no permission of its own and no persisted token' ($policyJob -and $policyJob.Contains("if: github.ref == 'refs/heads/main'") -and $policyJob -notmatch 'permissions:' -and $policyJob.Contains('persist-credentials: false') -and $policyJob.Contains('./.template/Publish-Release.ps1 -Policy') -and $policyJob.Contains('release: ${{ steps.policy.outputs.release }}')) $policyJob
-Check 'tag-release.yml runs its one write job after the policy job, only for release: tag or tag+release' ($templateWorkflow -match '(?m)^    needs: policy\r?\n    if: needs\.policy\.outputs\.release == ''tag'' \|\| needs\.policy\.outputs\.release == ''tag\+release''\r?$' -and [regex]::Matches($templateWorkflow, '(?m)^\s+contents: write\r?$').Count -eq 1)
+Check 'tag-release.yml runs its one write job after the policy and test jobs, only for release: tag or tag+release' ($templateWorkflow -match '(?m)^    needs: \[policy, test\]\r?\n    if: needs\.policy\.outputs\.release == ''tag'' \|\| needs\.policy\.outputs\.release == ''tag\+release''\r?$' -and [regex]::Matches($templateWorkflow, '(?m)^\s+contents: write\r?$').Count -eq 1)
 
 $temp = Join-Path ([IO.Path]::GetTempPath()) "publish-release-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $temp | Out-Null
@@ -156,6 +156,7 @@ try {
     Check 'a new version: the script exits 0' ($run.Code -eq 0) $run.Output
     Check 'a new version: origin gets the tag v0.2.0' ((Get-OriginTag $work) -ccontains 'v0.2.0') ((Get-OriginTag $work) -join ', ')
     Check 'a new version: the tag is annotated and names the commit' ((& git -C $work cat-file -t 'refs/tags/v0.2.0') -eq 'tag' -and (& git -C $work rev-parse 'v0.2.0^{commit}') -eq $head)
+    Check 'a new version: without -Sign the tag carries no signature' (-not ((& git -C $work cat-file -p 'refs/tags/v0.2.0') -join "`n").Contains('-----BEGIN')) ''
     $notesPath = Join-Path $releases 'v0.2.0'
     $notes = if (Test-Path -LiteralPath $notesPath) { (Get-Content -Raw -LiteralPath $notesPath).Trim() } else { '' }
     Check 'a new version: the release has the section without its heading or the link references' ($notes -eq "### Added`n`n- The second thing.") $notes
@@ -179,6 +180,24 @@ try {
     $work = New-Clone 'tag-only' '- release: tag'
     $run = Invoke-Publish $work
     Check 'release: tag: it pushes the tag and publishes no release' ($run.Code -eq 0 -and (Get-OriginTag $work) -ccontains 'v0.2.0' -and -not (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases')) $run.Output
+
+    $work = New-Clone 'signed' '- release: tag+release'
+    # A stand-in for the signing program: it reads the tag's text, reports a signature on Git's status file descriptor and prints one.
+    $signer = Join-Path $temp 'fake-sign'
+    $signerLines = @(
+        '#!/bin/sh',
+        'cat >/dev/null',
+        "printf '\n[GNUPG:] SIG_CREATED \n' >&2",
+        "printf '%s\n' '-----BEGIN SIGNED MESSAGE-----' 'c3RhbmQtaW4=' '-----END SIGNED MESSAGE-----'"
+    )
+    [IO.File]::WriteAllText($signer, (($signerLines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+    if (-not $IsWindows) { & chmod +x $signer }
+    & git -C $work config gpg.format x509
+    & git -C $work config gpg.x509.program ($signer -replace '\\', '/')
+    $run = Invoke-Publish $work @('-Sign')
+    Check '-Sign: the script exits 0' ($run.Code -eq 0) $run.Output
+    Check '-Sign: origin gets the tag v0.2.0' ((Get-OriginTag $work) -ccontains 'v0.2.0') ((Get-OriginTag $work) -join ', ')
+    Check '-Sign: the tag holds the signature' (((& git -C $work cat-file -p 'refs/tags/v0.2.0') -join "`n").Contains('-----BEGIN SIGNED MESSAGE-----')) ((& git -C $work cat-file -p 'refs/tags/v0.2.0') -join "`n")
 
     foreach ($case in @(
             @{ Name = 'release: none'; Landing = '- release: none' },

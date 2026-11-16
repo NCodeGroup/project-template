@@ -79,7 +79,7 @@ jobs:
         run: |
           # A failed install fails the step: GitHub's pwsh checks only the last command's exit code.
           $PSNativeCommandUseErrorActionPreference = $true
-          python -m pip install --upgrade pip pytest
+          python -m pip install --upgrade pip pytest pytest-cov
           if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
           if (Test-Path pyproject.toml) { python -m pip install -e . }
 {%- elif stack == 'node' %}

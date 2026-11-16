@@ -139,6 +139,7 @@ Create one with `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote` ([README](
 | Land it: push or open the pull request, tag, release, close the issue | `/ship-plan` | `/ship-plan` | `/ship-plan` |
 | Finish, once it has landed | `/finish-plan` | `/finish-plan` | `/finish-plan` |
 | Lost track of where a plan stands | `/continue-plan` | `/continue-plan` | `/continue-plan` |
+| Verify the OpenSSF Best Practices answers and write the prompt that registers the project or updates them | `/best-practices` | `/best-practices` | `/best-practices` |
 | Take issues from plan to landing in one session | `/run-issues #42 #43`, or `/run-issues label:bug` | `/run-issues #42 #43`, in a Local session | `copilot --model claude-opus-5.5 --allow-all`, then `/run-issues #42 #43` |
 | Address the comments and discussions on a pull request | `/address-feedback #42` | `/address-feedback #42`, in a Local session | `copilot --model claude-opus-5.5 --allow-all`, then `/address-feedback #42` |
 | Address them round after round until the pull request merges | `/run-feedback #42` | `/run-feedback #42`, in a Local session | `copilot --model claude-opus-5.5 --allow-all`, then `/run-feedback #42` |

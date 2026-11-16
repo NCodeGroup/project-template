@@ -37,7 +37,7 @@ How `/ship-plan` lands a reviewed plan. `integrate`: `pull-request` pushes the p
 - draft: {% if git_host == 'github' and code_review is defined and code_review %}yes{% else %}no{% endif %}
 - follow-ups: issues
 - follow-up-label: follow-up
-- gate: {% if stack == 'dotnet' %}./build/dod.ps1 -Fast{% else %}none{% endif %}
+- gate: {% if stack == 'dotnet' %}./build/dod.ps1 -Fast{% elif stack == 'node' and node_lint is defined and node_lint %}if (Test-Path package.json) { {{ package_manager }} run lint }{% else %}none{% endif %}
 - protect: none
 - pr-format: none
 - review-bots: ncode-review

@@ -4,7 +4,11 @@
 {%- set review = github and (code_review | default(false)) %}
 {%- set codeql = github and stack in ['dotnet', 'node', 'python'] %}
 {%- set csharp = stack == 'dotnet' and (csharp_format | default(false)) %}
+{%- set biome = stack == 'node' and (node_lint | default(false)) %}
+{%- set pm = package_manager | default('npm') %}
+{%- set coverage = (coverage_gate | default(false)) and stack in ['dotnet', 'python', 'node', 'powershell'] %}
 {%- set spdx = license | default('') %}
+{%- set headers = stack != 'dotnet' and (file_headers | default(false)) %}
 {%- set ci = '.github/workflows/ci.yml' if github else '.gitlab-ci.yml' %}
 {%- set pr = 'pull request' if github else 'merge request' %}
 {%- set host = 'GitHub' if github else 'GitLab' %}
@@ -104,13 +108,13 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `build_floss_tools` | SHOULD | yes | no | {% if stack == 'dotnet' %}**Met**: the .NET SDK is FLOSS.{% else %}**Check**: Met when every build tool is FLOSS; N/A without a build.{% endif %} |
 | `test` | MUST | no | no | **Check**: Met once the project has an automated test suite: [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test, names its command, and `{{ ci }}` runs it. |
 | `test_invocation` | SHOULD | no | no | {% if test_command %}**Met**: `{{ test_command }}`, in [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test.{% else %}**Gap**: the project has no test command yet.{% endif %} |
-| `test_most` | SUGGESTED | no | no | **Check**: a measured coverage figure ([Checks](#checks)), even when CI doesn't gate on it. |
+| `test_most` | SUGGESTED | no | no | {% if coverage %}**Met**: CI fails below 90% of the statements and 80% of the branches (`.template/Test-Coverage.ps1`); cite a passing run's figures.{% else %}**Check**: a measured coverage figure ([Checks](#checks)), even when CI doesn't gate on it.{% endif %} |
 | `test_continuous_integration` | SUGGESTED | no | no | **Met**: `{{ ci }}` runs the build and the tests on every {{ pr }}. |
 | `test_policy` | MUST | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
 | `tests_are_added` | MUST | no | no | **Check**: cite recent {{ pr }}s that added a feature and its tests. |
 | `tests_documented_added` | SUGGESTED | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
-| `warnings` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: warnings are errors, and the .NET analyzers run at `latest-recommended` (`build/ProjectTemplate.props`).{% elif 'Invoke-ScriptAnalyzer' in build_command %}**Met**: the build command runs PSScriptAnalyzer.{% else %}**Check**: Met once a compiler's strict mode or a linter runs in CI; the template adds none for this stack.{% endif %} |
-| `warnings_fixed` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: a warning fails the build.{% elif '-EnableExit' in build_command %}**Met**: `-EnableExit` fails the build on a finding.{% else %}**Check**: Met when CI fails on a warning.{% endif %} |
+| `warnings` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: warnings are errors, and the .NET analyzers run at `latest-recommended` (`build/ProjectTemplate.props`).{% elif 'Invoke-ScriptAnalyzer' in build_command %}**Met**: the build command runs PSScriptAnalyzer.{% elif biome %}**Met**: CI and the Landing gate run Biome's linter, `{{ pm }} run lint`.{% else %}**Check**: Met once a compiler's strict mode or a linter runs in CI; the template adds none for this stack.{% endif %} |
+| `warnings_fixed` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: a warning fails the build.{% elif '-EnableExit' in build_command %}**Met**: `-EnableExit` fails the build on a finding.{% elif biome %}**Met**: `biome ci --error-on-warnings` fails CI on a warning.{% else %}**Check**: Met when CI fails on a warning.{% endif %} |
 | `warnings_strict` | SUGGESTED | yes | no | {% if stack == 'dotnet' %}**Met**: warnings as errors, nullable reference types, and the analyzers at `latest-recommended` with code style enforced in the build.{% else %}**Check**: Met when the strictest practical settings are on.{% endif %} |
 
 ### Security
@@ -142,10 +146,10 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `static_analysis_common_vulnerabilities` | SUGGESTED | yes | no | {% if codeql %}**Check**: CodeQL's security queries, while its default setup runs.{% else %}**Check**: Met when that tool has rules for common vulnerabilities.{% endif %} |
 | `static_analysis_fixed` | MUST | yes | no | **Check**: Met when no confirmed finding of medium or higher severity is open{% if codeql %}: Security > Code scanning with `tool:CodeQL` shows none, and Scorecard's alerts there are posture checks, not code findings{% endif %}. Name any finding dismissed as won't fix. |
 | `static_analysis_often` | SUGGESTED | yes | no | {% if codeql %}**Check**: Met while CodeQL runs on every {{ pr }}; Scorecard also runs on every push to the default branch and weekly.{% else %}**Check**: Met when the analysis runs on every change or daily.{% endif %} |
-| `dynamic_analysis` | SUGGESTED | no | no | **Gap**: Unmet until a fuzzer, property tests or another dynamic tool runs before each release; the template runs none. |
+| `dynamic_analysis` | SUGGESTED | no | no | {% if coverage and github %}**Check**: Met while `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`, since `.github/workflows/tag-release.yml` then runs CI's tests again on each release's commit before it tags it, and CI fails below 80% of the branches, which the criterion counts as dynamic analysis ([ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)).{% elif github %}**Gap**: Unmet until a fuzzer, property tests or a test suite with 80% branch coverage runs before each release: `.\.template\Update-Project.ps1 -Data @{ coverage_gate = $true }` makes the tests `tag-release.yml` runs before each release one.{% else %}**Gap**: Unmet until a fuzzer, property tests or a test suite with 80% branch coverage runs before each release; GitLab has no release workflow from the template.{% endif %} |
 | `dynamic_analysis_unsafe` | SUGGESTED | yes | no | **N/A**: {% if stack == 'dotnet' %}C# is memory-safe; it applies only to `unsafe` code{% else %}it applies only to code in a memory-unsafe language, such as C or C++{% endif %}. |
-| `dynamic_analysis_enable_assertions` | SUGGESTED | no | no | **Gap**: Unmet without dynamic analysis. |
-| `dynamic_analysis_fixed` | MUST | yes | no | **N/A**: while no dynamic analysis runs; then Met when its confirmed findings are fixed. |
+| `dynamic_analysis_enable_assertions` | SUGGESTED | no | no | {% if coverage and github %}**Check**: Met when the tests that run before a release run with the code's assertions on, such as a Debug build or `assert` statements that aren't stripped.{% else %}**Gap**: Unmet without dynamic analysis.{% endif %} |
+| `dynamic_analysis_fixed` | MUST | yes | no | {% if coverage and github %}**Check**: Met while each release's tests pass before it is tagged, since a failure stops the release; name any finding left open.{% else %}**N/A**: while no dynamic analysis runs; then Met when its confirmed findings are fixed.{% endif %} |
 
 ## Silver
 
@@ -168,7 +172,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `documentation_security` | MUST | yes | yes | **Check**: [assurance-case.md](assurance-case.md), Security Requirements; Met once written. |
 | `documentation_quick_start` | MUST | yes | yes | **Check**: Met once [README.md](../README.md) has a quick start that gets a new user doing something. |
 | `documentation_current` | MUST | yes | no | **Met**: a document changes in the same {{ pr }} as the code it describes ([docs/README.md](README.md), Rules); cite a recent one. |
-| `documentation_achievements` | MUST | no | yes | {% if project %}**Check**: Met once [README.md](../README.md) shows the badge at the top of this page, linked to project {{ project }}, within 48 hours of earning a level.{% else %}**Gap**: Unmet until [README.md](../README.md) shows the badge, linked to the project's number, within 48 hours of earning a level: record the number with `.\.template\Update-Project.ps1 -Data @{ best_practices_project = '<number>' }`, then add the badge the top of this page shows.{% endif %} |
+| `documentation_achievements` | MUST | no | yes | {% if project %}**Check**: Met once [README.md](../README.md) shows the badge at the top of this page, linked to project {{ project }}, within 48 hours of earning a level. `.\.template\Update-Project.ps1` says so while it doesn't.{% else %}**Gap**: Unmet until [README.md](../README.md) shows the badge, linked to the project's number, within 48 hours of earning a level: record the number with `.\.template\Update-Project.ps1 -Data @{ best_practices_project = '<number>' }`, then add the badge the top of this page shows.{% endif %} |
 | `accessibility_best_practices` | SHOULD | yes | no | **Check**: N/A for software without a user interface, such as a library; otherwise Met when the interface follows accessibility practice. |
 | `internationalization` | SHOULD | yes | no | **Check**: N/A only when the software shows people no text and sorts none; software that writes English messages for people is Unmet until they can be translated. |
 | `sites_password_security` | MUST | yes | no | **N/A**: the project's sites are {{ host }}{% if library %} and nuget.org{% endif %}, and the project stores no password of its own. |
@@ -192,7 +196,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
 | `coding_standards` | MUST | yes | yes | **Met**: [AGENTS.md](../AGENTS.md) and the instruction files it lists, and `.editorconfig`{% if stack == 'dotnet' %}, with the C# conventions in `.github/instructions/csharp.instructions.md`{% endif %}. |
-| `coding_standards_enforced` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: the build enforces code style through the analyzers{% if csharp %}, and `./build/dod.ps1` checks the formatting with CSharpier{% endif %}.{% elif 'Invoke-ScriptAnalyzer' in build_command %}**Met**: the build runs PSScriptAnalyzer.{% else %}**Gap**: Unmet until a linter or formatter runs in CI; the template adds none for this stack.{% endif %} |
+| `coding_standards_enforced` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: the build enforces code style through the analyzers{% if csharp %}, and `./build/dod.ps1` checks the formatting with CSharpier{% endif %}.{% elif 'Invoke-ScriptAnalyzer' in build_command %}**Met**: the build runs PSScriptAnalyzer.{% elif biome %}**Met**: CI and the Landing gate run `{{ pm }} run lint`, Biome's formatter and linter, with the rules in `biome.json` ([ADR-0201](decisions/project-template/0201-biome-lints-and-formats-javascript-and-typescript.md)).{% elif stack == 'node' %}**Gap**: Unmet until a linter or formatter runs in CI: `.\.template\Update-Project.ps1 -Data @{ node_lint = $true }` adds Biome.{% else %}**Gap**: Unmet until a linter or formatter runs in CI; the template adds none for this stack.{% endif %} |
 | `build_standard_variables` | MUST | yes | no | **N/A**: it applies only to a build that makes native binaries. |
 | `build_preserve_debug` | SHOULD | yes | no | {% if stack == 'dotnet' %}**Met**: Release builds keep their PDB files{% if library %}, and each package has a symbol package{% endif %}.{% else %}**Check**: N/A without a build or an installation step.{% endif %} |
 | `build_non_recursive` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: one solution build, with MSBuild's project references.{% else %}**Check**: N/A without a build system.{% endif %} |
@@ -201,12 +205,12 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `installation_standard_variables` | MUST | yes | no | **N/A**: it applies only to an installer that writes files where users choose. |
 | `installation_development_quick` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Prerequisites, Set Up, and Build and Test. |
 | `external_dependencies` | MUST | yes | yes | {% if stack == 'dotnet' %}**Met**: `Directory.Packages.props` and the project files.{% elif stack == 'node' %}**Check**: `package.json` and its lock file.{% elif stack == 'python' %}**Check**: `requirements.txt` or `pyproject.toml`.{% else %}**Check**: the file the ecosystem reads its dependencies from.{% endif %} |
-| `dependency_monitoring` | MUST | yes | no | {% if github %}**Check**: Dependabot (`.github/dependabot.yml`) and its alerts, which the template's `tools/Set-RepositoryBaseline.ps1` turns on; Security > Dependabot shows the open ones.{% else %}**Gap**: Unmet until something checks the dependencies for known vulnerabilities; the template adds nothing on GitLab.{% endif %} |
+| `dependency_monitoring` | MUST | yes | no | {% if github %}**Check**: Dependabot (`.github/dependabot.yml`) and its alerts, which the template's `tools/Set-RepositoryBaseline.ps1` turns on; Security > Dependabot shows the open ones.{% elif stack in ['node', 'python'] %}**Check**: the `dependency-audit` job in `.gitlab-ci.yml` fails on a known vulnerability of moderate severity or above on every pipeline ([ADR-0029](decisions/project-template/0029-gitlab-projects-audit-their-dependencies-in-ci.md)); Met once the weekly pipeline the template's `tools/Set-GitLabBaseline.ps1` schedules runs it too.{% elif stack == 'dotnet' %}**Check**: CI's build fails on a NuGet vulnerability advisory (`build/ProjectTemplate.props`); Met once the weekly pipeline the template's `tools/Set-GitLabBaseline.ps1` schedules runs it too ([ADR-0029](decisions/project-template/0029-gitlab-projects-audit-their-dependencies-in-ci.md)).{% else %}**Gap**: Unmet until something checks the dependencies for known vulnerabilities; the template checks none for this stack on GitLab.{% endif %} |
 | `updateable_reused_components` | MUST | yes | no | **Met**: dependencies are pinned and moved by reviewed updates{% if github %} that Dependabot proposes, with actions pinned to a full commit SHA{% endif %}. |
 | `interfaces_current` | SHOULD | yes | no | **Check**: no deprecated API in use where a FLOSS alternative exists{% if stack == 'dotnet' %}; a use of an obsolete API fails the build, as warnings are errors{% endif %}. |
 | `automated_integration_testing` | MUST | no | no | **Met**: `{{ ci }}` runs the tests on every {{ pr }} and push to the default branch, and reports the result. |
 | `regression_tests_added50` | MUST | yes | no | **Check**: at least half of the bugs fixed in the last six months got a regression test ([Checks](#checks)). |
-| `test_statement_coverage80` | MUST | yes | no | **Check**: a measured statement coverage of 80% or more ([Checks](#checks)). |
+| `test_statement_coverage80` | MUST | yes | no | {% if coverage %}**Met**: CI fails below 90% of the statements (`.template/Test-Coverage.ps1`, [ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)); cite a passing run's figure.{% else %}**Check**: a measured statement coverage of 80% or more ([Checks](#checks)).{% endif %} |
 | `test_policy_mandated` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3, is the written policy. |
 | `tests_documented_added` | MUST | yes | no | **Met**: the same item, in the instructions for a change. |
 | `warnings_strict` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: warnings as errors, nullable reference types, and the analyzers at `latest-recommended` with code style enforced in the build.{% else %}**Check**: Met when the strictest practical settings are on.{% endif %} |
@@ -223,8 +227,8 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `crypto_tls12` | SHOULD | yes | no | **Check**: N/A without TLS; otherwise Met when nothing pins a protocol older than TLS 1.2. |
 | `crypto_certificate_verification` | MUST | yes | no | **Check**: N/A without TLS; otherwise Met when nothing turns certificate verification off ([Checks](#checks)). |
 | `crypto_verification_private` | MUST | yes | no | **Check**: the same evidence. |
-| `signed_releases` | MUST | yes | no | {% if ghlib %}**Met**: nuget.org signs each package, and each release carries build provenance; [SECURITY.md](../SECURITY.md#verify-a-package) says how to verify both.{% else %}**Gap**: Unmet until the project signs its releases and documents how to verify them; the template does so only for a NuGet library on GitHub. N/A when the releases aren't meant for wide use.{% endif %} |
-| `version_tags_signed` | SUGGESTED | no | no | **Unmet**: the template's release automation doesn't sign tags. |
+| `signed_releases` | MUST | yes | no | {% if ghlib %}**Met**: nuget.org signs each package, and each release carries build provenance; [SECURITY.md](../SECURITY.md#verify-a-package) says how to verify both.{% elif github %}**Check**: Met once the repository has immutable releases, which the template's `tools/Set-RepositoryBaseline.ps1` turns on: GitHub then signs an attestation of each release, and [SECURITY.md](../SECURITY.md#verify-a-release), Verify a Release, says how to check it with `gh release verify` ([ADR-0028](decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md)). N/A when the releases aren't meant for wide use.{% else %}**Gap**: Unmet until the project signs its releases and documents how to verify them; the template does so only on GitHub. N/A when the releases aren't meant for wide use.{% endif %} |
+| `version_tags_signed` | SUGGESTED | no | no | {% if github %}**Check**: Met while the repository is public: `.github/workflows/tag-release.yml` signs each release tag with gitsign, and [SECURITY.md](../SECURITY.md#verify-a-release), Verify a Release, says how to check it ([ADR-0028](decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md)); a private repository's tags stay unsigned.{% else %}**Unmet**: the template's release automation doesn't sign tags on GitLab.{% endif %} |
 | `input_validation` | MUST | yes | no | **Check**: list the entry points that take untrusted input and the checks each one makes. |
 | `hardening` | SHOULD | yes | no | **Check**: name the hardening in place, such as least-privilege workflow tokens, path guards and scoped credentials. |
 | `assurance_case` | MUST | no | yes | **Check**: [assurance-case.md](assurance-case.md); Met once its threat model, trust boundary, principles and weaknesses are written. |
@@ -247,8 +251,8 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 | `achieve_silver` | MUST | no | no | **Check**: the site sets it once the silver level is earned. |
 | `bus_factor` | MUST | no | yes | **Person**: two or more people who could carry the project on; Unmet with one maintainer, which keeps gold from being earned. |
 | `contributors_unassociated` | MUST | no | yes | **Person**: at least two significant contributors from different organizations. |
-| `copyright_per_file` | MUST | no | no | {% if csharp %}**Check**: the C# file header `.editorconfig` sets starts with the copyright line, and the build fails a C# file without it; check every other source file, such as scripts.{% else %}**Gap**: Unmet until each source file starts with a copyright line.{% endif %} |
-| `license_per_file` | MUST | no | no | {% if csharp and spdx %}**Check**: the C# file header holds `SPDX-License-Identifier: {{ spdx }}`, and the build fails a C# file without it; check every other source file.{% else %}**Gap**: Unmet until each source file has an `SPDX-License-Identifier` line.{% endif %} |
+| `copyright_per_file` | MUST | no | no | {% if csharp %}**Check**: the C# file header `.editorconfig` sets starts with the copyright line, and the build fails a C# file without it; check every other source file, such as scripts.{% elif headers %}**Met**: CI runs `.template/Test-FileHeaders.ps1`, which fails a source file without the copyright line; `-Fix` adds it ([ADR-0027](decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md)).{% else %}**Gap**: Unmet until each source file starts with a copyright line.{% if stack != 'dotnet' and spdx %} `.\.template\Update-Project.ps1 -Data @{ file_headers = $true }` turns on the check.{% endif %}{% endif %} |
+| `license_per_file` | MUST | no | no | {% if csharp and spdx %}**Check**: the C# file header holds `SPDX-License-Identifier: {{ spdx }}`, and the build fails a C# file without it; check every other source file.{% elif headers and spdx %}**Met**: CI runs `.template/Test-FileHeaders.ps1`, which fails a source file without `SPDX-License-Identifier: {{ spdx }}`; `-Fix` adds it ([ADR-0027](decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md)).{% else %}**Gap**: Unmet until each source file has an `SPDX-License-Identifier` line.{% if stack != 'dotnet' and spdx %} `.\.template\Update-Project.ps1 -Data @{ file_headers = $true }` turns on the check.{% endif %}{% endif %} |
 
 ### Change Control
 
@@ -268,8 +272,8 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 | `build_reproducible` | MUST | yes | yes | {% if stack == 'dotnet' %}**Check**: deterministic builds{% if library %} with Source Link{% endif %}; Met once a rebuild of a release's tag is shown to match it.{% else %}**Check**: N/A when no build occurs; otherwise Met once a rebuild of a release's tag is shown to match it.{% endif %} |
 | `test_invocation` | MUST | no | yes | {% if test_command %}**Met**: `{{ test_command }}`, in [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test.{% else %}**Gap**: the project has no test command yet.{% endif %} |
 | `test_continuous_integration` | MUST | no | yes | **Met**: `{{ ci }}` runs the build and the tests on every {{ pr }}. |
-| `test_statement_coverage90` | MUST | yes | no | **Check**: a measured statement coverage of 90% or more ([Checks](#checks)). |
-| `test_branch_coverage80` | MUST | yes | no | **Check**: a measured branch coverage of 80% or more ([Checks](#checks)). |
+| `test_statement_coverage90` | MUST | yes | no | {% if coverage %}**Met**: CI fails below 90% of the statements (`.template/Test-Coverage.ps1`, [ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)); cite a passing run's figure.{% else %}**Check**: a measured statement coverage of 90% or more ([Checks](#checks)).{% endif %} |
+| `test_branch_coverage80` | MUST | yes | no | {% if coverage and stack == 'powershell' %}**N/A**: Pester measures commands, not branches, and no FLOSS tool measures the branch coverage of PowerShell.{% elif coverage %}**Met**: CI fails below 80% of the branches (`.template/Test-Coverage.ps1`); cite a passing run's figure.{% else %}**Check**: a measured branch coverage of 80% or more ([Checks](#checks)).{% endif %} |
 
 ### Security
 
@@ -285,8 +289,8 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
-| `dynamic_analysis` | MUST | yes | no | **Gap**: Unmet until a dynamic analysis tool runs before each major release; the template runs none. |
-| `dynamic_analysis_enable_assertions` | SHOULD | yes | no | **Gap**: Unmet without dynamic analysis. |
+| `dynamic_analysis` | MUST | yes | no | {% if coverage and github %}**Check**: Met while `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`, since `.github/workflows/tag-release.yml` then runs CI's tests again on each release's commit before it tags it, and CI fails below 80% of the branches, which the criterion counts as dynamic analysis ([ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)).{% elif github %}**Gap**: Unmet until a fuzzer, property tests or a test suite with 80% branch coverage runs before each release: `.\.template\Update-Project.ps1 -Data @{ coverage_gate = $true }` makes the tests `tag-release.yml` runs before each release one.{% else %}**Gap**: Unmet until a fuzzer, property tests or a test suite with 80% branch coverage runs before each release; GitLab has no release workflow from the template.{% endif %} |
+| `dynamic_analysis_enable_assertions` | SHOULD | yes | no | {% if coverage and github %}**Check**: Met when the tests that run before a release run with the code's assertions on, such as a Debug build or `assert` statements that aren't stripped.{% else %}**Gap**: Unmet without dynamic analysis.{% endif %} |
 
 ## Where a Level Stops
 
@@ -306,7 +310,7 @@ The Gap rows are the rest: each stays Unmet until the project, or a later templa
 
 The Check rows depend on these. Run them at the commit you answer for, and cite what they show.
 
-- **Coverage** (`test_most`, `test_statement_coverage80`, `test_statement_coverage90`, `test_branch_coverage80`): {% if stack == 'dotnet' %}`dotnet test --collect "XPlat Code Coverage"`, then the line and branch rates in each `coverage.cobertura.xml`{% elif stack == 'node' %}`node --test --experimental-test-coverage`, or the coverage option of the project's test runner{% elif stack == 'python' %}`python -m pytest --cov --cov-branch`, with the pytest-cov package{% elif stack == 'powershell' %}`Invoke-Pester -CI -CodeCoverage <paths>`{% else %}the coverage tool of the project's language{% endif %}. The criteria need a measured number, even when CI doesn't gate on it.
+- **Coverage** (`test_most`, `test_statement_coverage80`, `test_statement_coverage90`, `test_branch_coverage80`): {% if stack == 'dotnet' %}`dotnet test --collect "XPlat Code Coverage"`, then the line and branch rates in each `coverage.cobertura.xml`{% elif stack == 'node' %}`node --test --experimental-test-coverage`, or the coverage option of the project's test runner{% elif stack == 'python' %}`python -m pytest --cov --cov-branch`, with the pytest-cov package{% elif stack == 'powershell' %}`Invoke-Pester -CI -CodeCoverage <paths>`{% else %}the coverage tool of the project's language{% endif %}. The criteria need a measured number, even when CI doesn't gate on it.{% if coverage %} CI runs `./.template/Test-Coverage.ps1` after the tests, which prints both figures.{% endif %}
 - **Leaked credentials** (`no_leaked_credentials`): `gitleaks git --log-opts="--all" .` scans every commit{% if github %}, and Security > Secret scanning shows GitHub's own findings{% endif %}.
 - **Cryptography** (the `crypto_*` criteria): `git grep -n -i -E "crypt|cipher|hmac|md5|sha1|random"` in the project's own code. Nothing but hashes used as identifiers, such as a SHA-256 fingerprint, makes the cryptography criteria N/A.
 - **Network and TLS** (`crypto_used_network`, `crypto_tls12`, `crypto_certificate_verification`, `crypto_verification_private`): `git grep -n "http://"` finds a plain HTTP address other than localhost, and `git grep -n -i -E "rejectUnauthorized|NODE_TLS_REJECT_UNAUTHORIZED|ServerCertificateCustomValidationCallback|SkipCertificateCheck|verify=False|SslProtocols"` finds verification turned off or an old protocol pinned.
@@ -328,8 +332,9 @@ Land the repository changes first, such as the badge in [README.md](../README.md
 as it was until someone answers again. Two sessions work well: one in the repository, which runs the
 [checks](#checks) and writes the verified answers, and Claude in Chrome, which fills the form.
 
-To register and answer every level, replace OWNER/REPO with the repository's path, put the verified answers under
-ANSWERS or leave `none`, and paste this prompt into Claude in Chrome:
+`/best-practices`, run in the repository, does the checks and writes this prompt, or the update prompt below once the
+project is registered, with the answers filled in, to `best-practices-prompt.txt`. By hand, replace OWNER/REPO with the
+repository's path, put the verified answers under ANSWERS or leave `none`, and paste this prompt into Claude in Chrome:
 
 ```text
 Register OWNER/REPO on the OpenSSF Best Practices badge site (https://www.bestpractices.dev) and answer every criterion: passing, then silver, then gold, up to the highest level the evidence supports.
@@ -400,5 +405,6 @@ Report each criterion's old and new status, each level's percentage before and a
 {%- else %}
 Register at https://www.bestpractices.dev/en/projects/new with the repository's address, then answer each level's form
 from the tables above, passing first. Land a repository change before you answer for it: a saved answer stays as it
-was until someone answers again.
+was until someone answers again. `/best-practices`, run in the repository, does the checks and writes the verified
+answers to `best-practices-prompt.txt`.
 {%- endif %}

@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.99.0] - 2026-11-16
+
+### Added
+
+- A `/best-practices` command, in Claude Code, Copilot Chat and Copilot CLI, verifies a project's OpenSSF Best Practices answers in its repository: it runs the checks of `docs/best-practices-criteria.md` (coverage, a gitleaks scan of the whole history, cryptography and TLS, outbound addresses, the build, regression tests), resolves each evidence link, compares the answers saved at bestpractices.dev once the project is registered, and writes the prompt that registers the project or updates its answers to `best-practices-prompt.txt`, which `.gitignore` ignores. ([#401](https://github.com/NCodeGroup/project-template/issues/401))
+- A Node.js project's CI and Landing `gate` run Biome, `<package_manager> run lint`, with the rules in a project-owned `biome.json`, under the new `node_lint` answer; `CONTRIBUTING.md` says how to pin Biome and add its `lint` and `format` scripts. ([#402](https://github.com/NCodeGroup/project-template/issues/402), [ADR-0201](template/docs/decisions/project-template/0201-biome-lints-and-formats-javascript-and-typescript.md))
+- Under the new `coverage_gate` answer, CI fails below 90% of the statements or 80% of the branches, the gold thresholds, through `.template/Test-Coverage.ps1`: `build/dod.ps1` collects .NET's coverage in a Coverage stage, the default Python and PowerShell test commands write `coverage.xml`, and a Node.js project's `test` script writes `lcov.info`. ([#403](https://github.com/NCodeGroup/project-template/issues/403), [ADR-0026](template/docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md))
+- Under the new `file_headers` answer, for every stack but .NET, CI fails on a source file without the copyright line and the `SPDX-License-Identifier` line, through `.template/Test-FileHeaders.ps1`, whose `-Fix` adds them. ([#405](https://github.com/NCodeGroup/project-template/issues/405), [ADR-0027](template/docs/decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md))
+- On GitLab, a Node.js or Python project's CI audits its dependencies on every pipeline, and `tools/Set-GitLabBaseline.ps1` schedules a weekly pipeline, "Weekly dependency audit", so the checks also run when nothing is pushed. ([#407](https://github.com/NCodeGroup/project-template/issues/407), [ADR-0029](template/docs/decisions/project-template/0029-gitlab-projects-audit-their-dependencies-in-ci.md))
+- `.template\Update-Project.ps1` prints the badge line to add when `best_practices_project` is set and `README.md` doesn't show the badge, also when the project is already up to date. ([#408](https://github.com/NCodeGroup/project-template/issues/408), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
+- In a public GitHub repository, `tag-release.yml` signs each release tag with gitsign, and `.template/Publish-Release.ps1 -Sign` tags with `git tag -s`; `SECURITY.md`'s new Verify a Release section says how to check a tag with `gitsign verify-tag`. ([#409](https://github.com/NCodeGroup/project-template/issues/409), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+
+### Changed
+
+- `node_lint`, `coverage_gate` and `file_headers` are on for a new project and off for an updated or adopted one, as `csharp_format` is: turn one on with `.\.template\Update-Project.ps1 -Data @{ <answer> = $true }`. ([#402](https://github.com/NCodeGroup/project-template/issues/402), [#403](https://github.com/NCodeGroup/project-template/issues/403), [#405](https://github.com/NCodeGroup/project-template/issues/405))
+- `tag-release.yml` runs `ci.yml` again on a release's commit, through `ci.yml`'s new `workflow_call` trigger, and tags the release only once it passes; `.template\Update-Project.ps1` warns when `ci.yml` can't be called. ([#406](https://github.com/NCodeGroup/project-template/issues/406), [ADR-0026](template/docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md))
+- `tools/Set-RepositoryBaseline.ps1` turns on immutable releases, so GitHub signs an attestation of each release, except in a repository with `release-provenance.yml`; a new GitHub project's `SECURITY.md` says how to check one with `gh release verify`. ([#404](https://github.com/NCodeGroup/project-template/issues/404), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+- `docs/best-practices-criteria.md` answers `coding_standards_enforced`, `warnings`, the coverage criteria, `dynamic_analysis`, `copyright_per_file`, `license_per_file`, `signed_releases`, `version_tags_signed` and, on GitLab, `dependency_monitoring` from the checks a project has turned on. ([#402](https://github.com/NCodeGroup/project-template/issues/402), [#403](https://github.com/NCodeGroup/project-template/issues/403), [#404](https://github.com/NCodeGroup/project-template/issues/404), [#405](https://github.com/NCodeGroup/project-template/issues/405), [#406](https://github.com/NCodeGroup/project-template/issues/406), [#407](https://github.com/NCodeGroup/project-template/issues/407), [#409](https://github.com/NCodeGroup/project-template/issues/409))
+
 ## [0.98.0] - 2026-11-16
 
 ### Added
@@ -1570,7 +1589,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.98.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.99.0...HEAD
+[0.99.0]: https://github.com/NCodeGroup/project-template/compare/v0.98.0...v0.99.0
 [0.98.0]: https://github.com/NCodeGroup/project-template/compare/v0.97.0...v0.98.0
 [0.97.0]: https://github.com/NCodeGroup/project-template/compare/v0.96.0...v0.97.0
 [0.96.0]: https://github.com/NCodeGroup/project-template/compare/v0.95.0...v0.96.0
