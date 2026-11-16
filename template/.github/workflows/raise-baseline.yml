@@ -8,7 +8,8 @@
 #
 # Needs Settings > Actions > General > Workflow permissions > "Allow GitHub Actions to create and approve pull
 # requests", which tools/Set-RepositoryBaseline.ps1 in the project template turns on for a repository with this file.
-# The checkout keeps no credential; the branch check and the push get the token for that one command. The template owns this file.
+# The checkout keeps no credential; the branch check and the push get the token for that one command. The template
+# owns this file.
 name: Raise the package validation baseline
 
 on:

@@ -4,12 +4,12 @@
 #
 # publish.yml calls this workflow as a job after the push to nuget.org, beside the baseline job, so it runs in the same
 # run and attests the very packages that run built and published. It is not started by a workflow-run trigger:
-# tag-release.yml starts publish.yml with the workflow's GITHUB_TOKEN, and GitHub creates no workflow-run event for a run
-# started that way, so such a trigger never fired (the template's ADR-0151). publish.yml's own jobs keep only the
+# tag-release.yml starts publish.yml with the workflow's GITHUB_TOKEN, and GitHub creates no workflow-run event for a
+# run started that way, so such a trigger never fired (the template's ADR-0151). publish.yml's own jobs keep only the
 # permissions they need: the write permissions are granted to this job alone.
 #
-# To backfill a release whose Publish packages run succeeded while its packages artifact is still kept (14 days): Actions
-# > Attach release provenance > Run workflow, with the release's tag and the run's id, or gh workflow run
+# To backfill a release whose Publish packages run succeeded while its packages artifact is still kept (14 days):
+# Actions > Attach release provenance > Run workflow, with the release's tag and the run's id, or gh workflow run
 # release-provenance.yml -f tag=<tag> -f run-id=<run id>. The job checks that the id names a successful run of
 # publish.yml in this repository and that every package carries the tag's version, so it can't attest other files. A
 # backfilled attestation names this workflow's run and the commit it was started on, not the Publish run.
@@ -142,7 +142,8 @@ jobs:
           gh release upload $env:TAG (Get-ChildItem packages -Include *.nupkg,*.snupkg -Recurse).FullName "$env:TAG.intoto.jsonl" $sbom --clobber
           if ($LASTEXITCODE) { throw "gh release upload failed with exit code $LASTEXITCODE." }
 
-      # Proves the attestation exists and names this repository, so a broken signing step fails here, not for a consumer.
+      # Proves the attestation exists and names this repository, so a broken signing step fails here, not for a
+      # consumer.
       - name: Verify the attestations
         shell: pwsh
         env:
