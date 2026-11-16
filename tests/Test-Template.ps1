@@ -169,9 +169,10 @@ $cases = @(
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
     @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'Apache-2.0' } }
     @{ Name = 'dotnet-library-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT' } }
-    @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true' }; Refused = 'Required for a NuGet package' }
+    @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = '' }; Refused = 'Required for a NuGet package' }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
     @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT'; conduct_contact = 'conduct@example.test' } }
+    @{ Name = 'python-unlicensed'; Stack = 'python'; Host = 'github'; Data = @{ license = '' } }
     @{ Name = 'python-claude'; Stack = 'python'; Host = 'github'; Tools = @('claude') }
     @{ Name = 'dotnet-author-comment'; Stack = 'dotnet'; Host = 'github'; Data = @{ author_name = 'C# Tools; Inc.' } }
 )
@@ -263,6 +264,8 @@ foreach ($case in $cases) {
     }
     $dest = Join-Path $Work $name
     $tools = if ($case.Tools) { @($case.Tools) } else { $allTools }
+    # The license answered, else copier.yml's default.
+    $wantLicense = if ($case.Data -and $case.Data.Contains('license')) { $case.Data.license } else { 'Apache-2.0' }
 
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
@@ -375,19 +378,19 @@ foreach ($case in $cases) {
         $libraryWrong = @($libraryOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -ErrorAction SilentlyContinue) -ne $library })
         Check "${name}: library decisions only for a library" (-not $libraryWrong) ($libraryWrong -join ', ')
         $license = Join-Path $dest 'LICENSE.txt'
-        $licenseOk = switch ($case.Data.license) {
+        $licenseOk = switch ($wantLicense) {
             'MIT' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).StartsWith("MIT License`n`nCopyright (c) NCode Group`n") }
             'Apache-2.0' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).Contains('Apache License') }
             default { -not (Test-Path -LiteralPath $license) }
         }
         Check "${name}: LICENSE.txt for the license answered" $licenseOk
-        Check "${name}: COPYRIGHT.txt only for an Apache-2.0 library" ((Test-Path -LiteralPath (Join-Path $dest 'COPYRIGHT.txt')) -eq ($case.Data.license -eq 'Apache-2.0'))
+        Check "${name}: COPYRIGHT.txt only for an Apache-2.0 library" ((Test-Path -LiteralPath (Join-Path $dest 'COPYRIGHT.txt')) -eq ($wantLicense -eq 'Apache-2.0'))
         $templateIcon = Join-Path $dest 'NCodeGroup.png'
         Check "${name}: the template's icon only for a library that uses it" ((Test-Path -LiteralPath $templateIcon) -eq ($library -and $icon -eq 'NCodeGroup.png'))
         $editorconfig = Get-Content -LiteralPath (Join-Path $dest '.editorconfig') -Raw
         # Roslyn ends an .editorconfig value at the first ; or #, so the header must hold neither to be read whole: an author_name holding either gets no header.
         $author = if ($case.Data.author_name) { $case.Data.author_name } else { 'NCode Group' }
-        $headerLicense = if ($case.Data.license) { $case.Data.license } else { '' }
+        $headerLicense = $wantLicense
         $header = "file_header_template = Copyright $([char]0xA9) $author" + $(if ($headerLicense) { '\nSPDX-License-Identifier: ' + $headerLicense } else { '' })
         $headerLines = @($editorconfig -split '\r?\n' | Where-Object { $_.StartsWith('file_header_template') })
         $headerOk = if ($author -match '[;#]') { $headerLines.Count -eq 0 -and $editorconfig.Contains('# No file_header_template: author_name holds a ; or #, where Roslyn would cut the header short.') }
@@ -440,7 +443,7 @@ foreach ($case in $cases) {
     $indexHistory = if ($case.Host -eq 'github') { $ciForIndex -match '(?s)  build-and-test:.*?fetch-depth: 0.*?- name: Check the decision index' } else { $ciForIndex.Contains('- pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"') -and $ciForIndex.Contains('GIT_DEPTH: "0"') }
     Check "${name}: CI checks the decision index with the history to tell a new record" $indexHistory $ciForIndex
     # The repository's license: the license answer.
-    $licenseAnswer = if ($case.Data.license) { $case.Data.license } else { '' }
+    $licenseAnswer = $wantLicense
     $licensePath = Join-Path $dest 'LICENSE.txt'
     $licenseText = if (Test-Path -LiteralPath $licensePath) { Get-Content -LiteralPath $licensePath -Raw } else { '' }
     $licenseRight = switch ($licenseAnswer) { 'MIT' { $licenseText.StartsWith("MIT License`n`nCopyright (c) NCode Group`n") } 'Apache-2.0' { $licenseText.Contains('Apache License') } default { -not $licenseText } }

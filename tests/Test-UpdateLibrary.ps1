@@ -89,7 +89,7 @@ finally { Pop-Location }
 $release = "name: release`non: release`njobs:`n  push:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push out/*.nupkg`n"
 
 # unlicensed: no license answer, and a workflow of its own that publishes beside publish.yml.
-$unlicensed = New-Library 'unlicensed'
+$unlicensed = New-Library 'unlicensed' 'license='
 Push-Location $unlicensed
 try {
     [IO.File]::WriteAllText((Join-Path $unlicensed '.github/workflows/release.yml'), $release)
