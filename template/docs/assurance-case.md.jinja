@@ -38,7 +38,8 @@ Not written yet.
 
 - **Gate:**
 {%- if stack == 'dotnet' %} `./build/dod.ps1` builds in Release with warnings as errors ([ADR-0100](decisions/project-template/0100-warnings-are-errors-in-every-project.md)), runs the analyzers and the banned-API list in `build/BannedSymbols.txt` ([ADR-0102](decisions/project-template/0102-disallowed-apis-are-banned-at-build-time.md)), and runs the tests; CI runs the commands on every {{ pr }}.
-{%- else %} CI runs the project's commands on every {{ pr }}.
+{%- elif build_command or test_command %} CI runs the project's commands on every {{ pr }}.
+{%- else %} The project has no build or test command yet, so CI runs none; once `CONTRIBUTING.md` names them, CI runs them on every {{ pr }}.
 {%- endif %}
 {%- if git_host == 'github' %}
 - **Static analysis:** with CodeQL's default setup configured, the repository ruleset blocks a pull request that adds a CodeQL alert at warning level or above, or a security alert of any severity ([ADR-0005](decisions/project-template/0005-the-default-branch-accepts-changes-only-through-pull-requests.md)).
