@@ -10,8 +10,8 @@ OpenSSF Scorecard v5.6.0's Code-Review check (`probes/codeApproved/impl.go`) cou
 from anyone but the pull request's author, a bot included. Its Branch-Protection check
 (`checks/evaluation/branch_protection.go`) scores no tier after tier 2 until tier 2, one required approval, is met.
 A sole maintainer's pull requests have no approving reviewer, so every review is `COMMENTED`: NCodeGroup/Buffers scored
-0 on Code-Review and 4 on Branch-Protection. NCode Review v1.4.0 adds the `approve` input, which submits an approving review
-when the review is clean. Last-push approval at zero approvals blocked NCodeGroup/Buffers#62.
+0 on Code-Review and 4 on Branch-Protection. NCode Review v1.4.0 adds the `approve` input, which submits an approving
+review when the review is clean. Last-push approval at zero approvals blocked NCodeGroup/Buffers#62.
 
 ## Decision
 
@@ -21,8 +21,8 @@ when the review is clean. Last-push approval at zero approvals blocked NCodeGrou
    of the last push together, with no bypass. Where it doesn't, the ruleset requires zero approvals and never
    last-push approval. The script never loosens a ruleset: it prints the fix only for approval of the last push with no
    required approval.
-3. A new project with NCode Review sets `draft: yes`, so its workflows open pull requests as drafts. Marking one ready is
-   the maintainer's review.
+3. A new project with NCode Review sets `draft: yes`, so its workflows open pull requests as drafts. Marking one
+   ready is the maintainer's review.
 4. A maintainer approves the pull requests of bots, which NCode Review skips, and those from forks, which it skips too.
    No template workflow approves a pull request, though a token's approval would count.
 5. A push dismisses the approval. The maintainer comments `/review` to get a new one, as `/run-feedback` and
@@ -61,7 +61,8 @@ when the review is clean. Last-push approval at zero approvals blocked NCodeGrou
 {%- if git_host == 'github' %}
 - [ADR-0020](0020-github-projects-are-scored-by-openssf-scorecard.md): GitHub projects are scored by OpenSSF Scorecard.
 {%- endif %}
-- [NCodeGroup/code-review ADR-1009](https://github.com/NCodeGroup/code-review/blob/main/docs/decisions/1009-a-clean-review-approves-the-pull-request.md):
+- [NCodeGroup/code-review ADR-1009](
+  https://github.com/NCodeGroup/code-review/blob/main/docs/decisions/1009-a-clean-review-approves-the-pull-request.md):
   a clean review approves the pull request.
 - [NCodeGroup/project-template#382](https://github.com/NCodeGroup/project-template/issues/382)
 - [NCodeGroup/project-template#385](https://github.com/NCodeGroup/project-template/issues/385)

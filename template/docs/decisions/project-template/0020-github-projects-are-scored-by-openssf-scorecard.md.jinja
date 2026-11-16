@@ -57,21 +57,23 @@ The table lists each check, what the template does for it and what needs a perso
 
 ## Options considered
 
-- Requiring one approving review in the ruleset. Chosen where NCode Review approves (ADR-0022); elsewhere a sole maintainer could not merge.
+- Requiring one approving review in the ruleset. Chosen where NCode Review approves (ADR-0022); elsewhere a sole
+  maintainer could not merge.
 - Running Scorecard without publishing the score. Rejected: the badge and code scanning findings are the point.
 - Running the Scorecard workflow in every GitHub project (chosen).
 
 ## Consequences
 {% if review %}
-- A solo project's score tops out below 10, for the reasons in the table's last column: Contributors, Branch-Protection's
-  tier 4 and silver's second owner need other people. With NCode Review, Code-Review rises toward 10 and
-  Branch-Protection reaches about 8.
+- A solo project's score tops out below 10, for the reasons in the table's last column: Contributors,
+  Branch-Protection's tier 4 and silver's second owner need other people. With NCode Review, Code-Review rises toward 10
+  and Branch-Protection reaches about 8.
 {%- else %}
 - A solo project's score tops out below 10, for the reasons in the table's last column: Contributors, Code-Review's
   non-author approval, Branch-Protection's tier 2 (a required approval, which a sole maintainer can't meet) and silver's
   second owner need other people. With NCode Review, Code-Review rises toward 10 and Branch-Protection reaches about 8.
 {%- endif %}
-- A private repository lists the workflow in `project_owned_files` and deletes it; until it does, the workflow fails to publish its score.
+- A private repository lists the workflow in `project_owned_files` and deletes it; until it does, the workflow
+  fails to publish its score.
 
 ## References
 
