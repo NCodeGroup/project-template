@@ -49,6 +49,9 @@ never brings a number the project already uses
 {%- if git_host == 'github' %}
 | [0028](0028-github-releases-are-immutable-and-their-tags-signed.md) | GitHub releases are immutable, outside a library with `release-provenance.yml`, and a public repository's release tags are signed with gitsign; `SECURITY.md` says how to verify both (amends 0016) |
 {%- endif %}
+{%- if git_host == 'gitlab' %}
+| [0029](0029-gitlab-projects-audit-their-dependencies-in-ci.md) | On GitLab, a Node.js or Python project's CI audits its dependencies on every pipeline, and a weekly pipeline runs it when nothing is pushed |
+{%- endif %}
 {%- if stack == 'dotnet' %}
 
 ## .NET

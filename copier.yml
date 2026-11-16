@@ -215,6 +215,7 @@ _exclude:
   - |-
     {% if git_host is defined and git_host != 'gitlab' %}
     /.gitlab-ci.yml
+    docs/decisions/project-template/0029-gitlab-projects-audit-their-dependencies-in-ci.md
     {% endif %}
   - |-
     {% if license is defined and license not in ['Apache-2.0', 'MIT'] %}
