@@ -328,8 +328,9 @@ Land the repository changes first, such as the badge in [README.md](../README.md
 as it was until someone answers again. Two sessions work well: one in the repository, which runs the
 [checks](#checks) and writes the verified answers, and Claude in Chrome, which fills the form.
 
-To register and answer every level, replace OWNER/REPO with the repository's path, put the verified answers under
-ANSWERS or leave `none`, and paste this prompt into Claude in Chrome:
+`/best-practices`, run in the repository, does the checks and writes this prompt, or the update prompt below once the
+project is registered, with the answers filled in, to `best-practices-prompt.txt`. By hand, replace OWNER/REPO with the
+repository's path, put the verified answers under ANSWERS or leave `none`, and paste this prompt into Claude in Chrome:
 
 ```text
 Register OWNER/REPO on the OpenSSF Best Practices badge site (https://www.bestpractices.dev) and answer every criterion: passing, then silver, then gold, up to the highest level the evidence supports.
@@ -400,5 +401,6 @@ Report each criterion's old and new status, each level's percentage before and a
 {%- else %}
 Register at https://www.bestpractices.dev/en/projects/new with the repository's address, then answer each level's form
 from the tables above, passing first. Land a repository change before you answer for it: a saved answer stays as it
-was until someone answers again.
+was until someone answers again. `/best-practices`, run in the repository, does the checks and writes the verified
+answers to `best-practices-prompt.txt`.
 {%- endif %}
