@@ -22,7 +22,10 @@
     .github/workflows/tag-release.yml, it prints the warning .\.template\Update-Project.ps1 prints: the Tag and publish
     release workflow starts publish.yml through that trigger, so until it has one, a release ships no packages.
 
-    When that publish.yml doesn't call .github/workflows/release-provenance.yml and .github/workflows/raise-baseline.yml, which the adoption added and which no longer start on workflow_run, it prints the warning .\.template\Update-Project.ps1 prints (ADR-0151): until publish.yml calls them, no release gets its provenance or baseline pull request.
+    When that publish.yml doesn't call .github/workflows/release-provenance.yml or
+    .github/workflows/raise-baseline.yml, or both, which the adoption added and which no longer start on workflow_run,
+    it prints the warning .\.template\Update-Project.ps1 prints (ADR-0151): until publish.yml calls each, no release
+    gets the provenance or the baseline pull request the missing one makes.
 
     For a library it lists the stale NuGet logistics it finds as follow-ups (Get-NuGetLogistics): a .props file no project imports, GeneratePackageOnBuild, settings the template already makes, a .sln, a UTF-8 BOM and projects at the repository root, and the package Description and PackageTags that differ from the newest published package (Get-PackageMetadataDrift).
 
