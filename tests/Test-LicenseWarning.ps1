@@ -12,6 +12,11 @@
                    Apache-2.0; with -Data @{ license = 'Apache-2.0' } it adds LICENSE.txt and COPYRIGHT.txt, records
                    the license and warns no more.
       own-license  A blank answer beside a LICENSE file of the repository's own: no warning, and the file is kept.
+      adopt-unlicensed
+                   Adopting a repository without a license: Adopt-Project.ps1 answers blank, not the Apache-2.0
+                   default, adds no license file and prints the same warning, with the command that adds Apache-2.0.
+      adopt-own-license
+                   Adopting a repository with a LICENSE file of its own: no warning, and the file is kept.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-license-warning-test-<process ID> in the
@@ -87,6 +92,18 @@ try {
     Check 'own-license: a blank answer beside a LICENSE file of the repository''s own gets no warning' ($result.ExitCode -eq 0 -and -not $result.Output.Contains('No license:') -and [IO.File]::ReadAllText((Join-Path $ownLicense 'LICENSE')) -eq "Own license.`n") $result.Output
 }
 finally { Pop-Location }
+
+# adopt-unlicensed: Adopt-Project.ps1 on a repository without a license, answering nothing about one.
+$adopt = Join-Path $repoRoot 'Adopt-Project.ps1'
+$adoptUnlicensed = New-Fixture 'adopt-unlicensed' @{ 'README.md' = "# Adopt Unlicensed`n" } 'https://github.com/example/adopt-unlicensed.git'
+$adoptOut = & $adopt -Path $adoptUnlicensed -Template $tpl -Ref v0.1.0 -NoVerify | Out-String
+Check 'adopt-unlicensed: answers a blank license, not the Apache-2.0 default, and adds no license file' ((Get-Content -Raw -LiteralPath (Join-Path $adoptUnlicensed '.copier-answers.yml')) -match "(?m)^license: ''\r?$" -and -not (Test-Path -LiteralPath (Join-Path $adoptUnlicensed 'LICENSE.txt')) -and -not (Test-Path -LiteralPath (Join-Path $adoptUnlicensed 'COPYRIGHT.txt'))) $adoptOut
+Check 'adopt-unlicensed: warns, word for word as the update does, with the command that adds Apache-2.0' ($adoptOut.Contains($warning) -and $adoptOut.Contains($command)) $adoptOut
+
+# adopt-own-license: a LICENSE file of the repository's own.
+$adoptOwn = New-Fixture 'adopt-own-license' @{ 'README.md' = "# Adopt Own License`n"; 'LICENSE' = "Own license.`n" } 'https://github.com/example/adopt-own-license.git'
+$adoptOwnOut = & $adopt -Path $adoptOwn -Template $tpl -Ref v0.1.0 -NoVerify | Out-String
+Check 'adopt-own-license: a repository with a LICENSE file of its own gets no warning' (-not $adoptOwnOut.Contains('No license:') -and [IO.File]::ReadAllText((Join-Path $adoptOwn 'LICENSE')) -eq "Own license.`n") $adoptOwnOut
 
 ''
 $env:COPIER_CACHE_DIR = $copierCache
