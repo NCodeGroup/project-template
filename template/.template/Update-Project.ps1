@@ -975,7 +975,8 @@ try {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
-    # A publish.yml that doesn't call one of the release follow-ups, or either (ADR-0151): they no longer start on workflow_run, so a release misses what each one it doesn't call makes.
+    # A publish.yml that doesn't call one of the release follow-ups, or either (ADR-0151): they no longer start on
+    # workflow_run, so a release misses what each one it doesn't call makes.
     $publishText = if (Test-Path -LiteralPath .github/workflows/publish.yml) { Get-Content -LiteralPath .github/workflows/publish.yml -Raw } else { '' }
     if ($publishText -and (((Test-Path -LiteralPath .github/workflows/release-provenance.yml) -and $publishText -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/release-provenance\.yml\s*(#.*)?$') -or ((Test-Path -LiteralPath .github/workflows/raise-baseline.yml) -and $publishText -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/raise-baseline\.yml\s*(#.*)?$'))) {
         ''
