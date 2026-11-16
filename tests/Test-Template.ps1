@@ -124,7 +124,7 @@ $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.template\Test-Coverage.ps1', '.vscode\settings.json', '.vscode\extensions.json',
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.template\Test-Coverage.ps1', '.template\Test-FileHeaders.ps1', '.vscode\settings.json', '.vscode\extensions.json',
     'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'GOVERNANCE.md', 'ROADMAP.md', 'docs\architecture.md', 'docs\assurance-case.md', 'docs\best-practices-badge.md', 'docs\best-practices-criteria.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
@@ -154,7 +154,7 @@ $cases = @(
     @{ Name = 'dotnet-no-format'; Stack = 'dotnet'; Host = 'github'; Data = @{ csharp_format = 'false' } }
     @{ Name = 'other-gitlab-code-review'; Stack = 'other'; Host = 'gitlab'; Data = @{ code_review = 'true' } }
     @{ Name = 'python-gitlab'; Stack = 'python'; Host = 'gitlab' }
-    @{ Name = 'python-no-gate'; Stack = 'python'; Host = 'gitlab'; Data = @{ coverage_gate = 'false' } }
+    @{ Name = 'python-no-gate'; Stack = 'python'; Host = 'gitlab'; Data = @{ coverage_gate = 'false'; file_headers = 'false' } }
     @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
     @{ Name = 'node-pnpm'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'pnpm' } }
     @{ Name = 'node-bun'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'bun' } }
@@ -615,13 +615,13 @@ foreach ($case in $cases) {
                 'two pins removed and one added' = @(, @((New-ChangedFile -Patch "@@ -60,3 +60,2 @@`n-$oldPin`n-$oldPin`n+$newPin")))
                 'no file at all' = @(, @())
             }
-            foreach ($case in $passes.Keys) {
-                $r = Invoke-AutoMergeDiffCheck $diffCheck $passes[$case] $diffFolder
-                Check "${name}: the auto-merge diff check passes $case" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=true' -and -not $r.Printed -and ($r.Calls -join '|') -eq 'api --paginate --slurp repos/o/r/pulls/7/files') "output=$($r.Output) printed=$($r.Printed) calls=$($r.Calls -join '|') error=$($r.Error)"
+            foreach ($scenario in $passes.Keys) {
+                $r = Invoke-AutoMergeDiffCheck $diffCheck $passes[$scenario] $diffFolder
+                Check "${name}: the auto-merge diff check passes $scenario" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=true' -and -not $r.Printed -and ($r.Calls -join '|') -eq 'api --paginate --slurp repos/o/r/pulls/7/files') "output=$($r.Output) printed=$($r.Printed) calls=$($r.Calls -join '|') error=$($r.Error)"
             }
-            foreach ($case in $refuses.Keys) {
-                $r = Invoke-AutoMergeDiffCheck $diffCheck $refuses[$case] $diffFolder
-                Check "${name}: the auto-merge diff check refuses $case" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=false' -and $r.Printed -like 'Left for a person to merge: *') "output=$($r.Output) printed=$($r.Printed) error=$($r.Error)"
+            foreach ($scenario in $refuses.Keys) {
+                $r = Invoke-AutoMergeDiffCheck $diffCheck $refuses[$scenario] $diffFolder
+                Check "${name}: the auto-merge diff check refuses $scenario" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=false' -and $r.Printed -like 'Left for a person to merge: *') "output=$($r.Output) printed=$($r.Printed) error=$($r.Error)"
             }
             # The merge step that picks the merge method, against fixture repository settings and branch rules.
             $mergeScript = Get-StepScript $autoMerge 'merge'
@@ -638,10 +638,10 @@ foreach ($case in $cases) {
                 'a pull request rule that lists no merge methods' = @($all, @(, @(@{ type = 'pull_request'; parameters = @{ required_approving_review_count = 0 } })), 'merge')
                 'a squash-only repository whose rules, on two pages, require linear history and allow only squash' = @($squashOnly, @(@(@{ type = 'required_linear_history' }), @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('squash') } })), 'squash')
             }
-            foreach ($case in $picks.Keys) {
-                $method = $picks[$case][2]
-                $r = Invoke-AutoMergeMethod $mergeScript $picks[$case][0] $picks[$case][1]
-                Check "${name}: the auto-merge method check picks $method for $case" ($mergeScript -and -not $r.Error -and ($r.Calls -join '|') -eq "repo view o/r --json mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed|api --paginate --slurp repos/o/r/rules/branches/main|pr merge --auto --$method --match-head-commit 0123456789abcdef0123456789abcdef01234567 https://github.com/o/r/pull/7") "calls=$($r.Calls -join '|') error=$($r.Error)"
+            foreach ($scenario in $picks.Keys) {
+                $method = $picks[$scenario][2]
+                $r = Invoke-AutoMergeMethod $mergeScript $picks[$scenario][0] $picks[$scenario][1]
+                Check "${name}: the auto-merge method check picks $method for $scenario" ($mergeScript -and -not $r.Error -and ($r.Calls -join '|') -eq "repo view o/r --json mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed|api --paginate --slurp repos/o/r/rules/branches/main|pr merge --auto --$method --match-head-commit 0123456789abcdef0123456789abcdef01234567 https://github.com/o/r/pull/7") "calls=$($r.Calls -join '|') error=$($r.Error)"
             }
             $r = Invoke-AutoMergeMethod $mergeScript $squashOnly @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('merge') } }))
             Check "${name}: the auto-merge method check turns on nothing for a squash-only repository whose ruleset allows only merge commits" ($mergeScript -and $r.Error -like 'No merge method is allowed by both*' -and -not ($r.Calls -like 'pr merge*')) "calls=$($r.Calls -join '|') error=$($r.Error)"
@@ -679,6 +679,9 @@ foreach ($case in $cases) {
         $gate = $case.Data.coverage_gate -ne 'false'
         Check "${name}: CI checks the coverage exactly when coverage_gate is not false" ($ci.Contains('Test-Coverage.ps1') -eq $gate) $ci
     }
+    $licensed = -not ($case.Data -and $case.Data.ContainsKey('license') -and $case.Data.license -eq '')
+    $wantHeaders = $case.Stack -ne 'dotnet' -and $licensed -and $case.Data.file_headers -ne 'false'
+    Check "${name}: CI checks the file headers exactly when file_headers is on" ($ci.Contains('Test-FileHeaders.ps1') -eq $wantHeaders) $ci
     if ($case.Stack -eq 'python') {
         Check "${name}: the default test command writes coverage.xml exactly when coverage_gate is not false" ((Get-Content -Raw -LiteralPath (Join-Path $dest 'AGENTS.md')).Contains('--cov --cov-branch --cov-report=xml') -eq ($case.Data.coverage_gate -ne 'false')) ''
     }

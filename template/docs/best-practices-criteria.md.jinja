@@ -8,6 +8,7 @@
 {%- set pm = package_manager | default('npm') %}
 {%- set coverage = (coverage_gate | default(false)) and stack in ['dotnet', 'python', 'node', 'powershell'] %}
 {%- set spdx = license | default('') %}
+{%- set headers = stack != 'dotnet' and (file_headers | default(false)) %}
 {%- set ci = '.github/workflows/ci.yml' if github else '.gitlab-ci.yml' %}
 {%- set pr = 'pull request' if github else 'merge request' %}
 {%- set host = 'GitHub' if github else 'GitLab' %}
@@ -250,8 +251,8 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 | `achieve_silver` | MUST | no | no | **Check**: the site sets it once the silver level is earned. |
 | `bus_factor` | MUST | no | yes | **Person**: two or more people who could carry the project on; Unmet with one maintainer, which keeps gold from being earned. |
 | `contributors_unassociated` | MUST | no | yes | **Person**: at least two significant contributors from different organizations. |
-| `copyright_per_file` | MUST | no | no | {% if csharp %}**Check**: the C# file header `.editorconfig` sets starts with the copyright line, and the build fails a C# file without it; check every other source file, such as scripts.{% else %}**Gap**: Unmet until each source file starts with a copyright line.{% endif %} |
-| `license_per_file` | MUST | no | no | {% if csharp and spdx %}**Check**: the C# file header holds `SPDX-License-Identifier: {{ spdx }}`, and the build fails a C# file without it; check every other source file.{% else %}**Gap**: Unmet until each source file has an `SPDX-License-Identifier` line.{% endif %} |
+| `copyright_per_file` | MUST | no | no | {% if csharp %}**Check**: the C# file header `.editorconfig` sets starts with the copyright line, and the build fails a C# file without it; check every other source file, such as scripts.{% elif headers %}**Met**: CI runs `.template/Test-FileHeaders.ps1`, which fails a source file without the copyright line; `-Fix` adds it ([ADR-0027](decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md)).{% else %}**Gap**: Unmet until each source file starts with a copyright line.{% if stack != 'dotnet' and spdx %} `.\.template\Update-Project.ps1 -Data @{ file_headers = $true }` turns on the check.{% endif %}{% endif %} |
+| `license_per_file` | MUST | no | no | {% if csharp and spdx %}**Check**: the C# file header holds `SPDX-License-Identifier: {{ spdx }}`, and the build fails a C# file without it; check every other source file.{% elif headers and spdx %}**Met**: CI runs `.template/Test-FileHeaders.ps1`, which fails a source file without `SPDX-License-Identifier: {{ spdx }}`; `-Fix` adds it ([ADR-0027](decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md)).{% else %}**Gap**: Unmet until each source file has an `SPDX-License-Identifier` line.{% if stack != 'dotnet' and spdx %} `.\.template\Update-Project.ps1 -Data @{ file_headers = $true }` turns on the check.{% endif %}{% endif %} |
 
 ### Change Control
 
