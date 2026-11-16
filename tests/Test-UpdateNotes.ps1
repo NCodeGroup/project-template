@@ -9,6 +9,8 @@
                 each opt-in answer the answers file lacks and -Data doesn't set, and nothing for one it has.
       adopt     Get-AdoptionAnswers answers node_lint = $false for a Node.js repository, and coverage_gate = $false
                 and file_headers = $false for every repository.
+      ci-call   Get-CiCallNote says to add workflow_call to ci.yml when tag-release.yml calls it and it lacks the
+                trigger, and says nothing when it has the trigger or the project has no tag-release.yml.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notes-test-<process ID> in the temp
@@ -81,6 +83,33 @@ New-Item -ItemType Directory -Force $adoptPython | Out-Null
 $pythonAnswers = Get-AdoptionAnswers $adoptPython
 Check 'adopt: a Python repository is adopted with coverage_gate off' ($pythonAnswers.stack -eq 'python' -and $pythonAnswers.coverage_gate -eq $false) ($pythonAnswers | ConvertTo-Json -Compress)
 Check 'adopt: a Python repository is adopted with file_headers off' ($pythonAnswers.file_headers -eq $false) ($pythonAnswers | ConvertTo-Json -Compress)
+
+# ci-call: Get-CiCallNote, run from inside each fixture folder.
+$ciCallNote = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-CiCallNote' }, $true)
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $callsCi = "jobs:`n  test:`n    uses: ./.github/workflows/ci.yml`n"
+    $ciCases = [ordered]@{
+        'no workflow_call'  = @{ Release = $callsCi; Ci = "on:`n  push:`n"; Note = $true }
+        'has workflow_call' = @{ Release = $callsCi; Ci = "on:`n  push:`n  workflow_call:`n"; Note = $false }
+        'no tag-release'    = @{ Release = $null; Ci = "on:`n  push:`n"; Note = $false }
+    }
+    foreach ($name in $ciCases.Keys) {
+        $folder = Join-Path $Work "ci-call-$($name -replace ' ', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        [IO.File]::WriteAllText((Join-Path $workflows 'ci.yml'), $ciCases[$name].Ci)
+        if ($ciCases[$name].Release) { [IO.File]::WriteAllText((Join-Path $workflows 'tag-release.yml'), $ciCases[$name].Release) }
+        Push-Location $folder
+        try { $note = (Get-CiCallNote) -join "`n" }
+        finally { Pop-Location }
+        $has = $note.Contains('has no workflow_call trigger')
+        $nothing = -not $note.Trim()
+        Check "ci-call: $name" ($(if ($ciCases[$name].Note) { $has } else { $nothing })) "got [$note]"
+    }
+}
+$ciCallNote
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Update notes tests: FAILED ($($failures.Count))"; exit 1 }

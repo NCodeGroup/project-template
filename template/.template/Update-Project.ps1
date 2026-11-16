@@ -69,7 +69,8 @@
     major was built with a higher one than build/ProjectTemplate.props pins (the library's ADR-0136). It leaves
     .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
     publish. When the project has .github/workflows/tag-release.yml and a publish.yml without a workflow_dispatch
-    trigger, it says what to add. When it has release-provenance.yml or raise-baseline.yml and a publish.yml that
+    trigger, it says what to add. When tag-release.yml runs ci.yml and ci.yml has no workflow_call trigger, it says
+    to add one. When it has release-provenance.yml or raise-baseline.yml and a publish.yml that
     doesn't call one of them, or either, it warns that no release gets its provenance or baseline pull request (the template's
     ADR-0151). When the project has version.json, it also warns about a publish.yml or a
     .gitlab-ci.yml that packs without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning
@@ -164,6 +165,16 @@ function Get-LicenseWarning {
     else {
         "No license file: the license answer is $licenseAnswer, but the repository has no LICENSE or COPYING file, so no one else may use, copy or change its code, and the OpenSSF Best Practices criteria for a license can't be met. Add the text of the $licenseAnswer license as LICENSE.txt at the repository's root."
     }
+}
+
+# tag-release.yml runs ci.yml as a reusable workflow before it tags a release (ADR-0026): without the trigger, no release is tagged.
+function Get-CiCallNote {
+    $release = '.github/workflows/tag-release.yml'
+    if (-not (Test-Path -LiteralPath $release) -or (Get-Content -LiteralPath $release -Raw) -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/ci\.yml\s*$') { return }
+    $ci = '.github/workflows/ci.yml'
+    if ((Test-Path -LiteralPath $ci) -and (Get-Content -LiteralPath $ci -Raw) -match '(?m)^\s+workflow_call:') { return }
+    ''
+    '.github/workflows/ci.yml is missing or has no workflow_call trigger. .github/workflows/tag-release.yml runs it as a reusable workflow before it tags a release, so until it has that trigger, no release is tagged or published. Add workflow_call: to its on: section, as the ci.yml the project template gives a GitHub project does (the template''s ADR-0026, in docs/decisions/project-template/).'
 }
 
 # Render the template at a version into a folder with the project's answers;
@@ -1004,6 +1015,7 @@ try {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
+    Get-CiCallNote
     # A publish.yml that doesn't call one of the release follow-ups, or either (ADR-0151): they no longer start on
     # workflow_run, so a release misses what each one it doesn't call makes.
     $publishText = if (Test-Path -LiteralPath .github/workflows/publish.yml) { Get-Content -LiteralPath .github/workflows/publish.yml -Raw } else { '' }
