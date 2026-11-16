@@ -351,6 +351,16 @@ project_owned_files:
   when: "{{ project_owned_files | default([]) | length > 0 }}"
   validator: "{% if project_owned_files is string %}A list, such as [.github/workflows/ci.yml]{% endif %}"
 
+# Never asked: the project's number at bestpractices.dev, recorded once it is registered with
+# .\.template\Update-Project.ps1 -Data @{ best_practices_project = '<number>' } (ADR-0025).
+best_practices_project:
+  type: str
+  help: "The project's number at bestpractices.dev, such as 16752, once it is registered for the OpenSSF Best Practices badge"
+  default: ""
+  # Not asked when the project is created; recorded only when -Data supplies it.
+  when: "{{ best_practices_project | default('') | string | length > 0 }}"
+  validator: "{% if best_practices_project and not (best_practices_project | string).isdigit() %}The project's number at bestpractices.dev, such as 16752{% endif %}"
+
 _message_after_copy: |
   Created {{ project_name }}. Next: open it through the shack PC's VS Code tunnel, review AGENTS.md, and plan the first change with /plan-feature in the Claude Code panel.
   {%- if code_review is defined and code_review %}
