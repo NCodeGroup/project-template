@@ -170,6 +170,7 @@ _exclude:
     /biome.json
     {% endif %}
   - "{% if stack is defined and stack != 'node' %}docs/decisions/project-template/0201-biome-lints-and-formats-javascript-and-typescript.md{% endif %}"
+  - "{% if stack is defined and stack == 'dotnet' %}docs/decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md{% endif %}"
   - |-
     {% if stack is defined and nuget_package is defined and package_icon is defined and not (stack == 'dotnet' and nuget_package and package_icon == 'NCodeGroup.png') %}
     /NCodeGroup.png
@@ -348,6 +349,12 @@ test_command:
     {%- elif stack == 'node' -%}{{ package_manager | default('npm') }} run test
     {%- elif stack == 'powershell' -%}{% if coverage_gate %}Invoke-Pester -Configuration (New-PesterConfiguration -Hashtable @{ Run = @{ Exit = $true }; CodeCoverage = @{ Enabled = $true; OutputFormat = "Cobertura" } }){% else %}Invoke-Pester -CI{% endif %}
     {%- endif -%}
+
+file_headers:
+  type: bool
+  help: "Fail CI on a source file that doesn't start with the copyright line and the SPDX license line? Existing projects stay as they are until they answer yes"
+  default: "{{ stack != 'dotnet' and license != '' }}"
+  when: "{{ stack != 'dotnet' and license != '' }}"
 
 conduct_contact:
   type: str
