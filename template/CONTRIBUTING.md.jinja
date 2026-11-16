@@ -1,6 +1,7 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
 {%- set spdx = license %}
 {%- set pm = package_manager | default('npm') %}
+{%- set biome = stack == 'node' and (node_lint | default(false)) %}
 {%- set pr = 'merge request' if git_host == 'gitlab' else 'pull request' -%}
 # Contributing to {{ project_name }}
 
@@ -34,6 +35,10 @@ Once in each clone, run `git config core.hooksPath .githooks`. It turns on `.git
 | --- | --- |
 | Build | {% if build_command %}`{{ build_command }}`{% else %}none{% endif %} |
 | Test | {% if test_command %}`{{ test_command }}`{% else %}none yet{% endif %} |
+{%- if biome %}
+| Lint and check the formatting | `{{ pm }} run lint` |
+| Format, with Biome's safe fixes | `{{ pm }} run format` |
+{%- endif %}
 {%- if stack == 'dotnet' %}
 | Definition of Done, the full gate | `./build/dod.ps1` |
 | The local gate before a push | `./build/dod.ps1 -Fast` |
@@ -49,6 +54,10 @@ CI runs the same commands on every {{ pr }}.
 {%- else %}
 
 There are no commands yet. When the project gets them, add them here, under Commands in `AGENTS.md`, and to CI.
+{%- endif %}
+{%- if biome %}
+
+Biome lints and formats the JavaScript and TypeScript, with the rules in `biome.json` ([the decision](docs/decisions/project-template/0201-biome-lints-and-formats-javascript-and-typescript.md)). `package.json` pins it exactly and holds its two scripts: add them once, with `{% if pm == 'pnpm' %}pnpm add --save-dev --save-exact @biomejs/biome@2{% elif pm == 'yarn' %}yarn add --dev --exact @biomejs/biome@2{% elif pm == 'bun' %}bun add --dev --exact @biomejs/biome@2{% else %}npm install --save-dev --save-exact @biomejs/biome@2{% endif %}`, then `"lint": "biome ci --error-on-warnings ."` and `"format": "biome check --write ."` under `scripts`. Commit the lock file, which holds Biome's binary for each platform. After a large change, run `{{ pm }} run format` twice: the second pass formats what the first pass's fixes left. CI runs `{{ pm }} run lint` before the build, and so does the Landing `gate` in `AGENTS.md`.
 {%- endif %}
 
 ## Make a Change

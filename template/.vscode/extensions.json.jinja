@@ -17,6 +17,8 @@
 {%- endif %}
 {%- elif stack == 'python' %},
     "ms-python.python"
+{%- elif stack == 'node' and node_lint is defined and node_lint %},
+    "biomejs.biome"
 {%- elif stack == 'powershell' %},
     "ms-vscode.powershell"
 {%- endif %}
