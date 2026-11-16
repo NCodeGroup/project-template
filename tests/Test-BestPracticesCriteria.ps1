@@ -153,7 +153,7 @@ Check 'unit: Compare-Criteria finds nothing wrong with a matching page' ($proble
 $wrong = @(
     '## Passing'
     ''
-    '| `alpha` | MUST | yes | no | x |'
+    '| `alpha` | MUST | no | yes | x |'
     '| `zeta` | MUST | no | no | x |'
     ''
     '## Silver'
@@ -165,10 +165,12 @@ $problems = @(Compare-Criteria $parsed @(Get-PageCriteria $wrong))
 $expected = @(
     'passing: beta is missing'
     'passing: zeta is not a criterion at this level'
+    'passing: alpha has N/A no, the badge says yes'
+    'passing: alpha has URL yes, the badge says no'
     'silver: alpha is listed 2 times'
     'silver: alpha has Req MUST, the badge says SUGGESTED'
 )
-Check 'unit: Compare-Criteria names a missing, an extra, a repeated and a mismatched row' ($problems.Count -eq 4 -and -not (Compare-Object $problems $expected)) "got $($problems -join '; ')"
+Check 'unit: Compare-Criteria names a missing, an extra and a repeated row, and a mismatched Req, N/A and URL' ($problems.Count -eq 6 -and -not (Compare-Object $problems $expected)) "got $($problems -join '; ')"
 
 if (Test-Path -LiteralPath $Source -PathType Leaf) {
     $yaml = Get-Content -Raw -LiteralPath $Source
