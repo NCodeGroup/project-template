@@ -6,7 +6,8 @@
     Tests a tagged snapshot of the working tree, which tests/New-TemplateSnapshot.ps1 builds. It runs apart from
     tests/Test-ProjectUpdate.ps1 and tests/Test-AdoptEdgeCases.ps1, which are slow enough already. Prints PASS or FAIL
     per check and exits 1 on any failure (ADR-0024).
-      scripts      Adopt-Project.ps1 prints the update script's license warning word for word.
+      scripts      Adopt-Project.ps1 prints the update script's license warning word for word, under the same
+                   condition.
       no-answer    A project from before the license question, without a license answer: the update records a blank
                    answer, not the Apache-2.0 default, adds no license file and warns with the command that adds
                    Apache-2.0; with -Data @{ license = 'Apache-2.0' } it adds LICENSE.txt and COPYRIGHT.txt, records
@@ -64,6 +65,13 @@ $warning = [regex]::Match([IO.File]::ReadAllText((Join-Path $repoRoot 'template/
 $adoptWarning = [regex]::Match([IO.File]::ReadAllText((Join-Path $repoRoot 'Adopt-Project.ps1')), $re).Groups[1].Value.Replace("''", "'")
 $command = "  .\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }"
 Check 'scripts: Adopt-Project.ps1 prints the update''s license warning word for word' ($warning.Length -gt 100 -and $adoptWarning -eq $warning) "$warning | $adoptWarning"
+# The same condition: the license-file pattern and the blank-answer check.
+$patternRe = "Where-Object Name -Match '([^']+)'"
+$updateText = [IO.File]::ReadAllText((Join-Path $repoRoot 'template/.template/Update-Project.ps1'))
+$adoptText = [IO.File]::ReadAllText((Join-Path $repoRoot 'Adopt-Project.ps1'))
+$updatePattern = [regex]::Match($updateText, $patternRe).Groups[1].Value
+$adoptPattern = [regex]::Match($adoptText, $patternRe).Groups[1].Value
+Check 'scripts: Adopt-Project.ps1 looks for a license file with the update''s pattern, after the same blank-answer check' ($updatePattern.StartsWith('^(LICEN') -and $adoptPattern -eq $updatePattern -and $updateText.Contains('"$(Get-Answer ''license'')".Trim()') -and $adoptText.Contains('"$(Get-Answer ''license'')".Trim()')) "$updatePattern | $adoptPattern"
 
 # no-answer: a project whose answers have no license line, as one from before the license question.
 $noAnswer = Join-Path $Work 'no-answer'
