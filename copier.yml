@@ -39,6 +39,7 @@ _skip_if_exists:
   - /docs/best-practices-badge.md
   - /.config/dotnet-tools.json
   - /.csharpierignore
+  - /biome.json
   - /docs/designs/_template.md
 _merged_files:
   - .gitignore
@@ -164,6 +165,11 @@ _exclude:
     /.config/dotnet-tools.json
     /.csharpierignore
     {% endif %}
+  - |-
+    {% if stack is defined and not (stack == 'node' and (node_lint | default(false))) %}
+    /biome.json
+    {% endif %}
+  - "{% if stack is defined and stack != 'node' %}docs/decisions/project-template/0201-biome-lints-and-formats-javascript-and-typescript.md{% endif %}"
   - |-
     {% if stack is defined and nuget_package is defined and package_icon is defined and not (stack == 'dotnet' and nuget_package and package_icon == 'NCodeGroup.png') %}
     /NCodeGroup.png
@@ -309,6 +315,12 @@ package_manager:
     Yarn: yarn
     Bun: bun
   default: npm
+  when: "{{ stack == 'node' }}"
+
+node_lint:
+  type: bool
+  help: "Lint and format the JavaScript and TypeScript with Biome in CI and the Landing gate? Adds biome.json; existing projects stay as they are until they answer yes"
+  default: "{{ stack == 'node' }}"
   when: "{{ stack == 'node' }}"
 
 build_command:
