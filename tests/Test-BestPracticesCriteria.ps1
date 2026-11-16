@@ -97,13 +97,13 @@ function Compare-Criteria([object[]]$Upstream, [object[]]$Page) {
             $rows = @($have | Where-Object Id -EQ $id)
             if ($rows.Count -gt 1) { "${level}: $id is listed $($rows.Count) times" }
         }
-        foreach ($row in $have) {
-            $c = $want | Where-Object Id -EQ $row.Id | Select-Object -First 1
+        foreach ($id in @($have | ForEach-Object Id | Select-Object -Unique)) {
+            $c = $want | Where-Object Id -EQ $id | Select-Object -First 1
             if (-not $c) { continue }
-            if ($row -ne ($have | Where-Object Id -EQ $row.Id | Select-Object -First 1)) { continue }
-            if ($row.Req -ne $c.Req) { "${level}: $($row.Id) has Req $($row.Req), the badge says $($c.Req)" }
-            if ($row.NA -ne $c.NA) { "${level}: $($row.Id) has N/A $($row.NA), the badge says $($c.NA)" }
-            if ($row.Url -ne $c.Url) { "${level}: $($row.Id) has URL $($row.Url), the badge says $($c.Url)" }
+            $row = $have | Where-Object Id -EQ $id | Select-Object -First 1
+            if ($row.Req -ne $c.Req) { "${level}: $id has Req $($row.Req), the badge says $($c.Req)" }
+            if ($row.NA -ne $c.NA) { "${level}: $id has N/A $($row.NA), the badge says $($c.NA)" }
+            if ($row.Url -ne $c.Url) { "${level}: $id has URL $($row.Url), the badge says $($c.Url)" }
         }
     }
 }
