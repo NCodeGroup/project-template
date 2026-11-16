@@ -12,7 +12,12 @@
     and that -RequireChecks updates the ruleset the script made; that a ruleset that already has a code-scanning rule keeps it and its
     thresholds, its repository's suite is never switched, and a notice, with -WhatIf too, says when the default setup
     runs a suite other than extended and how to switch it by hand, while a setup it can't read is reported without
-    failing the run; that -RequireChecks auto requires the GitHub Actions checks that passed on the
+    failing the run; that a default setup counts as configured only while its answer lists a language, which the summary
+    names: one configured with none, word for word as NCodeGroup/docs and NCodeGroup/brand answered on 2026-11-16, or
+    whose answer lists none, gets no code-scanning rule and no switch to the extended suite, with the reason, also with
+    -WhatIf, and a kept rule on such a setup gets a warning that names both fixes in place of the suite notice, also with
+    -RequireChecks, with -WhatIf and beside a ruleset of the owner's;
+    that -RequireChecks auto requires the GitHub Actions checks that passed on the
     latest merged pull request, found on any page of closed pull requests, reading every page of its check runs and
     workflow runs, Commit attribution among them, leaves out the review bot's Code review and its job, CodeQL and its
     Analyze jobs, push-only jobs, jobs no workflow run accounts for, other apps' checks and skipped, neutral, failed or
@@ -167,11 +172,14 @@ if ($path -match '^(repos/[^/]+/([^/]+)|orgs/([^/]+))/actions/policies(/(\d+))?(
 }
 if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
     # codeql is a state, 404 for not found, fail:<code> for another status, fail:none for no response at all, or
-    # raw:<text> for a body that isn't JSON. An empty suite leaves query_suite out of the answer. With --include, the
-    # answer starts with the status line and a header.
-    $codeql = "$($data.repos[$Matches[1]].codeql)"
+    # raw:<text> for a body sent as it is, such as one that isn't JSON. An empty suite leaves query_suite out of the
+    # answer, and languages, the languages the setup analyzes, $null leaves languages out. With --include, the answer
+    # starts with the status line and a header.
+    $repo = $data.repos[$Matches[1]]
+    $codeql = "$($repo.codeql)"
     $answer = @{ state = $codeql }
-    if ("$($data.repos[$Matches[1]].suite)") { $answer.query_suite = "$($data.repos[$Matches[1]].suite)" }
+    if ("$($repo.suite)") { $answer.query_suite = "$($repo.suite)" }
+    if ($null -ne $repo.languages) { $answer.languages = @($repo.languages) }
     $status = 200; $body = ConvertTo-Json -InputObject $answer
     if ($codeql -eq 'fail:none') { exit 1 }
     if ($codeql -eq '404') { $status = 404; $body = '{"message":"Not Found"}' }
@@ -219,7 +227,9 @@ function New-EventPolicy([string]$Name, [string[]]$Events = @('pull_request_targ
 # so is auto-merge: $AutoMerge $null leaves it out of the answer, as GitHub does for someone who can't change it.
 # $Workflows lists the files on the default branch, or fail:<code>; $Policies the repository's Actions policies
 # (New-EventPolicy), or fail:<code>. $WorkflowText maps a workflow file to its text, which the contents API answers as base64.
-function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
+# $Languages lists the languages CodeQL's default setup analyzes, those of NCodeGroup/Buffers unless it says otherwise:
+# @() for none, and $null leaves languages out of the answer.
+function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', $Languages = @('actions', 'csharp'), [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
     [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), [hashtable]$WorkflowText = @{}, $Policies = @()) {
     $full = @{}
     $summaries = @()
@@ -232,7 +242,7 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
     $info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork; private = $Visibility -ne 'public'; visibility = $Visibility; security_and_analysis = $analysis }
     if ($null -ne $AutoMerge) { $info.allow_auto_merge = $AutoMerge }
     @{ info = $info
-        rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; switchFails = $SwitchFails
+        rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; languages = $Languages; switchFails = $SwitchFails
         pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails
         workflows = @($Workflows); workflowText = $WorkflowText; policies = if ($Policies -is [string]) { $Policies } else { @($Policies) } }
 }
@@ -303,6 +313,14 @@ $repos = @{
     oursScanNoResponse = New-Repo -CodeQL 'fail:none' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
     oursScanNotJson = New-Repo -CodeQL 'raw:<html>Bad Gateway</html>' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
     oursScanLoose = New-Repo -Rulesets @($looseRuleset)
+    # CodeQL's default setup configured with a language, and with none: NCodeGroup/docs and NCodeGroup/brand gave
+    # noLanguage's answer, word for word, on 2026-11-16, while their code-scanning rule blocked every pull request.
+    oneLanguage = New-Repo -Languages @('actions')
+    noLanguage = New-Repo -CodeQL 'raw:{"state":"configured","languages":[],"query_suite":"extended","threat_model":"remote","updated_at":null,"schedule":null,"runner_type":"standard","runner_label":""}'
+    noLanguageListed = New-Repo -Languages $null
+    noLanguageSwitch = New-Repo -Languages @()
+    oursScanNoLanguage = New-Repo -Languages @() -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
+    ownedThenOursScanNoLanguage = New-Repo -Languages @() -Rulesets @((New-Ruleset 'owner rules'), (New-Ruleset 'Protect main' $scanTypes))
     legacy = New-Repo -Branch master
     owned = New-Repo -Rulesets @((New-Ruleset 'main'))
     ours = New-Repo -Rulesets @((New-Ruleset 'Protect main'))
@@ -503,6 +521,20 @@ try {
         Check "skip: a CodeQL setup lookup that fails or can't be read changes nothing ($name)" ($r.Changes.Count -eq 0 -and $r.Output -match "${name}: skipped \(couldn't read CodeQL's default setup") "$($r.Changes -join '|') $($r.Output)"
     }
 
+    # 3d. A default setup counts as configured only while it analyzes a language: one configured with none runs CodeQL on
+    # no pull request, so a code-scanning rule would block every merge, and a switch to the extended suite, which names no
+    # language, would set none up (ADR-0024).
+    $r = Invoke-Baseline @('-Repo', 'oneLanguage')
+    Check 'languages: a setup configured with a language gets the code-scanning rule and the switch, and the summary names the language' ((@($r.Body.rules.type) -contains 'code_scanning') -and (($r.Changes -join '|') -match [regex]::Escape('api -X PATCH repos/NCodeGroup/oneLanguage/code-scanning/default-setup -f query_suite=extended')) -and $r.Output.Contains("done: oneLanguage (main): create 'Protect main' with 0 required check(s), and a code-scanning rule (CodeQL's default setup analyzes actions); switch CodeQL from the default query suite to extended")) "$(@($r.Body.rules.type) -join ',') $($r.Changes -join '|') $($r.Output)"
+    foreach ($name in 'noLanguage', 'noLanguageListed') {
+        $r = Invoke-Baseline @('-Repo', $name)
+        Check "languages: a setup configured with no language gets no code-scanning rule, and the run says why and how to add it ($name)" ((@($r.Body.rules.type) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and $r.Output.Contains("${name}: notice: CodeQL's default setup is configured but analyzes no language, so CodeQL would run on no pull request and a code-scanning rule would block every merge") -and $r.Output.Contains('a later run with -RequireChecks then adds the rule') -and $r.Output.Contains("done: $name (main): create 'Protect main' with 0 required check(s), and no code-scanning rule (CodeQL's default setup analyzes no language)")) "$(@($r.Body.rules.type) -join ',') $($r.Output)"
+    }
+    $r = Invoke-Baseline @('-Repo', 'noLanguage', '-WhatIf')
+    Check 'languages: -WhatIf says why the rule is left out, and changes nothing' ($r.Changes.Count -eq 0 -and $r.Output.Contains("noLanguage: notice: CodeQL's default setup is configured but analyzes no language") -and $r.Output.Contains("would: noLanguage (main): create 'Protect main' with 0 required check(s), and no code-scanning rule (CodeQL's default setup analyzes no language)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'noLanguageSwitch')
+    Check 'languages: a setup configured with no language is not switched to the extended suite, which would set up no language' ($r.Body -and (@($r.Body.rules.type) -notcontains 'code_scanning') -and ($r.Changes -join '|') -notmatch 'default-setup' -and $r.Output -notmatch 'switch CodeQL' -and $r.Output.Contains("the setup's query suite is left as it is, since switching it would set up no language")) "$($r.Changes -join '|') $($r.Output)"
+
     # 3c. Invoke-HostApi is copied from workflow/Get-PlanState.ps1, which projects get on its own; the copies must match.
     $bodies = foreach ($file in (Join-Path $repoRoot 'tools/Set-RepositoryBaseline.ps1'), (Join-Path $repoRoot 'workflow/Get-PlanState.ps1')) {
         $ast = [Management.Automation.Language.Parser]::ParseFile($file, [ref]$null, [ref]$null)
@@ -631,10 +663,10 @@ try {
     $r = Invoke-Baseline @('-Repo', 'oursScanUnreported')
     Check 'suite: a setup that names no suite gets the notice' ($r.Output.Contains('oursScanUnreported: notice: CodeQL''s default setup runs a query suite it did not report') -and ($r.Changes -join '|') -notmatch 'default-setup') "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'oursScanUnreadable')
-    Check 'suite: a setup it can''t read is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("oursScanUnreadable: couldn't read CodeQL's default setup to check its query suite (HTTP 403)") -and $r.Output -notmatch 'FAILED' -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    Check 'suite: a setup it can''t read is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("oursScanUnreadable: couldn't read CodeQL's default setup to check its languages and query suite (HTTP 403)") -and $r.Output -notmatch 'FAILED' -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
     foreach ($case in @(@('oursScanNoResponse', 'no response'), @('oursScanNotJson', 'an answer that is not JSON'))) {
         $r = Invoke-Baseline @('-Repo', $case[0])
-        Check "suite: a setup read that gets $($case[1]) is reported with that reason, and the run goes on" ($r.ExitCode -eq 0 -and $r.Output.Contains("$($case[0]): couldn't read CodeQL's default setup to check its query suite ($($case[1]))") -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/101' -and $r.TagBody) "$($r.ExitCode) $($r.Changes -join '|') $($r.Output)"
+        Check "suite: a setup read that gets $($case[1]) is reported with that reason, and the run goes on" ($r.ExitCode -eq 0 -and $r.Output.Contains("$($case[0]): couldn't read CodeQL's default setup to check its languages and query suite ($($case[1]))") -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/101' -and $r.TagBody) "$($r.ExitCode) $($r.Changes -join '|') $($r.Output)"
     }
     $r = Invoke-Baseline @('-Repo', 'oursScanLoose', '-RequireChecks', 'test')
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
@@ -642,6 +674,20 @@ try {
     $r = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
     $r2 = Invoke-Baseline @('-Repo', 'oursCodeQL404', '-RequireChecks', 'test')
     Check 'suite: no notice where the default setup is not configured or not found' ($r.Output -notmatch "notice:|couldn't read CodeQL" -and $r2.Output -notmatch "notice:|couldn't read CodeQL") "$($r.Output) $($r2.Output)"
+
+    # A kept code-scanning rule waits for CodeQL's results, which a setup that analyzes no language never sends, so every
+    # pull request stays blocked: the warning says so and names both fixes, and the rule stays, since an update never
+    # removes it (ADR-0024).
+    $warning = "warning: CodeQL's default setup is configured but analyzes no language, so CodeQL runs on no pull request and the code-scanning rule in 'Protect main' waits for its results forever: every pull request stays blocked."
+    $fixes = "Set up CodeQL's languages in the repository's settings (Settings > Advanced Security > CodeQL analysis), or remove the code-scanning rule from 'Protect main'; this script never removes it."
+    $r = Invoke-Baseline @('-Repo', 'oursScanNoLanguage')
+    Check 'languages: a kept code-scanning rule on a setup with no language gets the warning, which names both fixes, in place of the suite notice, and nothing is written' ($r.ExitCode -eq 0 -and $r.Output.Contains("oursScanNoLanguage: $warning $fixes") -and $r.Output -notmatch 'oursScanNoLanguage: notice:' -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/101' -and $r.TagBody) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursScanNoLanguage', '-RequireChecks', 'test')
+    Check 'languages: -RequireChecks keeps the rule on a setup with no language, warns, and doesn''t switch the suite' ((@($r.Body.rules.type) -contains 'code_scanning') -and (($r.Changes -join '|') -like '*BODY PUT repos/NCodeGroup/oursScanNoLanguage/rulesets/101*') -and ($r.Changes -join '|') -notmatch 'default-setup' -and $r.Output.Contains("oursScanNoLanguage: $warning")) "$(@($r.Body.rules.type) -join ',') $($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursScanNoLanguage', '-WhatIf')
+    Check 'languages: -WhatIf prints the warning too, and changes nothing' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("oursScanNoLanguage: $warning")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedThenOursScanNoLanguage')
+    Check 'languages: a Protect main beside a ruleset of the owner''s gets the warning too, and neither ruleset is written' ($r.Output.Contains("ownedThenOursScanNoLanguage: $warning") -and -not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' }).Count) "$($r.Changes -join '|') $($r.Output)"
 
     # 6b. -RequireChecks auto requires the checks that passed on the latest merged pull request.
     $r = Invoke-Baseline @('-Repo', 'autoChecks', '-RequireChecks', 'auto', '-WhatIf')

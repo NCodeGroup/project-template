@@ -10,11 +10,16 @@
         code-review.yml passes approve: true, as below) with every conversation resolved, with stale reviews dismissed
         on push, so a review finding from the bot, CodeQL or a person can't be merged past, merge-commit or rebase
         merges only, never squash, so each commit of a plan stays on the branch, when CodeQL's default setup is
-        configured for the repository a code-scanning rule that blocks a pull request whose CodeQL results add an alert
-        at warning level or above or a security alert of any severity, and, when -RequireChecks names them, those CI
-        jobs as required status checks, which must pass on a branch that is up to date with the default branch;
-      - switches CodeQL's default setup, when it read it as configured, to the extended query suite, before it writes the
-        ruleset, so a switch that fails leaves the repository for the next run to retry;
+        configured for the repository and analyzes at least one language a code-scanning rule that blocks a pull request
+        whose CodeQL results add an alert at warning level or above or a security alert of any severity, and, when
+        -RequireChecks names them, those CI jobs as required status checks, which must pass on a branch that is up to
+        date with the default branch. A setup that GitHub reports as configured with no language, as an organization's
+        security configuration can leave a new repository, runs CodeQL on no pull request, so the rule would block every
+        merge: it counts as not configured, and the script says why and that a later run with -RequireChecks adds the
+        rule once the repository's settings give CodeQL a language (the template's ADR-0024);
+      - switches CodeQL's default setup, when it read it as configured with a language to analyze, to the extended query
+        suite, before it writes the ruleset, so a switch that fails leaves the repository for the next run to retry. The
+        switch sends the query suite alone and names no language, so it never runs on a setup that analyzes none;
       - turns on "delete branch on merge";
       - adds a "Protect release tags" ruleset on the tags matching v* (refs/tags/v*): no deletion and no update, so a
         tag is never moved, with no bypass. A release tag names one published package set, so it never changes;
@@ -58,8 +63,11 @@
     there. A "Protect main" ruleset that already has a code-scanning rule, such as one an older version of this script
     made, keeps that rule and its alert thresholds, and its repository's CodeQL suite is never switched: the script
     reads the default setup and, when it runs a suite other than extended, prints a notice with the command that
-    switches it by hand, which can start blocking merges on new alerts. A setup it can't read is reported, and the run
-    goes on.
+    switches it by hand, which can start blocking merges on new alerts. When the setup is configured but analyzes no
+    language, it warns instead that every pull request stays blocked, since the rule waits for CodeQL results that never
+    come, and names the fix: set up CodeQL's languages in the repository's settings, or remove the rule, which the script
+    never removes. It does both also when the ruleset sits beside one of the owner's. A setup it can't read is reported,
+    and the run goes on.
 
     Each security setting, and auto-merge, is read first and printed as set, already set, would set (-WhatIf) or not
     available, with the reason, and none costs money. Secret scanning and its push protection are left out of a
@@ -303,14 +311,28 @@ function Get-SuiteText($Answer) {
     if ("$($Answer.query_suite)") { "the $($Answer.query_suite) query suite" } else { 'a query suite it did not report' }
 }
 
+# The languages a default setup analyzes, as its answer's languages lists them: none when that list is empty or missing.
+# GitHub can report a setup as configured with none: NCodeGroup/docs and NCodeGroup/brand answered state configured,
+# languages [], no schedule and no updated_at on 2026-11-16, their organization's enforced security configuration having
+# turned default setup on, and no CodeQL setup having run on either since its creation. CodeQL then runs on no pull
+# request, so a code-scanning rule waits for results that never come and blocks every merge (ADR-0024).
+function Get-SetupLanguages($Answer) {
+    @($Answer.languages | ForEach-Object { "$_" } | Where-Object { $_ })
+}
+
 # A "Protect main" ruleset that already has a code-scanning rule keeps it and its thresholds. Its repository's default
 # setup is never switched (the extended suite can raise new alerts the rule would block merges on), so this only reads
-# the setup and prints a notice; it changes nothing.
-function Write-SuiteNotice([string]$Name) {
+# the setup and prints a notice; it changes nothing. A setup that is configured but analyzes no language gets a warning
+# instead, since the rule then blocks every merge: an update never removes the rule, so the warning names the fixes.
+function Write-CodeScanningNotice([string]$Name) {
     $setup = Read-DefaultSetup $Name
     if ($setup.Status -eq 404) { return }
     if ($setup.Why) {
-        Write-Host "${Name}: couldn't read CodeQL's default setup to check its query suite ($($setup.Why)); its ruleset's code-scanning rule is kept as it is"
+        Write-Host "${Name}: couldn't read CodeQL's default setup to check its languages and query suite ($($setup.Why)); its ruleset's code-scanning rule is kept as it is"
+        return
+    }
+    if ($setup.Answer.state -eq 'configured' -and -not @(Get-SetupLanguages $setup.Answer).Count) {
+        Write-Host "${Name}: warning: CodeQL's default setup is configured but analyzes no language, so CodeQL runs on no pull request and the code-scanning rule in '$rulesetName' waits for its results forever: every pull request stays blocked. Set up CodeQL's languages in the repository's settings (Settings > Advanced Security > CodeQL analysis), or remove the code-scanning rule from '$rulesetName'; this script never removes it."
         return
     }
     $suite = Get-SuiteText $setup.Answer
@@ -334,7 +356,10 @@ function Set-BranchRuleset {
     }
     if ($others.Count) {
         foreach ($full in $others) { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full }
-        if ($own) { Enable-ThreadResolution $Name $own -Strict -Approver:$Approver }
+        if ($own) {
+            Enable-ThreadResolution $Name $own -Strict -Approver:$Approver
+            if ($own.rules.type -contains 'code_scanning') { Write-CodeScanningNotice $Name }
+        }
         return $true
     }
 
@@ -342,7 +367,7 @@ function Set-BranchRuleset {
     if ($own -and -not $RequireChecks.Count) {
         Write-Host "${Name}: left alone (already has '$rulesetName')"
         Enable-ThreadResolution $Name $own -Strict -Approver:$Approver
-        if ($own.rules.type -contains 'code_scanning') { Write-SuiteNotice $Name }
+        if ($own.rules.type -contains 'code_scanning') { Write-CodeScanningNotice $Name }
         return $true
     }
     if ($own -and -not $Approver) { Write-LastPushNotice $Name $own }
@@ -357,22 +382,33 @@ function Set-BranchRuleset {
     }
 
     # The code-scanning rule. A ruleset that has one keeps it as it is, whatever runs CodeQL (default setup or a
-    # repository's own workflow): an update never removes it. Otherwise CodeQL's default setup decides: configured adds
-    # the rule; an answer that says it isn't, or "not found" (HTTP 404), leaves it out, since every pull request would
-    # wait for CodeQL results that never come. A lookup that fails for any other reason, such as a missing token scope or
-    # a 5xx, or an answer that can't be read, says nothing, so the repository is skipped with the reason.
+    # repository's own workflow): an update never removes it, and Write-CodeScanningNotice warns when the default setup
+    # analyzes no language. Otherwise CodeQL's default setup decides: configured with a language to analyze adds the rule;
+    # an answer that says it isn't configured, one configured with no language, or "not found" (HTTP 404), leaves it out,
+    # since every pull request would wait for CodeQL results that never come. A lookup that fails for any other reason,
+    # such as a missing token scope or a 5xx, or an answer that can't be read, says nothing, so the repository is skipped
+    # with the reason.
     $kept = if ($own) { @($own.rules | Where-Object type -eq 'code_scanning') } else { @() }
     $codeql = [bool]$kept.Count
     # The query suite a configured default setup is switched from, when it isn't the extended one already. An answer
-    # that names no suite is switched too, and the summary says the suite wasn't reported.
+    # that names no suite is switched too, and the summary says the suite wasn't reported. A setup with no language to
+    # analyze is never switched: the switch names no language, so it would set none up.
     $suite = $null
+    $languages = @()
+    $languageless = $false
     if (-not $kept.Count) {
         $setup = Read-DefaultSetup $Name
         if ($setup.Why) { Write-Host "${Name}: skipped (couldn't read CodeQL's default setup: $($setup.Why))"; return $false }
-        $codeql = $setup.Status -ne 404 -and $setup.Answer.state -eq 'configured'
+        $configured = $setup.Status -ne 404 -and $setup.Answer.state -eq 'configured'
+        $languages = @(Get-SetupLanguages $setup.Answer)
+        $languageless = $configured -and -not $languages.Count
+        $codeql = $configured -and [bool]$languages.Count
         if ($codeql) { $suite = Get-SuiteText $setup.Answer }
+        if ($languageless) {
+            Write-Host "${Name}: notice: CodeQL's default setup is configured but analyzes no language, so CodeQL would run on no pull request and a code-scanning rule would block every merge: the ruleset gets none, and the setup's query suite is left as it is, since switching it would set up no language. Set up CodeQL's languages in the repository's settings (Settings > Advanced Security > CodeQL analysis); a later run with -RequireChecks then adds the rule."
+        }
     }
-    else { Write-SuiteNotice $Name }
+    else { Write-CodeScanningNotice $Name }
 
     # Approval of the last push stays off while no approval is required: GitHub then wants someone other than the pusher
     # to approve the newest push, which blocks every merge where only the author can approve (#385). An update keeps the
@@ -420,7 +456,11 @@ function Set-BranchRuleset {
     } | ConvertTo-Json -Depth 10
 
     $verb = if ($own) { 'update' } else { 'create' }
-    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$(if ($kept.Count) { ', and keeps its code-scanning rule' } elseif ($codeql) { ', and a code-scanning rule' } else { ', and no code-scanning rule (CodeQL''s default setup is not configured)' })$(if ($Approver) { ', at least one required approval, as code-review.yml passes approve: true' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
+    $scanning = if ($kept.Count) { ', and keeps its code-scanning rule' }
+    elseif ($codeql) { ", and a code-scanning rule (CodeQL's default setup analyzes $($languages -join ', '))" }
+    elseif ($languageless) { ", and no code-scanning rule (CodeQL's default setup analyzes no language)" }
+    else { ", and no code-scanning rule (CodeQL's default setup is not configured)" }
+    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$scanning$(if ($Approver) { ', at least one required approval, as code-review.yml passes approve: true' })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) {
         Write-Host "would: $summary"
         if ($autoChecks) {
@@ -435,8 +475,13 @@ function Set-BranchRuleset {
         return $true
     }
 
-    # The suite switch comes first: once the ruleset has its code-scanning rule, a later run no longer reads the default
-    # setup, so a switch that failed after it could never be retried.
+    # The suite switch comes first: once the ruleset has its code-scanning rule, a later run reads the default setup only
+    # for its notice and never switches it, so a switch that failed after it could never be retried. It sends query_suite
+    # alone. GitHub's REST reference, "Update a code scanning default setup configuration" (read 2026-11-16), makes every
+    # field optional and describes languages only as "CodeQL languages to be analyzed", without saying what an update
+    # does to the languages it leaves out; the switch names none, so it sets none up: NCodeGroup/docs and
+    # NCodeGroup/brand stayed configured with no language, on the extended suite, after it. So it runs only where the
+    # setup already analyzes a language ($suite is set only with $codeql).
     if ($suite) {
         & gh api -X PATCH "repos/$Owner/$Name/code-scanning/default-setup" -f query_suite=extended | Out-Null
         if ($LASTEXITCODE) { throw "Couldn't switch CodeQL's default setup to the extended query suite for $Name; its ruleset and delete-branch-on-merge were left as they were, so run it again." }

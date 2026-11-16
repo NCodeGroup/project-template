@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.96.1] - 2026-11-16
+
+### Added
+
+- The template's ADR-0024 records that the repository baseline adds the code-scanning rule only where CodeQL's default setup analyzes a language, amending ADR-0005, and a new project's `docs/assurance-case.md` says static analysis is enforced there. ([ADR-0024](template/docs/decisions/project-template/0024-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
+
+### Fixed
+
+- `tools/Set-RepositoryBaseline.ps1` adds the code-scanning rule only where CodeQL's default setup is configured and analyzes a language, which its summary names. GitHub can report a setup as configured with no language, as it did for NCodeGroup/docs and NCodeGroup/brand once their organization's security configuration turned it on: CodeQL ran on no pull request, and the rule blocked every one with every check green. The script leaves the rule out there, says why, and switches no query suite, since the switch sends `query_suite` alone and sets up no language; a later run with `-RequireChecks` adds the rule once the repository's settings give CodeQL a language. ([ADR-0024](template/docs/decisions/project-template/0024-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
+- Where a "Protect main" ruleset already has the rule and the default setup analyzes no language, `tools/Set-RepositoryBaseline.ps1` warns that every pull request stays blocked and names the fix: set up CodeQL's languages in the repository's settings, or remove the rule, which the script never removes. It prints that warning, or its query-suite notice, also for a "Protect main" beside a ruleset of the owner's. ([ADR-0024](template/docs/decisions/project-template/0024-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
+
 ## [0.96.0] - 2026-11-15
 
 ### Added
@@ -1543,7 +1554,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.96.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.96.1...HEAD
+[0.96.1]: https://github.com/NCodeGroup/project-template/compare/v0.96.0...v0.96.1
 [0.96.0]: https://github.com/NCodeGroup/project-template/compare/v0.95.0...v0.96.0
 [0.95.0]: https://github.com/NCodeGroup/project-template/compare/v0.94.0...v0.95.0
 [0.94.0]: https://github.com/NCodeGroup/project-template/compare/v0.93.0...v0.94.0
