@@ -50,6 +50,38 @@ with its kind:
 
 The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 
+### Basics
+
+| Criterion | Req | N/A | URL | Answer and evidence |
+| --- | --- | --- | --- | --- |
+| `description_good` | MUST | no | no | **Check**: the first paragraph of [README.md](../README.md) says what the software does and which problem it solves. |
+| `interact` | MUST | no | no | **Check**: [README.md](../README.md) says how to get the software, the {{ host }} issue tracker takes bug reports and enhancement requests, and [CONTRIBUTING.md](../CONTRIBUTING.md) says how to contribute. |
+| `contribution` | MUST | no | yes | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change: an issue, a short-lived branch and a {{ pr }}. |
+| `contribution_requirements` | SHOULD | no | yes | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change and Conventions, with [AGENTS.md](../AGENTS.md) and `.editorconfig`. |
+| `floss_license` | MUST | no | no | {% if spdx %}**Met**: the `{{ spdx }}` license, which autofill reads.{% else %}**Gap**: the `license` answer is blank, so the project has no license; set one with `.\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }`.{% endif %} |
+| `floss_license_osi` | SUGGESTED | no | no | {% if spdx %}**Check**: Met when the OSI approves `{{ spdx }}`, as it approves Apache-2.0 and MIT.{% else %}**Gap**: no license yet.{% endif %} |
+| `license_location` | MUST | no | yes | {% if spdx in ['Apache-2.0', 'MIT'] %}**Met**: `LICENSE.txt` at the repository root.{% else %}**Check**: Met once the license's text is a `LICENSE` file at the repository root.{% endif %} |
+| `documentation_basics` | MUST | yes | no | **Check**: [README.md](../README.md) describes the software and how to use it, and [CONTRIBUTING.md](../CONTRIBUTING.md) how to build and change it. |
+| `documentation_interface` | MUST | yes | no | **Check**: a reference for the software's inputs and outputs, such as {% if library %}the XML documentation of the public API{% else %}a usage section in [README.md](../README.md){% endif %}. |
+| `sites_https` | MUST | no | no | **Met**: {{ host }}{% if library %} and nuget.org{% endif %} serve the repository and the downloads over HTTPS; autofill. |
+| `discussion` | MUST | no | no | **Met**: {{ host }} issues and {{ pr }}s; autofill. |
+| `english` | SHOULD | no | no | **Met**: the documentation and the tracker are in English. |
+| `maintained` | MUST | no | no | **Check**: cite the latest release and recent merged {{ pr }}s. |
+
+### Change Control
+
+| Criterion | Req | N/A | URL | Answer and evidence |
+| --- | --- | --- | --- | --- |
+| `repo_public` | MUST | no | no | **Check**: Met while the repository is public; autofill. |
+| `repo_track` | MUST | no | no | **Met**: Git records what changed, who changed it and when; autofill. |
+| `repo_interim` | MUST | no | no | **Met**: changes land on the default branch through {{ pr }}s between releases. |
+| `repo_distributed` | SUGGESTED | no | no | **Met**: Git; autofill. |
+| `version_unique` | MUST | no | no | **Check**: Met once each release has its own `vX.Y.Z` tag, which the Landing section of [AGENTS.md](../AGENTS.md) turns on with `release: tag` or `tag+release`. |
+| `version_semver` | SUGGESTED | no | no | **Met**: Semantic Versioning, as [GOVERNANCE.md](../GOVERNANCE.md), Releases, says. |
+| `version_tags` | SUGGESTED | no | no | **Check**: Met once releases are tagged{% if github %}: `.github/workflows/tag-release.yml` tags each one, and the Protect release tags ruleset keeps a tag from moving{% endif %}. |
+| `release_notes` | MUST | yes | yes | **Check**: Met once each release has notes written for users, never a Git log: `CHANGELOG.md`, in the Keep a Changelog format{% if github %}, and each GitHub release's notes{% endif %}. |
+| `release_notes_vulns` | MUST | yes | no | **Check**: N/A while no release fixed a vulnerability with a CVE or an advisory; otherwise Met, with each one under `### Security` in `CHANGELOG.md`. |
+
 ## Silver
 
 The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
