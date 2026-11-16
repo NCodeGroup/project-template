@@ -590,13 +590,13 @@ try {
     Check 'update: a ruleset without a code-scanning rule gets one, with the baseline thresholds' (($scan.Count -eq 1) -and ($scan[0].alerts_threshold -eq 'errors_and_warnings') -and ($scan[0].security_alerts_threshold -eq 'all')) (@($r.Body.rules.type) -join ',')
 
     # 6c. Where code-review.yml passes approve: true, an earlier run's Protect main gets the approval too (ADR-0022).
-    $approveLabel = "oursApprover: 'Protect main': require one approval, of the last push"
+    $approveLabel = "oursApprover: 'Protect main': require at least one approval, of the last push"
     $r = Invoke-Baseline @('-Repo', 'oursApprover')
     $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursApprover/rulesets/101' })
     $ap = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
     Check 'approval: an earlier Protect main gets one approval, of the last push, in one PUT' ($puts.Count -eq 1 -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $ap.dismiss_stale_reviews_on_push -eq $true -and $r.Output.Contains("${approveLabel}: set")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'oursApprover', '-WhatIf')
-    Check 'approval: -WhatIf sends nothing and says it would set the approval' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("${approveLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
+    Check 'approval: -WhatIf sends nothing and says it would set: require at least one approval, of the last push' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("${approveLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'oursBlockedApprover')
     $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursBlockedApprover/rulesets/101' })
     $ap = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }

@@ -37,9 +37,9 @@
         default policy blocks pull_request_target on a public repository without one from December 2, 2026.
 
     Where the default branch's .github/workflows/code-review.yml passes approve: true (NCode Review approves a clean
-    review, ADR-0022), the "Protect main" ruleset it makes, and one an earlier run made, requires at least one approval, with approval of the last push; it
-    never requires approval of the last push without an approval. A file it can't read is named, and the ruleset then
-    requires no approval.
+    review, ADR-0022), the "Protect main" ruleset it makes, and one an earlier run made, requires at least one
+    approval, with approval of the last push; it never requires approval of the last push without an approval. A file
+    it can't read is named, and the ruleset then requires no approval.
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
@@ -376,8 +376,8 @@ function Set-BranchRuleset {
 
     # Approval of the last push stays off while no approval is required: GitHub then wants someone other than the pusher
     # to approve the newest push, which blocks every merge where only the author can approve (#385). An update keeps the
-    # approval count, last-push approval and code-owner review of the ruleset it made, so it never loosens them. Where code-review.yml passes approve: true,
-    # one approval is required, and then approval of the last push too (ADR-0022).
+    # approval count, last-push approval and code-owner review of the ruleset it made, so it never loosens them. Where
+    # code-review.yml passes approve: true, one approval is required, and then approval of the last push too (ADR-0022).
     $ownPull = if ($own) { @($own.rules | Where-Object type -eq 'pull_request')[0].parameters } else { $null }
     $approvals = if ($ownPull) { [int]$ownPull.required_approving_review_count } else { 0 }
     $approvals = [Math]::Max($approvals, [int]$Approver)
@@ -472,8 +472,9 @@ function Write-LastPushNotice([string]$Name, $Ruleset) {
 # with the setting on already, is left as it is. A refusal is reported, not thrown, like a security setting's. A pull
 # request rule that came without parameters is reported and left as it is: writing it would mean inventing its other
 # parameters. For the script's own ruleset (-Strict) it also turns on dismissing stale reviews on push. With -Approver
-# too (the project's review passes approve: true) it requires one approval, of the last push, as a new ruleset does; it
-# never turns on approval of the last push without an approval, which blocks every merge (#385).
+# too (the project's review passes approve: true) it requires at least one approval, of the last push, as a new ruleset
+# does, keeping a larger count; it never turns on approval of the last push without an approval, which blocks every
+# merge (#385).
 function Enable-ThreadResolution {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Name, $Ruleset, [switch]$Strict, [switch]$Approver)
@@ -484,7 +485,7 @@ function Enable-ThreadResolution {
     $needStale = $Strict -and $rule.parameters.dismiss_stale_reviews_on_push -ne $true
     $needApproval = $raise -and ([int]$rule.parameters.required_approving_review_count -lt 1 -or $rule.parameters.require_last_push_approval -ne $true)
     if (-not $needThreads -and -not $needStale -and -not $needApproval) { Write-LastPushNotice $Name $Ruleset; return }
-    $label = "'$($Ruleset.name)': " + (@(if ($needThreads) { 'require every conversation resolved' }; if ($needStale) { 'dismiss stale reviews on push' }; if ($needApproval) { 'require one approval, of the last push' }) -join ', and ')
+    $label = "'$($Ruleset.name)': " + (@(if ($needThreads) { 'require every conversation resolved' }; if ($needStale) { 'dismiss stale reviews on push' }; if ($needApproval) { 'require at least one approval, of the last push' }) -join ', and ')
     if ($null -eq $rule.parameters) { Write-Host "${Name}: ${label}: not set (its pull request rule came without parameters; turn it on in the ruleset's settings on GitHub)"; return }
     if ($needThreads) { $rule.parameters | Add-Member -NotePropertyName required_review_thread_resolution -NotePropertyValue $true -Force }
     if ($Strict) { $rule.parameters | Add-Member -NotePropertyName dismiss_stale_reviews_on_push -NotePropertyValue $true -Force }
