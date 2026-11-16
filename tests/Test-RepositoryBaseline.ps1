@@ -19,6 +19,10 @@
     warning that names both fixes in place of the suite notice, also with -RequireChecks, with -WhatIf and beside a
     ruleset of the owner's, while a kept rule that requires another tool alone, or one on a setup that isn't configured,
     gets none, and a setup that isn't configured gets no notice that it analyzes no language;
+    that approval of the last push is never on with no required approval: a Protect main ruleset that has it, alone, beside
+    a ruleset of the owner's, with other changes or on -RequireChecks, gets it turned off and says so, also with -WhatIf and
+    when GitHub refuses it, one that requires approvals keeps it, and a ruleset of the owner's gets a notice with a command
+    that parses and is written to nothing;
     that -RequireChecks auto requires the GitHub Actions checks that passed on the
     latest merged pull request, found on any page of closed pull requests, reading every page of its check runs and
     workflow runs, Commit attribution among them, leaves out the review bot's Code review and its job, CodeQL and its
@@ -207,11 +211,11 @@ exit 1
 '@
 
 # A code_scanning rule requires $ScanTool's results, CodeQL's unless it says otherwise, as GitHub reports such a rule.
-function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_forward', 'pull_request'), [string]$Include = '~DEFAULT_BRANCH', [bool]$Threads = $true, [bool]$Stale = $true, [bool]$LastPush = $false, [bool]$CodeOwner = $false, [string]$ScanTool = 'CodeQL') {
+function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_forward', 'pull_request'), [string]$Include = '~DEFAULT_BRANCH', [bool]$Threads = $true, [bool]$Stale = $true, [bool]$LastPush = $false, [bool]$CodeOwner = $false, [string]$ScanTool = 'CodeQL', [int]$Approvals = 0) {
     @{ name = $Name; target = 'branch'; enforcement = 'active'
         conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
         rules = @($Types | ForEach-Object {
-                if ($_ -eq 'pull_request') { @{ type = $_; parameters = @{ required_approving_review_count = 0; required_review_thread_resolution = $Threads; dismiss_stale_reviews_on_push = $Stale; require_last_push_approval = $LastPush; require_code_owner_review = $CodeOwner } } }
+                if ($_ -eq 'pull_request') { @{ type = $_; parameters = @{ required_approving_review_count = $Approvals; required_review_thread_resolution = $Threads; dismiss_stale_reviews_on_push = $Stale; require_last_push_approval = $LastPush; require_code_owner_review = $CodeOwner } } }
                 elseif ($_ -eq 'code_scanning') { @{ type = $_; parameters = @{ code_scanning_tools = @(@{ tool = $ScanTool; alerts_threshold = 'errors_and_warnings'; security_alerts_threshold = 'all' }) } } }
                 else { @{ type = $_ } }
             }) }
@@ -342,6 +346,10 @@ $repos = @{
     oursCodeOwner = New-Repo -Rulesets @((New-Ruleset 'Protect main' -CodeOwner $true))
     oursBlocked = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true))
     ownedBlocked = New-Repo -Rulesets @((New-Ruleset 'owner rules' -LastPush $true))
+    oursBlockedLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false -Stale $false -LastPush $true))
+    oursBlockedRefused = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true)) -WriteFails @{ 'rulesets/101' = 403 }
+    ownedThenOursBlocked = New-Repo -Rulesets @((New-Ruleset 'owner rules' -LastPush $true), (New-Ruleset 'Protect main' -LastPush $true))
+    oursApproved = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 2))
     ownedLoose = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false))
     oursLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false))
     oursStaleLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $true -Stale $false))
@@ -625,11 +633,15 @@ try {
     Check 'update: -RequireChecks changes the ruleset it made, in place' (($r.Changes -join '|') -like '*BODY PUT repos/NCodeGroup/ours/rulesets/101*') ($r.Changes -join '|')
     $r1 = Invoke-Baseline @('-Repo', 'oursBlocked', '-RequireChecks', 'test')
     $kp = ($r1.Body.rules | Where-Object type -eq 'pull_request').parameters
-    Check 'update: -RequireChecks keeps the approval settings of the ruleset it made, so it never loosens them' (($kp.require_last_push_approval -eq $true) -and ($kp.required_approving_review_count -eq 0)) ($kp | ConvertTo-Json -Compress)
+    $r4 = Invoke-Baseline @('-Repo', 'oursApproved', '-RequireChecks', 'test')
+    $ap4 = ($r4.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'update: -RequireChecks turns off approval of the last push where no approval is required, and keeps it, and the count, where approvals are' (($kp.require_last_push_approval -eq $false) -and ($kp.required_approving_review_count -eq 0) -and ($kp.dismiss_stale_reviews_on_push -eq $true) -and ($kp.required_review_thread_resolution -eq $true) -and ($ap4.require_last_push_approval -eq $true) -and ($ap4.required_approving_review_count -eq 2)) "$($kp | ConvertTo-Json -Compress) $($ap4 | ConvertTo-Json -Compress)"
     $r3 = Invoke-Baseline @('-Repo', 'oursCodeOwner', '-RequireChecks', 'test')
     $cp = ($r3.Body.rules | Where-Object type -eq 'pull_request').parameters
     Check 'update: -RequireChecks keeps code-owner review of the ruleset it made' ($cp.require_code_owner_review -eq $true) ($cp | ConvertTo-Json -Compress)
-    Check 'last push: -RequireChecks run on a ruleset with last-push approval and no approval prints the notice' ($r1.Output.Contains("oursBlocked: notice: 'Protect main' requires approval of the last push")) $r1.Output
+    Check 'last push: -RequireChecks run on a ruleset with last-push approval and no approval says it turns it off, with no notice' ($r1.Output.Contains('done: oursBlocked (main): update ''Protect main'' with 1 required check(s): test') -and $r1.Output.Contains(', and turns off approval of the last push, which blocks every merge while no approval is required') -and $r1.Output -notmatch 'notice:' -and $r4.Output -notmatch 'turns off') "$($r1.Output) $($r4.Output)"
+    $r5 = Invoke-Baseline @('-Repo', 'oursApproved')
+    Check 'last push: a Protect main that requires approvals keeps approval of the last push, and is not written' (($r5.Changes -join '|') -notmatch 'rulesets/101' -and $r5.Output -notmatch 'notice:|turn off') "$($r5.Changes -join '|') $($r5.Output)"
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
     $r2 = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
     Check 'update: a ruleset with a code-scanning rule keeps it, whatever the default setup says (advanced setup runs CodeQL too)' ((@($r2.Body.rules.type) -contains 'code_scanning') -and $r2.Output -match 'keeps its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"
@@ -652,18 +664,35 @@ try {
     $r = Invoke-Baseline @('-Repo', 'ownedApprover')
     Check 'approval: a ruleset of the owner''s is not written for the approval' (($r.Changes -join '|') -notmatch 'rulesets/101' -and -not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/101' }).Count) "$($r.Changes -join '|') $($r.Output)"
 
-    # 6b. Approval of the last push with no approving review blocks every merge, so the script prints the command that
-    # turns it off and never writes it itself.
+    # 6b. Approval of the last push with no required approval waits for a reviewer other than the pusher, and GitHub never
+    # lets an author approve their own pull request, so with one maintainer it blocks every merge (#385; NCodeGroup/docs on
+    # 2026-11-16 stayed BLOCKED with every check green and every thread resolved until it was unticked). The script turns it
+    # off in its own Protect main ruleset and says so (ADR-0025), and prints the command for a ruleset of the owner's.
+    $blockedLabel = "oursBlocked: 'Protect main': turn off approval of the last push, which blocks every merge while no approval is required"
     $r = Invoke-Baseline @('-Repo', 'oursBlocked')
-    Check 'last push: Protect main with last-push approval and no approval is not written, and the notice is printed' (($r.Changes -join '|') -notmatch 'rulesets/101' -and $r.Output.Contains("oursBlocked: notice: 'Protect main' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursBlocked/rulesets/101' })
+    $lp = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'last push: Protect main with last-push approval and no approval gets it turned off, in one PUT of its rules alone, and says so' ($puts.Count -eq 1 -and (@($puts[0].body.PSObject.Properties.Name) -join ',') -eq 'rules' -and (@($puts[0].body.rules.type) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and $lp.require_last_push_approval -eq $false -and $lp.required_approving_review_count -eq 0 -and $lp.dismiss_stale_reviews_on_push -eq $true -and $lp.required_review_thread_resolution -eq $true -and $r.Output.Contains("${blockedLabel}: set") -and $r.Output -notmatch 'notice:') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursBlocked', '-WhatIf')
+    Check 'last push: -WhatIf writes nothing and says it would turn off approval of the last push' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("${blockedLabel}: would set") -and $r.Output -notmatch 'notice:') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursBlockedLoose')
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursBlockedLoose/rulesets/101' })
+    $lp = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'last push: with conversations and stale reviews loose too, one PUT sets all three' ($puts.Count -eq 1 -and $lp.require_last_push_approval -eq $false -and $lp.required_review_thread_resolution -eq $true -and $lp.dismiss_stale_reviews_on_push -eq $true -and $r.Output.Contains("oursBlockedLoose: 'Protect main': require every conversation resolved, and dismiss stale reviews on push, and turn off approval of the last push, which blocks every merge while no approval is required: set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursBlockedRefused')
+    Check 'last push: a refused change is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("oursBlockedRefused: 'Protect main': turn off approval of the last push, which blocks every merge while no approval is required: not available (HTTP 403") -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedThenOursBlocked')
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' })
+    $lp = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'last push: a Protect main beside one of the owner''s has it turned off, and the owner''s gets the notice and is not written' ($puts.Count -eq 1 -and $puts[0].path -eq 'repos/NCodeGroup/ownedThenOursBlocked/rulesets/102' -and $lp.require_last_push_approval -eq $false -and $r.Output.Contains("ownedThenOursBlocked: notice: 'owner rules' requires approval of the last push") -and $r.Output -notmatch "notice: 'Protect main'") "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedBlocked')
+    Check 'last push: a ruleset of the owner''s gets the notice, and is not written' (($r.Changes -join '|') -notmatch 'rulesets/101' -and $r.Output.Contains("ownedBlocked: notice: 'owner rules' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
     $line = ($r.Output -split "`r?`n" | Where-Object { $_ -like '*to turn it off, run: *' } | Select-Object -First 1) -replace '^.*to turn it off, run: ', ''
     $parseErrors = $null
     $null = [Management.Automation.Language.Parser]::ParseInput("$line", [ref]$null, [ref]$parseErrors)
-    Check 'last push: the printed command parses and names the ruleset' ($line -and -not $parseErrors.Count -and $line.Contains('repos/NCodeGroup/oursBlocked/rulesets/101')) "$line $($parseErrors -join '; ')"
-    $r = Invoke-Baseline @('-Repo', 'oursBlocked', '-WhatIf')
-    Check 'last push: -WhatIf prints the notice and writes nothing' ($r.Changes.Count -eq 0 -and $r.Output.Contains("oursBlocked: notice: 'Protect main' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
-    $r = Invoke-Baseline @('-Repo', 'ownedBlocked')
-    Check 'last push: a ruleset of the owner''s gets the notice, and is not written' (($r.Changes -join '|') -notmatch 'rulesets/101' -and $r.Output.Contains("ownedBlocked: notice: 'owner rules' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
+    Check 'last push: the printed command parses and names the ruleset' ($line -and -not $parseErrors.Count -and $line.Contains('repos/NCodeGroup/ownedBlocked/rulesets/101')) "$line $($parseErrors -join '; ')"
+    $r = Invoke-Baseline @('-Repo', 'ownedBlocked', '-WhatIf')
+    Check 'last push: -WhatIf prints the notice for a ruleset of the owner''s and writes nothing' ($r.Changes.Count -eq 0 -and $r.Output.Contains("ownedBlocked: notice: 'owner rules' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'ours')
     Check 'last push: a ruleset without last-push approval prints no notice' ($r.Output -notmatch 'notice:') $r.Output
 
