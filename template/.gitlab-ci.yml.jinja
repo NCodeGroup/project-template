@@ -130,3 +130,12 @@ decision-index:
     GIT_DEPTH: "0"
   script:
     - pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+{%- if file_headers is defined and file_headers and stack != 'dotnet' %}
+
+# Each source file starts with the copyright line and the SPDX license line (ADR-0027). The .NET SDK image has git and
+# PowerShell.
+file-headers:
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  script:
+    - pwsh -NoProfile -File .template/Test-FileHeaders.ps1
+{%- endif %}

@@ -104,6 +104,11 @@ jobs:
 {%- endset %}
       - name: Check the decision index
         run: ./.template/Test-AdrIndex.ps1
+{%- if file_headers is defined and file_headers and stack != 'dotnet' %}
+      # Each source file starts with the copyright line and the SPDX license line (ADR-0027).
+      - name: Check the file headers
+        run: ./.template/Test-FileHeaders.ps1
+{%- endif %}
 {%- if stack == 'dotnet' and build_command == 'dotnet build' and test_command == 'dotnet test' %}
       # The Definition of Done builds, tests and, for a library, packs, as build/dod.ps1 says.
       - name: Definition of Done

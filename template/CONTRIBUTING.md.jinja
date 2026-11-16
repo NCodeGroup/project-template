@@ -107,6 +107,10 @@ Commits record the people who wrote them, so avoid AI agent attribution: don't a
 
 A reformat or a large move brings back the CodeQL alerts dismissed on the code it moves, since a dismissal follows the alert's location, not the code: dismiss each again, with its reason. When that reason isn't obvious from the code, put it in a comment beside the code, so the next dismissal takes a minute.
 {%- endif %}
+{%- if file_headers is defined and file_headers and stack != 'dotnet' %}
+
+Each source file starts with two comment lines, `Copyright © {{ author_name }}` and `SPDX-License-Identifier: {{ spdx }}`. CI checks them with `./.template/Test-FileHeaders.ps1`, and `./.template/Test-FileHeaders.ps1 -Fix` adds them to every file without them ([the decision](docs/decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md)).
+{%- endif %}
 
 ## AI-Assisted Work
 
