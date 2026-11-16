@@ -131,6 +131,12 @@ jobs:
           if-no-files-found: ignore
 {%- endif %}
 {%- else %}
+{%- if stack == 'node' and node_lint is defined and node_lint %}
+      # Biome's formatter and linter, with the rules in biome.json (ADR-0201).
+      - name: Lint
+        if: {{ has_code }}
+        run: {{ package_manager }} run lint
+{%- endif %}
 {%- if build_command %}
       - name: Build
 {%- if has_code %}

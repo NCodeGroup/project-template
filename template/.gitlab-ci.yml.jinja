@@ -80,6 +80,10 @@ build-and-test:
     - . ./.template/use-node.sh 2>/dev/null || { bash ./.template/install-nvs.sh && . ./.template/use-node.sh; }
 {%- endif %}
   script:
+{%- if stack == 'node' and node_lint is defined and node_lint %}
+    # Biome's formatter and linter, with the rules in biome.json (ADR-0201).
+    - {{ package_manager }} run lint
+{%- endif %}
 {%- if stack == 'dotnet' and build_command == 'dotnet build' and test_command == 'dotnet test' %}
     # The Definition of Done builds, tests and, for a library, packs, as build/dod.ps1 says.
     - pwsh -NoProfile -File build/dod.ps1
