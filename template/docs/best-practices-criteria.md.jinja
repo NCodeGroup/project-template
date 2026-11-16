@@ -287,3 +287,37 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 | --- | --- | --- | --- | --- |
 | `dynamic_analysis` | MUST | yes | no | **Gap**: Unmet until a dynamic analysis tool runs before each major release; the template runs none. |
 | `dynamic_analysis_enable_assertions` | SHOULD | yes | no | **Gap**: Unmet without dynamic analysis. |
+
+## Where a Level Stops
+
+These criteria need people or their settings, which the template can't supply. Check them before registering, so the
+level to expect is known up front:
+
+- `access_continuity` (silver MUST): a second owner of the {{ host }} {% if github %}organization{% else %}group{% endif %}{% if library %} and of the nuget.org packages{% endif %}, as [GOVERNANCE.md](../GOVERNANCE.md#continuity) says. With one maintainer, silver stops below 100% here, whatever else is met.
+- `bus_factor` (silver SHOULD, gold MUST) and `two_person_review` (gold MUST): a second maintainer{% if review %}; NCode Review's approval is a bot's, not a person's{% endif %}.
+- `contributors_unassociated` (gold MUST): two significant contributors from different organizations.
+- `require_2FA` (gold MUST) and `secure_2FA` (gold SHOULD): the {{ host }} {% if github %}organization{% else %}group{% endif %} requires two-factor authentication, with secure methods only; only an owner can confirm it.
+- `security_review` (gold MUST): a security review in the last five years, recorded in [assurance-case.md](assurance-case.md#security-reviews).
+- `dco` (silver SHOULD): unmet by choice: the template asks for no `Signed-off-by` line.
+
+The Gap rows are the rest: each stays Unmet until the project, or a later template version, closes it.
+
+## Checks
+
+The Check rows depend on these. Run them at the commit you answer for, and cite what they show.
+
+- **Coverage** (`test_most`, `test_statement_coverage80`, `test_statement_coverage90`, `test_branch_coverage80`): {% if stack == 'dotnet' %}`dotnet test --collect "XPlat Code Coverage"`, then the line and branch rates in each `coverage.cobertura.xml`{% elif stack == 'node' %}`node --test --experimental-test-coverage`, or the coverage option of the project's test runner{% elif stack == 'python' %}`python -m pytest --cov --cov-branch`, with the pytest-cov package{% elif stack == 'powershell' %}`Invoke-Pester -CI -CodeCoverage <paths>`{% else %}the coverage tool of the project's language{% endif %}. The criteria need a measured number, even when CI doesn't gate on it.
+- **Leaked credentials** (`no_leaked_credentials`): `gitleaks git --log-opts="--all" .` scans every commit{% if github %}, and Security > Secret scanning shows GitHub's own findings{% endif %}.
+- **Cryptography** (the `crypto_*` criteria): `git grep -n -i -E "crypt|cipher|hmac|md5|sha1|random"` in the project's own code. Nothing but hashes used as identifiers, such as a SHA-256 fingerprint, makes the cryptography criteria N/A.
+- **Network and TLS** (`crypto_used_network`, `crypto_tls12`, `crypto_certificate_verification`, `crypto_verification_private`): `git grep -n "http://"` finds a plain HTTP address other than localhost, and `git grep -n -i -E "rejectUnauthorized|NODE_TLS_REJECT_UNAUTHORIZED|ServerCertificateCustomValidationCallback|SkipCertificateCheck|verify=False|SslProtocols"` finds verification turned off or an old protocol pinned.
+- **A build** (`build` and the silver `build_*` criteria): a build makes the files users run, such as a compile or a bundle; a typecheck or a lint isn't one.
+- **Regression tests** (`regression_tests_added50`, `tests_are_added`): of the last six merged {{ pr }}s that fix a bug, at least half add or change a test.
+- **Responses** (`report_responses`, `enhancement_responses`, `maintained`): the bug reports and enhancement requests of the last 2 to 12 months were answered, and the latest release and merges are recent.
+{%- if github %}
+- **The Security tab**, read in a browser by someone with access: private vulnerability reporting enabled (`vulnerability_report_private`); advisories in every state, where none makes `vulnerability_report_response`, `release_notes_vulns` and `vulnerability_report_credit` N/A; open CodeQL alerts under Code scanning with `tool:CodeQL`, where Scorecard's alerts are posture checks, not code findings (`static_analysis_fixed`); and open Dependabot and secret scanning alerts (`vulnerabilities_fixed_60_days`).
+- **Site headers** (`hardened_site`): `curl -sI https://github.com/OWNER/REPO` shows `strict-transport-security`, `content-security-policy` and `x-content-type-options`.
+{%- else %}
+- **Security reports**, read by a maintainer: the confidential issues that reported a vulnerability, and the dependency findings the project's own tools report.
+- **Site headers** (`hardened_site`): `curl -sI` on the project's GitLab address shows `strict-transport-security`, `content-security-policy` and `x-content-type-options`.
+{%- endif %}
+- **Saved answers**, once registered: https://www.bestpractices.dev/projects/{{ number }}.json holds each `<id>_status` and `<id>_justification`, the `badge_level`, and each level's percentage as `badge_percentage_0`, `_1` and `_2`. A saved answer stays as it was until someone answers again, so compare them after each change that closes a gap.
