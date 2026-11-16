@@ -1,6 +1,6 @@
 # 0150. A workflow raises the package validation baseline after each release
 
-- **Status:** Accepted
+- **Status:** Accepted{% if git_host == 'github' %} (amended by 0022 and 0151){% endif %}
 - **Date:** 2026-11-15
 - **Amends:** 0147
 
@@ -40,9 +40,11 @@ succeeds, so the raise cannot run in the release itself.
 - The first set of the baseline stays manual.
 - A GitLab library runs the script by hand.
 - A merge of the pull request needs CI to pass, as any change does.
+{%- if git_host == 'github' %}
 - The same setting lets any workflow's token approve a pull request, which counts where NCode Review's approval is
   required ([ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md)); no template workflow approves, and this one
   can't approve its own pull request.
+{%- endif %}
 
 ## References
 

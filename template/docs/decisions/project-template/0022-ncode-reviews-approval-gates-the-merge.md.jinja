@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-15
-- **Amends:** 0005, 0006, 0019{% if git_host == 'github' %}, 0020{% endif %}
+- **Amends:** 0005, 0006, 0019{% if git_host == 'github' %}, 0020{% endif %}{% if git_host == 'github' and stack == 'dotnet' and (nuget_package | default(false)) %}, 0150{% endif %}
 
 ## Context
 
