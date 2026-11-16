@@ -8,9 +8,9 @@
 
 OpenSSF Scorecard v5.6.0's Code-Review check (`probes/codeApproved/impl.go`) counts a review in the `APPROVED` state
 from anyone but the pull request's author, a bot included. Its Branch-Protection check
-(`checks/evaluation/branch_protection.go`) scores nothing past tier 2, which is one required approval. A sole
-maintainer's pull requests have no approving reviewer, so every review is `COMMENTED`: NCodeGroup/Buffers scored 0 on
-Code-Review and 4 on Branch-Protection. NCode Review v1.4.0 adds the `approve` input, which submits an approving review
+(`checks/evaluation/branch_protection.go`) scores no tier after tier 2 until tier 2, one required approval, is met.
+A sole maintainer's pull requests have no approving reviewer, so every review is `COMMENTED`: NCodeGroup/Buffers scored
+0 on Code-Review and 4 on Branch-Protection. NCode Review v1.4.0 adds the `approve` input, which submits an approving review
 when the review is clean. Last-push approval at zero approvals blocked NCodeGroup/Buffers#62.
 
 ## Decision
