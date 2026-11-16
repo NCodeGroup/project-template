@@ -124,7 +124,7 @@ $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.template\Test-Coverage.ps1', '.vscode\settings.json', '.vscode\extensions.json',
     'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'GOVERNANCE.md', 'ROADMAP.md', 'docs\architecture.md', 'docs\assurance-case.md', 'docs\best-practices-badge.md', 'docs\best-practices-criteria.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
@@ -154,6 +154,7 @@ $cases = @(
     @{ Name = 'dotnet-no-format'; Stack = 'dotnet'; Host = 'github'; Data = @{ csharp_format = 'false' } }
     @{ Name = 'other-gitlab-code-review'; Stack = 'other'; Host = 'gitlab'; Data = @{ code_review = 'true' } }
     @{ Name = 'python-gitlab'; Stack = 'python'; Host = 'gitlab' }
+    @{ Name = 'python-no-gate'; Stack = 'python'; Host = 'gitlab'; Data = @{ coverage_gate = 'false' } }
     @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
     @{ Name = 'node-pnpm'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'pnpm' } }
     @{ Name = 'node-bun'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'bun' } }
@@ -673,6 +674,13 @@ foreach ($case in $cases) {
             Check "${name}: GitLab CI selects the .node-version Node.js through use-node.sh, installing the pinned nvs only when needed, before it installs anything" ($ci.Contains('bash ./.template/install-nvs.sh') -and -not $ci.Contains('jasongin/nvs') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf($install) -and ($pm -notin 'pnpm', 'yarn' -or $useNode -lt $ci.IndexOf('corepack'))) $ci
         }
         else { Check "${name}: GitLab CI runs Bun without nvs" (-not $ci.Contains('install-nvs.sh') -and -not $ci.Contains('use-node.sh')) $ci }
+    }
+    if ($case.Stack -in 'python', 'node', 'powershell') {
+        $gate = $case.Data.coverage_gate -ne 'false'
+        Check "${name}: CI checks the coverage exactly when coverage_gate is not false" ($ci.Contains('Test-Coverage.ps1') -eq $gate) $ci
+    }
+    if ($case.Stack -eq 'python') {
+        Check "${name}: the default test command writes coverage.xml exactly when coverage_gate is not false" ((Get-Content -Raw -LiteralPath (Join-Path $dest 'AGENTS.md')).Contains('--cov --cov-branch --cov-report=xml') -eq ($case.Data.coverage_gate -ne 'false')) ''
     }
     if ($case.Host -eq 'gitlab' -and $case.Stack -in 'dotnet', 'python', 'powershell', 'other') {
         $useNode = $ci.IndexOf('. ./.template/use-node.sh')

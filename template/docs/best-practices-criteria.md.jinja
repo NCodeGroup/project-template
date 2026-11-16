@@ -6,6 +6,7 @@
 {%- set csharp = stack == 'dotnet' and (csharp_format | default(false)) %}
 {%- set biome = stack == 'node' and (node_lint | default(false)) %}
 {%- set pm = package_manager | default('npm') %}
+{%- set coverage = (coverage_gate | default(false)) and stack in ['dotnet', 'python', 'node', 'powershell'] %}
 {%- set spdx = license | default('') %}
 {%- set ci = '.github/workflows/ci.yml' if github else '.gitlab-ci.yml' %}
 {%- set pr = 'pull request' if github else 'merge request' %}
@@ -106,7 +107,7 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `build_floss_tools` | SHOULD | yes | no | {% if stack == 'dotnet' %}**Met**: the .NET SDK is FLOSS.{% else %}**Check**: Met when every build tool is FLOSS; N/A without a build.{% endif %} |
 | `test` | MUST | no | no | **Check**: Met once the project has an automated test suite: [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test, names its command, and `{{ ci }}` runs it. |
 | `test_invocation` | SHOULD | no | no | {% if test_command %}**Met**: `{{ test_command }}`, in [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test.{% else %}**Gap**: the project has no test command yet.{% endif %} |
-| `test_most` | SUGGESTED | no | no | **Check**: a measured coverage figure ([Checks](#checks)), even when CI doesn't gate on it. |
+| `test_most` | SUGGESTED | no | no | {% if coverage %}**Met**: CI fails below 90% of the statements and 80% of the branches (`.template/Test-Coverage.ps1`); cite a passing run's figures.{% else %}**Check**: a measured coverage figure ([Checks](#checks)), even when CI doesn't gate on it.{% endif %} |
 | `test_continuous_integration` | SUGGESTED | no | no | **Met**: `{{ ci }}` runs the build and the tests on every {{ pr }}. |
 | `test_policy` | MUST | no | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3. |
 | `tests_are_added` | MUST | no | no | **Check**: cite recent {{ pr }}s that added a feature and its tests. |
@@ -208,7 +209,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `interfaces_current` | SHOULD | yes | no | **Check**: no deprecated API in use where a FLOSS alternative exists{% if stack == 'dotnet' %}; a use of an obsolete API fails the build, as warnings are errors{% endif %}. |
 | `automated_integration_testing` | MUST | no | no | **Met**: `{{ ci }}` runs the tests on every {{ pr }} and push to the default branch, and reports the result. |
 | `regression_tests_added50` | MUST | yes | no | **Check**: at least half of the bugs fixed in the last six months got a regression test ([Checks](#checks)). |
-| `test_statement_coverage80` | MUST | yes | no | **Check**: a measured statement coverage of 80% or more ([Checks](#checks)). |
+| `test_statement_coverage80` | MUST | yes | no | {% if coverage %}**Met**: CI fails below 90% of the statements (`.template/Test-Coverage.ps1`, [ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)); cite a passing run's figure.{% else %}**Check**: a measured statement coverage of 80% or more ([Checks](#checks)).{% endif %} |
 | `test_policy_mandated` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3, is the written policy. |
 | `tests_documented_added` | MUST | yes | no | **Met**: the same item, in the instructions for a change. |
 | `warnings_strict` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: warnings as errors, nullable reference types, and the analyzers at `latest-recommended` with code style enforced in the build.{% else %}**Check**: Met when the strictest practical settings are on.{% endif %} |
@@ -270,8 +271,8 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 | `build_reproducible` | MUST | yes | yes | {% if stack == 'dotnet' %}**Check**: deterministic builds{% if library %} with Source Link{% endif %}; Met once a rebuild of a release's tag is shown to match it.{% else %}**Check**: N/A when no build occurs; otherwise Met once a rebuild of a release's tag is shown to match it.{% endif %} |
 | `test_invocation` | MUST | no | yes | {% if test_command %}**Met**: `{{ test_command }}`, in [CONTRIBUTING.md](../CONTRIBUTING.md), Build and Test.{% else %}**Gap**: the project has no test command yet.{% endif %} |
 | `test_continuous_integration` | MUST | no | yes | **Met**: `{{ ci }}` runs the build and the tests on every {{ pr }}. |
-| `test_statement_coverage90` | MUST | yes | no | **Check**: a measured statement coverage of 90% or more ([Checks](#checks)). |
-| `test_branch_coverage80` | MUST | yes | no | **Check**: a measured branch coverage of 80% or more ([Checks](#checks)). |
+| `test_statement_coverage90` | MUST | yes | no | {% if coverage %}**Met**: CI fails below 90% of the statements (`.template/Test-Coverage.ps1`, [ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)); cite a passing run's figure.{% else %}**Check**: a measured statement coverage of 90% or more ([Checks](#checks)).{% endif %} |
+| `test_branch_coverage80` | MUST | yes | no | {% if coverage and stack == 'powershell' %}**N/A**: Pester measures commands, not branches, and no FLOSS tool measures the branch coverage of PowerShell.{% elif coverage %}**Met**: CI fails below 80% of the branches (`.template/Test-Coverage.ps1`); cite a passing run's figure.{% else %}**Check**: a measured branch coverage of 80% or more ([Checks](#checks)).{% endif %} |
 
 ### Security
 
@@ -308,7 +309,7 @@ The Gap rows are the rest: each stays Unmet until the project, or a later templa
 
 The Check rows depend on these. Run them at the commit you answer for, and cite what they show.
 
-- **Coverage** (`test_most`, `test_statement_coverage80`, `test_statement_coverage90`, `test_branch_coverage80`): {% if stack == 'dotnet' %}`dotnet test --collect "XPlat Code Coverage"`, then the line and branch rates in each `coverage.cobertura.xml`{% elif stack == 'node' %}`node --test --experimental-test-coverage`, or the coverage option of the project's test runner{% elif stack == 'python' %}`python -m pytest --cov --cov-branch`, with the pytest-cov package{% elif stack == 'powershell' %}`Invoke-Pester -CI -CodeCoverage <paths>`{% else %}the coverage tool of the project's language{% endif %}. The criteria need a measured number, even when CI doesn't gate on it.
+- **Coverage** (`test_most`, `test_statement_coverage80`, `test_statement_coverage90`, `test_branch_coverage80`): {% if stack == 'dotnet' %}`dotnet test --collect "XPlat Code Coverage"`, then the line and branch rates in each `coverage.cobertura.xml`{% elif stack == 'node' %}`node --test --experimental-test-coverage`, or the coverage option of the project's test runner{% elif stack == 'python' %}`python -m pytest --cov --cov-branch`, with the pytest-cov package{% elif stack == 'powershell' %}`Invoke-Pester -CI -CodeCoverage <paths>`{% else %}the coverage tool of the project's language{% endif %}. The criteria need a measured number, even when CI doesn't gate on it.{% if coverage %} CI runs `./.template/Test-Coverage.ps1` after the tests, which prints both figures.{% endif %}
 - **Leaked credentials** (`no_leaked_credentials`): `gitleaks git --log-opts="--all" .` scans every commit{% if github %}, and Security > Secret scanning shows GitHub's own findings{% endif %}.
 - **Cryptography** (the `crypto_*` criteria): `git grep -n -i -E "crypt|cipher|hmac|md5|sha1|random"` in the project's own code. Nothing but hashes used as identifiers, such as a SHA-256 fingerprint, makes the cryptography criteria N/A.
 - **Network and TLS** (`crypto_used_network`, `crypto_tls12`, `crypto_certificate_verification`, `crypto_verification_private`): `git grep -n "http://"` finds a plain HTTP address other than localhost, and `git grep -n -i -E "rejectUnauthorized|NODE_TLS_REJECT_UNAUTHORIZED|ServerCertificateCustomValidationCallback|SkipCertificateCheck|verify=False|SslProtocols"` finds verification turned off or an old protocol pinned.
