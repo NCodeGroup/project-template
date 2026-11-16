@@ -187,6 +187,30 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `vulnerability_report_credit` | MUST | yes | yes | **Check**: N/A when no vulnerability was resolved in the last 12 months; otherwise Met with the credit [SECURITY.md](../SECURITY.md), What to Expect, promises{% if github %}, in each advisory{% endif %}. |
 | `vulnerability_response_process` | MUST | no | yes | **Met**: [SECURITY.md](../SECURITY.md), What to Expect. |
 
+### Quality
+
+| Criterion | Req | N/A | URL | Answer and evidence |
+| --- | --- | --- | --- | --- |
+| `coding_standards` | MUST | yes | yes | **Met**: [AGENTS.md](../AGENTS.md) and the instruction files it lists, and `.editorconfig`{% if stack == 'dotnet' %}, with the C# conventions in `.github/instructions/csharp.instructions.md`{% endif %}. |
+| `coding_standards_enforced` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: the build enforces code style through the analyzers{% if csharp %}, and `./build/dod.ps1` checks the formatting with CSharpier{% endif %}.{% elif 'Invoke-ScriptAnalyzer' in build_command %}**Met**: the build runs PSScriptAnalyzer.{% else %}**Gap**: Unmet until a linter or formatter runs in CI; the template adds none for this stack.{% endif %} |
+| `build_standard_variables` | MUST | yes | no | **N/A**: it applies only to a build that makes native binaries. |
+| `build_preserve_debug` | SHOULD | yes | no | {% if stack == 'dotnet' %}**Met**: Release builds keep their PDB files{% if library %}, and each package has a symbol package{% endif %}.{% else %}**Check**: N/A without a build or an installation step.{% endif %} |
+| `build_non_recursive` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: one solution build, with MSBuild's project references.{% else %}**Check**: N/A without a build system.{% endif %} |
+| `build_repeatable` | MUST | yes | no | {% if stack == 'dotnet' %}**Check**: .NET builds are deterministic, with `ContinuousIntegrationBuild` on in CI; Met once two builds of one commit are shown to match.{% else %}**Check**: N/A when no build occurs; otherwise Met once two builds of one commit are shown to match.{% endif %} |
+| `installation_common` | MUST | yes | no | {% if library %}**Met**: a NuGet package reference.{% else %}**Check**: Met with the ecosystem's usual way to install, such as a package manager; N/A when nothing is installed.{% endif %} |
+| `installation_standard_variables` | MUST | yes | no | **N/A**: it applies only to an installer that writes files where users choose. |
+| `installation_development_quick` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Prerequisites, Set Up, and Build and Test. |
+| `external_dependencies` | MUST | yes | yes | {% if stack == 'dotnet' %}**Met**: `Directory.Packages.props` and the project files.{% elif stack == 'node' %}**Check**: `package.json` and its lock file.{% elif stack == 'python' %}**Check**: `requirements.txt` or `pyproject.toml`.{% else %}**Check**: the file the ecosystem reads its dependencies from.{% endif %} |
+| `dependency_monitoring` | MUST | yes | no | {% if github %}**Check**: Dependabot (`.github/dependabot.yml`) and its alerts, which the template's `tools/Set-RepositoryBaseline.ps1` turns on; Security > Dependabot shows the open ones.{% else %}**Gap**: Unmet until something checks the dependencies for known vulnerabilities; the template adds nothing on GitLab.{% endif %} |
+| `updateable_reused_components` | MUST | yes | no | **Met**: dependencies are pinned and moved by reviewed updates{% if github %} that Dependabot proposes, with actions pinned to a full commit SHA{% endif %}. |
+| `interfaces_current` | SHOULD | yes | no | **Check**: no deprecated API in use where a FLOSS alternative exists{% if stack == 'dotnet' %}; a use of an obsolete API fails the build, as warnings are errors{% endif %}. |
+| `automated_integration_testing` | MUST | no | no | **Met**: `{{ ci }}` runs the tests on every {{ pr }} and push to the default branch, and reports the result. |
+| `regression_tests_added50` | MUST | yes | no | **Check**: at least half of the bugs fixed in the last six months got a regression test ([Checks](#checks)). |
+| `test_statement_coverage80` | MUST | yes | no | **Check**: a measured statement coverage of 80% or more ([Checks](#checks)). |
+| `test_policy_mandated` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3, is the written policy. |
+| `tests_documented_added` | MUST | yes | no | **Met**: the same item, in the instructions for a change. |
+| `warnings_strict` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: warnings as errors, nullable reference types, and the analyzers at `latest-recommended` with code style enforced in the build.{% else %}**Check**: Met when the strictest practical settings are on.{% endif %} |
+
 ## Gold
 
 The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
