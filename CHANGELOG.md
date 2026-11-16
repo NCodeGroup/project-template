@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.98.0] - 2026-11-16
+
+### Added
+
+- Every project gets `docs/best-practices-criteria.md`, which the template owns and updates: all 145 OpenSSF Best Practices criteria of the passing, silver and gold levels, each with its requirement at that level, whether N/A and a URL apply, and the answer to expect, Met, Check, N/A, Gap, Person or Unmet, with its evidence for the project's stack and host; what stops a level, the checks to run before answering and, on GitHub, the prompts that register the project and update its answers in Claude in Chrome. ([#398](https://github.com/NCodeGroup/project-template/issues/398), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
+- The `best_practices_project` answer, never asked, records the project's number at bestpractices.dev once it is registered: `.\.template\Update-Project.ps1 -Data @{ best_practices_project = '<number>' }`. `docs/best-practices-criteria.md` then shows the badge for `README.md` and the address of the saved answers, and a project created or adopted with the answer gets the badge in `README.md` and `docs/best-practices-badge.md`. ([#398](https://github.com/NCodeGroup/project-template/issues/398), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
+
+### Changed
+
+- A new project's `SECURITY.md` promises an acknowledgement within 14 days, its `CONTRIBUTING.md` has a Review Requirements section and names the `good first issue` label, its `docs/assurance-case.md` has a Security Reviews section, and its `docs/best-practices-badge.md` links the criteria page, says where the project stands and lists the gold criteria that need a person. These files are project-owned: an update shows the template's changes to them, to take what fits. ([#398](https://github.com/NCodeGroup/project-template/issues/398), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
+- ADR-0023 and, on GitHub, ADR-0020 name the criteria page and what the gold level needs from people. ([#398](https://github.com/NCodeGroup/project-template/issues/398), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
+- On GitHub, a new .NET, Node.js or Python project's `CONTRIBUTING.md` says that a reformat or a large move brings back dismissed CodeQL alerts, which need dismissing again, and to keep a dismissal's reason that the code doesn't show in a comment beside it. ([#398](https://github.com/NCodeGroup/project-template/issues/398))
+
 ## [0.97.0] - 2026-11-15
 
 ### Added
@@ -1557,7 +1570,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.97.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.98.0...HEAD
+[0.98.0]: https://github.com/NCodeGroup/project-template/compare/v0.97.0...v0.98.0
 [0.97.0]: https://github.com/NCodeGroup/project-template/compare/v0.96.0...v0.97.0
 [0.96.0]: https://github.com/NCodeGroup/project-template/compare/v0.95.0...v0.96.0
 [0.95.0]: https://github.com/NCodeGroup/project-template/compare/v0.94.0...v0.95.0

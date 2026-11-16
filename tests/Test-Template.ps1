@@ -125,7 +125,7 @@ $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
-    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'GOVERNANCE.md', 'ROADMAP.md', 'docs\architecture.md', 'docs\assurance-case.md', 'docs\best-practices-badge.md'
+    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'GOVERNANCE.md', 'ROADMAP.md', 'docs\architecture.md', 'docs\assurance-case.md', 'docs\best-practices-badge.md', 'docs\best-practices-criteria.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
     claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
@@ -171,8 +171,9 @@ $cases = @(
     @{ Name = 'dotnet-library-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT' } }
     @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = '' }; Refused = 'Required for a NuGet package' }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
-    @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT'; conduct_contact = 'conduct@example.test' } }
+    @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT'; conduct_contact = 'conduct@example.test'; best_practices_project = '16752' } }
     @{ Name = 'python-unlicensed'; Stack = 'python'; Host = 'github'; Data = @{ license = '' } }
+    @{ Name = 'python-bad-project-number'; Stack = 'python'; Host = 'github'; Data = @{ best_practices_project = 'abc' }; Refused = 'number at bestpractices.dev, such as 16752' }
     @{ Name = 'python-claude'; Stack = 'python'; Host = 'github'; Tools = @('claude') }
     @{ Name = 'dotnet-author-comment'; Stack = 'dotnet'; Host = 'github'; Data = @{ author_name = 'C# Tools; Inc.' } }
 )
@@ -286,7 +287,18 @@ foreach ($case in $cases) {
     $assuranceWantsPublishing = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package -and $case.Host -eq 'github'
     Check "${name}: docs/assurance-case.md has its sections" (-not ($assuranceHeadings | Where-Object { -not $assurance.Contains($_) }) -and $assurance.Contains('trusted publishing') -eq $assuranceWantsPublishing) $assurance
     $badge = [IO.File]::ReadAllText((Join-Path $dest 'docs\best-practices-badge.md'))
-    Check "${name}: docs/best-practices-badge.md maps the silver criteria" ($badge.Contains('## Toward Silver') -and $badge.Contains('access_continuity') -and $badge.Contains('PROJECT_ID') -and $badge.Contains('signed_releases') -eq $assuranceWantsPublishing) $badge
+    Check "${name}: docs/best-practices-badge.md maps the silver criteria" ($badge.Contains('## Toward Silver') -and $badge.Contains('access_continuity') -and $badge.Contains('PROJECT_ID') -ne [bool]$case.Data.best_practices_project -and $badge.Contains('signed_releases') -eq $assuranceWantsPublishing) $badge
+    $criteriaText = [IO.File]::ReadAllText((Join-Path $dest 'docs\best-practices-criteria.md'))
+    $criteriaRows = [regex]::Matches($criteriaText, '(?m)^\| `[A-Za-z0-9_]+` \| (MUST|SHOULD|SUGGESTED) \| (yes|no) \| (yes|no) \| ').Count
+    Check "${name}: docs/best-practices-criteria.md maps all 145 criteria, says what stops a level and how to check, and holds the registration prompt on GitHub only" ($criteriaRows -eq 145 -and $criteriaText.Contains('## Where a Level Stops') -and $criteriaText.Contains('## Checks') -and $criteriaText.Contains('## Register and Answer') -and $criteriaText.Contains('REPORT AT THE END') -eq ($case.Host -eq 'github')) "$criteriaRows rows"
+    $projectNumber = $case.Data.best_practices_project
+    $readmeText = [IO.File]::ReadAllText((Join-Path $dest 'README.md'))
+    $answersText = [IO.File]::ReadAllText((Join-Path $dest '.copier-answers.yml'))
+    $projectOk = if ($projectNumber) { $badgeUrl = "https://www.bestpractices.dev/projects/$projectNumber/badge"; $readmeText.Contains($badgeUrl) -and $badge.Contains($badgeUrl) -and $criteriaText.Contains($badgeUrl) -and $answersText -match "(?m)^best_practices_project: '?$projectNumber'?\r?$" } else { -not $readmeText.Contains('bestpractices.dev/projects/') -and $answersText -notmatch '(?m)^best_practices_project:' }
+    Check "${name}: best_practices_project, when answered, is recorded and puts the badge in README.md, docs/best-practices-badge.md and docs/best-practices-criteria.md" $projectOk $answersText
+    $contributingText = [IO.File]::ReadAllText((Join-Path $dest 'CONTRIBUTING.md'))
+    $securityText = [IO.File]::ReadAllText((Join-Path $dest 'SECURITY.md'))
+    Check "${name}: CONTRIBUTING.md has Review Requirements and names good first issue, SECURITY.md acknowledges within 14 days, and docs/assurance-case.md records security reviews" ($contributingText.Contains('## Review Requirements') -and $contributingText.Contains('`good first issue`') -and $securityText.Contains('within 14 days') -and $assurance.Contains('## Security Reviews'))
     # Every template decision record a rendered Markdown file cites by number is one the project has.
     $recordNumbers = @(Get-ChildItem -LiteralPath (Join-Path $dest 'docs\decisions'), (Join-Path $dest 'docs\decisions\project-template') -File -Filter '*.md' | ForEach-Object { if ($_.Name -match '^(\d{4})-') { $Matches[1] } })
     $unknownCitations = @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force -Filter '*.md' | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } | ForEach-Object {
