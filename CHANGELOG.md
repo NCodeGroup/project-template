@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- `.template\Update-Project.ps1`, also when the project is already up to date, and `Adopt-Project.ps1` warn when the `license` answer is blank and the repository has no `LICENSE` or `COPYING` file, and print the command that adds Apache-2.0: `.\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }`. ([#397](https://github.com/NCodeGroup/project-template/issues/397), [ADR-0024](template/docs/decisions/project-template/0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md))
+- `.template\Update-Project.ps1`, also when the project is already up to date, and `Adopt-Project.ps1` warn when the repository has no `LICENSE` or `COPYING` file: for a blank `license` answer they print the command that adds Apache-2.0, `.\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }`, in which another SPDX expression can take its place, and for any other answer they say to add that license's text as `LICENSE.txt`. ([#397](https://github.com/NCodeGroup/project-template/issues/397), [ADR-0024](template/docs/decisions/project-template/0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md))
 
 ### Changed
 

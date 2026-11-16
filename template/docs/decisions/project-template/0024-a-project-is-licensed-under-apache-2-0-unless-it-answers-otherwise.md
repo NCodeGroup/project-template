@@ -20,9 +20,11 @@ went through ten template versions without one. NCode Group's repositories use A
 2. **One answer.** Blank is the "no", so no yes/no question stands beside it.
 3. **An update or an adoption never chooses a license for code that already exists.** A project from before the
    question keeps none, and an adoption that finds none answers blank.
-4. **A blank answer without a license file is warned about.** `.template/Update-Project.ps1`, also when the project is
-   up to date, and the template's `Adopt-Project.ps1` warn when the answer is blank and the repository has no `LICENSE`
-   or `COPYING` file at its root, printing `.\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }`.
+4. **A repository without a license file is warned about.** `.template/Update-Project.ps1`, also when the project is up
+   to date, and the template's `Adopt-Project.ps1` warn when the repository has no `LICENSE` or `COPYING` file at its
+   root. For a blank answer they print `.\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }`, in which
+   another SPDX expression can take Apache-2.0's place; for any other answer, such as one the template writes no file
+   for or one whose `LICENSE.txt` was deleted, they say to add that license's text as `LICENSE.txt`.
 
 ## Options considered
 
@@ -41,4 +43,5 @@ went through ten template versions without one. NCode Group's repositories use A
   its C# file header, and is asked `author_name`.
 - A repository that wants no license, such as a private one, answers blank and sees the warning on each update.
 - An existing project without a license runs the printed command.
-- The warning covers only a blank answer.
+- A project whose answer names a license it has no file for, such as GPL-3.0-only, is warned too, and adds the
+  license's text itself.
