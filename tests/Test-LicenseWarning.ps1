@@ -8,11 +8,15 @@
     per check and exits 1 on any failure (ADR-0024).
       scripts      Adopt-Project.ps1 prints the update script's license warning word for word, under the same
                    condition.
+      unit         Invoke-TemplateRender passes license= only for answers without a license line, and -Data's
+                   license when given.
       no-answer    A project from before the license question, without a license answer: the update records a blank
                    answer, not the Apache-2.0 default, adds no license file and warns with the command that adds
                    Apache-2.0; with -Data @{ license = 'Apache-2.0' } it adds LICENSE.txt and COPYRIGHT.txt, records
                    the license and warns no more.
       own-license  A blank answer beside a LICENSE file of the repository's own: no warning, and the file is kept.
+      licensed     The default Apache-2.0 answer: the update keeps the answer, LICENSE.txt and COPYRIGHT.txt, and
+                   doesn't warn.
       adopt-unlicensed
                    Adopting a repository without a license: Adopt-Project.ps1 answers blank, not the Apache-2.0
                    default, adds no license file and prints the same warning, with the command that adds Apache-2.0.
@@ -73,6 +77,37 @@ $updatePattern = [regex]::Match($updateText, $patternRe).Groups[1].Value
 $adoptPattern = [regex]::Match($adoptText, $patternRe).Groups[1].Value
 Check 'scripts: Adopt-Project.ps1 looks for a license file with the update''s pattern, after the same blank-answer check' ($updatePattern.StartsWith('^(LICEN') -and $adoptPattern -eq $updatePattern -and $updateText.Contains('"$(Get-Answer ''license'')".Trim()') -and $adoptText.Contains('"$(Get-Answer ''license'')".Trim()')) "$updatePattern | $adoptPattern"
 
+# unit: Invoke-TemplateRender with a stand-in Copier that records its arguments: license= only for answers without a license line, -Data's license when given.
+$licenseRender = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'ConvertTo-CopierValue', 'Get-PreReleaseAnswer', 'Get-Answer', 'Get-CSharpFormatAnswer', 'Get-LicenseData', 'Invoke-TemplateRender') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $recorded = [Collections.Generic.List[string]]::new()
+    function Invoke-Copier { $recorded.Clear(); foreach ($a in $args) { $recorded.Add("$a") } }
+    # Set-Variable: only the loaded functions read TemplateClone and Data, which the script analyzer can't see.
+    Set-Variable -Name TemplateClone -Value $tpl
+    $cases = [ordered]@{
+        'recorded-mit'   = @{ Answers = "stack: python`nlicense: MIT`n"; Data = @{}; Want = '' }
+        'recorded-blank' = @{ Answers = "stack: python`nlicense: ''`n"; Data = @{}; Want = '' }
+        'no-line'        = @{ Answers = "stack: python`n"; Data = @{}; Want = 'license=' }
+        'data-wins'      = @{ Answers = "stack: python`n"; Data = @{ license = 'MIT' }; Want = 'license=MIT' }
+    }
+    foreach ($name in $cases.Keys) {
+        $project = Join-Path $Work "render-$name"
+        $null = New-Item -ItemType Directory -Path $project -Force
+        Set-Variable -Name Data -Value $cases[$name].Data
+        [IO.File]::WriteAllText((Join-Path $project '.copier-answers.yml'), $cases[$name].Answers)
+        Push-Location $project
+        try { $null = Invoke-TemplateRender v0.1.0 (Join-Path $project 'out') }
+        finally { Pop-Location }
+        $got = @($recorded | Where-Object { $_ -like 'license=*' }) -join ','
+        if ($got -ne $cases[$name].Want) { "${name}: [$got]" }
+    }
+}
+Check 'unit: the render passes license= only for answers without a license line, and -Data''s license when given' (-not $licenseRender) ($licenseRender -join ' | ')
+
 # no-answer: a project whose answers have no license line, as one from before the license question.
 $noAnswer = Join-Path $Work 'no-answer'
 Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test no-answer' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' --data 'license=' $tplUrl $noAnswer
@@ -98,6 +133,18 @@ try {
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $ownLicense
     Check 'own-license: a blank answer beside a LICENSE file of the repository''s own gets no warning' ($result.ExitCode -eq 0 -and -not $result.Output.Contains('No license:') -and [IO.File]::ReadAllText((Join-Path $ownLicense 'LICENSE')) -eq "Own license.`n") $result.Output
+}
+finally { Pop-Location }
+
+# licensed: the default Apache-2.0 answer, with the LICENSE.txt and COPYRIGHT.txt it writes.
+$licensed = Join-Path $Work 'licensed'
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test licensed' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tplUrl $licensed
+Push-Location $licensed
+try {
+    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
+    $licenseHashes = (Get-FileHash -LiteralPath LICENSE.txt, COPYRIGHT.txt).Hash -join ','
+    $result = Invoke-Update $licensed
+    Check 'licensed: the update keeps the Apache-2.0 answer, LICENSE.txt and COPYRIGHT.txt, and doesn''t warn' ($result.ExitCode -eq 0 -and (Get-Content -Raw -LiteralPath .copier-answers.yml) -match '(?m)^license: Apache-2\.0\r?$' -and (Test-Path -LiteralPath LICENSE.txt) -and (Test-Path -LiteralPath COPYRIGHT.txt) -and ((Get-FileHash -LiteralPath LICENSE.txt, COPYRIGHT.txt).Hash -join ',') -eq $licenseHashes -and -not $result.Output.Contains('No license')) $result.Output
 }
 finally { Pop-Location }
 
