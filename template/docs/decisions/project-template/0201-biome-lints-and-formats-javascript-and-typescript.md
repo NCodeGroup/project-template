@@ -23,7 +23,8 @@ the project gets `biome.json`, and whether CI and the Landing `gate` run the lin
   `@biomejs/biome@2` exactly in it and adds `"lint": "biome ci --error-on-warnings ."` and
   `"format": "biome check --write ."` under `scripts`, as `CONTRIBUTING.md` says.
 - CI runs `<package_manager> run lint` before the build, on GitHub and on GitLab, and a new project's Landing `gate` runs
-  it.
+  it, each once `package.json` exists: the template renders none, so a new project lands its first plans before it
+  adds Biome.
 - The rules in `biome.json`, each with its reason:
   - `files.includes` names only JavaScript and TypeScript files and force-ignores `.claude` (plan worktrees) and
     `.template`, so Biome never lints a worktree and never formats a file the template owns.
