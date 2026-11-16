@@ -564,6 +564,7 @@ foreach ($case in $cases) {
         $uses = [regex]::Matches($releaseWorkflow, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the release workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $releaseWorkflow
         Check "${name}: the release workflow runs CI again before it tags, and CI can be called" ($releaseWorkflow -match '(?m)^    uses: \./\.github/workflows/ci\.yml\r?$' -and $releaseWorkflow -match '(?m)^    needs: \[policy, test\]\r?$' -and $ci.Contains('workflow_call:')) $releaseWorkflow
+        Check "${name}: the release workflow signs a public repository's tag with a pinned gitsign" ($releaseWorkflow.Contains('chainguard-dev/actions/setup-gitsign@d496b2ab65497cac13d77ccd5038b8aae7e8c43b # v1.8.2') -and $releaseWorkflow.Contains('if: ${{ !github.event.repository.private }}') -and $releaseWorkflow.Contains('id-token: write') -and $releaseWorkflow.Contains("-Sign:(`$env:SIGN -eq 'true')")) $releaseWorkflow
         # The Scorecard workflow: every GitHub project gets it.
         $scorecard = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\scorecard.yml') -Raw
         $uses = [regex]::Matches($scorecard, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
