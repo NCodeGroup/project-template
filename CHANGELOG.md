@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.102.1] - 2026-11-17
+
+### Added
+
+- The template's ADR-0030 records that the repository baseline adds the code-scanning rule only where CodeQL's default setup analyzes a language, amending ADR-0005, and a new project's `docs/assurance-case.md` says static analysis is enforced there. ([ADR-0030](template/docs/decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
+- The template's ADR-0031 records that the repository baseline turns off approval of the last push in its own "Protect main" ruleset where no approval is required, amending ADR-0022, which had it print the command and write nothing, and its sentence that the script never loosens a ruleset: this setting of its own ruleset is the one exception. ([ADR-0031](template/docs/decisions/project-template/0031-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md))
+
+### Fixed
+
+- `tools/Set-RepositoryBaseline.ps1` adds the code-scanning rule only where CodeQL's default setup is configured and analyzes a language, which its summary names. GitHub can report a setup as configured with no language, as it did for NCodeGroup/docs and NCodeGroup/brand once their organization's security configuration turned it on: CodeQL ran on no pull request, and the rule blocked every one with every check green. The script leaves the rule out there, says why, and switches no query suite, since the switch sends `query_suite` alone and sets up no language; a later run with `-RequireChecks` adds the rule once the repository's settings give CodeQL a language. A new project that `New-Project.ps1 -CreateRemote` creates where an organization's security configuration turns default setup on can get no code-scanning rule that way, and needs that later run. ([ADR-0030](template/docs/decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
+- Where a "Protect main" ruleset already has a code-scanning rule that requires CodeQL and the default setup is configured but analyzes no language, `tools/Set-RepositoryBaseline.ps1` warns that every pull request stays blocked and names the fix: set up CodeQL's languages in the repository's settings, or remove the rule, which the script never removes. It prints that warning, or its query-suite notice, also for a "Protect main" beside a ruleset of the owner's. ([ADR-0030](template/docs/decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
+- `tools/Set-RepositoryBaseline.ps1` turns off approval of the last push in a "Protect main" ruleset that has it on with no required approval, and says so, also with `-WhatIf`; it never turns it on without one. GitHub then waits for an approval from someone other than the pusher and never lets an author approve their own pull request, so with one maintainer the setting is never met: on 2026-11-16 NCodeGroup/docs, whose ruleset had it on with zero approvals, kept a pull request blocked, with every check green, NCode Review approving, every conversation resolved and auto-merge on, until its owner unticked "Require approval of the most recent reviewable push". A run, with `-RequireChecks` too, had kept the setting, and a plain run only printed the command that turns it off. A ruleset that requires approvals keeps the setting and its count, and a ruleset of the owner's still gets the printed command and is written to nothing. On a plain run, where GitHub refuses the write that turns it off in "Protect main", the run reports it as not available and prints the same command; with `-RequireChecks`, which writes the whole ruleset, a refused write fails the repository like any other. A project with the setting on and zero approvals gets it turned off the next time it runs the baseline; `-All -WhatIf` lists them first. ([ADR-0031](template/docs/decisions/project-template/0031-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md))
+
 ## [0.102.0] - 2026-11-16
 
 ### Changed
@@ -1643,7 +1656,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.102.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.102.1...HEAD
+[0.102.1]: https://github.com/NCodeGroup/project-template/compare/v0.102.0...v0.102.1
 [0.102.0]: https://github.com/NCodeGroup/project-template/compare/v0.101.1...v0.102.0
 [0.101.1]: https://github.com/NCodeGroup/project-template/compare/v0.101.0...v0.101.1
 [0.101.0]: https://github.com/NCodeGroup/project-template/compare/v0.100.0...v0.101.0

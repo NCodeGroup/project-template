@@ -12,7 +12,18 @@
     and that -RequireChecks updates the ruleset the script made; that a ruleset that already has a code-scanning rule keeps it and its
     thresholds, its repository's suite is never switched, and a notice, with -WhatIf too, says when the default setup
     runs a suite other than extended and how to switch it by hand, while a setup it can't read is reported without
-    failing the run; that -RequireChecks auto requires the GitHub Actions checks that passed on the
+    failing the run, also beside a ruleset of the owner's; that a default setup counts as configured only while its
+    answer lists a language, which the summary names: one configured with none, word for word as NCodeGroup/docs and
+    NCodeGroup/brand answered on 2026-11-16, or whose answer lists none, gets no code-scanning rule and no switch to the
+    extended suite, with the reason, also with -WhatIf, and a kept rule that requires CodeQL on such a setup gets a
+    warning that names both fixes in place of the suite notice, also with -RequireChecks, with -WhatIf and beside a
+    ruleset of the owner's, while a kept rule that requires another tool alone, or one on a setup that isn't configured,
+    gets none, and a setup that isn't configured gets no notice that it analyzes no language;
+    that approval of the last push is never on with no required approval: a Protect main ruleset that has it, alone, beside
+    a ruleset of the owner's, with other changes or on -RequireChecks, gets it turned off and says so, also with -WhatIf and
+    when GitHub refuses it, one that requires approvals keeps it, and a ruleset of the owner's gets a notice with a command
+    that parses and is written to nothing;
+    that -RequireChecks auto requires the GitHub Actions checks that passed on the
     latest merged pull request, found on any page of closed pull requests, reading every page of its check runs and
     workflow runs, Commit attribution among them, leaves out the review bot's Code review and its job, CodeQL and its
     Analyze jobs, push-only jobs, jobs no workflow run accounts for, other apps' checks and skipped, neutral, failed or
@@ -175,11 +186,14 @@ if ($path -match '^(repos/[^/]+/([^/]+)|orgs/([^/]+))/actions/policies(/(\d+))?(
 }
 if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
     # codeql is a state, 404 for not found, fail:<code> for another status, fail:none for no response at all, or
-    # raw:<text> for a body that isn't JSON. An empty suite leaves query_suite out of the answer. With --include, the
-    # answer starts with the status line and a header.
-    $codeql = "$($data.repos[$Matches[1]].codeql)"
+    # raw:<text> for a body sent as it is, such as one that isn't JSON. An empty suite leaves query_suite out of the
+    # answer, and languages, the languages the setup analyzes, $null leaves languages out. With --include, the answer
+    # starts with the status line and a header.
+    $repo = $data.repos[$Matches[1]]
+    $codeql = "$($repo.codeql)"
     $answer = @{ state = $codeql }
-    if ("$($data.repos[$Matches[1]].suite)") { $answer.query_suite = "$($data.repos[$Matches[1]].suite)" }
+    if ("$($repo.suite)") { $answer.query_suite = "$($repo.suite)" }
+    if ($null -ne $repo.languages) { $answer.languages = @($repo.languages) }
     $status = 200; $body = ConvertTo-Json -InputObject $answer
     if ($codeql -eq 'fail:none') { exit 1 }
     if ($codeql -eq '404') { $status = 404; $body = '{"message":"Not Found"}' }
@@ -204,10 +218,15 @@ if ($path -match '^repos/[^/]+/([^/]+)$') { ConvertTo-Json -InputObject $data.re
 exit 1
 '@
 
-function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_forward', 'pull_request'), [string]$Include = '~DEFAULT_BRANCH', [bool]$Threads = $true, [bool]$Stale = $true, [bool]$LastPush = $false, [bool]$CodeOwner = $false) {
+# A code_scanning rule requires $ScanTool's results, CodeQL's unless it says otherwise, as GitHub reports such a rule.
+function New-Ruleset([string]$Name, [string[]]$Types = @('deletion', 'non_fast_forward', 'pull_request'), [string]$Include = '~DEFAULT_BRANCH', [bool]$Threads = $true, [bool]$Stale = $true, [bool]$LastPush = $false, [bool]$CodeOwner = $false, [string]$ScanTool = 'CodeQL', [int]$Approvals = 0) {
     @{ name = $Name; target = 'branch'; enforcement = 'active'
         conditions = @{ ref_name = @{ include = @($Include); exclude = @() } }
-        rules = @($Types | ForEach-Object { if ($_ -eq 'pull_request') { @{ type = $_; parameters = @{ required_approving_review_count = 0; required_review_thread_resolution = $Threads; dismiss_stale_reviews_on_push = $Stale; require_last_push_approval = $LastPush; require_code_owner_review = $CodeOwner } } } else { @{ type = $_ } } }) }
+        rules = @($Types | ForEach-Object {
+                if ($_ -eq 'pull_request') { @{ type = $_; parameters = @{ required_approving_review_count = $Approvals; required_review_thread_resolution = $Threads; dismiss_stale_reviews_on_push = $Stale; require_last_push_approval = $LastPush; require_code_owner_review = $CodeOwner } } }
+                elseif ($_ -eq 'code_scanning') { @{ type = $_; parameters = @{ code_scanning_tools = @(@{ tool = $ScanTool; alerts_threshold = 'errors_and_warnings'; security_alerts_threshold = 'all' }) } } }
+                else { @{ type = $_ } }
+            }) }
 }
 function New-TagRuleset([string]$Name, [string[]]$Types = @('deletion', 'update'), [string]$Include = 'refs/tags/v*', [string]$Enforcement = 'active') {
     @{ name = $Name; target = 'tag'; enforcement = $Enforcement
@@ -227,7 +246,9 @@ function New-EventPolicy([string]$Name, [string[]]$Events = @('pull_request_targ
 # so is auto-merge: $AutoMerge $null leaves it out of the answer, as GitHub does for someone who can't change it.
 # $Workflows lists the files on the default branch, or fail:<code>; $Policies the repository's Actions policies
 # (New-EventPolicy), or fail:<code>. $WorkflowText maps a workflow file to its text, which the contents API answers as base64.
-function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
+# $Languages lists the languages CodeQL's default setup analyzes, those of NCodeGroup/Buffers unless it says otherwise:
+# @() for none, and $null leaves languages out of the answer.
+function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', $Languages = @('actions', 'csharp'), [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
     [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), [hashtable]$WorkflowText = @{}, $Policies = @()) {
     $full = @{}
     $summaries = @()
@@ -240,7 +261,7 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
     $info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork; private = $Visibility -ne 'public'; visibility = $Visibility; security_and_analysis = $analysis }
     if ($null -ne $AutoMerge) { $info.allow_auto_merge = $AutoMerge }
     @{ info = $info
-        rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; switchFails = $SwitchFails
+        rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; languages = $Languages; switchFails = $SwitchFails
         pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails
         workflows = @($Workflows); workflowText = $WorkflowText; policies = if ($Policies -is [string]) { $Policies } else { @($Policies) } }
 }
@@ -297,13 +318,14 @@ $repos = @{
     extendedAlready = New-Repo -Suite 'extended'
     suiteUnreported = New-Repo -Suite ''
     switchRefused = New-Repo -SwitchFails $true
-    noCodeQL = New-Repo -CodeQL 'not-configured'
+    # A setup that isn't configured lists no language, as where CodeQL runs through the repository's own workflow.
+    noCodeQL = New-Repo -CodeQL 'not-configured' -Languages @()
     setupNotFound = New-Repo -CodeQL '404'
     setupFailed = New-Repo -CodeQL 'fail:403'
     setupNoResponse = New-Repo -CodeQL 'fail:none'
     setupUnreadable = New-Repo -CodeQL 'raw:<html>Bad Gateway</html>'
     oursCodeQL404 = New-Repo -CodeQL '404' -Rulesets @((New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')))
-    oursWithoutCodeQL = New-Repo -CodeQL 'not-configured' -Rulesets @((New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')))
+    oursWithoutCodeQL = New-Repo -CodeQL 'not-configured' -Languages @() -Rulesets @((New-Ruleset 'Protect main' @('deletion', 'non_fast_forward', 'pull_request', 'code_scanning')))
     oursScanDefault = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
     oursScanExtended = New-Repo -Suite 'extended' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
     oursScanUnreported = New-Repo -Suite '' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
@@ -311,12 +333,34 @@ $repos = @{
     oursScanNoResponse = New-Repo -CodeQL 'fail:none' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
     oursScanNotJson = New-Repo -CodeQL 'raw:<html>Bad Gateway</html>' -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
     oursScanLoose = New-Repo -Rulesets @($looseRuleset)
+    # CodeQL's default setup configured with a language, and with none: NCodeGroup/docs and NCodeGroup/brand gave
+    # noLanguage's answer, word for word, on 2026-11-16, while their code-scanning rule blocked every pull request.
+    oneLanguage = New-Repo -Languages @('actions')
+    noLanguage = New-Repo -CodeQL 'raw:{"state":"configured","languages":[],"query_suite":"extended","threat_model":"remote","updated_at":null,"schedule":null,"runner_type":"standard","runner_label":""}'
+    noLanguageListed = New-Repo -Languages $null
+    noLanguageSwitch = New-Repo -Languages @()
+    oursScanNoLanguage = New-Repo -Languages @() -Rulesets @((New-Ruleset 'Protect main' $scanTypes))
+    ownedThenOursScanNoLanguage = New-Repo -Languages @() -Rulesets @((New-Ruleset 'owner rules'), (New-Ruleset 'Protect main' $scanTypes))
+    # A kept rule that requires another tool's results alone, on a setup with no language: it waits for none of
+    # CodeQL's.
+    oursScanOtherToolNoLanguage = New-Repo -Languages @() -Rulesets @((New-Ruleset 'Protect main' $scanTypes -ScanTool 'Semgrep'))
+    # A Protect main with a code-scanning rule beside a ruleset of the owner's, on a setup that runs the default suite,
+    # and on one it can't read.
+    ownedThenOursScanDefault = New-Repo -Rulesets @((New-Ruleset 'owner rules'), (New-Ruleset 'Protect main' $scanTypes))
+    ownedThenOursScanUnreadable = New-Repo -CodeQL 'fail:403' -Rulesets @((New-Ruleset 'owner rules'), (New-Ruleset 'Protect main' $scanTypes))
     legacy = New-Repo -Branch master
     owned = New-Repo -Rulesets @((New-Ruleset 'main'))
     ours = New-Repo -Rulesets @((New-Ruleset 'Protect main'))
     oursCodeOwner = New-Repo -Rulesets @((New-Ruleset 'Protect main' -CodeOwner $true))
     oursBlocked = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true))
     ownedBlocked = New-Repo -Rulesets @((New-Ruleset 'owner rules' -LastPush $true))
+    oursBlockedLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false -Stale $false -LastPush $true))
+    oursBlockedRefused = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true)) -WriteFails @{ 'rulesets/101' = 403 }
+    ownedThenOursBlocked = New-Repo -Rulesets @((New-Ruleset 'owner rules' -LastPush $true), (New-Ruleset 'Protect main' -LastPush $true))
+    oursApproved = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 2))
+    oursApprovedOff = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $false -Approvals 2))
+    oursOneApproval = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 1))
+    oursOneApprovalOff = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $false -Approvals 1))
     ownedLoose = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false))
     oursLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false))
     oursStaleLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $true -Stale $false))
@@ -518,6 +562,7 @@ try {
     $r = Invoke-Baseline @('-Repo', 'noCodeQL')
     Check 'create: no code-scanning rule where CodeQL is not configured, and says so' (((@($r.Body.rules.type)) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and $r.Output -match [regex]::Escape("no code-scanning rule (CodeQL's default setup is not configured)")) "$(@($r.Body.rules.type) -join ',') $($r.Output)"
     Check 'create: CodeQL that is not configured is not switched to a suite' (($r.Changes -join '|') -notmatch 'default-setup') ($r.Changes -join '|')
+    Check 'languages: a setup that is not configured, and lists no language, gets no notice that it analyzes no language' ($r.Body -and $r.Output -notmatch 'analyzes no language') $r.Output
 
     $r = Invoke-Baseline @('-Repo', 'setupNotFound')
     Check 'create: CodeQL setup not found (404) gets no code-scanning rule' (((@($r.Body.rules.type)) -join ',') -eq 'deletion,non_fast_forward,pull_request') "$(@($r.Body.rules.type) -join ',') $($r.Output)"
@@ -525,6 +570,20 @@ try {
         $r = Invoke-Baseline @('-Repo', $name)
         Check "skip: a CodeQL setup lookup that fails or can't be read changes nothing ($name)" ($r.Changes.Count -eq 0 -and $r.Output -match "${name}: skipped \(couldn't read CodeQL's default setup") "$($r.Changes -join '|') $($r.Output)"
     }
+
+    # 3d. A default setup counts as configured only while it analyzes a language: one configured with none runs CodeQL on
+    # no pull request, so a code-scanning rule would block every merge, and a switch to the extended suite, which names no
+    # language, would set none up (ADR-0030).
+    $r = Invoke-Baseline @('-Repo', 'oneLanguage')
+    Check 'languages: a setup configured with a language gets the code-scanning rule and the switch, and the summary names the language' ((@($r.Body.rules.type) -contains 'code_scanning') -and (($r.Changes -join '|') -match [regex]::Escape('api -X PATCH repos/NCodeGroup/oneLanguage/code-scanning/default-setup -f query_suite=extended')) -and $r.Output.Contains("done: oneLanguage (main): create 'Protect main' with 0 required check(s), and a code-scanning rule (CodeQL's default setup analyzes actions); switch CodeQL from the default query suite to extended")) "$(@($r.Body.rules.type) -join ',') $($r.Changes -join '|') $($r.Output)"
+    foreach ($name in 'noLanguage', 'noLanguageListed') {
+        $r = Invoke-Baseline @('-Repo', $name)
+        Check "languages: a setup configured with no language gets no code-scanning rule, and the run says why and how to add it ($name)" ((@($r.Body.rules.type) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and $r.Output.Contains("${name}: notice: CodeQL's default setup is configured but analyzes no language, so CodeQL would run on no pull request and a code-scanning rule would block every merge") -and $r.Output.Contains('a later run with -RequireChecks then adds the rule') -and $r.Output.Contains("done: $name (main): create 'Protect main' with 0 required check(s), and no code-scanning rule (CodeQL's default setup analyzes no language)")) "$(@($r.Body.rules.type) -join ',') $($r.Output)"
+    }
+    $r = Invoke-Baseline @('-Repo', 'noLanguage', '-WhatIf')
+    Check 'languages: -WhatIf says why the rule is left out, and changes nothing' ($r.Changes.Count -eq 0 -and $r.Output.Contains("noLanguage: notice: CodeQL's default setup is configured but analyzes no language") -and $r.Output.Contains("would: noLanguage (main): create 'Protect main' with 0 required check(s), and no code-scanning rule (CodeQL's default setup analyzes no language)")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'noLanguageSwitch')
+    Check 'languages: a setup configured with no language is not switched to the extended suite, which would set up no language' ($r.Body -and (@($r.Body.rules.type) -notcontains 'code_scanning') -and ($r.Changes -join '|') -notmatch 'default-setup' -and $r.Output -notmatch 'switch CodeQL' -and $r.Output.Contains("the setup's query suite is left as it is, since switching it would set up no language")) "$($r.Changes -join '|') $($r.Output)"
 
     # 3c. Invoke-HostApi is copied from workflow/Get-PlanState.ps1, which projects get on its own; the copies must match.
     $bodies = foreach ($file in (Join-Path $repoRoot 'tools/Set-RepositoryBaseline.ps1'), (Join-Path $repoRoot 'workflow/Get-PlanState.ps1')) {
@@ -600,11 +659,30 @@ try {
     Check 'update: -RequireChecks changes the ruleset it made, in place' (($r.Changes -join '|') -like '*BODY PUT repos/NCodeGroup/ours/rulesets/101*') ($r.Changes -join '|')
     $r1 = Invoke-Baseline @('-Repo', 'oursBlocked', '-RequireChecks', 'test')
     $kp = ($r1.Body.rules | Where-Object type -eq 'pull_request').parameters
-    Check 'update: -RequireChecks keeps the approval settings of the ruleset it made, so it never loosens them' (($kp.require_last_push_approval -eq $true) -and ($kp.required_approving_review_count -eq 0)) ($kp | ConvertTo-Json -Compress)
+    $r4 = Invoke-Baseline @('-Repo', 'oursApproved', '-RequireChecks', 'test')
+    $ap4 = ($r4.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'update: -RequireChecks turns off approval of the last push where no approval is required, and keeps it, and the count, where approvals are' (($kp.require_last_push_approval -eq $false) -and ($kp.required_approving_review_count -eq 0) -and ($kp.dismiss_stale_reviews_on_push -eq $true) -and ($kp.required_review_thread_resolution -eq $true) -and ($ap4.require_last_push_approval -eq $true) -and ($ap4.required_approving_review_count -eq 2)) "$($kp | ConvertTo-Json -Compress) $($ap4 | ConvertTo-Json -Compress)"
     $r3 = Invoke-Baseline @('-Repo', 'oursCodeOwner', '-RequireChecks', 'test')
     $cp = ($r3.Body.rules | Where-Object type -eq 'pull_request').parameters
     Check 'update: -RequireChecks keeps code-owner review of the ruleset it made' ($cp.require_code_owner_review -eq $true) ($cp | ConvertTo-Json -Compress)
-    Check 'last push: -RequireChecks run on a ruleset with last-push approval and no approval prints the notice' ($r1.Output.Contains("oursBlocked: notice: 'Protect main' requires approval of the last push")) $r1.Output
+    Check 'last push: -RequireChecks run on a ruleset with last-push approval and no approval says it turns it off, with no notice' ($r1.Output.Contains('done: oursBlocked (main): update ''Protect main'' with 1 required check(s): test') -and $r1.Output.Contains(', and turns off approval of the last push, which blocks every merge while no approval is required') -and $r1.Output -notmatch 'notice:' -and $r4.Output -notmatch 'turns off') "$($r1.Output) $($r4.Output)"
+    $r5 = Invoke-Baseline @('-Repo', 'oursApproved')
+    Check 'last push: a Protect main that requires approvals keeps approval of the last push, and is not written' (($r5.Changes -join '|') -notmatch 'rulesets/101' -and $r5.Output -notmatch 'notice:|turn off') "$($r5.Changes -join '|') $($r5.Output)"
+    # The setting is never turned on without an approval, and a ruleset with one approval or more keeps its setting, on or
+    # off (ADR-0031): the boundary is between zero and one, on -RequireChecks and on a plain run.
+    $r6 = Invoke-Baseline @('-Repo', 'oursApprovedOff', '-RequireChecks', 'test')
+    $p6 = ($r6.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'last push: -RequireChecks on a ruleset with two required approvals and the setting off keeps both, and does not turn it on' ($p6.require_last_push_approval -eq $false -and $p6.required_approving_review_count -eq 2 -and $r6.Output -notmatch 'turns off|notice:') "$($p6 | ConvertTo-Json -Compress) $($r6.Output)"
+    $r7 = Invoke-Baseline @('-Repo', 'oursOneApproval', '-RequireChecks', 'test')
+    $p7 = ($r7.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'last push: -RequireChecks on a ruleset with one required approval and the setting on keeps both' ($p7.require_last_push_approval -eq $true -and $p7.required_approving_review_count -eq 1 -and $r7.Output -notmatch 'turns off|notice:') "$($p7 | ConvertTo-Json -Compress) $($r7.Output)"
+    $r8 = Invoke-Baseline @('-Repo', 'oursOneApprovalOff', '-RequireChecks', 'test')
+    $p8 = ($r8.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'last push: -RequireChecks on a ruleset with one required approval and the setting off does not turn it on' ($p8.require_last_push_approval -eq $false -and $p8.required_approving_review_count -eq 1) "$($p8 | ConvertTo-Json -Compress)"
+    foreach ($name in 'oursOneApproval', 'oursOneApprovalOff', 'oursApprovedOff') {
+        $r9 = Invoke-Baseline @('-Repo', $name)
+        Check "last push: a plain run on $name writes no ruleset and prints no notice or turn-off" (-not @($r9.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' }).Count -and ($r9.Changes -join '|') -notmatch "$name/rulesets/101" -and $r9.Output -notmatch 'notice:|turn off|turns off') "$($r9.Changes -join '|') $($r9.Output)"
+    }
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
     $r2 = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
     Check 'update: a ruleset with a code-scanning rule keeps it, whatever the default setup says (advanced setup runs CodeQL too)' ((@($r2.Body.rules.type) -contains 'code_scanning') -and $r2.Output -match 'keeps its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"
@@ -623,22 +701,47 @@ try {
     $r = Invoke-Baseline @('-Repo', 'oursBlockedApprover')
     $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursBlockedApprover/rulesets/101' })
     $ap = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
-    Check 'approval: a Protect main with last-push approval and no approval gets one approval, and no notice' ($puts.Count -eq 1 -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $r.Output -notmatch 'notice:') "$($r.Changes -join '|') $($r.Output)"
+    Check 'approval: a Protect main with last-push approval and no approval gets one approval, and no notice, and the output never says it turns last-push approval off' ($puts.Count -eq 1 -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $r.Output -notmatch 'notice:|turn off' -and $r.Output.Contains("oursBlockedApprover: 'Protect main': require at least one approval, of the last push: set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursBlockedApprover', '-RequireChecks', 'test')
+    $ap = ($r.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'approval: -RequireChecks on that ruleset ends at one approval with last-push approval on, and says nothing about turning it off' ($ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $r.Output -notmatch 'turn off|turns off|notice:') "$($ap | ConvertTo-Json -Compress) $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'ownedApprover')
     Check 'approval: a ruleset of the owner''s is not written for the approval' (($r.Changes -join '|') -notmatch 'rulesets/101' -and -not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/101' }).Count) "$($r.Changes -join '|') $($r.Output)"
 
-    # 6b. Approval of the last push with no approving review blocks every merge, so the script prints the command that
-    # turns it off and never writes it itself.
+    # 6b. Approval of the last push with no required approval waits for a reviewer other than the pusher, and GitHub never
+    # lets an author approve their own pull request, so with one maintainer it blocks every merge (#385; NCodeGroup/docs on
+    # 2026-11-16 stayed BLOCKED with every check green and every thread resolved until it was unticked). The script turns it
+    # off in its own Protect main ruleset and says so (ADR-0031), and prints the command for a ruleset of the owner's.
+    $blockedLabel = "oursBlocked: 'Protect main': turn off approval of the last push, which blocks every merge while no approval is required"
     $r = Invoke-Baseline @('-Repo', 'oursBlocked')
-    Check 'last push: Protect main with last-push approval and no approval is not written, and the notice is printed' (($r.Changes -join '|') -notmatch 'rulesets/101' -and $r.Output.Contains("oursBlocked: notice: 'Protect main' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursBlocked/rulesets/101' })
+    $lp = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'last push: Protect main with last-push approval and no approval gets it turned off, in one PUT of its rules alone, and says so' ($puts.Count -eq 1 -and (@($puts[0].body.PSObject.Properties.Name) -join ',') -eq 'rules' -and (@($puts[0].body.rules.type) -join ',') -eq 'deletion,non_fast_forward,pull_request' -and $lp.require_last_push_approval -eq $false -and $lp.required_approving_review_count -eq 0 -and $lp.dismiss_stale_reviews_on_push -eq $true -and $lp.required_review_thread_resolution -eq $true -and $r.Output.Contains("${blockedLabel}: set") -and $r.Output -notmatch 'notice:') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursBlocked', '-WhatIf')
+    Check 'last push: -WhatIf writes nothing and says it would turn off approval of the last push' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("${blockedLabel}: would set") -and $r.Output -notmatch 'notice:') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursBlockedLoose')
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursBlockedLoose/rulesets/101' })
+    $lp = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'last push: with conversations and stale reviews loose too, one PUT sets all three' ($puts.Count -eq 1 -and $lp.require_last_push_approval -eq $false -and $lp.required_review_thread_resolution -eq $true -and $lp.dismiss_stale_reviews_on_push -eq $true -and $r.Output.Contains("oursBlockedLoose: 'Protect main': require every conversation resolved, and dismiss stale reviews on push, and turn off approval of the last push, which blocks every merge while no approval is required: set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursBlockedRefused')
+    Check 'last push: a refused change is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("oursBlockedRefused: 'Protect main': turn off approval of the last push, which blocks every merge while no approval is required: not available (HTTP 403") -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    $line = ($r.Output -split "`r?`n" | Where-Object { $_ -like "*oursBlockedRefused: notice: 'Protect main' requires approval of the last push*" } | Select-Object -First 1)
+    $cmd = $line -replace '^.*, or run: ', ''
+    $parseErrors = $null
+    $null = [Management.Automation.Language.Parser]::ParseInput("$cmd", [ref]$null, [ref]$parseErrors)
+    Check 'last push: a refused change also prints the notice, saying GitHub refused it, with a command that parses and names the ruleset' ($line -and $line.Contains('GitHub refused the change, so it is still on') -and $cmd -ne $line -and -not $parseErrors.Count -and $cmd.Contains('repos/NCodeGroup/oursBlockedRefused/rulesets/101')) "$line $($parseErrors -join '; ')"
+    $r = Invoke-Baseline @('-Repo', 'ownedThenOursBlocked')
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' })
+    $lp = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'last push: a Protect main beside one of the owner''s has it turned off, and the owner''s gets the notice and is not written' ($puts.Count -eq 1 -and $puts[0].path -eq 'repos/NCodeGroup/ownedThenOursBlocked/rulesets/102' -and $lp.require_last_push_approval -eq $false -and $r.Output.Contains("ownedThenOursBlocked: notice: 'owner rules' requires approval of the last push") -and $r.Output -notmatch "notice: 'Protect main'") "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedBlocked')
+    Check 'last push: a ruleset of the owner''s gets the notice, and is not written' (($r.Changes -join '|') -notmatch 'rulesets/101' -and $r.Output.Contains("ownedBlocked: notice: 'owner rules' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
     $line = ($r.Output -split "`r?`n" | Where-Object { $_ -like '*to turn it off, run: *' } | Select-Object -First 1) -replace '^.*to turn it off, run: ', ''
     $parseErrors = $null
     $null = [Management.Automation.Language.Parser]::ParseInput("$line", [ref]$null, [ref]$parseErrors)
-    Check 'last push: the printed command parses and names the ruleset' ($line -and -not $parseErrors.Count -and $line.Contains('repos/NCodeGroup/oursBlocked/rulesets/101')) "$line $($parseErrors -join '; ')"
-    $r = Invoke-Baseline @('-Repo', 'oursBlocked', '-WhatIf')
-    Check 'last push: -WhatIf prints the notice and writes nothing' ($r.Changes.Count -eq 0 -and $r.Output.Contains("oursBlocked: notice: 'Protect main' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
-    $r = Invoke-Baseline @('-Repo', 'ownedBlocked')
-    Check 'last push: a ruleset of the owner''s gets the notice, and is not written' (($r.Changes -join '|') -notmatch 'rulesets/101' -and $r.Output.Contains("ownedBlocked: notice: 'owner rules' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
+    Check 'last push: the printed command parses and names the ruleset' ($line -and -not $parseErrors.Count -and $line.Contains('repos/NCodeGroup/ownedBlocked/rulesets/101')) "$line $($parseErrors -join '; ')"
+    $r = Invoke-Baseline @('-Repo', 'ownedBlocked', '-WhatIf')
+    Check 'last push: -WhatIf prints the notice for a ruleset of the owner''s and writes nothing' ($r.Changes.Count -eq 0 -and $r.Output.Contains("ownedBlocked: notice: 'owner rules' requires approval of the last push")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'ours')
     Check 'last push: a ruleset without last-push approval prints no notice' ($r.Output -notmatch 'notice:') $r.Output
 
@@ -654,10 +757,10 @@ try {
     $r = Invoke-Baseline @('-Repo', 'oursScanUnreported')
     Check 'suite: a setup that names no suite gets the notice' ($r.Output.Contains('oursScanUnreported: notice: CodeQL''s default setup runs a query suite it did not report') -and ($r.Changes -join '|') -notmatch 'default-setup') "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'oursScanUnreadable')
-    Check 'suite: a setup it can''t read is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("oursScanUnreadable: couldn't read CodeQL's default setup to check its query suite (HTTP 403)") -and $r.Output -notmatch 'FAILED' -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    Check 'suite: a setup it can''t read is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("oursScanUnreadable: couldn't read CodeQL's default setup to check its languages and query suite (HTTP 403)") -and $r.Output -notmatch 'FAILED' -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
     foreach ($case in @(@('oursScanNoResponse', 'no response'), @('oursScanNotJson', 'an answer that is not JSON'))) {
         $r = Invoke-Baseline @('-Repo', $case[0])
-        Check "suite: a setup read that gets $($case[1]) is reported with that reason, and the run goes on" ($r.ExitCode -eq 0 -and $r.Output.Contains("$($case[0]): couldn't read CodeQL's default setup to check its query suite ($($case[1]))") -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/101' -and $r.TagBody) "$($r.ExitCode) $($r.Changes -join '|') $($r.Output)"
+        Check "suite: a setup read that gets $($case[1]) is reported with that reason, and the run goes on" ($r.ExitCode -eq 0 -and $r.Output.Contains("$($case[0]): couldn't read CodeQL's default setup to check its languages and query suite ($($case[1]))") -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/101' -and $r.TagBody) "$($r.ExitCode) $($r.Changes -join '|') $($r.Output)"
     }
     $r = Invoke-Baseline @('-Repo', 'oursScanLoose', '-RequireChecks', 'test')
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
@@ -665,6 +768,35 @@ try {
     $r = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
     $r2 = Invoke-Baseline @('-Repo', 'oursCodeQL404', '-RequireChecks', 'test')
     Check 'suite: no notice where the default setup is not configured or not found' ($r.Output -notmatch "notice:|couldn't read CodeQL" -and $r2.Output -notmatch "notice:|couldn't read CodeQL") "$($r.Output) $($r2.Output)"
+
+    # A kept code-scanning rule waits for CodeQL's results, which a setup that analyzes no language never sends, so every
+    # pull request stays blocked: the warning says so and names both fixes, and the rule stays, since an update never
+    # removes it (ADR-0030).
+    $warning = "warning: CodeQL's default setup is configured but analyzes no language, so CodeQL runs on no pull request and the code-scanning rule in 'Protect main' waits for its results forever: every pull request stays blocked."
+    $fixes = "Set up CodeQL's languages in the repository's settings (Settings > Advanced Security > CodeQL analysis), or remove the code-scanning rule from 'Protect main'; this script never removes it."
+    $r = Invoke-Baseline @('-Repo', 'oursScanNoLanguage')
+    Check 'languages: a kept code-scanning rule on a setup with no language gets the warning, which names both fixes, in place of the suite notice, and nothing is written' ($r.ExitCode -eq 0 -and $r.Output.Contains("oursScanNoLanguage: $warning $fixes") -and $r.Output -notmatch 'oursScanNoLanguage: notice:' -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/101' -and $r.TagBody) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursScanNoLanguage', '-RequireChecks', 'test')
+    Check 'languages: -RequireChecks keeps the rule on a setup with no language, warns, and doesn''t switch the suite' ((@($r.Body.rules.type) -contains 'code_scanning') -and (($r.Changes -join '|') -like '*BODY PUT repos/NCodeGroup/oursScanNoLanguage/rulesets/101*') -and ($r.Changes -join '|') -notmatch 'default-setup' -and $r.Output.Contains("oursScanNoLanguage: $warning")) "$(@($r.Body.rules.type) -join ',') $($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursScanNoLanguage', '-WhatIf')
+    Check 'languages: -WhatIf prints the warning too, and changes nothing' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("oursScanNoLanguage: $warning")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedThenOursScanNoLanguage')
+    Check 'languages: a Protect main beside a ruleset of the owner''s gets the warning too, and neither ruleset is written' ($r.Output.Contains("ownedThenOursScanNoLanguage: $warning") -and -not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' }).Count) "$($r.Changes -join '|') $($r.Output)"
+    # Where CodeQL runs through the repository's own workflow, default setup reads as not configured: a kept rule there
+    # waits for results that do come, so it gets no warning.
+    foreach ($arguments in @(@('-Repo', 'oursWithoutCodeQL'), @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test'))) {
+        $r = Invoke-Baseline $arguments
+        Check "languages: a kept code-scanning rule on a setup that is not configured, and lists no language, gets no warning ($($arguments -join ' '))" ($r.ExitCode -eq 0 -and $r.Output -match 'oursWithoutCodeQL' -and $r.Output -notmatch 'warning:|analyzes no language') $r.Output
+    }
+    $r = Invoke-Baseline @('-Repo', 'oursScanOtherToolNoLanguage')
+    Check 'languages: a kept code-scanning rule that requires another tool alone gets no warning, and no suite notice, on a setup with no language' ($r.ExitCode -eq 0 -and $r.Output -match "oursScanOtherToolNoLanguage: left alone" -and $r.Output -notmatch 'oursScanOtherToolNoLanguage: (warning|notice):' -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/101') "$($r.Changes -join '|') $($r.Output)"
+
+    # Beside a ruleset of the owner's, a Protect main with a code-scanning rule gets the suite notice and the line for a
+    # setup it can't read, as it does alone, and nothing is written for it.
+    $r = Invoke-Baseline @('-Repo', 'ownedThenOursScanDefault')
+    Check 'suite: a Protect main beside a ruleset of the owner''s gets the suite notice, and no ruleset or default setup is written' ($r.ExitCode -eq 0 -and $r.Output.Contains("ownedThenOursScanDefault: notice: CodeQL's default setup runs the default query suite, not the extended one") -and $r.Output -notmatch 'warning:' -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/10[12]' -and -not @($r.Bodies | Where-Object { $_.path -like '*/rulesets*' -and $_.body.name -ne 'Protect release tags' }).Count) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'ownedThenOursScanUnreadable')
+    Check 'suite: a Protect main beside a ruleset of the owner''s on a setup it can''t read is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("ownedThenOursScanUnreadable: couldn't read CodeQL's default setup to check its languages and query suite (HTTP 403)") -and $r.Output -notmatch 'FAILED' -and ($r.Changes -join '|') -notmatch 'default-setup|rulesets/10[12]' -and $r.TagBody) "$($r.ExitCode) $($r.Changes -join '|') $($r.Output)"
 
     # 6b. -RequireChecks auto requires the checks that passed on the latest merged pull request.
     $r = Invoke-Baseline @('-Repo', 'autoChecks', '-RequireChecks', 'auto', '-WhatIf')
