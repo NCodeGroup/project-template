@@ -82,7 +82,8 @@ foreach ($path in $paths) {
     $lines = @($text -split '\r?\n')
 
     # An Astro component's header belongs in its frontmatter, which the build drops: a comment outside it, even an
-    # HTML one, reaches the built page. So only the lines between its leading "---" lines count.
+    # HTML one, reaches the built page. So only the lines between its leading "---" lines count; a frontmatter that
+    # never closes, which Astro rejects, runs to the end of the file, so -Fix still puts the header after its "---".
     $isAstro = $extension -eq '.astro'
     $frontmatter = $isAstro -and $lines[0].Trim() -eq '---'
     $first = 0
