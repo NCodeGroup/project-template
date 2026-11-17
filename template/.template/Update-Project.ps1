@@ -87,6 +87,10 @@
     gets a blank answer, never copier.yml's Apache-2.0 default.
     When best_practices_project is set and README.md doesn't show the project's OpenSSF Best Practices badge, it prints
     the line to add, also when the project is already up to date.
+    When SECURITY.md, or the template's change to it that the update shows, says releases are immutable and a workflow
+    in .github/workflows runs on a release event or uploads release assets, whose releases the template's
+    tools/Set-RepositoryBaseline.ps1 leaves mutable, it says to delete or leave out that paragraph, also when the
+    project is already up to date (the template's ADR-0028).
 
     On Windows it stops before it changes anything when the project's template version has a path Git for Windows
     refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
@@ -193,6 +197,60 @@ function Get-CiCallNote {
     if ((Test-Path -LiteralPath $ci) -and (Get-Content -LiteralPath $ci -Raw) -match '(?m)^\s+workflow_call:') { return }
     ''
     '.github/workflows/ci.yml is missing or has no workflow_call trigger. .github/workflows/tag-release.yml runs it as a reusable workflow before it tags a release, so until it has that trigger, no release is tagged or published. Add workflow_call: to its on: section, as the ci.yml the project template gives a GitHub project does (the template''s ADR-0026, in docs/decisions/project-template/).'
+}
+
+# The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, the keys or items
+# indented below it, or - items at its own indent, with quotes, comments and blank lines allowed. A mapping in braces, or
+# no on: key, gives none.
+# A copy of tools/Set-RepositoryBaseline.ps1's; the copies must match.
+function Get-WorkflowEvents([string]$Text) {
+    $lines = @($Text -split '\r?\n')
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -notmatch '^(on|"on"|''on''):(.*)$') { continue }
+        $rest = ($Matches[2] -replace '(^|\s)#.*$', '').Trim()
+        $names = if ($rest.StartsWith('[')) { $rest.Trim('[', ']') -split ',' }
+        elseif ($rest.StartsWith('{')) { @() }
+        elseif ($rest) { @($rest) }
+        else {
+            $indent = -1
+            @(for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                $line = $lines[$j]
+                if ($line -match '^\s*(#.*)?$') { continue }
+                $null = $line -match '^(\s*)(.*)$'
+                $lead = $Matches[1].Length
+                $item = $Matches[2]
+                # A line at column 0 ends the block, unless it is a - item of a sequence at the key's own indent.
+                if (-not $lead -and -not ($indent -le 0 -and $item -match '^-(\s|$)')) { break }
+                if ($indent -lt 0) { $indent = $lead }
+                if ($lead -ne $indent) { continue }
+                if ($item -match '^-\s*([^\s#]+)') { $Matches[1] }
+                elseif ($item -match '^([^\s:#]+)\s*:') { $Matches[1] }
+            })
+        }
+        return @($names | ForEach-Object { $_.Trim().Trim('"', "'") } | Where-Object { $_ -match '^[A-Za-z_]+$' })
+    }
+    @()
+}
+
+# Whether a workflow's text runs on a release event, or uploads release assets with gh, an upload action or the API
+# on a line that isn't a comment.
+# A copy of tools/Set-RepositoryBaseline.ps1's; the copies must match.
+function Test-ReleaseAssetWorkflow([string]$Text) {
+    $code = $Text -replace '(?m)^\s*#.*$', ''
+    [bool](((Get-WorkflowEvents $Text) -contains 'release') -or ($code -match 'gh\s+release\s+upload|upload-release-asset|uploadReleaseAsset|action-gh-release'))
+}
+
+# SECURITY.md's Verify a Release section says releases are immutable, which the template's
+# tools/Set-RepositoryBaseline.ps1 leaves off where a workflow runs on a release event or uploads release assets
+# (ADR-0028).
+# The template's Adopt-Project.ps1 has a copy of this function; tests/Test-UpdateNotes.ps1 keeps the copies equal.
+function Get-ImmutableReleaseNote([bool]$Offered) {
+    $says = (Test-Path -LiteralPath SECURITY.md) -and (Get-Content -LiteralPath SECURITY.md -Raw) -match '(?m)^Releases are immutable'
+    if (-not ($says -or $Offered) -or -not (Test-Path -LiteralPath .github/workflows)) { return }
+    $files = @(Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Name -match '\.ya?ml$' -and (Test-ReleaseAssetWorkflow (Get-Content -LiteralPath $_.FullName -Raw)) } | ForEach-Object { ".github/workflows/$($_.Name)" })
+    if (-not $files) { return }
+    ''
+    "$(if ($says) { 'SECURITY.md says' } else { 'The template''s change to SECURITY.md above says' }) releases are immutable, but $($files -join ', ') run on a release event or upload release assets, which an immutable release refuses once it is published, so the template's tools/Set-RepositoryBaseline.ps1 leaves this repository's releases mutable (the template's ADR-0028, in docs/decisions/project-template/). $(if ($says) { 'Delete' } else { 'Leave out' }) the paragraph of its Verify a Release section that starts `"Releases are immutable`"."
 }
 
 # tag-release.yml grants ci.yml only contents: read (ADR-0026). GitHub checks every job of a called workflow against that
@@ -977,7 +1035,7 @@ try {
         })
 
     # A success ends with exit 0, not return, which would hand a caller that runs this with & the exit code of the last git command, such as git apply --check's 1 for a hunk the project lacks.
-    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; Get-BadgeReminder; exit 0 }
+    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; Get-BadgeReminder; Get-ImmutableReleaseNote $false; exit 0 }
     "Template $from -> ${to}:"
     $changes | Sort-Object Kind, File | ForEach-Object { '  {0,-9} {1}' -f $_.Kind, $_.File }
     $edited = @($reset | Where-Object Kind -NE 'added' | ForEach-Object File)
@@ -986,6 +1044,7 @@ try {
     if ($restored) { ''; 'Restored — these files are the template''s, so the project can''t delete them:'; $restored | ForEach-Object { "  $_" } }
     if ($droppedTextRules) { ''; "Left out of the lines .gitattributes kept from this repository at adoption: its catch-all text rule ($($droppedTextRules -join '; ')). Git uses the last rule that matches, so the rule overrode the template's binary rules, such as *.png binary and *.ico binary, and git add dropped the CR of each CR LF pair in a binary file it staged. Check the binary files committed while the rule applied, and replace any that no longer open." }
     if ($refreshed) { ''; 'Refreshed — these files are the template''s, but earlier template versions never updated them; a local edit to one is discarded, so make the change in a project file instead:'; $refreshed | ForEach-Object { "  $_" } }
+    $shown = @()
     if ($projectOwnedChanged) {
         # Render both versions with the project's answers, so the diffs show what the project would get, not Jinja.
         New-Item -ItemType Directory -Force $scratch | Out-Null
@@ -1015,7 +1074,7 @@ try {
                     if ($current -or $line.StartsWith('@@')) { $current += $line }
                 }
             )
-            if ($hunk) { [pscustomobject]@{ Title = $title; Lines = $hunk } }
+            if ($hunk) { [pscustomobject]@{ Title = $title; Lines = $hunk; File = $changed.File } }
         }
         if ($shown) {
             ''
@@ -1079,6 +1138,8 @@ try {
     }
     Get-CiCallNote
     Get-CiPermissionNote
+    $offered = [bool]@($shown | Where-Object { $_.File -eq 'SECURITY.md' } | ForEach-Object Lines | Where-Object { $_ -match '^\s*\+Releases are immutable' }).Count
+    Get-ImmutableReleaseNote $offered
     # A publish.yml that doesn't call one of the release follow-ups, or either (ADR-0151): they no longer start on
     # workflow_run, so a release misses what each one it doesn't call makes.
     $publishText = if (Test-Path -LiteralPath .github/workflows/publish.yml) { Get-Content -LiteralPath .github/workflows/publish.yml -Raw } else { '' }

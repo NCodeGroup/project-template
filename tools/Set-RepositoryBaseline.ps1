@@ -22,8 +22,11 @@
         (GITHUB_TOKEN) read-only by default, with GitHub Actions not allowed to create and approve pull requests, except
         where the default branch has .github/workflows/raise-baseline.yml, which opens a pull request; secret scanning
         and its push protection; Dependabot alerts and Dependabot security updates, which need the alerts; private
-        vulnerability reporting; and immutable releases, except where the default branch has
-        .github/workflows/release-provenance.yml, which attaches packages to a release after it is published;
+        vulnerability reporting; and immutable releases, except where a .yml or .yaml file in the default branch's
+        .github/workflows runs on a release event or uploads release assets (gh release upload,
+        actions/upload-release-asset, softprops/action-gh-release or uploadReleaseAsset), such as
+        release-provenance.yml, since an immutable release refuses a file attached after it is published, or where a
+        workflow can't be read; the line names the files;
       - turns on "Allow auto-merge" where it is off, so the template's code-review-auto-merge.yml workflow can turn on
         auto-merge for a Dependabot pull request that only moves the NCode Review pin. Allowing it merges nothing by
         itself: a pull request merges itself only once someone, or that workflow, turns it on, and still waits for what
@@ -87,6 +90,10 @@
     GitHub Free doesn't offer organization rulesets, so this applies them to each repository. New-Project.ps1 runs it
     for a repository it creates; Adopt-Project.ps1 prints the command to run.
 
+    -SkipImmutableReleases leaves immutable releases off in every repository it runs on, and says so; one already on
+    stays on, since the script never loosens a setting. Where they are already on and a workflow runs on a release
+    event or uploads release assets, it prints a notice with the command that turns them off.
+
     -OrganizationPolicy, with -Owner alone, creates the same policy once for the organization, on every repository
     (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
     auth refresh -h github.com -s admin:org). It reads the organization's policies first and updates one of that
@@ -101,6 +108,7 @@
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks 'build-and-test'
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks auto -WhatIf   # lists the checks it would require
     .\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup
+    .\tools\Set-RepositoryBaseline.ps1 -Repo brand -SkipImmutableReleases   # leaves releases mutable
     .\tools\Set-RepositoryBaseline.ps1 -OrganizationPolicy -Owner NCodeGroup -WhatIf   # prints the organization's policy it would create
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Owner', Justification = 'Get-Targets and Set-Baseline, nested functions, use it.')]
@@ -115,11 +123,13 @@ param(
     # Creates the organization's Actions event policy for the code-review workflows of every repository, instead of each
     # repository's own. Only with -Owner; an organization owner runs it, with the admin:org scope, on GitHub Team or above.
     [switch]$OrganizationPolicy,
+    # Leaves immutable releases off in each repository, for one whose releases get files after they are published.
+    [switch]$SkipImmutableReleases,
     # The owner of the repositories: an organization or a user.
     [Alias('Org')][string]$Owner = 'NCodeGroup'
 )
 $ErrorActionPreference = 'Stop'
-if ($OrganizationPolicy -and ($Repo -or $All -or $RequireChecks.Count)) { throw '-OrganizationPolicy sets the organization''s policy alone: pass it with -Owner only.' }
+if ($OrganizationPolicy -and ($Repo -or $All -or $RequireChecks.Count -or $SkipImmutableReleases)) { throw '-OrganizationPolicy sets the organization''s policy alone: pass it with -Owner only.' }
 if (-not $Repo -and -not $All -and -not $OrganizationPolicy) { throw 'Pass -Repo <name> or -All, or -OrganizationPolicy.' }
 if ($Repo -and $All) { throw 'Pass -Repo or -All, not both.' }
 $RequireChecks = @($RequireChecks | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -577,6 +587,45 @@ function Get-WorkflowEvents([string]$Text) {
     @()
 }
 
+# Whether a workflow's text runs on a release event, or uploads release assets with gh, an upload action or the API
+# on a line that isn't a comment.
+function Test-ReleaseAssetWorkflow([string]$Text) {
+    $code = $Text -replace '(?m)^\s*#.*$', ''
+    [bool](((Get-WorkflowEvents $Text) -contains 'release') -or ($code -match 'gh\s+release\s+upload|upload-release-asset|uploadReleaseAsset|action-gh-release'))
+}
+
+# The workflow files of a repository's default branch that run on a release event or upload release assets, which an
+# immutable release refuses once it is published. Why is the reason a folder or file couldn't be read, or $null.
+function Find-ReleaseAssetWorkflows([string]$Name, [string]$Branch) {
+    $list = Invoke-HostApi gh "repos/$Owner/$Name/contents/.github/workflows?ref=$Branch"
+    if ($list.Status -eq 404) { return [pscustomobject]@{ Files = @(); Why = $null } }
+    $items = $null
+    if ($list.Status -eq 200) { try { $items = @($list.Body | ConvertFrom-Json -ErrorAction Stop) } catch { $items = $null } }
+    if ($list.Status -ne 200 -or $null -eq $items) {
+        $reason = if ($list.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $list }
+        return [pscustomobject]@{ Files = @(); Why = "couldn't read .github/workflows: $reason" }
+    }
+    $files = [Collections.Generic.List[string]]::new()
+    foreach ($item in $items) {
+        if ($item.type -ne 'file' -or $item.name -notmatch '\.ya?ml$') { continue }
+        $read = Invoke-HostApi gh "repos/$Owner/$Name/contents/$($item.path)?ref=$Branch"
+        if ($read.Status -ne 200) { return [pscustomobject]@{ Files = @(); Why = "couldn't read $($item.path): $(Get-FailureReason $read)" } }
+        $text = Get-ContentText $read.Body
+        if ($null -eq $text) { return [pscustomobject]@{ Files = @(); Why = "couldn't read $($item.path): the contents API sent no base64 UTF-8 text, such as for a file over 1 MB" } }
+        if (Test-ReleaseAssetWorkflow $text) { $files.Add($item.path) }
+    }
+    [pscustomobject]@{ Files = @($files); Why = $null }
+}
+
+# Immutable releases already on refuse the files a workflow attaches after a release is published. This script never
+# loosens a setting, so this only reads the workflows and prints a notice with the command that turns them off.
+function Write-ImmutableReleaseNotice([string]$Name, [string]$Branch) {
+    $found = Find-ReleaseAssetWorkflows $Name $Branch
+    if ($found.Why) { Write-Host "${Name}: couldn't read the workflows to check them against its immutable releases ($($found.Why))"; return }
+    if (-not $found.Files.Count) { return }
+    Write-Host "${Name}: notice: immutable releases are on, but these workflows run on a release event or upload release assets, which an immutable release refuses once it is published: $($found.Files -join ', '). This script never loosens a setting; to turn them off, run: gh api -X DELETE repos/$Owner/$Name/immutable-releases"
+}
+
 # Reads the Actions policies at $Path (a repository's or an organization's). A repository's list is an object,
 # { total_count, policies }, whose items leave out their conditions and rules, which a read by its id gives; a bare array
 # is read too. Why is the reason a policy couldn't be read, or $null. Status is the HTTP status of the read that failed, or of the list when none did, and $null when a call got no response.
@@ -691,15 +740,23 @@ function Set-SecuritySettings([string]$Name, $Info) {
     Set-SecuritySetting $Name 'private vulnerability reporting' $state PUT "$base/private-vulnerability-reporting"
     # Immutable releases: GitHub then signs an attestation of each release it publishes, which gh release verify checks
     # (the template's ADR-0028). release-provenance.yml attaches a library's packages to its release after it is
-    # published, which an immutable release refuses, so such a repository is left as it is.
+    # published, which an immutable release refuses, so such a repository is left as it is. So is one with a workflow
+    # that runs on a release event or uploads release assets, or one the script can't read.
     $state = Get-SettingState (Invoke-HostApi gh "$base/immutable-releases") { param($answer) $answer.enabled }
+    if ($SkipImmutableReleases -and $state -is [bool] -and -not $state) { $state = '-SkipImmutableReleases leaves them off' }
     if ($state -is [bool] -and -not $state) {
         # Only a 404 says the file is absent: any other answer leaves the setting as it is, and says why.
         $provenance = (Invoke-HostApi gh "$base/contents/.github/workflows/release-provenance.yml?ref=$($Info.default_branch)").Status
         if ($provenance -eq 200) { $state = 'release-provenance.yml attaches packages to a release after it is published, which an immutable release refuses' }
         elseif ($provenance -ne 404) { $state = "couldn't read .github/workflows/release-provenance.yml: $(if ($provenance) { "HTTP $provenance" } else { 'no response' })" }
     }
+    if ($state -is [bool] -and -not $state) {
+        $found = Find-ReleaseAssetWorkflows $Name $Info.default_branch
+        if ($found.Why) { $state = $found.Why }
+        elseif ($found.Files.Count) { $state = "these workflows run on a release event or upload release assets, which an immutable release refuses once it is published: $($found.Files -join ', ')" }
+    }
     Set-SecuritySetting $Name 'immutable releases' $state PUT "$base/immutable-releases"
+    if ($state -is [bool] -and $state) { Write-ImmutableReleaseNotice $Name $Info.default_branch }
 }
 
 # "Allow auto-merge", which the template's code-review-auto-merge.yml needs to have a Dependabot bump of NCode Review
