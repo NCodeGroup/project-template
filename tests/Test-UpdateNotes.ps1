@@ -10,9 +10,11 @@
       adopt     Get-AdoptionAnswers answers node_lint = $false for a Node.js repository, and coverage_gate = $false
                 and file_headers = $false for every repository.
       ci-call   Get-CiCallNote says to add workflow_call to ci.yml when tag-release.yml calls it and it lacks the
-                 trigger, and says nothing when it has the trigger or the project has no tag-release.yml.
+                 trigger, and says nothing when it has the trigger or the project has no tag-release.yml;
+                tools\adopt\Adoption.psm1's copy prints the same.
       ci-perms  Get-CiPermissionNote names each job of ci.yml, or its top-level permissions, that asks for more than
-                contents: read when tag-release.yml calls it, and says nothing for contents: read, none or no tag-release.yml.
+                contents: read when tag-release.yml calls it, and says nothing for contents: read, none or no tag-release.yml;
+                tools\adopt\Adoption.psm1's copy prints the same.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
 
@@ -106,11 +108,12 @@ $ciCallNote = & {
         [IO.File]::WriteAllText((Join-Path $workflows 'ci.yml'), $ciCases[$name].Ci)
         if ($ciCases[$name].Release) { [IO.File]::WriteAllText((Join-Path $workflows 'tag-release.yml'), $ciCases[$name].Release) }
         Push-Location $folder
-        try { $note = (Get-CiCallNote) -join "`n" }
+        try { $note = (Get-CiCallNote) -join "`n"; $adoptNote = (Adoption\Get-CiCallNote) -join "`n" }
         finally { Pop-Location }
         $has = $note.Contains('has no workflow_call trigger')
         $nothing = -not $note.Trim()
         Check "ci-call: $name" ($(if ($ciCases[$name].Note) { $has } else { $nothing })) "got [$note]"
+        Check "ci-call: ${name}: the adoption prints the same note" ($adoptNote -eq $note) "update [$note], adopt [$adoptNote]"
     }
 }
 $ciCallNote
@@ -136,11 +139,12 @@ $ciPermissionNote = & {
         [IO.File]::WriteAllText((Join-Path $workflows 'ci.yml'), $permissionCases[$name].Ci)
         if ($permissionCases[$name].Release) { [IO.File]::WriteAllText((Join-Path $workflows 'tag-release.yml'), $permissionCases[$name].Release) }
         Push-Location $folder
-        try { $note = (Get-CiPermissionNote) -join "`n" }
+        try { $note = (Get-CiPermissionNote) -join "`n"; $adoptNote = (Adoption\Get-CiPermissionNote) -join "`n" }
         finally { Pop-Location }
         $want = $permissionCases[$name].Want
         $ok = if ($want) { $note.Contains($want) -and $note.Contains('grants it only contents: read') } else { -not $note.Trim() }
         Check "ci-permissions: $name" $ok "got [$note]"
+        Check "ci-permissions: ${name}: the adoption prints the same note" ($adoptNote -eq $note) "update [$note], adopt [$adoptNote]"
     }
 }
 $ciPermissionNote

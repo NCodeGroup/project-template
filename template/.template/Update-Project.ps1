@@ -183,6 +183,7 @@ function Get-BadgeReminder {
 }
 
 # tag-release.yml runs ci.yml as a reusable workflow before it tags a release (ADR-0026): without the trigger, no release is tagged.
+# tools/adopt/Adoption.psm1 has a deliberate copy of this function for Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
 function Get-CiCallNote {
     $release = '.github/workflows/tag-release.yml'
     if (-not (Test-Path -LiteralPath $release) -or (Get-Content -LiteralPath $release -Raw) -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/ci\.yml\s*$') { return }
@@ -194,6 +195,7 @@ function Get-CiCallNote {
 
 # tag-release.yml grants ci.yml only contents: read (ADR-0026). GitHub checks every job of a called workflow against that
 # as the run starts, whatever the job's if: says, and fails the run when one asks for more: no release is tagged.
+# tools/adopt/Adoption.psm1 has a deliberate copy of this function for Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
 function Get-CiPermissionNote {
     $release = '.github/workflows/tag-release.yml'
     if (-not (Test-Path -LiteralPath $release) -or (Get-Content -LiteralPath $release -Raw) -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/ci\.yml\s*$') { return }
