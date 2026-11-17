@@ -3,9 +3,10 @@
     Test template/build/Update-Baseline.ps1, which raises PackageValidationBaselineVersion, without nuget.org.
 
 .DESCRIPTION
-    Builds one fixture folder per case and runs the script with -SkipNugetCheck: the file edits, the changelog entry, the
-    cases that change nothing, a custom changelog file named by AGENTS.md, CRLF and byte order mark preservation, and a
-    prerelease version. Prints PASS or FAIL per check and exits 1 on any failure.
+    Builds one fixture folder per case and runs the script with -SkipNugetCheck: the file edits, the changelog entry and
+    the earlier baseline entries it replaces, the cases that change nothing, a custom changelog file named by AGENTS.md,
+    CRLF and byte order mark preservation, and a prerelease version. Prints PASS or FAIL per check and exits 1 on any
+    failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-baseline-test-<process ID> in the
@@ -59,6 +60,8 @@ New-Item -ItemType Directory -Force $Work | Out-Null
 $changelogHead = "# Changelog`n`n## [Unreleased]`n"
 $changelogTail = "`n## [5.0.1] - 2026-11-14`n`n### Added`n`n- Old.`n`n[unreleased]: https://example.test/compare/v5.0.1...HEAD`n"
 $entry = '- Package validation compares each package with the published 5.0.2 package.'
+$older = '- Package validation compares each package with the published 5.0.1 package.'
+$oldest = '- Package validation compares each package with the published 5.0.0 package.'
 $csproj = 'src/Fixture.A/Fixture.A.csproj'
 function Get-Project([string]$Baseline) {
     "<Project Sdk=`"Microsoft.NET.Sdk`"><PropertyGroup><PackageId>Fixture.A</PackageId><PackageValidationBaselineVersion>$Baseline</PackageValidationBaselineVersion></PropertyGroup></Project>`n"
@@ -70,6 +73,9 @@ $changelogCases = [ordered]@{
     'Changed section'  = @{ Body = "`n### Changed`n`n- Old entry.`n"; Expect = "`n### Changed`n`n$entry`n- Old entry.`n" }
     'Added section'    = @{ Body = "`n### Added`n`n- New.`n"; Expect = "`n### Added`n`n- New.`n`n### Changed`n`n$entry`n" }
     'Fixed section'    = @{ Body = "`n### Fixed`n`n- A bug.`n"; Expect = "`n### Changed`n`n$entry`n`n### Fixed`n`n- A bug.`n" }
+    'older baseline entry'       = @{ Body = "`n### Changed`n`n$older`n- Old entry.`n"; Expect = "`n### Changed`n`n$entry`n- Old entry.`n" }
+    'two older baseline entries' = @{ Body = "`n### Changed`n`n- Old entry.`n$older`n$oldest`n"; Expect = "`n### Changed`n`n- Old entry.`n$entry`n" }
+    'same baseline entry'        = @{ Body = "`n### Changed`n`n$entry`n"; Expect = "`n### Changed`n`n$entry`n" }
 }
 foreach ($name in $changelogCases.Keys) {
     $case = $changelogCases[$name]
@@ -113,6 +119,13 @@ $folder = New-Case 'no-release-section' @{ $csproj = Get-Project '5.0.0'; 'CHANG
 $out = Invoke-Baseline $folder
 $ok = $out.Count -eq 1 -and $out[0] -eq '5.0.2' -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.2') -and (Read-Text $folder 'CHANGELOG.md') -ceq $noRelease
 Check 'Update-Baseline: a changelog without a release section is left alone' $ok "Output: $($out -join ', ')"
+
+$shipped = "`n## [5.0.1] - 2026-11-14`n`n### Changed`n`n$older`n`n[unreleased]: https://example.test/compare/v5.0.1...HEAD`n"
+$folder = New-Case 'release-section-entry' @{ $csproj = Get-Project '5.0.0'; 'CHANGELOG.md' = "$changelogHead`n$shipped" }
+$out = Invoke-Baseline $folder
+$expected = "$changelogHead`n### Changed`n`n$entry`n$shipped"
+$actual = Read-Text $folder 'CHANGELOG.md'
+Check 'Update-Baseline: a baseline entry in a release section stays' ($out.Count -eq 1 -and $out[0] -eq '5.0.2' -and $actual -ceq $expected) "Got:`n$actual"
 
 $agents = "# A`n`n## Landing`n`n- changelog: ``docs/CHANGES.md```n"
 $main = "$changelogHead`n$changelogTail"
