@@ -61,6 +61,42 @@ $cases = [ordered]@{
         Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "# dotnet csharpier check .`n" }
         Expect = @()
     }
+    'the check only named in comment-based help' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/gate.ps1' = "<#`n.SYNOPSIS`n    The gate: build/dod.ps1, whose Format stage runs the CSharpier check.`n    dotnet csharpier check .`n#>`nparam()`n& ./build/dod.ps1`n" }
+        Expect = @()
+    }
+    'the check only named in a string' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "Write-Host 'Run dotnet csharpier check . to see the files'`n" }
+        Expect = @()
+    }
+    'CSharpier in another case' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "dotnet CSharpier check .`n" }
+        Expect = @()
+    }
+    'a script block runs the check' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "Invoke-Stage 'Format' { dotnet csharpier check . }`n" }
+        Expect = @('build/check.ps1')
+    }
+    'csharpier check at the start of a statement' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "if (`$true) { csharpier check . }`n" }
+        Expect = @('build/check.ps1')
+    }
+    'dotnet.exe runs the check' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "dotnet.exe csharpier check .`n" }
+        Expect = @('build/check.ps1')
+    }
+    'dotnet tool run runs the check' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "dotnet tool run csharpier check .`n" }
+        Expect = @('build/check.ps1')
+    }
+    'another csharpier command' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "dotnet csharpier format .`n" }
+        Expect = @()
+    }
+    'a script with a syntax error still runs the check' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "dotnet csharpier check .`nif (`n" }
+        Expect = @('build/check.ps1')
+    }
     'two scripts come back in name order' = @{
         Files  = [ordered]@{ '.config/dotnet-tools.json' = $manifest; 'build/b.ps1' = $check; 'build/a.ps1' = $check }
         Expect = @('build/a.ps1', 'build/b.ps1')
