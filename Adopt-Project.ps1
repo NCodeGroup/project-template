@@ -302,7 +302,7 @@ try {
     }
     # A ci.yml the repository kept, which tag-release.yml calls with only contents: read (ADR-0026): without the
     # workflow_call trigger, or with a job that asks for more, no release is tagged. The notes are
-    # .template/Update-Project.ps1's, word for word; tests/Test-UpdateNotes.ps1 keeps the two copies equal.
+    # .template/Update-Project.ps1's, word for word; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
     Get-CiCallNote
     Get-CiPermissionNote
     # No license (ADR-0024): the warnings are .template/Update-Project.ps1's, word for word; tests/Test-LicenseWarning.ps1 keeps them equal.
