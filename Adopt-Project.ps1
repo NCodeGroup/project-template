@@ -27,6 +27,8 @@
     it prints the warning .\.template\Update-Project.ps1 prints (ADR-0151): until publish.yml calls each, no release
     gets the provenance or the baseline pull request the missing one makes.
 
+    When tag-release.yml calls a ci.yml the repository kept, it prints the notes .\.template\Update-Project.ps1 prints when that ci.yml has no workflow_call trigger, or when its top-level permissions or a job's ask for more than contents: read, which tag-release.yml grants it: until then, no release is tagged (ADR-0026).
+
     It answers license blank, never copier.yml's Apache-2.0 default, when it works out no license and -Data gives none, so it never chooses a license for existing code (ADR-0024). With no LICENSE or COPYING file at the root, it prints the warning .\.template\Update-Project.ps1 prints: for a blank answer with the command that adds Apache-2.0, for any other answer saying to add that license's text.
 
     For a library it lists the stale NuGet logistics it finds as follow-ups (Get-NuGetLogistics): a .props file no project imports, GeneratePackageOnBuild, settings the template already makes, a .sln, a UTF-8 BOM and projects at the repository root, and the package Description and PackageTags that differ from the newest published package (Get-PackageMetadataDrift).
@@ -298,6 +300,11 @@ try {
         ''
         '.github/workflows/publish.yml doesn''t call .github/workflows/release-provenance.yml or .github/workflows/raise-baseline.yml, or both, which no longer start on workflow_run, since GitHub starts none for the run tag-release.yml starts: until it calls each, no release gets the provenance or the baseline pull request the missing one makes. Add the provenance and baseline jobs of the template''s publish.yml (the template''s ADR-0151). To attest an earlier release while its Publish packages run''s artifact is kept (14 days): gh workflow run release-provenance.yml -f tag=<tag> -f run-id=<run id>'
     }
+    # A ci.yml the repository kept, which tag-release.yml calls with only contents: read (ADR-0026): without the
+    # workflow_call trigger, or with a job that asks for more, no release is tagged. The notes are
+    # .template/Update-Project.ps1's, word for word; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+    Get-CiCallNote
+    Get-CiPermissionNote
     # No license (ADR-0024): the warnings are .template/Update-Project.ps1's, word for word; tests/Test-LicenseWarning.ps1 keeps them equal.
     if (-not (Get-ChildItem -LiteralPath $project -File | Where-Object Name -Match '^(LICEN[CS]E|COPYING)(\.\w+)?$')) {
         $licenseAnswer = "$(Get-Answer 'license')".Trim()

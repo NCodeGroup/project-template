@@ -10,7 +10,11 @@
       adopt     Get-AdoptionAnswers answers node_lint = $false for a Node.js repository, and coverage_gate = $false
                 and file_headers = $false for every repository.
       ci-call   Get-CiCallNote says to add workflow_call to ci.yml when tag-release.yml calls it and it lacks the
-                 trigger, and says nothing when it has the trigger or the project has no tag-release.yml.
+                 trigger, and says nothing when it has the trigger or the project has no tag-release.yml;
+                tools\adopt\Adoption.psm1's copy prints the same.
+      ci-perms  Get-CiPermissionNote names each job of ci.yml, or its top-level permissions, that asks for more than
+                contents: read when tag-release.yml calls it, and says nothing for contents: read, none or no tag-release.yml;
+                tools\adopt\Adoption.psm1's copy prints the same.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
 
@@ -104,14 +108,47 @@ $ciCallNote = & {
         [IO.File]::WriteAllText((Join-Path $workflows 'ci.yml'), $ciCases[$name].Ci)
         if ($ciCases[$name].Release) { [IO.File]::WriteAllText((Join-Path $workflows 'tag-release.yml'), $ciCases[$name].Release) }
         Push-Location $folder
-        try { $note = (Get-CiCallNote) -join "`n" }
+        try { $note = (Get-CiCallNote) -join "`n"; $adoptNote = (Adoption\Get-CiCallNote) -join "`n" }
         finally { Pop-Location }
         $has = $note.Contains('has no workflow_call trigger')
         $nothing = -not $note.Trim()
         Check "ci-call: $name" ($(if ($ciCases[$name].Note) { $has } else { $nothing })) "got [$note]"
+        Check "ci-call: ${name}: the adoption prints the same note" ($adoptNote -eq $note) "update [$note], adopt [$adoptNote]"
     }
 }
 $ciCallNote
+
+# ci-permissions: Get-CiPermissionNote, run from inside each fixture folder.
+$ciPermissionNote = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-CiPermissionNote' }, $true)
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $callsCi = "jobs:`n  test:`n    uses: ./.github/workflows/ci.yml`n"
+    $codecov = "name: CI`non:`n  push:`n  workflow_call:`npermissions:`n  contents: read`njobs:`n  build:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: ./x`n        with:`n          permissions: write-all`n  codecov:`n    if: github.event_name == 'push'`n    runs-on: ubuntu-latest`n    permissions:`n      contents: read`n      id-token: write # Codecov's OIDC upload`n    steps:`n      - run: echo upload`n"
+    $permissionCases = [ordered]@{
+        'a job asks for id-token'  = @{ Release = $callsCi; Ci = $codecov; Want = 'job codecov asks for id-token: write.' }
+        'top-level read-all'       = @{ Release = $callsCi; Ci = "on:`n  workflow_call:`npermissions: read-all`njobs:`n  build:`n    runs-on: ubuntu-latest`n"; Want = 'its top-level permissions ask for read-all.' }
+        'a flow mapping'           = @{ Release = $callsCi; Ci = "on:`n  workflow_call:`njobs:`n  a:`n    permissions: { contents: write, pull-requests: read }`n    runs-on: ubuntu-latest`n"; Want = 'job a asks for contents: write, pull-requests: read.' }
+        'contents read and none'   = @{ Release = $callsCi; Ci = "on:`n  workflow_call:`npermissions:`n  contents: read`njobs:`n  build:`n    permissions: {}`n    runs-on: ubuntu-latest`n  lint:`n    permissions:`n      contents: none`n      checks: 'none'`n    runs-on: ubuntu-latest`n"; Want = $null }
+        'quoted flow values'       = @{ Release = $callsCi; Ci = "on:`n  workflow_call:`njobs:`n  a:`n    permissions: { contents: 'read', checks: ""none"" }`n    runs-on: ubuntu-latest`n"; Want = $null }
+        'no tag-release'           = @{ Release = $null; Ci = $codecov; Want = $null }
+    }
+    foreach ($name in $permissionCases.Keys) {
+        $folder = Join-Path $Work "ci-permissions-$($name -replace '\W+', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        [IO.File]::WriteAllText((Join-Path $workflows 'ci.yml'), $permissionCases[$name].Ci)
+        if ($permissionCases[$name].Release) { [IO.File]::WriteAllText((Join-Path $workflows 'tag-release.yml'), $permissionCases[$name].Release) }
+        Push-Location $folder
+        try { $note = (Get-CiPermissionNote) -join "`n"; $adoptNote = (Adoption\Get-CiPermissionNote) -join "`n" }
+        finally { Pop-Location }
+        $want = $permissionCases[$name].Want
+        $ok = if ($want) { $note.Contains($want) -and $note.Contains('grants it only contents: read') } else { -not $note.Trim() }
+        Check "ci-permissions: $name" $ok "got [$note]"
+        Check "ci-permissions: ${name}: the adoption prints the same note" ($adoptNote -eq $note) "update [$note], adopt [$adoptNote]"
+    }
+}
+$ciPermissionNote
 
 # badge: Get-BadgeReminder, run from inside each fixture folder, which is also the project.
 $badgeReminder = & {
