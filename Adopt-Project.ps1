@@ -27,6 +27,8 @@
     it prints the warning .\.template\Update-Project.ps1 prints (ADR-0151): until publish.yml calls each, no release
     gets the provenance or the baseline pull request the missing one makes.
 
+    When tag-release.yml calls a ci.yml the repository kept, it prints the notes .\.template\Update-Project.ps1 prints when that ci.yml has no workflow_call trigger, or when its top-level permissions or a job's ask for more than contents: read, which tag-release.yml grants it: until then, no release is tagged (ADR-0026).
+
     When the SECURITY.md the adoption leaves says releases are immutable and a workflow in .github/workflows runs on a
     release event or uploads release assets, it prints the note .\.template\Update-Project.ps1 prints: delete that
     paragraph, since the template's tools/Set-RepositoryBaseline.ps1 leaves such a repository's releases mutable
@@ -355,6 +357,11 @@ try {
         ''
         '.github/workflows/publish.yml doesn''t call .github/workflows/release-provenance.yml or .github/workflows/raise-baseline.yml, or both, which no longer start on workflow_run, since GitHub starts none for the run tag-release.yml starts: until it calls each, no release gets the provenance or the baseline pull request the missing one makes. Add the provenance and baseline jobs of the template''s publish.yml (the template''s ADR-0151). To attest an earlier release while its Publish packages run''s artifact is kept (14 days): gh workflow run release-provenance.yml -f tag=<tag> -f run-id=<run id>'
     }
+    # A ci.yml the repository kept, which tag-release.yml calls with only contents: read (ADR-0026): without the
+    # workflow_call trigger, or with a job that asks for more, no release is tagged. The notes are
+    # .template/Update-Project.ps1's, word for word; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+    Get-CiCallNote
+    Get-CiPermissionNote
     # SECURITY.md's "Releases are immutable" paragraph, where a workflow needs mutable releases (ADR-0028). The note is
     # .template/Update-Project.ps1's, word for word.
     Get-ImmutableReleaseNote $false

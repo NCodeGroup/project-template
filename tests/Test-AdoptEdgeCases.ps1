@@ -10,8 +10,8 @@
     tests/New-TemplateSnapshot.ps1 builds. They run apart from tests/Test-Adoption.ps1, which adopts the plain and
     scaffold fixtures, so a parallel tests/Invoke-AllTests.ps1 run ends sooner. Prints PASS or FAIL per check and exits
     1 on any failure. A library's kept publish.yml that doesn't call release-provenance.yml and raise-baseline.yml gets
-    the warning Update-Project.ps1 prints, word for word (ADR-0151). A repository whose own workflow runs on a release
-    event gets Update-Project.ps1's note on SECURITY.md's immutable-releases paragraph (ADR-0028).
+    the warning Update-Project.ps1 prints, word for word (ADR-0151). A kept ci.yml without a workflow_call trigger and with a job that asks for id-token: write gets both of the update's ci.yml notes, and the template's own ci.yml gets neither.
+    A repository whose own workflow runs on a release event gets Update-Project.ps1's note on SECURITY.md's immutable-releases paragraph (ADR-0028).
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-adopt-edge-test-<process ID> in the
@@ -53,7 +53,7 @@ Check 'broken: a failure after Copier rolls the repository back' ("$brokenMessag
 
 $ciExisting = New-Fixture 'ci-existing' @{
     'README.md'                   = "# Ci Existing`n"
-    '.github/workflows/ci.yml'    = "name: CI`n"
+    '.github/workflows/ci.yml'    = "name: CI`non:`n  push:`njobs:`n  codecov:`n    runs-on: ubuntu-latest`n    permissions:`n      id-token: write`n    steps:`n      - run: echo upload`n"
     '.github/workflows/frontend.yml' = "name: Frontend`n"
     '.github/workflows/publish.yml' = "name: Publish`non:`n  release:`n    types: [published]`n  workflow_dispatch:`n    inputs:`n      tag:`n        required: true`n        type: string`njobs: {}`n"
 } 'https://github.com/example/ci-existing.git'
@@ -65,6 +65,8 @@ Check 'ci-existing: asks for no commit attribution job' (-not $ciOut.Contains('c
 Check 'ci-existing: the baseline command suggests -RequireChecks auto for its own CI' ($ciOut.Contains('-Repo ci-existing -Owner example') -and $ciOut.Contains('keeps its own CI: add -RequireChecks auto')) $ciOut
 Check 'ci-existing: says it left local out and how to add it' ($ciOut.Contains("workflow_tools: [claude, copilot], the template's default") -and $ciOut.Contains("-Data @{ workflow_tools = 'claude', 'copilot', 'local' }")) $ciOut
 Check 'ci-existing: a kept publish.yml with workflow_dispatch gets no warning' (-not $ciOut.Contains('has no workflow_dispatch trigger')) $ciOut
+Check 'ci-existing: notes, as the update does, that the kept ci.yml has no workflow_call trigger' ($ciOut.Contains('.github/workflows/ci.yml is missing or has no workflow_call trigger.')) $ciOut
+Check 'ci-existing: notes, as the update does, that a job of the kept ci.yml asks for more than contents: read' ($ciOut.Contains('.github/workflows/ci.yml asks for more than contents: read: job codecov asks for id-token: write.')) $ciOut
 Check 'ci-existing: says to delete SECURITY.md''s immutable-releases paragraph, since publish.yml runs on a release event' ($ciOut.Contains('SECURITY.md says releases are immutable, but .github/workflows/publish.yml run on a release event or upload release assets') -and $ciOut.Contains('Delete the paragraph of its Verify a Release section')) $ciOut
 
 # A .NET repository with catch-all .gitattributes rules, a global.json with a partial SDK version, an image, its own
@@ -148,6 +150,7 @@ $notesCi = Get-Content -Raw -LiteralPath (Join-Path $notes '.github\workflows\ci
 $notesSubject = git -C $notes log -1 --format=%s
 Check 'notes: a Node.js repository without build or test scripts commits without running a command' ($notesSubject -eq 'Adopt project-template v0.1.0' -and $notesAnswers -match '(?m)^stack: node\s*$' -and $notesAnswers -match "(?m)^build_command: ''\s*$" -and $notesAnswers -match "(?m)^test_command: ''\s*$" -and -not $notesOut.Contains('Running ') -and -not $notesCi.Contains('run build') -and -not $notesCi.Contains('npm test')) "$notesSubject | $notesAnswers | $notesOut | $notesCi"
 Check 'notes: CI installs with the package manager package.json names' ($notesAnswers -match '(?m)^package_manager: yarn\s*$' -and $notesCi.Contains('corepack enable yarn') -and $notesCi.Contains('yarn install') -and -not $notesCi.Contains('npm ci')) "$notesAnswers | $notesCi"
+Check 'notes: the template''s own ci.yml gets neither ci.yml note' (-not $notesOut.Contains('has no workflow_call trigger') -and -not $notesOut.Contains('asks for more than contents: read')) $notesOut
 ''
 $env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Adopt edge-case tests: FAILED ($($failures.Count))"; exit 1 }

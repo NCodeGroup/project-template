@@ -751,4 +751,59 @@ function Get-CSharpierWrapper([string[]]$TemplateFiles) {
     }
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup
+# tag-release.yml runs ci.yml as a reusable workflow before it tags a release (ADR-0026): without the trigger, no release is tagged.
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-CiCallNote {
+    $release = '.github/workflows/tag-release.yml'
+    if (-not (Test-Path -LiteralPath $release) -or (Get-Content -LiteralPath $release -Raw) -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/ci\.yml\s*$') { return }
+    $ci = '.github/workflows/ci.yml'
+    if ((Test-Path -LiteralPath $ci) -and (Get-Content -LiteralPath $ci -Raw) -match '(?m)^\s+workflow_call:') { return }
+    ''
+    '.github/workflows/ci.yml is missing or has no workflow_call trigger. .github/workflows/tag-release.yml runs it as a reusable workflow before it tags a release, so until it has that trigger, no release is tagged or published. Add workflow_call: to its on: section, as the ci.yml the project template gives a GitHub project does (the template''s ADR-0026, in docs/decisions/project-template/).'
+}
+
+# tag-release.yml grants ci.yml only contents: read (ADR-0026). GitHub checks every job of a called workflow against that
+# as the run starts, whatever the job's if: says, and fails the run when one asks for more: no release is tagged.
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-CiPermissionNote {
+    $release = '.github/workflows/tag-release.yml'
+    if (-not (Test-Path -LiteralPath $release) -or (Get-Content -LiteralPath $release -Raw) -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/ci\.yml\s*$') { return }
+    $ci = '.github/workflows/ci.yml'
+    if (-not (Test-Path -LiteralPath $ci)) { return }
+    # Each permissions: block of ci.yml, the workflow's own (Owner '') or a job's, with its scope: level pairs.
+    $blocks = [Collections.Generic.List[object]]::new()
+    $inJobs = $false
+    $jobIndent = -1
+    $keyIndent = -1
+    $job = ''
+    $block = $null
+    $blockIndent = -1
+    foreach ($line in Get-Content -LiteralPath $ci) {
+        if ($line -notmatch '^(\s*)([\w-]+):\s*(.*?)\s*(?:#.*)?$') { continue }
+        $indent, $key, $value = $Matches[1].Length, $Matches[2], $Matches[3].Trim('''', '"')
+        if ($block -and $indent -gt $blockIndent) { $block.Pairs += "${key}: $value"; continue }
+        $block = $null
+        if ($indent -eq 0) { $inJobs = $key -eq 'jobs'; $jobIndent = -1 }
+        elseif ($inJobs -and ($jobIndent -lt 0 -or $indent -le $jobIndent)) { $jobIndent = $indent; $job = $key; $keyIndent = -1; continue }
+        elseif ($inJobs -and $keyIndent -lt 0) { $keyIndent = $indent }
+        $isJob = $inJobs -and $indent -eq $keyIndent
+        if ($key -ne 'permissions' -or -not ($indent -eq 0 -or $isJob)) { continue }
+        $block = [pscustomobject]@{ Owner = $(if ($isJob) { $job } else { '' }); Pairs = @() }
+        $blockIndent = $indent
+        $blocks.Add($block)
+        if ($value) {
+            $block.Pairs = @($value.Trim('{', '}', ' ') -split ',' | ForEach-Object { ($_ -replace '[''"]', '').Trim() } | Where-Object { $_ })
+            $block = $null
+        }
+    }
+    $findings = foreach ($b in $blocks) {
+        $extra = @($b.Pairs | Where-Object { $_ -notmatch '^contents:\s*read$' -and $_ -notmatch '^[\w-]+:\s*none$' })
+        if (-not $extra.Count) { continue }
+        if ($b.Owner) { "job $($b.Owner) asks for $($extra -join ', ')" } else { "its top-level permissions ask for $($extra -join ', ')" }
+    }
+    if (-not $findings) { return }
+    ''
+    ".github/workflows/ci.yml asks for more than contents: read: $($findings -join '; '). .github/workflows/tag-release.yml runs ci.yml as a reusable workflow before it tags a release and grants it only contents: read, and GitHub fails that run as it starts when a job of ci.yml asks for more, whatever the job's if: says, so no release is tagged or published. Move each such job into a workflow of its own, such as .github/workflows/coverage.yml, and keep ci.yml's top-level permissions at contents: read (the template's ADR-0026, in docs/decisions/project-template/)."
+}
+
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote

@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.100.0] - 2026-11-16
+## [0.101.0] - 2026-11-16
 
 ### Added
 
@@ -18,6 +18,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - `tools/Set-RepositoryBaseline.ps1` no longer turns on immutable releases in a repository where a workflow on the default branch runs on a `release` event or uploads release assets, such as a project's own `publish.yml` that attaches files to a published release, which an immutable release refuses: it read only `release-provenance.yml`. Its line names those workflows, or one it can't read. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+
+## [0.100.0] - 2026-11-16
+
+### Added
+
+- `.template\Update-Project.ps1` names each job of `ci.yml`, or its top-level `permissions:`, that asks for more than `contents: read`: `tag-release.yml` calls `ci.yml` with only `contents: read`, and GitHub fails that run as it starts when a job asks for more, whatever its `if:` says, so no release is tagged or published. Move such a job, such as a Codecov upload with `id-token: write`, into a workflow of its own. ([#413](https://github.com/NCodeGroup/project-template/issues/413), [ADR-0026](template/docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md))
+- `Adopt-Project.ps1` prints the update's notes on a `ci.yml` the repository keeps, word for word: that it has no `workflow_call` trigger, and that it asks for more than `contents: read`. ([#413](https://github.com/NCodeGroup/project-template/issues/413), [ADR-0026](template/docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md))
+
+### Changed
+
+- `ci.yml`'s comment on its `workflow_call` trigger and ADR-0026 say that `tag-release.yml` grants it only `contents: read`, so a job that needs more goes in a workflow of its own. ([#413](https://github.com/NCodeGroup/project-template/issues/413), [ADR-0026](template/docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md))
 
 ## [0.99.2] - 2026-11-16
 
@@ -1615,7 +1626,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.100.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.101.0...HEAD
+[0.101.0]: https://github.com/NCodeGroup/project-template/compare/v0.100.0...v0.101.0
 [0.100.0]: https://github.com/NCodeGroup/project-template/compare/v0.99.2...v0.100.0
 [0.99.2]: https://github.com/NCodeGroup/project-template/compare/v0.99.1...v0.99.2
 [0.99.1]: https://github.com/NCodeGroup/project-template/compare/v0.99.0...v0.99.1
