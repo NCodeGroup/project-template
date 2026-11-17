@@ -11,6 +11,7 @@
     scaffold fixtures, so a parallel tests/Invoke-AllTests.ps1 run ends sooner. Prints PASS or FAIL per check and exits
     1 on any failure. A library's kept publish.yml that doesn't call release-provenance.yml and raise-baseline.yml gets
     the warning Update-Project.ps1 prints, word for word (ADR-0151). A kept ci.yml without a workflow_call trigger and with a job that asks for id-token: write gets both of the update's ci.yml notes, and the template's own ci.yml gets neither.
+    A repository whose own workflow runs on a release event gets Update-Project.ps1's note on SECURITY.md's immutable-releases paragraph (ADR-0028).
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-adopt-edge-test-<process ID> in the
@@ -66,6 +67,7 @@ Check 'ci-existing: says it left local out and how to add it' ($ciOut.Contains("
 Check 'ci-existing: a kept publish.yml with workflow_dispatch gets no warning' (-not $ciOut.Contains('has no workflow_dispatch trigger')) $ciOut
 Check 'ci-existing: notes, as the update does, that the kept ci.yml has no workflow_call trigger' ($ciOut.Contains('.github/workflows/ci.yml is missing or has no workflow_call trigger.')) $ciOut
 Check 'ci-existing: notes, as the update does, that a job of the kept ci.yml asks for more than contents: read' ($ciOut.Contains('.github/workflows/ci.yml asks for more than contents: read: job codecov asks for id-token: write.')) $ciOut
+Check 'ci-existing: says to delete SECURITY.md''s immutable-releases paragraph, since publish.yml runs on a release event' ($ciOut.Contains('SECURITY.md says releases are immutable, but .github/workflows/publish.yml run on a release event or upload release assets') -and $ciOut.Contains('Delete the paragraph of its Verify a Release section')) $ciOut
 
 # A .NET repository with catch-all .gitattributes rules, a global.json with a partial SDK version, an image, its own
 # workflow and a publish.yml of its own without a workflow_dispatch trigger: four gaps found by adopting NCodeGroup's
@@ -120,6 +122,7 @@ $copilotOnly = New-Fixture 'copilot-only' @{
     '.github/agents/plan-executor.agent.md'       = "old`n"
 } 'https://github.com/example/copilot-only.git'
 $coOut = & $adopt -Path $copilotOnly -Template $tpl -Ref v0.1.0 -NoVerify | Out-String
+Check 'copilot-only: no workflow runs on a release event, so no immutable-releases note' (-not $coOut.Contains('releases are immutable, but')) $coOut
 $coAnswers = Get-Content -Raw -LiteralPath (Join-Path $copilotOnly '.copier-answers.yml')
 $coSettings = Get-Content -Raw -LiteralPath (Join-Path $copilotOnly '.vscode\settings.json')
 $coLocal = @('.github\agents\hybrid-planner.agent.md', '.github\agents\local-implementer.agent.md', '.github\prompts\execute-step-local.prompt.md' | Where-Object { Test-Path -LiteralPath (Join-Path $copilotOnly $_) })

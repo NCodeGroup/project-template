@@ -6,12 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.100.1] - 2026-11-16
+## [0.101.1] - 2026-11-16
 
 ### Fixed
 
 - `.template\Update-Project.ps1` and `Adopt-Project.ps1` name a build script of the project's own as running `dotnet csharpier check` only when a command in it runs the check, such as `dotnet csharpier check .`, or `csharpier check .` at the start of a statement, with `csharpier` in lower case. A script whose comment-based help, comment or string only mentions the check, such as a synopsis saying `build/dod.ps1` runs the CSharpier check, is no longer named. ([#414](https://github.com/NCodeGroup/project-template/issues/414), [ADR-0148](template/docs/decisions/project-template/0148-csharp-is-formatted-in-the-gate-and-files-carry-the-spdx-header.md))
 - `/plan-template-update` counts a project's build script as repeating a check a template script runs only when a command in it runs that check, not when its comments, help or strings name it. ([#414](https://github.com/NCodeGroup/project-template/issues/414))
+
+## [0.101.0] - 2026-11-16
+
+### Added
+
+- `tools/Set-RepositoryBaseline.ps1 -SkipImmutableReleases` leaves a repository's releases mutable, for a project whose releases get files after they are published in a way the script doesn't detect. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+- `tools/Set-RepositoryBaseline.ps1` prints a notice with the `gh api -X DELETE repos/OWNER/REPO/immutable-releases` command where a repository's releases are already immutable and a workflow on its default branch runs on a `release` event or uploads release assets, whose next release would fail; it never turns them off itself. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+- `.template/Update-Project.ps1` says to delete, or leave out of the template's change, `SECURITY.md`'s paragraph that says releases are immutable when a workflow in `.github/workflows` runs on a release event or uploads release assets, also when the project is already up to date. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+- `Adopt-Project.ps1` prints the same note when the `SECURITY.md` an adoption leaves says releases are immutable and a workflow in `.github/workflows` runs on a release event or uploads release assets. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+
+### Fixed
+
+- `tools/Set-RepositoryBaseline.ps1` no longer turns on immutable releases in a repository where a workflow on the default branch runs on a `release` event or uploads release assets, such as a project's own `publish.yml` that attaches files to a published release, which an immutable release refuses: it read only `release-provenance.yml`. Its line names those workflows, or one it can't read. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
 
 ## [0.100.0] - 2026-11-16
 
@@ -1620,8 +1633,9 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.100.1...HEAD
-[0.100.1]: https://github.com/NCodeGroup/project-template/compare/v0.100.0...v0.100.1
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.101.1...HEAD
+[0.101.1]: https://github.com/NCodeGroup/project-template/compare/v0.101.0...v0.101.1
+[0.101.0]: https://github.com/NCodeGroup/project-template/compare/v0.100.0...v0.101.0
 [0.100.0]: https://github.com/NCodeGroup/project-template/compare/v0.99.2...v0.100.0
 [0.99.2]: https://github.com/NCodeGroup/project-template/compare/v0.99.1...v0.99.2
 [0.99.1]: https://github.com/NCodeGroup/project-template/compare/v0.99.0...v0.99.1

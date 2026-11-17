@@ -42,6 +42,9 @@
     that does or one that already allows both events on every repository, exits 1 when it can't read the
     policies or is refused, says for a refusal that asks to upgrade the organization's plan that it needs GitHub Team or
     above and to run it per repository, and otherwise names the admin:org scope, takes no -Repo, -All or -RequireChecks;
+    that immutable releases stay off, with the reason, where a workflow runs on a release event or uploads release
+    assets, can't be read, or -SkipImmutableReleases is given; that a repository whose releases are already
+    immutable gets a notice with the command that turns them off where a workflow needs them off;
     that -All skips archived repositories and forks;
     and that bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
 
@@ -141,10 +144,15 @@ if ($path -match '^repos/[^/]+/([^/]+)/(actions/permissions/workflow|vulnerabili
 # A file on the default branch: 200 when the repository's workflows list names it, 404 when it doesn't, or, for a
 # list of fail:<code>, that status for every file. A file with text in workflowText comes as base64 with line breaks, as
 # GitHub sends it. A file workflowText maps to $null comes without content, as a file over 1 MB does, and any other file as on: pull_request_target.
+# A folder that holds listed files answers their list, as GitHub does.
 if ($path -match '^repos/[^/]+/([^/]+)/contents/([^?]+)') {
     $files = @($data.repos[$Matches[1]].workflows | Where-Object { $_ }); $file = $Matches[2]
     $texts = $data.repos[$Matches[1]].workflowText
     if ($files.Count -and "$($files[0])".StartsWith('fail:')) { Out-Answer ([int]"$($files[0])".Substring(5)) '{"message":"Stand-in refused to read it"}' }
+    $listed = @($files | Where-Object { "$_".StartsWith("$file/") -and "$_".Substring($file.Length + 1) -notmatch '/' })
+    if ($files -notcontains $file -and $listed.Count) {
+        Out-Answer 200 (ConvertTo-Json -Compress -InputObject @($listed | ForEach-Object { @{ name = Split-Path -Leaf $_; path = "$_"; type = 'file' } }))
+    }
     if ($files -contains $file) {
         if ($texts -and $texts.ContainsKey($file) -and $null -eq $texts[$file]) { Out-Answer 200 '{"type":"file"}' }
         $text = if ($texts -and $texts.ContainsKey($file)) { $texts[$file] } else { "on:`n  pull_request_target:`n" }
@@ -352,6 +360,20 @@ $repos = @{
     baselineRaiser = New-Repo -Workflows @('.github/workflows/raise-baseline.yml')
     baselineRaiserSet = New-Repo -Workflows @('.github/workflows/raise-baseline.yml') -Security @{ 'actions/permissions/workflow' = 'readApproves' }
     provenance = New-Repo -Workflows @('.github/workflows/release-provenance.yml')
+    # Workflows that run on a release event or upload release assets, one that only has a job named release, and one the
+    # contents API sends without text.
+    releaseAssets = New-Repo -Workflows @('.github/workflows/ci.yml', '.github/workflows/publish.yml') -WorkflowText @{
+        '.github/workflows/ci.yml' = "on:`n  push:`n"
+        '.github/workflows/publish.yml' = "on:`n  release:`n    types: [published]`n  workflow_dispatch:`n" }
+    releaseUpload = New-Repo -Workflows @('.github/workflows/attach.yml') -WorkflowText @{
+        '.github/workflows/attach.yml' = "on: workflow_dispatch`njobs:`n  a:`n    steps:`n      - run: gh release upload v1.0.0 dist/app.tgz`n" }
+    releaseJobOnly = New-Repo -Workflows @('.github/workflows/tag-release.yml') -WorkflowText @{
+        '.github/workflows/tag-release.yml' = (Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/tag-release.yml')) }
+    releaseUnreadable = New-Repo -Workflows @('.github/workflows/big.yml') -WorkflowText @{ '.github/workflows/big.yml' = $null }
+    # Immutable releases already on, beside a workflow on a release event, beside one the contents API sends without text, and where .github/workflows can't be listed.
+    releaseAssetsImmutable = New-Repo -Security @{ 'immutable-releases' = 'on' } -Workflows @('.github/workflows/publish.yml') -WorkflowText @{ '.github/workflows/publish.yml' = "on:`n  release:`n    types: [published]`n" }
+    immutableUnreadable = New-Repo -Security @{ 'immutable-releases' = 'on' } -Workflows @('.github/workflows/big.yml') -WorkflowText @{ '.github/workflows/big.yml' = $null }
+    immutableListUnreadable = New-Repo -Security @{ 'immutable-releases' = 'on' } -Workflows @('fail:500')
     partial = New-Repo -SecretScanning 'enabled' -Security @{ 'actions/permissions/workflow' = 'readApproves'; 'vulnerability-alerts' = 'on'; 'private-vulnerability-reporting' = 'on' } -AutoMerge $true
     # Auto-merge: an answer that leaves allow_auto_merge out, as GitHub's does for someone who can't change it.
     autoMergeUnread = New-Repo -AutoMerge $null
@@ -765,6 +787,35 @@ try {
     $r = Invoke-Baseline @('-Repo', 'workflowsUnreadable')
     Check 'security: a repository whose workflows can''t be read keeps mutable releases, and says why' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape("workflowsUnreadable: immutable releases: not available (couldn't read .github/workflows/release-provenance.yml: HTTP 500")) "$($r.Changes -join '|') $($r.Output)"
 
+    $r = Invoke-Baseline @('-Repo', 'releaseAssets')
+    Check 'security: a repository with a workflow on a release event keeps mutable releases, and names only that file' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape('releaseAssets: immutable releases: not available (these workflows run on a release event') -and $r.Output -match [regex]::Escape('.github/workflows/publish.yml') -and $r.Output -notmatch [regex]::Escape('.github/workflows/ci.yml')) "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'releaseUpload')
+    Check 'security: a repository with a workflow that uploads release assets keeps mutable releases, and names it' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape('releaseUpload: immutable releases: not available (these workflows run on a release event') -and $r.Output -match [regex]::Escape('.github/workflows/attach.yml')) "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'releaseJobOnly')
+    Check 'security: a workflow with only a job and an output named release still gets immutable releases' (($r.Changes -join '|') -match 'immutable-releases') "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'releaseUnreadable')
+    Check 'security: a workflow the contents API sends without text keeps mutable releases, and says why' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape("releaseUnreadable: immutable releases: not available (couldn't read .github/workflows/big.yml: the contents API sent no base64 UTF-8 text")) "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'fresh', '-SkipImmutableReleases')
+    Check 'security: -SkipImmutableReleases leaves releases mutable, and says why' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape('fresh: immutable releases: not available (-SkipImmutableReleases leaves them off)')) "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'releaseAssetsImmutable')
+    Check 'security: immutable releases already on beside a workflow on a release event stay on, with a notice and the command that turns them off' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape('releaseAssetsImmutable: immutable releases: already set') -and $r.Output -match [regex]::Escape('releaseAssetsImmutable: notice: immutable releases are on, but these workflows run on a release event') -and $r.Output -match [regex]::Escape('gh api -X DELETE repos/NCodeGroup/releaseAssetsImmutable/immutable-releases')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'releaseAssetsImmutable', '-WhatIf')
+    Check 'security: the notice about immutable releases is printed with -WhatIf too' ($r.Output -match [regex]::Escape('releaseAssetsImmutable: notice: immutable releases are on, but these workflows run on a release event')) "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'immutableUnreadable')
+    Check 'security: immutable releases already on beside a workflow that can''t be read say so, and the run still succeeds' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape("immutableUnreadable: couldn't read the workflows to check them against its immutable releases (couldn't read .github/workflows/big.yml")) "$($r.ExitCode) $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'immutableListUnreadable')
+    Check 'security: immutable releases already on, where .github/workflows can''t be listed, say so' ($r.Output -match [regex]::Escape("immutableListUnreadable: couldn't read the workflows to check them against its immutable releases (couldn't read .github/workflows: ")) "$($r.ExitCode) $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'complete')
+    Check 'security: immutable releases already on with no workflows print no notice' ($r.Output -notmatch [regex]::Escape('notice: immutable releases')) $r.Output
+
     $r = Invoke-Baseline @('-Repo', 'private')
     Check 'security: secret scanning is left out of a repository that is not public, with the reason, since it would be paid there' (@($r.Bodies | Where-Object { $_.body.security_and_analysis }).Count -eq 0 -and $r.Output -match [regex]::Escape("private: secret scanning: not available (the repository isn't public") -and $r.Output -match [regex]::Escape("private: secret scanning push protection: not available (the repository isn't public")) $r.Output
     Check 'security: a setting the API will not read is reported, with its answer, and not written' (($r.Changes -join '|') -notmatch 'private-vulnerability-reporting' -and $r.Output -match [regex]::Escape("private: private vulnerability reporting: not available (couldn't read it: HTTP 422: Stand-in refused to read it)")) "$($r.Changes -join '|') $($r.Output)"
@@ -962,7 +1013,7 @@ try {
     Check 'params: -RequireChecks auto takes no job names' ($r.ExitCode -ne 0 -and $r.Changes.Count -eq 0 -and $r.Output -match 'pass auto alone') $r.Output
     $r = Invoke-Baseline @('-Repo', 'fresh', '-Owner', 'someone')
     Check 'params: -Owner picks the owner of the repository' (($r.Changes -join '|') -like '*BODY POST repos/someone/fresh/rulesets*') ($r.Changes -join '|')
-    foreach ($extra in @('-Repo', 'fresh'), @('-All'), @('-RequireChecks', 'auto')) {
+    foreach ($extra in @('-Repo', 'fresh'), @('-All'), @('-RequireChecks', 'auto'), @('-SkipImmutableReleases')) {
         $r = Invoke-Baseline (@('-OrganizationPolicy') + $extra)
         Check "params: -OrganizationPolicy takes no $($extra[0])" ($r.ExitCode -ne 0 -and $r.Changes.Count -eq 0 -and $r.Output -match 'sets the organization.s policy alone') $r.Output
     }
