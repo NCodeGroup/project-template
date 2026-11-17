@@ -13,6 +13,10 @@
                  trigger, and says nothing when it has the trigger or the project has no tag-release.yml.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
+      immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
+                when a workflow runs on a release event or uploads release assets, and nothing otherwise.
+      copies    Get-WorkflowEvents and Test-ReleaseAssetWorkflow in Update-Project.ps1 are character for character
+                the ones in tools/Set-RepositoryBaseline.ps1.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notes-test-<process ID> in the temp
@@ -141,6 +145,51 @@ $badgeReminder = & {
     }
 }
 $badgeReminder
+
+# immutable: Get-ImmutableReleaseNote, run from inside each fixture folder, which is also the project.
+$immutableNote = & {
+    $updateScript = Join-Path $repoRoot 'template\.template\Update-Project.ps1'
+    $ast = [Management.Automation.Language.Parser]::ParseFile($updateScript, [ref]$null, [ref]$null)
+    foreach ($fnName in 'Get-WorkflowEvents', 'Test-ReleaseAssetWorkflow', 'Get-ImmutableReleaseNote') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $paragraph = "## Verify a Release`n`nReleases are immutable: once one is published.`n"
+    $releaseEvent = "on:`n  release:`n    types: [published]`n"
+    $immutableCases = [ordered]@{
+        'paragraph, release workflow'    = @{ Security = $paragraph; File = 'publish.yml'; Workflow = $releaseEvent; Offered = $false; Want = @('SECURITY.md says', '.github/workflows/publish.yml', 'Delete the paragraph') }
+        'offered, upload workflow'       = @{ Security = "# Security`n"; File = 'attach.yml'; Workflow = "on: workflow_dispatch`njobs:`n  a:`n    steps:`n      - run: gh release upload v1.0.0 dist/app.tgz`n"; Offered = $true; Want = @('The template''s change to SECURITY.md above', 'Leave out the paragraph') }
+        'paragraph, no release workflow' = @{ Security = $paragraph; File = 'tag-release.yml'; Workflow = "on:`n  push:`njobs:`n  release:`n    runs-on: x`n"; Offered = $false; Want = @() }
+        'no paragraph'                   = @{ Security = "# Security`n"; File = 'publish.yml'; Workflow = $releaseEvent; Offered = $false; Want = @() }
+    }
+    foreach ($name in $immutableCases.Keys) {
+        $case = $immutableCases[$name]
+        $folder = Join-Path $Work "immutable-$($name -replace '\W+', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        [IO.File]::WriteAllText((Join-Path $folder 'SECURITY.md'), $case.Security)
+        [IO.File]::WriteAllText((Join-Path $workflows $case.File), $case.Workflow)
+        Push-Location $folder
+        try { $note = (Get-ImmutableReleaseNote $case.Offered) -join "`n" }
+        finally { Pop-Location }
+        if ($case.Want.Count) {
+            $missing = @($case.Want | Where-Object { -not $note.Contains($_) })
+            Check "immutable: $name" (-not $missing.Count) "missing [$($missing -join '], [')] in [$note]"
+        }
+        else { Check "immutable: $name" (-not $note.Trim()) "got [$note]" }
+    }
+
+    # copies: the two functions copied into Update-Project.ps1 match the ones in tools/Set-RepositoryBaseline.ps1.
+    $baselineAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'tools\Set-RepositoryBaseline.ps1'), [ref]$null, [ref]$null)
+    $differ = foreach ($fnName in 'Get-WorkflowEvents', 'Test-ReleaseAssetWorkflow') {
+        $isFn = { param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }
+        $copy = $ast.Find($isFn, $true)
+        $original = $baselineAst.Find($isFn, $true)
+        if (-not $copy -or -not $original -or $copy.Extent.Text -ne $original.Extent.Text) { $fnName }
+    }
+    Check 'copies: Get-WorkflowEvents and Test-ReleaseAssetWorkflow match tools/Set-RepositoryBaseline.ps1''s' (-not $differ) "differ: [$($differ -join ', ')]"
+}
+$immutableNote
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Update notes tests: FAILED ($($failures.Count))"; exit 1 }
