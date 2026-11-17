@@ -130,6 +130,7 @@ $ciPermissionNote = & {
         'top-level read-all'       = @{ Release = $callsCi; Ci = "on:`n  workflow_call:`npermissions: read-all`njobs:`n  build:`n    runs-on: ubuntu-latest`n"; Want = 'its top-level permissions ask for read-all.' }
         'a flow mapping'           = @{ Release = $callsCi; Ci = "on:`n  workflow_call:`njobs:`n  a:`n    permissions: { contents: write, pull-requests: read }`n    runs-on: ubuntu-latest`n"; Want = 'job a asks for contents: write, pull-requests: read.' }
         'contents read and none'   = @{ Release = $callsCi; Ci = "on:`n  workflow_call:`npermissions:`n  contents: read`njobs:`n  build:`n    permissions: {}`n    runs-on: ubuntu-latest`n  lint:`n    permissions:`n      contents: none`n      checks: 'none'`n    runs-on: ubuntu-latest`n"; Want = $null }
+        'quoted flow values'       = @{ Release = $callsCi; Ci = "on:`n  workflow_call:`njobs:`n  a:`n    permissions: { contents: 'read', checks: ""none"" }`n    runs-on: ubuntu-latest`n"; Want = $null }
         'no tag-release'           = @{ Release = $null; Ci = $codecov; Want = $null }
     }
     foreach ($name in $permissionCases.Keys) {

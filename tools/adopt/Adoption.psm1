@@ -792,7 +792,7 @@ function Get-CiPermissionNote {
         $blockIndent = $indent
         $blocks.Add($block)
         if ($value) {
-            $block.Pairs = @($value.Trim('{', '}', ' ') -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            $block.Pairs = @($value.Trim('{', '}', ' ') -split ',' | ForEach-Object { ($_ -replace '[''"]', '').Trim() } | Where-Object { $_ })
             $block = $null
         }
     }
