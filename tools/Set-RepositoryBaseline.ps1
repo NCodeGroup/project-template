@@ -577,6 +577,34 @@ function Get-WorkflowEvents([string]$Text) {
     @()
 }
 
+# Whether a workflow's text runs on a release event, or uploads release assets with gh, an upload action or the API.
+function Test-ReleaseAssetWorkflow([string]$Text) {
+    [bool](((Get-WorkflowEvents $Text) -contains 'release') -or ($Text -match 'gh\s+release\s+upload|upload-release-asset|uploadReleaseAsset|action-gh-release'))
+}
+
+# The workflow files of a repository's default branch that run on a release event or upload release assets, which an
+# immutable release refuses once it is published. Why is the reason a folder or file couldn't be read, or $null.
+function Find-ReleaseAssetWorkflows([string]$Name, [string]$Branch) {
+    $list = Invoke-HostApi gh "repos/$Owner/$Name/contents/.github/workflows?ref=$Branch"
+    if ($list.Status -eq 404) { return [pscustomobject]@{ Files = @(); Why = $null } }
+    $items = $null
+    if ($list.Status -eq 200) { try { $items = @($list.Body | ConvertFrom-Json -ErrorAction Stop) } catch { $items = $null } }
+    if ($list.Status -ne 200 -or $null -eq $items) {
+        $reason = if ($list.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $list }
+        return [pscustomobject]@{ Files = @(); Why = "couldn't read .github/workflows: $reason" }
+    }
+    $files = [Collections.Generic.List[string]]::new()
+    foreach ($item in $items) {
+        if ($item.type -ne 'file' -or $item.name -notmatch '\.ya?ml$') { continue }
+        $read = Invoke-HostApi gh "repos/$Owner/$Name/contents/$($item.path)?ref=$Branch"
+        if ($read.Status -ne 200) { return [pscustomobject]@{ Files = @(); Why = "couldn't read $($item.path): $(Get-FailureReason $read)" } }
+        $text = Get-ContentText $read.Body
+        if ($null -eq $text) { return [pscustomobject]@{ Files = @(); Why = "couldn't read $($item.path): the contents API sent no base64 UTF-8 text, such as for a file over 1 MB" } }
+        if (Test-ReleaseAssetWorkflow $text) { $files.Add($item.path) }
+    }
+    [pscustomobject]@{ Files = @($files); Why = $null }
+}
+
 # Reads the Actions policies at $Path (a repository's or an organization's). A repository's list is an object,
 # { total_count, policies }, whose items leave out their conditions and rules, which a read by its id gives; a bare array
 # is read too. Why is the reason a policy couldn't be read, or $null. Status is the HTTP status of the read that failed, or of the list when none did, and $null when a call got no response.
@@ -691,13 +719,19 @@ function Set-SecuritySettings([string]$Name, $Info) {
     Set-SecuritySetting $Name 'private vulnerability reporting' $state PUT "$base/private-vulnerability-reporting"
     # Immutable releases: GitHub then signs an attestation of each release it publishes, which gh release verify checks
     # (the template's ADR-0028). release-provenance.yml attaches a library's packages to its release after it is
-    # published, which an immutable release refuses, so such a repository is left as it is.
+    # published, which an immutable release refuses, so such a repository is left as it is. So is one with a workflow
+    # that runs on a release event or uploads release assets, or one the script can't read.
     $state = Get-SettingState (Invoke-HostApi gh "$base/immutable-releases") { param($answer) $answer.enabled }
     if ($state -is [bool] -and -not $state) {
         # Only a 404 says the file is absent: any other answer leaves the setting as it is, and says why.
         $provenance = (Invoke-HostApi gh "$base/contents/.github/workflows/release-provenance.yml?ref=$($Info.default_branch)").Status
         if ($provenance -eq 200) { $state = 'release-provenance.yml attaches packages to a release after it is published, which an immutable release refuses' }
         elseif ($provenance -ne 404) { $state = "couldn't read .github/workflows/release-provenance.yml: $(if ($provenance) { "HTTP $provenance" } else { 'no response' })" }
+    }
+    if ($state -is [bool] -and -not $state) {
+        $found = Find-ReleaseAssetWorkflows $Name $Info.default_branch
+        if ($found.Why) { $state = $found.Why }
+        elseif ($found.Files.Count) { $state = "these workflows run on a release event or upload release assets, which an immutable release refuses once it is published: $($found.Files -join ', ')" }
     }
     Set-SecuritySetting $Name 'immutable releases' $state PUT "$base/immutable-releases"
 }
