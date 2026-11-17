@@ -36,10 +36,10 @@ a maintainer; the existing maintainers decide, and the change is recorded in thi
 
 Versions follow Semantic Versioning. {% if ghlib %}Releases are tagged and published as
 [ADR-0016](docs/decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md)
-records.{% else %}Releases are tagged once `AGENTS.md`'s Landing section sets `release: tag`, and published too with
+records.{% else %}Releases are tagged when `AGENTS.md`'s Landing section sets `release: tag`, and published too with
 `tag+release`, as
 [ADR-0016](docs/decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md)
-records; it starts with `release: none`.{% endif %}
+records.{% endif %}
 {%- if ghlib %} Packages reach nuget.org only after a maintainer approves the `nuget` environment.
 [SECURITY.md](SECURITY.md) says how to verify a package.{% endif %}
 
