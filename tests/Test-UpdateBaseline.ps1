@@ -69,10 +69,10 @@ function Get-Project([string]$Baseline) {
 
 # The changelog cases: the Unreleased body before and after.
 $changelogCases = [ordered]@{
-    'empty body'       = @{ Body = "`n"; Expect = "`n### Changed`n`n$entry`n" }
-    'Changed section'  = @{ Body = "`n### Changed`n`n- Old entry.`n"; Expect = "`n### Changed`n`n$entry`n- Old entry.`n" }
-    'Added section'    = @{ Body = "`n### Added`n`n- New.`n"; Expect = "`n### Added`n`n- New.`n`n### Changed`n`n$entry`n" }
-    'Fixed section'    = @{ Body = "`n### Fixed`n`n- A bug.`n"; Expect = "`n### Changed`n`n$entry`n`n### Fixed`n`n- A bug.`n" }
+    'empty body'                 = @{ Body = "`n"; Expect = "`n### Changed`n`n$entry`n" }
+    'Changed section'            = @{ Body = "`n### Changed`n`n- Old entry.`n"; Expect = "`n### Changed`n`n$entry`n- Old entry.`n" }
+    'Added section'              = @{ Body = "`n### Added`n`n- New.`n"; Expect = "`n### Added`n`n- New.`n`n### Changed`n`n$entry`n" }
+    'Fixed section'              = @{ Body = "`n### Fixed`n`n- A bug.`n"; Expect = "`n### Changed`n`n$entry`n`n### Fixed`n`n- A bug.`n" }
     'older baseline entry'       = @{ Body = "`n### Changed`n`n$older`n- Old entry.`n"; Expect = "`n### Changed`n`n$entry`n- Old entry.`n" }
     'two older baseline entries' = @{ Body = "`n### Changed`n`n- Old entry.`n$older`n$oldest`n"; Expect = "`n### Changed`n`n- Old entry.`n$entry`n" }
     'same baseline entry'        = @{ Body = "`n### Changed`n`n$entry`n"; Expect = "`n### Changed`n`n$entry`n" }
