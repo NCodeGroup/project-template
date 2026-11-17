@@ -22,8 +22,11 @@
         (GITHUB_TOKEN) read-only by default, with GitHub Actions not allowed to create and approve pull requests, except
         where the default branch has .github/workflows/raise-baseline.yml, which opens a pull request; secret scanning
         and its push protection; Dependabot alerts and Dependabot security updates, which need the alerts; private
-        vulnerability reporting; and immutable releases, except where the default branch has
-        .github/workflows/release-provenance.yml, which attaches packages to a release after it is published;
+        vulnerability reporting; and immutable releases, except where a .yml or .yaml file in the default branch's
+        .github/workflows runs on a release event or uploads release assets (gh release upload,
+        actions/upload-release-asset, softprops/action-gh-release or uploadReleaseAsset), such as
+        release-provenance.yml, since an immutable release refuses a file attached after it is published, or where a
+        workflow can't be read; the line names the files;
       - turns on "Allow auto-merge" where it is off, so the template's code-review-auto-merge.yml workflow can turn on
         auto-merge for a Dependabot pull request that only moves the NCode Review pin. Allowing it merges nothing by
         itself: a pull request merges itself only once someone, or that workflow, turns it on, and still waits for what
@@ -87,6 +90,9 @@
     GitHub Free doesn't offer organization rulesets, so this applies them to each repository. New-Project.ps1 runs it
     for a repository it creates; Adopt-Project.ps1 prints the command to run.
 
+    -SkipImmutableReleases leaves immutable releases off in every repository it runs on, and says so; one already on
+    stays on, since the script never loosens a setting.
+
     -OrganizationPolicy, with -Owner alone, creates the same policy once for the organization, on every repository
     (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
     auth refresh -h github.com -s admin:org). It reads the organization's policies first and updates one of that
@@ -101,6 +107,7 @@
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks 'build-and-test'
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks auto -WhatIf   # lists the checks it would require
     .\tools\Set-RepositoryBaseline.ps1 -All -Owner NCodeGroup
+    .\tools\Set-RepositoryBaseline.ps1 -Repo brand -SkipImmutableReleases   # leaves releases mutable
     .\tools\Set-RepositoryBaseline.ps1 -OrganizationPolicy -Owner NCodeGroup -WhatIf   # prints the organization's policy it would create
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Owner', Justification = 'Get-Targets and Set-Baseline, nested functions, use it.')]
@@ -115,11 +122,13 @@ param(
     # Creates the organization's Actions event policy for the code-review workflows of every repository, instead of each
     # repository's own. Only with -Owner; an organization owner runs it, with the admin:org scope, on GitHub Team or above.
     [switch]$OrganizationPolicy,
+    # Leaves immutable releases off in each repository, for one whose releases get files after they are published.
+    [switch]$SkipImmutableReleases,
     # The owner of the repositories: an organization or a user.
     [Alias('Org')][string]$Owner = 'NCodeGroup'
 )
 $ErrorActionPreference = 'Stop'
-if ($OrganizationPolicy -and ($Repo -or $All -or $RequireChecks.Count)) { throw '-OrganizationPolicy sets the organization''s policy alone: pass it with -Owner only.' }
+if ($OrganizationPolicy -and ($Repo -or $All -or $RequireChecks.Count -or $SkipImmutableReleases)) { throw '-OrganizationPolicy sets the organization''s policy alone: pass it with -Owner only.' }
 if (-not $Repo -and -not $All -and -not $OrganizationPolicy) { throw 'Pass -Repo <name> or -All, or -OrganizationPolicy.' }
 if ($Repo -and $All) { throw 'Pass -Repo or -All, not both.' }
 $RequireChecks = @($RequireChecks | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -722,6 +731,7 @@ function Set-SecuritySettings([string]$Name, $Info) {
     # published, which an immutable release refuses, so such a repository is left as it is. So is one with a workflow
     # that runs on a release event or uploads release assets, or one the script can't read.
     $state = Get-SettingState (Invoke-HostApi gh "$base/immutable-releases") { param($answer) $answer.enabled }
+    if ($SkipImmutableReleases -and $state -is [bool] -and -not $state) { $state = '-SkipImmutableReleases leaves them off' }
     if ($state -is [bool] -and -not $state) {
         # Only a 404 says the file is absent: any other answer leaves the setting as it is, and says why.
         $provenance = (Invoke-HostApi gh "$base/contents/.github/workflows/release-provenance.yml?ref=$($Info.default_branch)").Status
