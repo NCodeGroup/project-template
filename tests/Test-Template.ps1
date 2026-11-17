@@ -293,6 +293,9 @@ foreach ($case in $cases) {
     $criteriaText = [IO.File]::ReadAllText((Join-Path $dest 'docs\best-practices-criteria.md'))
     $criteriaRows = [regex]::Matches($criteriaText, '(?m)^\| `[A-Za-z0-9_]+` \| (MUST|SHOULD|SUGGESTED) \| (yes|no) \| (yes|no) \| ').Count
     Check "${name}: docs/best-practices-criteria.md maps all 145 criteria, says what stops a level and how to check, and holds the registration prompt on GitHub only" ($criteriaRows -eq 145 -and $criteriaText.Contains('## Where a Level Stops') -and $criteriaText.Contains('## Checks') -and $criteriaText.Contains('## Register and Answer') -and $criteriaText.Contains('REPORT AT THE END') -eq ($case.Host -eq 'github')) "$criteriaRows rows"
+    $coverageGated = $case.Stack -in 'dotnet', 'python', 'node', 'powershell' -and $case.Data.coverage_gate -ne 'false'
+    $coverageCheck = [regex]::Match($criteriaText, '(?m)^- \*\*Coverage\*\* .*$').Value
+    Check "${name}: docs/best-practices-criteria.md's Coverage check says CI doesn't gate on coverage exactly when it doesn't, and names Test-Coverage.ps1 exactly when it does" ($coverageCheck -and $coverageCheck.Contains("even when CI doesn't gate on it") -ne $coverageGated -and $coverageCheck.Contains('Test-Coverage.ps1') -eq $coverageGated) $coverageCheck
     $projectNumber = $case.Data.best_practices_project
     $readmeText = [IO.File]::ReadAllText((Join-Path $dest 'README.md'))
     $answersText = [IO.File]::ReadAllText((Join-Path $dest '.copier-answers.yml'))
