@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.102.2] - 2026-11-17
+
+### Fixed
+
+- `build/Update-Baseline.ps1` replaces the baseline entry an earlier run left under `## [Unreleased]` instead of adding a second one, so a baseline pull request that merges after the next release leaves `[Unreleased]` naming only the baseline `PackageValidationBaselineVersion` holds; an entry in a release section stays as it is. ([#426](https://github.com/NCodeGroup/project-template/issues/426))
+
 ## [0.102.1] - 2026-11-17
 
 ### Added
@@ -1656,7 +1662,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.102.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.102.2...HEAD
+[0.102.2]: https://github.com/NCodeGroup/project-template/compare/v0.102.1...v0.102.2
 [0.102.1]: https://github.com/NCodeGroup/project-template/compare/v0.102.0...v0.102.1
 [0.102.0]: https://github.com/NCodeGroup/project-template/compare/v0.101.1...v0.102.0
 [0.101.1]: https://github.com/NCodeGroup/project-template/compare/v0.101.0...v0.101.1
