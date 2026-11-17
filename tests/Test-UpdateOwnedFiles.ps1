@@ -5,10 +5,11 @@
 .DESCRIPTION
     Renders a project from v0.1.0 that lists .github/workflows/ci.yml in project_owned_files and replaces that file with
     its own, then updates it to a v0.2.0 that changes the template's ci.yml and .gitignore. The update must leave the
-    project's ci.yml alone without a conflict, show the template's change to it, and still merge .gitignore. A file the
-    template doesn't render, or one of the update's own files, must stop the update before it changes anything, and an
-    empty list must give the file back and leave the answer empty (project_owned_files: []). Prints PASS or FAIL per
-    check and exits 1 on any failure.
+    project's ci.yml alone without a conflict, show the template's change to it, and still merge .gitignore. Its own
+    SECURITY.md lacks the "Releases are immutable" paragraph that v0.2.0 rewrites, and its own workflow runs on a
+    release event, so the update must say to leave the paragraph out. A file the template doesn't render, or one of the
+    update's own files, must stop the update before it changes anything, and an empty list must give the file back and
+    leave the answer empty (project_owned_files: []). Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-owned-test-<process ID> in the
@@ -58,6 +59,12 @@ $path = Join-Path $Work 'owned'
 Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Owned' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' --data 'project_owned_files=[.github/workflows/ci.yml]' $tpl $path | Out-Null
 $ci = Join-Path $path '.github/workflows/ci.yml'
 [IO.File]::WriteAllText($ci, $ownCi)
+$security = Join-Path $path 'SECURITY.md'
+$securityText = [IO.File]::ReadAllText($security)
+$withoutParagraph = $securityText -replace '(?m)^Releases are immutable[^\n]*\n\r?\n', ''
+if ($withoutParagraph -eq $securityText) { throw 'SECURITY.md has no "Releases are immutable" paragraph.' }
+[IO.File]::WriteAllText($security, $withoutParagraph)
+[IO.File]::WriteAllText((Join-Path $path '.github/workflows/attach.yml'), "on:`n  release:`n    types: [published]`njobs:`n  attach:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo attach`n")
 Push-Location $path
 try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Render project-template v0.1.0' }
 finally { Pop-Location }
@@ -66,10 +73,11 @@ Push-Location (Join-Path $tpl 'template')
 try {
     Edit-File '.github/workflows/ci.yml.jinja' "    runs-on: ubuntu-latest`n    timeout-minutes: 30`n    defaults:" "    runs-on: ubuntu-latest`n    timeout-minutes: 45`n    defaults:"
     Edit-File .gitignore.jinja "`n/secrets/`n" "`n/secrets/`n/owned-test/`n"
+    Edit-File SECURITY.md.jinja "its tag and files can't change" "its tag and files can never change"
 }
 finally { Pop-Location }
 Push-Location $tpl
-try { Invoke-Git commit -q -am 'Change ci.yml and .gitignore'; Invoke-Git tag v0.2.0 }
+try { Invoke-Git commit -q -am 'Change ci.yml, .gitignore and SECURITY.md'; Invoke-Git tag v0.2.0 }
 finally { Pop-Location }
 
 function Invoke-Update([hashtable]$Data) {
@@ -94,6 +102,7 @@ try {
     Check "update: the project's own ci.yml is untouched and nothing conflicts" (($r.ExitCode -eq 0) -and $r.Output.Contains('Committed "Update from project-template v0.2.0"') -and -not $status -and ([IO.File]::ReadAllText($ci) -eq $ownCi)) "exit $($r.ExitCode)`n$($r.Output.Trim())`n$($status | Out-String)"
     Check "update: shows the template's ci.yml change as a project-owned change" (($r.Output -match '(?m)^  \.github/workflows/ci\.yml:\r?$') -and $r.Output.Contains('+    timeout-minutes: 45')) $r.Output.Trim()
     Check "update: other merged files still take the template's changes" ([IO.File]::ReadAllText((Join-Path $path '.gitignore')).Contains("`n/owned-test/`n"))
+    Check "update: says to leave out SECURITY.md's immutable-releases paragraph that the template's change adds, beside a workflow on a release event" ($r.Output.Contains("The template's change to SECURITY.md above says releases are immutable, but ") -and $r.Output.Contains('.github/workflows/attach.yml') -and $r.Output.Contains('Leave out the paragraph of its Verify a Release section')) $r.Output.Trim()
     Check 'update: .copier-answers.yml still records project_owned_files' ([IO.File]::ReadAllText($answers) -match $answerPattern) ([IO.File]::ReadAllText($answers))
 
     $head = git rev-parse HEAD
