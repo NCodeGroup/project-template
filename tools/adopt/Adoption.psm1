@@ -742,12 +742,20 @@ function Update-VersionFile {
     $result
 }
 
-# The project's own build scripts that run CSharpier's check, which build/dod.ps1 runs in its Format stage once .config/dotnet-tools.json names CSharpier (ADR-0148): such a wrapper checks the formatting twice. template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests keep the two equal.
+# The project's own build scripts that run CSharpier's check, which build/dod.ps1 runs in its Format stage once .config/dotnet-tools.json names CSharpier (ADR-0148): such a wrapper checks the formatting twice. Only a command that runs the check counts, found through PowerShell's parser, so a comment, comment-based help or a string that names it doesn't. template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests keep the two equal.
 function Get-CSharpierWrapper([string[]]$TemplateFiles) {
     if (-not (Test-Path -LiteralPath .config/dotnet-tools.json -PathType Leaf) -or (Get-Content -LiteralPath .config/dotnet-tools.json -Raw) -notmatch '(?i)csharpier') { return }
     foreach ($file in @(Get-ChildItem -LiteralPath build -Filter *.ps1 -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
         $relative = "build/$($file.Name)"
-        if ($relative -notin $TemplateFiles -and (Get-Content -LiteralPath $file.FullName -Raw) -match '(?m)^[^#\r\n]*\bcsharpier\s+check\b') { $relative }
+        if ($relative -in $TemplateFiles) { continue }
+        $script = [Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$null)
+        $run = $script.Find({
+                param($node)
+                if ($node -isnot [Management.Automation.Language.CommandAst]) { return $false }
+                $words = @($node.CommandElements | ForEach-Object { if ($_ -is [Management.Automation.Language.StringConstantExpressionAst]) { $_.Value } else { '' } })
+                ($words.Count -ge 3 -and $words[0] -in 'dotnet', 'dotnet.exe' -and $words[1] -ceq 'csharpier' -and $words[2] -ceq 'check') -or ($words.Count -ge 2 -and $words[0] -ceq 'csharpier' -and $words[1] -ceq 'check')
+            }, $true)
+        if ($run) { $relative }
     }
 }
 
