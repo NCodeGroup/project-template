@@ -69,14 +69,28 @@
     major was built with a higher one than build/ProjectTemplate.props pins (the library's ADR-0136). It leaves
     .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
     publish. When the project has .github/workflows/tag-release.yml and a publish.yml without a workflow_dispatch
-    trigger, it says what to add. When it has release-provenance.yml or raise-baseline.yml and a publish.yml that
+    trigger, it says what to add. When tag-release.yml runs ci.yml and ci.yml has no workflow_call trigger, it says
+    to add one. When a job of ci.yml, or its top-level permissions, asks for more than contents: read, which
+    tag-release.yml grants it, it names each and says to move such a job into a workflow of its own (the template's
+    ADR-0026). When it has release-provenance.yml or raise-baseline.yml and a publish.yml that
     doesn't call one of them, or either, it warns that no release gets its provenance or baseline pull request (the template's
     ADR-0151). When the project has version.json, it also warns about a publish.yml or a
     .gitlab-ci.yml that packs without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning
     themselves (the template's ADR-0138).
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
+    An existing project keeps off the checks a new one starts with until -Data turns them on: csharp_format, node_lint, coverage_gate and file_headers are false when its answers lack them.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
     anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
+    When the project has no LICENSE or COPYING file at its root, it warns, also when the project is already up to
+    date: for a blank license answer it prints the -Data @{ license = 'Apache-2.0' } that adds one, and for any other
+    answer it says to add that license's text (the template's ADR-0024). A project from before the license question
+    gets a blank answer, never copier.yml's Apache-2.0 default.
+    When best_practices_project is set and README.md doesn't show the project's OpenSSF Best Practices badge, it prints
+    the line to add, also when the project is already up to date.
+    When SECURITY.md, or the template's change to it that the update shows, says releases are immutable and a workflow
+    in .github/workflows runs on a release event or uploads release assets, whose releases the template's
+    tools/Set-RepositoryBaseline.ps1 leaves mutable, it says to delete or leave out that paragraph, also when the
+    project is already up to date (the template's ADR-0028).
 
     On Windows it stops before it changes anything when the project's template version has a path Git for Windows
     refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
@@ -134,9 +148,153 @@ function Get-PreReleaseAnswer {
     'tracked'
 }
 
-# An existing project is not opted in to the C# formatter: false when its answers have no csharp_format and -Data sets none.
-function Get-CSharpFormatAnswer {
-    if (-not (Get-Answer 'csharp_format') -and -not $Data.ContainsKey('csharp_format')) { 'false' }
+# The checks a new project starts with and an existing one keeps off until it opts in (the template's ADR-0148,
+# ADR-0201, ADR-0026 and ADR-0027): --data <answer>=false for each the answers file lacks and -Data doesn't set.
+function Get-OptInData {
+    foreach ($key in 'csharp_format', 'node_lint', 'coverage_gate', 'file_headers') {
+        if (-not (Get-Answer $key) -and -not $Data.ContainsKey($key)) { '--data', "$key=false" }
+    }
+}
+
+# A project from before the license question has no license answer: an update keeps it without a license rather than giving it copier.yml's Apache-2.0 default (ADR-0024); -Data sets one.
+function Get-LicenseData {
+    if (-not $Data.ContainsKey('license') -and -not (Select-String -LiteralPath .copier-answers.yml -Pattern '^license:' -Quiet)) { '--data', 'license=' }
+}
+
+# No license (ADR-0024): no LICENSE or COPYING file at the project's root. A blank answer gets the command that adds Apache-2.0; any other answer, one the template writes no file for or whose LICENSE.txt was deleted, is told to add that license's text. The template's Adopt-Project.ps1 prints the same lines; tests/Test-LicenseWarning.ps1 keeps them equal.
+function Get-LicenseWarning {
+    if (Get-ChildItem -LiteralPath $project -File | Where-Object Name -Match '^(LICEN[CS]E|COPYING)(\.\w+)?$') { return }
+    $licenseAnswer = "$(Get-Answer 'license')".Trim()
+    ''
+    if (-not $licenseAnswer) {
+        'No license: the license answer is blank and the repository has no LICENSE or COPYING file, so no one else may use, copy or change its code, and the OpenSSF Best Practices criteria for a license can''t be met. To license it under Apache-2.0, NCode Group''s license, which adds LICENSE.txt and COPYRIGHT.txt, run the command below in the repository; for another SPDX license expression, such as MIT, put it in place of Apache-2.0:'
+        "  .\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }"
+    }
+    else {
+        "No license file: the license answer is $licenseAnswer, but the repository has no LICENSE or COPYING file, so no one else may use, copy or change its code, and the OpenSSF Best Practices criteria for a license can't be met. Add the text of the $licenseAnswer license as LICENSE.txt at the repository's root."
+    }
+}
+
+# documentation_achievements asks for the badge in README.md within 48 hours of earning a level, and README.md is
+# project-owned, so recording best_practices_project never adds it there (the template's ADR-0025).
+function Get-BadgeReminder {
+    $number = "$(Get-Answer 'best_practices_project')".Trim()
+    if (-not $number) { return }
+    $badge = "https://www.bestpractices.dev/projects/$number/badge"
+    $readme = Join-Path $project 'README.md'
+    if ((Test-Path -LiteralPath $readme) -and (Get-Content -LiteralPath $readme -Raw).Contains($badge)) { return }
+    ''
+    "README.md doesn't show the OpenSSF Best Practices badge of project $number, which documentation_achievements asks for within 48 hours of earning a level. Add this line near its top (the template's ADR-0025, in docs/decisions/project-template/):"
+    "  [![OpenSSF Best Practices]($badge)](https://www.bestpractices.dev/projects/$number)"
+}
+
+# tag-release.yml runs ci.yml as a reusable workflow before it tags a release (ADR-0026): without the trigger, no release is tagged.
+# tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-CiCallNote {
+    $release = '.github/workflows/tag-release.yml'
+    if (-not (Test-Path -LiteralPath $release) -or (Get-Content -LiteralPath $release -Raw) -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/ci\.yml\s*$') { return }
+    $ci = '.github/workflows/ci.yml'
+    if ((Test-Path -LiteralPath $ci) -and (Get-Content -LiteralPath $ci -Raw) -match '(?m)^\s+workflow_call:') { return }
+    ''
+    '.github/workflows/ci.yml is missing or has no workflow_call trigger. .github/workflows/tag-release.yml runs it as a reusable workflow before it tags a release, so until it has that trigger, no release is tagged or published. Add workflow_call: to its on: section, as the ci.yml the project template gives a GitHub project does (the template''s ADR-0026, in docs/decisions/project-template/).'
+}
+
+# The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, the keys or items
+# indented below it, or - items at its own indent, with quotes, comments and blank lines allowed. A mapping in braces, or
+# no on: key, gives none.
+# A copy of tools/Set-RepositoryBaseline.ps1's; the copies must match.
+function Get-WorkflowEvents([string]$Text) {
+    $lines = @($Text -split '\r?\n')
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -notmatch '^(on|"on"|''on''):(.*)$') { continue }
+        $rest = ($Matches[2] -replace '(^|\s)#.*$', '').Trim()
+        $names = if ($rest.StartsWith('[')) { $rest.Trim('[', ']') -split ',' }
+        elseif ($rest.StartsWith('{')) { @() }
+        elseif ($rest) { @($rest) }
+        else {
+            $indent = -1
+            @(for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                $line = $lines[$j]
+                if ($line -match '^\s*(#.*)?$') { continue }
+                $null = $line -match '^(\s*)(.*)$'
+                $lead = $Matches[1].Length
+                $item = $Matches[2]
+                # A line at column 0 ends the block, unless it is a - item of a sequence at the key's own indent.
+                if (-not $lead -and -not ($indent -le 0 -and $item -match '^-(\s|$)')) { break }
+                if ($indent -lt 0) { $indent = $lead }
+                if ($lead -ne $indent) { continue }
+                if ($item -match '^-\s*([^\s#]+)') { $Matches[1] }
+                elseif ($item -match '^([^\s:#]+)\s*:') { $Matches[1] }
+            })
+        }
+        return @($names | ForEach-Object { $_.Trim().Trim('"', "'") } | Where-Object { $_ -match '^[A-Za-z_]+$' })
+    }
+    @()
+}
+
+# Whether a workflow's text runs on a release event, or uploads release assets with gh, an upload action or the API
+# on a line that isn't a comment.
+# A copy of tools/Set-RepositoryBaseline.ps1's; the copies must match.
+function Test-ReleaseAssetWorkflow([string]$Text) {
+    $code = $Text -replace '(?m)^\s*#.*$', ''
+    [bool](((Get-WorkflowEvents $Text) -contains 'release') -or ($code -match 'gh\s+release\s+upload|upload-release-asset|uploadReleaseAsset|action-gh-release'))
+}
+
+# SECURITY.md's Verify a Release section says releases are immutable, which the template's
+# tools/Set-RepositoryBaseline.ps1 leaves off where a workflow runs on a release event or uploads release assets
+# (ADR-0028).
+# The template's Adopt-Project.ps1 has a copy of this function; tests/Test-UpdateNotes.ps1 keeps the copies equal.
+function Get-ImmutableReleaseNote([bool]$Offered) {
+    $says = (Test-Path -LiteralPath SECURITY.md) -and (Get-Content -LiteralPath SECURITY.md -Raw) -match '(?m)^Releases are immutable'
+    if (-not ($says -or $Offered) -or -not (Test-Path -LiteralPath .github/workflows)) { return }
+    $files = @(Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Name -match '\.ya?ml$' -and (Test-ReleaseAssetWorkflow (Get-Content -LiteralPath $_.FullName -Raw)) } | ForEach-Object { ".github/workflows/$($_.Name)" })
+    if (-not $files) { return }
+    ''
+    "$(if ($says) { 'SECURITY.md says' } else { 'The template''s change to SECURITY.md above says' }) releases are immutable, but $($files -join ', ') run on a release event or upload release assets, which an immutable release refuses once it is published, so the template's tools/Set-RepositoryBaseline.ps1 leaves this repository's releases mutable (the template's ADR-0028, in docs/decisions/project-template/). $(if ($says) { 'Delete' } else { 'Leave out' }) the paragraph of its Verify a Release section that starts `"Releases are immutable`"."
+}
+
+# tag-release.yml grants ci.yml only contents: read (ADR-0026). GitHub checks every job of a called workflow against that
+# as the run starts, whatever the job's if: says, and fails the run when one asks for more: no release is tagged.
+# tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-CiPermissionNote {
+    $release = '.github/workflows/tag-release.yml'
+    if (-not (Test-Path -LiteralPath $release) -or (Get-Content -LiteralPath $release -Raw) -notmatch '(?m)^\s+uses:\s*\./\.github/workflows/ci\.yml\s*$') { return }
+    $ci = '.github/workflows/ci.yml'
+    if (-not (Test-Path -LiteralPath $ci)) { return }
+    # Each permissions: block of ci.yml, the workflow's own (Owner '') or a job's, with its scope: level pairs.
+    $blocks = [Collections.Generic.List[object]]::new()
+    $inJobs = $false
+    $jobIndent = -1
+    $keyIndent = -1
+    $job = ''
+    $block = $null
+    $blockIndent = -1
+    foreach ($line in Get-Content -LiteralPath $ci) {
+        if ($line -notmatch '^(\s*)([\w-]+):\s*(.*?)\s*(?:#.*)?$') { continue }
+        $indent, $key, $value = $Matches[1].Length, $Matches[2], $Matches[3].Trim('''', '"')
+        if ($block -and $indent -gt $blockIndent) { $block.Pairs += "${key}: $value"; continue }
+        $block = $null
+        if ($indent -eq 0) { $inJobs = $key -eq 'jobs'; $jobIndent = -1 }
+        elseif ($inJobs -and ($jobIndent -lt 0 -or $indent -le $jobIndent)) { $jobIndent = $indent; $job = $key; $keyIndent = -1; continue }
+        elseif ($inJobs -and $keyIndent -lt 0) { $keyIndent = $indent }
+        $isJob = $inJobs -and $indent -eq $keyIndent
+        if ($key -ne 'permissions' -or -not ($indent -eq 0 -or $isJob)) { continue }
+        $block = [pscustomobject]@{ Owner = $(if ($isJob) { $job } else { '' }); Pairs = @() }
+        $blockIndent = $indent
+        $blocks.Add($block)
+        if ($value) {
+            $block.Pairs = @($value.Trim('{', '}', ' ') -split ',' | ForEach-Object { ($_ -replace '[''"]', '').Trim() } | Where-Object { $_ })
+            $block = $null
+        }
+    }
+    $findings = foreach ($b in $blocks) {
+        $extra = @($b.Pairs | Where-Object { $_ -notmatch '^contents:\s*read$' -and $_ -notmatch '^[\w-]+:\s*none$' })
+        if (-not $extra.Count) { continue }
+        if ($b.Owner) { "job $($b.Owner) asks for $($extra -join ', ')" } else { "its top-level permissions ask for $($extra -join ', ')" }
+    }
+    if (-not $findings) { return }
+    ''
+    ".github/workflows/ci.yml asks for more than contents: read: $($findings -join '; '). .github/workflows/tag-release.yml runs ci.yml as a reusable workflow before it tags a release and grants it only contents: read, and GitHub fails that run as it starts when a job of ci.yml asks for more, whatever the job's if: says, so no release is tagged or published. Move each such job into a workflow of its own, such as .github/workflows/coverage.yml, and keep ci.yml's top-level permissions at contents: read (the template's ADR-0026, in docs/decisions/project-template/)."
 }
 
 # Render the template at a version into a folder with the project's answers;
@@ -145,7 +303,8 @@ function Invoke-TemplateRender([string]$Version, [string]$Folder) {
     $renderArgs = @('copy', '--defaults', '--quiet', '--vcs-ref', $Version, '--data-file', (Join-Path $project '.copier-answers.yml'))
     foreach ($k in $Data.Keys) { $renderArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
     if (-not $Data.ContainsKey('pre_release')) { $renderArgs += '--data', "pre_release=$(Get-PreReleaseAnswer)" }
-    $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $renderArgs += '--data', "csharp_format=$csharpFormat" }
+    $renderArgs += @(Get-OptInData)
+    $renderArgs += @(Get-LicenseData)
     $copierOutput = [Collections.Generic.List[string]]::new()
     try { Invoke-Copier @renderArgs $TemplateClone $Folder | ForEach-Object { $copierOutput.Add("$_") }; $true }
     catch { Write-Warning ((@("Copier couldn't render template $Version with this project's answers: $_") + $copierOutput) -join "`n"); $false }
@@ -630,12 +789,22 @@ function Get-GitVersioningReference {
     @($found) | Sort-Object
 }
 
-# The project's own build scripts that run CSharpier's check, which build/dod.ps1 runs in its Format stage once .config/dotnet-tools.json names CSharpier (ADR-0148): such a wrapper checks the formatting twice.
+# The project's own build scripts that run CSharpier's check, which build/dod.ps1 runs in its Format stage once .config/dotnet-tools.json names CSharpier (ADR-0148): such a wrapper checks the formatting twice. Only a command that runs the check counts, found through PowerShell's parser, so a comment, comment-based help or a string that names it doesn't. A script with a syntax error is searched as far as the parser recovers, without a warning, since a broken wrapper fails on its own.
 function Get-CSharpierWrapper([string[]]$TemplateFiles) {
     if (-not (Test-Path -LiteralPath .config/dotnet-tools.json -PathType Leaf) -or (Get-Content -LiteralPath .config/dotnet-tools.json -Raw) -notmatch '(?i)csharpier') { return }
     foreach ($file in @(Get-ChildItem -LiteralPath build -Filter *.ps1 -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
         $relative = "build/$($file.Name)"
-        if ($relative -notin $TemplateFiles -and (Get-Content -LiteralPath $file.FullName -Raw) -match '(?m)^[^#\r\n]*\bcsharpier\s+check\b') { $relative }
+        if ($relative -in $TemplateFiles) { continue }
+        $script = [Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$null)
+        $run = $script.Find({
+                param($node)
+                if ($node -isnot [Management.Automation.Language.CommandAst]) { return $false }
+                $words = @($node.CommandElements | ForEach-Object { if ($_ -is [Management.Automation.Language.StringConstantExpressionAst]) { $_.Value } else { '' } })
+                $at = 0
+                if ($words[0] -in 'dotnet', 'dotnet.exe') { $at = if ($words[1] -ceq 'tool' -and $words[2] -ceq 'run') { 3 } else { 1 } }
+                $words.Count -ge $at + 2 -and $words[$at] -ceq 'csharpier' -and $words[$at + 1] -ceq 'check'
+            }, $true)
+        if ($run) { $relative }
     }
 }
 
@@ -762,7 +931,7 @@ try {
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
-        $recopyData = @(); $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $recopyData = '--data', "csharp_format=$csharpFormat" }
+        $recopyData = @(Get-OptInData) + @(Get-LicenseData)
         Invoke-Copier recopy --force --quiet --vcs-ref :current: @recopyData @exclude
         $reset = @(Get-Change)
         # A template-owned file that the project's version skips only through a name without a /, which Copier matches in every folder,
@@ -808,7 +977,8 @@ try {
 
         $copierArgs = @('update', '--defaults', '--quiet', '--vcs-ref', $to)
         foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
-        $csharpFormat = Get-CSharpFormatAnswer; if ($csharpFormat) { $copierArgs += '--data', "csharp_format=$csharpFormat" }
+        $copierArgs += @(Get-OptInData)
+        $copierArgs += @(Get-LicenseData)
         # A project-owned file the project deleted stays deleted; Copier would otherwise create it again.
         $deleted = $projectOwned | Where-Object { -not (Test-Path -LiteralPath $_) -and (git log --diff-filter=D --format=%h -1 -- $_) }
         foreach ($file in $deleted) { $copierArgs += '--exclude', "/$file" }
@@ -875,7 +1045,7 @@ try {
         })
 
     # A success ends with exit 0, not return, which would hand a caller that runs this with & the exit code of the last git command, such as git apply --check's 1 for a hunk the project lacks.
-    if (-not (git status --porcelain)) { "Already up to date: template $to."; exit 0 }
+    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; Get-BadgeReminder; Get-ImmutableReleaseNote $false; exit 0 }
     "Template $from -> ${to}:"
     $changes | Sort-Object Kind, File | ForEach-Object { '  {0,-9} {1}' -f $_.Kind, $_.File }
     $edited = @($reset | Where-Object Kind -NE 'added' | ForEach-Object File)
@@ -884,6 +1054,7 @@ try {
     if ($restored) { ''; 'Restored — these files are the template''s, so the project can''t delete them:'; $restored | ForEach-Object { "  $_" } }
     if ($droppedTextRules) { ''; "Left out of the lines .gitattributes kept from this repository at adoption: its catch-all text rule ($($droppedTextRules -join '; ')). Git uses the last rule that matches, so the rule overrode the template's binary rules, such as *.png binary and *.ico binary, and git add dropped the CR of each CR LF pair in a binary file it staged. Check the binary files committed while the rule applied, and replace any that no longer open." }
     if ($refreshed) { ''; 'Refreshed — these files are the template''s, but earlier template versions never updated them; a local edit to one is discarded, so make the change in a project file instead:'; $refreshed | ForEach-Object { "  $_" } }
+    $shown = @()
     if ($projectOwnedChanged) {
         # Render both versions with the project's answers, so the diffs show what the project would get, not Jinja.
         New-Item -ItemType Directory -Force $scratch | Out-Null
@@ -913,7 +1084,7 @@ try {
                     if ($current -or $line.StartsWith('@@')) { $current += $line }
                 }
             )
-            if ($hunk) { [pscustomobject]@{ Title = $title; Lines = $hunk } }
+            if ($hunk) { [pscustomobject]@{ Title = $title; Lines = $hunk; File = $changed.File } }
         }
         if ($shown) {
             ''
@@ -975,6 +1146,10 @@ try {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
+    Get-CiCallNote
+    Get-CiPermissionNote
+    $offered = [bool]@($shown | Where-Object { $_.File -eq 'SECURITY.md' } | ForEach-Object Lines | Where-Object { $_ -match '^\s*\+Releases are immutable' }).Count
+    Get-ImmutableReleaseNote $offered
     # A publish.yml that doesn't call one of the release follow-ups, or either (ADR-0151): they no longer start on
     # workflow_run, so a release misses what each one it doesn't call makes.
     $publishText = if (Test-Path -LiteralPath .github/workflows/publish.yml) { Get-Content -LiteralPath .github/workflows/publish.yml -Raw } else { '' }
@@ -1042,6 +1217,8 @@ try {
     }
 
     Get-AttributionCheckNote $changes
+    Get-LicenseWarning
+    Get-BadgeReminder
 
     # Version tags the changelog has no section for, such as releases from before it started (Get-ChangelogBackfill).
     $backfill = Get-ChangelogBackfill

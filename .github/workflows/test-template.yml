@@ -59,6 +59,8 @@ jobs:
             run: ./tests/Test-UpdateExitCode.ps1
           - name: Test updating .NET libraries
             run: ./tests/Test-UpdateLibrary.ps1
+          - name: Test the license warning
+            run: ./tests/Test-LicenseWarning.ps1
           - name: Set up the address-feedback end-to-end fixture
             run: ./tests/e2e/Test-AddressFeedback.ps1 -SetupOnly
           - name: Set up the address-feedback end-to-end fixture for a session that refuses GraphQL
@@ -135,10 +137,18 @@ jobs:
             run: ./tests/Test-AgentRunner.ps1
           - name: Check that Windows can check out every path
             run: ./tests/Test-WindowsFileNames.ps1
+          - name: Check the Best Practices criteria map against the badge's criteria
+            run: ./tests/Test-BestPracticesCriteria.ps1
           - name: Test the update's stop on Windows for a version Windows can't check out
             run: ./tests/Test-UpdateWindowsCheckout.ps1
           - name: Test the brand kit generator
             run: ./tests/Test-BrandKit.ps1
+          - name: Test the update's opt-in answers and notes
+            run: ./tests/Test-UpdateNotes.ps1
+          - name: Test the coverage check every project gets
+            run: ./tests/Test-Coverage.ps1
+          - name: Test the file header check every project gets
+            run: ./tests/Test-FileHeaders.ps1
     defaults:
       run:
         shell: pwsh

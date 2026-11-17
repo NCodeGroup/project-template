@@ -139,6 +139,7 @@ Create one with `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote` ([README](
 | Land it: push or open the pull request, tag, release, close the issue | `/ship-plan` | `/ship-plan` | `/ship-plan` |
 | Finish, once it has landed | `/finish-plan` | `/finish-plan` | `/finish-plan` |
 | Lost track of where a plan stands | `/continue-plan` | `/continue-plan` | `/continue-plan` |
+| Verify the OpenSSF Best Practices answers and write the prompt that registers the project or updates them | `/best-practices` | `/best-practices` | `/best-practices` |
 | Take issues from plan to landing in one session | `/run-issues #42 #43`, or `/run-issues label:bug` | `/run-issues #42 #43`, in a Local session | `copilot --model claude-opus-5.5 --allow-all`, then `/run-issues #42 #43` |
 | Address the comments and discussions on a pull request | `/address-feedback #42` | `/address-feedback #42`, in a Local session | `copilot --model claude-opus-5.5 --allow-all`, then `/address-feedback #42` |
 | Address them round after round until the pull request merges | `/run-feedback #42` | `/run-feedback #42`, in a Local session | `copilot --model claude-opus-5.5 --allow-all`, then `/run-feedback #42` |
@@ -215,6 +216,7 @@ The Hybrid agents, and the `execute-step-local` prompt file, execute on `qwen3.6
 | Claude Code stops with a limit message | The 5-hour or weekly limit is reached | Continue in Copilot, or wait for the reset `/usage` shows |
 | `/orchestrate-plan` lists plans and asks which one | Several plan worktrees are open | Name the plan's worktree: `/orchestrate-plan <name>`; `git worktree list` shows them |
 | `git worktree remove`, `/finish-plan` or a clone reports "Filename too long" | A path passes Windows' 260-character limit; a plan's worktree under `.claude/worktrees/` lengthens every path | `git config --global core.longpaths true`, then run the command again |
+| A Node.js build or test fails in a plan's worktree, such as with `Tsconfig not found astro/tsconfigs/strict`, but passes in a clone of its own | The worktree is inside the main checkout, and a tool such as Vite found the main checkout's `tsconfig.json`, whose `extends` names a package the main checkout has no `node_modules` for | Install the packages in the main checkout too, such as with `npm ci`; the planning commands do this when the main checkout has no `node_modules` |
 
 ---
 

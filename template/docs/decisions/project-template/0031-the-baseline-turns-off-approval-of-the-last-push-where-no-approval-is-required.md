@@ -1,4 +1,4 @@
-# 0025. The baseline turns off approval of the last push where no approval is required
+# 0031. The baseline turns off approval of the last push where no approval is required
 
 - **Status:** Accepted
 - **Date:** 2026-11-16
@@ -72,7 +72,7 @@ With zero required approvals, the baseline never has approval of the last push o
 - A maintainer who wants approval of the last push raises the required approvals to one or more, which the baseline
   keeps, or passes `approve: true`, as ADR-0022 says. With zero approvals it can't be kept.
 - The baseline now loosens one setting in its own ruleset, the only exception to "the baseline never loosens a ruleset"
-  in ADR-0022 and [ADR-0024](0024-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md). It makes no
+  in ADR-0022 and [ADR-0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md). It makes no
   other ruleset looser, and the setting it turns off could not be met, so nothing a merge could have waited for goes.
 - Where GitHub refuses the change, the run says it was not available, with the reason, prints the notice with the
   command that turns the setting off, as it does for a ruleset of the owner's, and goes on; the owner then runs the

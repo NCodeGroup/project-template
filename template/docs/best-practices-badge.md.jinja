@@ -1,19 +1,25 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
 {%- set ghlib = git_host == 'github' and library %}
-{%- set host = 'GitHub organization' if git_host == 'github' else 'GitLab group' -%}
+{%- set host = 'GitHub organization' if git_host == 'github' else 'GitLab group' %}
+{%- set project = best_practices_project | default('') | string %}
+{%- set number = project if project else 'PROJECT_ID' -%}
 # OpenSSF Best Practices Badge
 
 A maintainer registers {{ project_name }} at [bestpractices.dev](https://www.bestpractices.dev) and answers the criteria
 there, which is the source of truth; this page doesn't copy the answers. It maps the criteria that need a document to
 the evidence this repository holds, so registering is answering, not researching.
+[best-practices-criteria.md](best-practices-criteria.md), which the template keeps current, maps every criterion of the
+three levels to the answer to expect and its evidence, and holds the prompt that registers the project.
+{%- if not project %}
 
 [//]: # "Maintainers: once registered, name the project's number here and in the badge below, in place of PROJECT_ID."
+{%- endif %}
 
 ## The Badge
 
 ```html
-<a href="https://www.bestpractices.dev/projects/PROJECT_ID"><img alt="OpenSSF Best Practices"
-  src="https://www.bestpractices.dev/projects/PROJECT_ID/badge"></a>
+<a href="https://www.bestpractices.dev/projects/{{ number }}"><img alt="OpenSSF Best Practices"
+  src="https://www.bestpractices.dev/projects/{{ number }}/badge"></a>
 ```
 {% if git_host == 'github' %}
 OpenSSF Scorecard's CII-Best-Practices check scores the badge level: in progress 2, passing 5, silver 7, gold 10
@@ -34,16 +40,27 @@ The silver criteria that need a document point to these:
 | `signed_releases` | [SECURITY.md](../SECURITY.md#verify-a-package) and each GitHub release's `<tag>.intoto.jsonl` |
 {% endif -%}
 | Vulnerability response and credit | [SECURITY.md](../SECURITY.md) |
-| Coding standards and their enforcement | [CONTRIBUTING.md](../CONTRIBUTING.md), `.editorconfig`{% if stack == 'dotnet' %} and the analyzers in `./build/dod.ps1`{% endif %} |
+| Coding standards and their enforcement | [CONTRIBUTING.md](../CONTRIBUTING.md), `.editorconfig`{% if stack == 'dotnet' %} and the analyzers in `./build/dod.ps1`{% elif stack == 'node' and (node_lint | default(false)) %} and `biome.json`, which CI runs{% endif %} |
 | Test policy (`test_policy_mandated`) | [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3 |
+
+## Where It Stands
+
+[//]: # "Maintainers: once registered, say which level the site shows and what keeps the next one from being earned, naming the criteria, not a percentage."
+
+{% if project %}Registered as [project {{ project }}](https://www.bestpractices.dev/projects/{{ project }}).{% else %}Not registered yet.{% endif %} With one maintainer, silver stops below 100%: `access_continuity` is a MUST that only a second owner meets.
 
 ## Needs a Person
 
-- `access_continuity` (MUST): a second owner of the {{ host }}{% if library %} and the nuget.org packages{% endif %}, as
+- `access_continuity` (silver MUST): a second owner of the {{ host }}{% if library %} and the nuget.org packages{% endif %}, as
   [GOVERNANCE.md](../GOVERNANCE.md#continuity) says. Silver can't be claimed until there is one.
-- `bus_factor` (SHOULD): a bus factor of 2 or more, which the same second owner gives.
-- `two_person_review` (gold): a second maintainer.
-- `dco` (SHOULD): unmet. The project doesn't ask for `Signed-off-by`
+- `bus_factor` (silver SHOULD, gold MUST): a bus factor of 2 or more, which the same second owner gives.
+- `two_person_review` (gold MUST): a second maintainer.
+- `contributors_unassociated` (gold MUST): two significant contributors from different organizations.
+- `require_2FA` (gold MUST) and `secure_2FA` (gold SHOULD): the {{ host }} requires two-factor authentication, with
+  secure methods only, which only an owner can set and confirm.
+- `security_review` (gold MUST): a security review in the last five years, recorded in
+  [assurance-case.md](assurance-case.md#security-reviews).
+- `dco` (silver SHOULD): unmet. The project doesn't ask for `Signed-off-by`
   ([ADR-0023](decisions/project-template/0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)).
 {%- if git_host == 'github' %}
 

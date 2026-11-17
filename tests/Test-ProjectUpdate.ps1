@@ -55,7 +55,7 @@ $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 # Get-PreReleaseAnswer and Invoke-TemplateRender from the template's script, with a stand-in Copier that records its arguments: the render's pre_release comes from -Data, else from AGENTS.md's Landing section.
 $preRelease = & {
     $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path (Split-Path -Parent $PSScriptRoot) 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
-    foreach ($fnName in 'ConvertTo-CopierValue', 'Get-PreReleaseAnswer', 'Get-Answer', 'Get-CSharpFormatAnswer', 'Invoke-TemplateRender') {
+    foreach ($fnName in 'ConvertTo-CopierValue', 'Get-PreReleaseAnswer', 'Get-Answer', 'Get-OptInData', 'Get-LicenseData', 'Invoke-TemplateRender') {
         $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
         . ([scriptblock]::Create($fn.Extent.Text))
     }

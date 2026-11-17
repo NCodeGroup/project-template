@@ -4,7 +4,7 @@
     merges only with every thread resolved and a passing pipeline, and never by squashing.
 
 .DESCRIPTION
-    For one GitLab project it makes four settings, each where it isn't so already:
+    For one GitLab project it makes five settings, each where it isn't so already:
       - "All threads must be resolved" (only_allow_merge_if_all_discussions_are_resolved), so a review finding from the
         bot or a person can't be merged past;
       - "Pipelines must succeed" (only_allow_merge_if_pipeline_succeeds), so a merge request whose pipeline failed can't
@@ -21,10 +21,13 @@
         the branch is left unprotected. A protection that names users, groups, deploy keys or code owners, which GitLab
         Premium allows, is reported and left as it is, to change by hand in the project's Settings > Repository >
         Protected branches. An unprotected default branch is protected, with Maintainers allowed to merge. A project
-        with no default branch yet (nothing pushed) is reported, and its protection isn't read.
+        with no default branch yet (nothing pushed) is reported, and its protection isn't read;
+      - a weekly pipeline on the default branch, "Weekly dependency audit", Mondays at 06:00 UTC, so the dependency
+        checks the template's .gitlab-ci.yml runs also run when nothing is pushed; a schedule with that description is
+        left as it is;
 
     These are the settings that play, on GitLab, the part the "Protect main" ruleset's pull request rule, merge
-    methods, conversation resolution and required checks play on GitHub (see Set-RepositoryBaseline.ps1). All four are
+    methods, conversation resolution and required checks play on GitHub (see Set-RepositoryBaseline.ps1). All five are
     on GitLab Free.
 
     Each setting is read first, from the project, and printed as set, already set, would set (-WhatIf) or not available,
@@ -175,7 +178,28 @@ function Set-DefaultBranchPush {
     throw "$branch of GitLab project $Project is no longer protected: removing its protection worked, but protecting it again failed ($(Get-FailureReason $result)), and so did restoring it ($(Get-FailureReason $restored)). Protect it in the project's Settings > Repository > Protected branches."
 }
 
+# A weekly pipeline on the default branch, so .gitlab-ci.yml's dependency checks run when nothing is pushed too (the
+# template's ADR-0029). A schedule with this description is left as it is, whatever its settings.
+function Set-WeeklyPipeline {
+    [CmdletBinding(SupportsShouldProcess)]
+    param($Info)
+    $label = 'weekly pipeline'
+    $description = 'Weekly dependency audit'
+    $branch = "$($Info.default_branch)"
+    if (-not $branch) { Write-Host "${Project}: ${label}: not available (the project has no default branch yet)"; return }
+    $read = Invoke-Glab GET "$endpoint/pipeline_schedules?per_page=100"
+    if ($read.Status -ne 200) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $read))"; return }
+    $schedules = try { , @($read.Body | ConvertFrom-Json -ErrorAction Stop) } catch { $null }
+    if ($null -eq $schedules) { Write-Host "${Project}: ${label}: not available (couldn't read it: an answer that is not JSON)"; return }
+    if (@($schedules | Where-Object { $_.description -eq $description }).Count) { Write-Host "${Project}: ${label}: already set"; return }
+    if (-not $PSCmdlet.ShouldProcess($Project, "schedule '$description'")) { Write-Host "${Project}: ${label}: would set"; return }
+    $result = Invoke-Glab POST "$endpoint/pipeline_schedules" @("description=$description", "ref=$branch", 'cron=0 6 * * 1', 'cron_timezone=UTC', 'active=true')
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Project}: ${label}: set" }
+    else { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
+}
+
 Set-ProjectSetting 'All threads must be resolved' 'only_allow_merge_if_all_discussions_are_resolved' $info
 Set-ProjectSetting 'Pipelines must succeed' 'only_allow_merge_if_pipeline_succeeds' $info
 Set-ProjectSetting 'Do not allow squash commits' 'squash_option' $info 'never'
 Set-DefaultBranchPush $info
+Set-WeeklyPipeline $info

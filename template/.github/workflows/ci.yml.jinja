@@ -8,6 +8,10 @@ on:
   # A required check must also report in a merge queue.
   merge_group:
     types: [checks_requested]
+  # tag-release.yml runs this workflow before it tags a release and grants it only contents: read: GitHub fails that
+  # run as it starts when a job here asks for more, whatever its if: says, so such a job goes in a workflow of its own
+  # (ADR-0026).
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -52,7 +56,7 @@ jobs:
         run: |
           # A failed install fails the step: GitHub's pwsh checks only the last command's exit code.
           $PSNativeCommandUseErrorActionPreference = $true
-          python -m pip install --upgrade pip pytest
+          python -m pip install --upgrade pip pytest pytest-cov
           if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
           if (Test-Path pyproject.toml) { python -m pip install -e . }
 {%- elif stack == 'node' %}
@@ -104,6 +108,11 @@ jobs:
 {%- endset %}
       - name: Check the decision index
         run: ./.template/Test-AdrIndex.ps1
+{%- if file_headers is defined and file_headers and stack != 'dotnet' %}
+      # Each source file starts with the copyright line and the SPDX license line (ADR-0027).
+      - name: Check the file headers
+        run: ./.template/Test-FileHeaders.ps1
+{%- endif %}
 {%- if stack == 'dotnet' and build_command == 'dotnet build' and test_command == 'dotnet test' %}
       # The Definition of Done builds, tests and, for a library, packs, as build/dod.ps1 says.
       - name: Definition of Done
@@ -131,6 +140,12 @@ jobs:
           if-no-files-found: ignore
 {%- endif %}
 {%- else %}
+{%- if stack == 'node' and node_lint is defined and node_lint %}
+      # Biome's formatter and linter, with the rules in biome.json (ADR-0201).
+      - name: Lint
+        if: {{ has_code }}
+        run: {{ package_manager }} run lint
+{%- endif %}
 {%- if build_command %}
       - name: Build
 {%- if has_code %}
@@ -146,5 +161,13 @@ jobs:
 {%- endif %}
         run: |
           {{ test_command }}
+{%- if coverage_gate is defined and coverage_gate and stack in ['python', 'node', 'powershell'] %}
+      # Fails below 90% of the statements or 80% of the branches, from the reports the tests wrote (ADR-0026).
+      - name: Coverage
+{%- if has_code %}
+        if: {{ has_code }}
+{%- endif %}
+        run: ./.template/Test-Coverage.ps1
+{%- endif %}
 {%- endif %}
 {%- endif %}

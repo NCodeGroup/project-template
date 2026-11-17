@@ -1,4 +1,4 @@
-# 0024. The code-scanning rule is added only where CodeQL analyzes a language
+# 0030. The code-scanning rule is added only where CodeQL analyzes a language
 
 - **Status:** Accepted
 - **Date:** 2026-11-16

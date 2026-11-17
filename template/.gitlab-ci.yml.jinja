@@ -31,7 +31,7 @@ build-and-test:
   rules:
     - exists: ["**/*.py"]
   before_script:
-    - python -m pip install --upgrade pip pytest
+    - python -m pip install --upgrade pip pytest pytest-cov
     - if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
     - if [ -f pyproject.toml ]; then python -m pip install -e .; fi
 {%- elif stack == 'node' %}
@@ -80,6 +80,10 @@ build-and-test:
     - . ./.template/use-node.sh 2>/dev/null || { bash ./.template/install-nvs.sh && . ./.template/use-node.sh; }
 {%- endif %}
   script:
+{%- if stack == 'node' and node_lint is defined and node_lint %}
+    # Biome's formatter and linter, with the rules in biome.json (ADR-0201).
+    - {{ package_manager }} run lint
+{%- endif %}
 {%- if stack == 'dotnet' and build_command == 'dotnet build' and test_command == 'dotnet test' %}
     # The Definition of Done builds, tests and, for a library, packs, as build/dod.ps1 says.
     - pwsh -NoProfile -File build/dod.ps1
@@ -96,6 +100,51 @@ build-and-test:
     - |
       {{ ("pwsh -NoProfile -Command '" ~ command ~ "'") if stack == 'powershell' else command }}
 {%- endfor %}
+{%- if coverage_gate is defined and coverage_gate and stack in ['python', 'node', 'powershell'] and test_command %}
+  # The coverage reports, for the coverage job.
+  artifacts:
+    when: always
+    paths: [coverage.xml, lcov.info, coverage/]
+    expire_in: 14 days
+{%- endif %}
+{%- endif %}
+{%- if coverage_gate is defined and coverage_gate and stack in ['python', 'node', 'powershell'] and test_command %}
+
+# Fails below 90% of the statements or 80% of the branches, from the reports build-and-test kept (ADR-0026). The .NET
+# SDK image has PowerShell, which the stack's own image may lack.
+coverage:
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  needs: [build-and-test]
+  rules:
+    - exists: {% if stack == 'python' %}["**/*.py"]{% elif stack == 'node' %}["package.json"]{% else %}["**/*.ps1", "**/*.psm1"]{% endif %}
+  script:
+    - pwsh -NoProfile -File .template/Test-Coverage.ps1
+{%- endif %}
+{%- if stack in ['node', 'python'] %}
+
+# Checks the dependencies against the known vulnerabilities on every pipeline, the weekly one the template's
+# tools/Set-GitLabBaseline.ps1 schedules included, and fails on one of moderate severity or above (ADR-0029).
+dependency-audit:
+{%- if stack == 'node' %}
+  image: {{ 'oven/bun:1' if package_manager == 'bun' else 'node:lts' }}
+  rules:
+    - exists: [{% if package_manager == 'pnpm' %}"pnpm-lock.yaml"{% elif package_manager == 'yarn' %}"yarn.lock"{% elif package_manager == 'bun' %}"bun.lock", "bun.lockb"{% else %}"package-lock.json"{% endif %}]
+{%- if package_manager in ['pnpm', 'yarn'] %}
+  before_script:
+    - npm install --global corepack@latest
+    - corepack enable {{ package_manager }}
+{%- endif %}
+  script:
+    - {% if package_manager == 'pnpm' %}pnpm audit --audit-level moderate{% elif package_manager == 'yarn' %}yarn npm audit --all --recursive --severity moderate{% elif package_manager == 'bun' %}bun audit --audit-level=moderate{% else %}npm audit --audit-level=moderate{% endif %}
+{%- else %}
+  image: python:3
+  rules:
+    - exists: ["requirements.txt", "pyproject.toml"]
+  script:
+    - python -m pip install --upgrade pip pip-audit
+    - if [ -f requirements.txt ]; then pip-audit -r requirements.txt; fi
+    - if [ -f pyproject.toml ]; then pip-audit .; fi
+{%- endif %}
 {%- endif %}
 
 # The .NET SDK image has git and PowerShell. The job checks the decision index, which every project has, code or not,
@@ -107,3 +156,12 @@ decision-index:
     GIT_DEPTH: "0"
   script:
     - pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+{%- if file_headers is defined and file_headers and stack != 'dotnet' %}
+
+# Each source file starts with the copyright line and the SPDX license line (ADR-0027). The .NET SDK image has git and
+# PowerShell.
+file-headers:
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  script:
+    - pwsh -NoProfile -File .template/Test-FileHeaders.ps1
+{%- endif %}

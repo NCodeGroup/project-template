@@ -6,18 +6,118 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.96.1] - 2026-11-16
+## [0.102.1] - 2026-11-17
 
 ### Added
 
-- The template's ADR-0024 records that the repository baseline adds the code-scanning rule only where CodeQL's default setup analyzes a language, amending ADR-0005, and a new project's `docs/assurance-case.md` says static analysis is enforced there. ([ADR-0024](template/docs/decisions/project-template/0024-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
-- The template's ADR-0025 records that the repository baseline turns off approval of the last push in its own "Protect main" ruleset where no approval is required, amending ADR-0022, which had it print the command and write nothing. ([ADR-0025](template/docs/decisions/project-template/0025-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md))
+- The template's ADR-0030 records that the repository baseline adds the code-scanning rule only where CodeQL's default setup analyzes a language, amending ADR-0005, and a new project's `docs/assurance-case.md` says static analysis is enforced there. ([ADR-0030](template/docs/decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
+- The template's ADR-0031 records that the repository baseline turns off approval of the last push in its own "Protect main" ruleset where no approval is required, amending ADR-0022, which had it print the command and write nothing. ([ADR-0031](template/docs/decisions/project-template/0031-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md))
 
 ### Fixed
 
-- `tools/Set-RepositoryBaseline.ps1` adds the code-scanning rule only where CodeQL's default setup is configured and analyzes a language, which its summary names. GitHub can report a setup as configured with no language, as it did for NCodeGroup/docs and NCodeGroup/brand once their organization's security configuration turned it on: CodeQL ran on no pull request, and the rule blocked every one with every check green. The script leaves the rule out there, says why, and switches no query suite, since the switch sends `query_suite` alone and sets up no language; a later run with `-RequireChecks` adds the rule once the repository's settings give CodeQL a language. A new project that `New-Project.ps1 -CreateRemote` creates where an organization's security configuration turns default setup on can get no code-scanning rule that way, and needs that later run. ([ADR-0024](template/docs/decisions/project-template/0024-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
-- Where a "Protect main" ruleset already has a code-scanning rule that requires CodeQL and the default setup is configured but analyzes no language, `tools/Set-RepositoryBaseline.ps1` warns that every pull request stays blocked and names the fix: set up CodeQL's languages in the repository's settings, or remove the rule, which the script never removes. It prints that warning, or its query-suite notice, also for a "Protect main" beside a ruleset of the owner's. ([ADR-0024](template/docs/decisions/project-template/0024-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
-- `tools/Set-RepositoryBaseline.ps1` turns off approval of the last push in a "Protect main" ruleset that has it on with no required approval, and says so, also with `-WhatIf`; it never turns it on without one. GitHub then waits for an approval from someone other than the pusher and never lets an author approve their own pull request, so with one maintainer the setting is never met: on 2026-11-16 NCodeGroup/docs, whose ruleset had it on with zero approvals, kept a pull request blocked, with every check green, NCode Review approving, every conversation resolved and auto-merge on, until its owner unticked "Require approval of the most recent reviewable push". A run, with `-RequireChecks` too, had kept the setting, and a plain run only printed the command that turns it off. A ruleset that requires approvals keeps the setting and its count, and a ruleset of the owner's still gets the printed command and is written to nothing. Where GitHub refuses the write that turns it off in "Protect main", the run reports it as not available and prints the same command. A project with the setting on and zero approvals gets it turned off the next time it runs the baseline; `-All -WhatIf` lists them first. ([ADR-0025](template/docs/decisions/project-template/0025-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md))
+- `tools/Set-RepositoryBaseline.ps1` adds the code-scanning rule only where CodeQL's default setup is configured and analyzes a language, which its summary names. GitHub can report a setup as configured with no language, as it did for NCodeGroup/docs and NCodeGroup/brand once their organization's security configuration turned it on: CodeQL ran on no pull request, and the rule blocked every one with every check green. The script leaves the rule out there, says why, and switches no query suite, since the switch sends `query_suite` alone and sets up no language; a later run with `-RequireChecks` adds the rule once the repository's settings give CodeQL a language. A new project that `New-Project.ps1 -CreateRemote` creates where an organization's security configuration turns default setup on can get no code-scanning rule that way, and needs that later run. ([ADR-0030](template/docs/decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
+- Where a "Protect main" ruleset already has a code-scanning rule that requires CodeQL and the default setup is configured but analyzes no language, `tools/Set-RepositoryBaseline.ps1` warns that every pull request stays blocked and names the fix: set up CodeQL's languages in the repository's settings, or remove the rule, which the script never removes. It prints that warning, or its query-suite notice, also for a "Protect main" beside a ruleset of the owner's. ([ADR-0030](template/docs/decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
+- `tools/Set-RepositoryBaseline.ps1` turns off approval of the last push in a "Protect main" ruleset that has it on with no required approval, and says so, also with `-WhatIf`; it never turns it on without one. GitHub then waits for an approval from someone other than the pusher and never lets an author approve their own pull request, so with one maintainer the setting is never met: on 2026-11-16 NCodeGroup/docs, whose ruleset had it on with zero approvals, kept a pull request blocked, with every check green, NCode Review approving, every conversation resolved and auto-merge on, until its owner unticked "Require approval of the most recent reviewable push". A run, with `-RequireChecks` too, had kept the setting, and a plain run only printed the command that turns it off. A ruleset that requires approvals keeps the setting and its count, and a ruleset of the owner's still gets the printed command and is written to nothing. Where GitHub refuses the write that turns it off in "Protect main", the run reports it as not available and prints the same command. A project with the setting on and zero approvals gets it turned off the next time it runs the baseline; `-All -WhatIf` lists them first. ([ADR-0031](template/docs/decisions/project-template/0031-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md))
+
+## [0.102.0] - 2026-11-16
+
+### Changed
+
+- The Node.js section of the template's rules says that a plan's worktree lies inside the main checkout, so a tool such as Vite can resolve the main checkout's `tsconfig.json` and the packages it names from the main checkout's `node_modules`, and to run the install in the main checkout when a build in a worktree fails to find such a package. ([#415](https://github.com/NCodeGroup/project-template/issues/415))
+
+### Fixed
+
+- A Node.js project's build and tests no longer fail in a plan's worktree, such as with `Tsconfig not found astro/tsconfigs/strict`, when a tool such as Vite reaches the main checkout's `tsconfig.json`, whose `extends` names a package the main checkout has no `node_modules` for: each planning and analysis command's worktree setup, which `/run-issues` and `/address-feedback` also follow, runs the project's install in the main checkout too when it has a `package.json` and no `node_modules`, and the plan says so under Context for the executor. ([#415](https://github.com/NCodeGroup/project-template/issues/415))
+
+## [0.101.1] - 2026-11-16
+
+### Fixed
+
+- `.template\Update-Project.ps1` and `Adopt-Project.ps1` name a build script of the project's own as running `dotnet csharpier check` only when a command in it runs the check, such as `dotnet csharpier check .`, or `csharpier check .` at the start of a statement, with `csharpier` in lower case. A script whose comment-based help, comment or string only mentions the check, such as a synopsis saying `build/dod.ps1` runs the CSharpier check, is no longer named. ([#414](https://github.com/NCodeGroup/project-template/issues/414), [ADR-0148](template/docs/decisions/project-template/0148-csharp-is-formatted-in-the-gate-and-files-carry-the-spdx-header.md))
+- `/plan-template-update` counts a project's build script as repeating a check a template script runs only when a command in it runs that check, not when its comments, help or strings name it. ([#414](https://github.com/NCodeGroup/project-template/issues/414))
+
+## [0.101.0] - 2026-11-16
+
+### Added
+
+- `tools/Set-RepositoryBaseline.ps1 -SkipImmutableReleases` leaves a repository's releases mutable, for a project whose releases get files after they are published in a way the script doesn't detect. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+- `tools/Set-RepositoryBaseline.ps1` prints a notice with the `gh api -X DELETE repos/OWNER/REPO/immutable-releases` command where a repository's releases are already immutable and a workflow on its default branch runs on a `release` event or uploads release assets, whose next release would fail; it never turns them off itself. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+- `.template/Update-Project.ps1` says to delete, or leave out of the template's change, `SECURITY.md`'s paragraph that says releases are immutable when a workflow in `.github/workflows` runs on a release event or uploads release assets, also when the project is already up to date. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+- `Adopt-Project.ps1` prints the same note when the `SECURITY.md` an adoption leaves says releases are immutable and a workflow in `.github/workflows` runs on a release event or uploads release assets. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+
+### Fixed
+
+- `tools/Set-RepositoryBaseline.ps1` no longer turns on immutable releases in a repository where a workflow on the default branch runs on a `release` event or uploads release assets, such as a project's own `publish.yml` that attaches files to a published release, which an immutable release refuses: it read only `release-provenance.yml`. Its line names those workflows, or one it can't read. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+
+## [0.100.0] - 2026-11-16
+
+### Added
+
+- `.template\Update-Project.ps1` names each job of `ci.yml`, or its top-level `permissions:`, that asks for more than `contents: read`: `tag-release.yml` calls `ci.yml` with only `contents: read`, and GitHub fails that run as it starts when a job asks for more, whatever its `if:` says, so no release is tagged or published. Move such a job, such as a Codecov upload with `id-token: write`, into a workflow of its own. ([#413](https://github.com/NCodeGroup/project-template/issues/413), [ADR-0026](template/docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md))
+- `Adopt-Project.ps1` prints the update's notes on a `ci.yml` the repository keeps, word for word: that it has no `workflow_call` trigger, and that it asks for more than `contents: read`. ([#413](https://github.com/NCodeGroup/project-template/issues/413), [ADR-0026](template/docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md))
+
+### Changed
+
+- `ci.yml`'s comment on its `workflow_call` trigger and ADR-0026 say that `tag-release.yml` grants it only `contents: read`, so a job that needs more goes in a workflow of its own. ([#413](https://github.com/NCodeGroup/project-template/issues/413), [ADR-0026](template/docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md))
+
+## [0.99.2] - 2026-11-16
+
+### Fixed
+
+- `GOVERNANCE.md` and `docs/architecture.md` no longer say a project starts with `release: none`, which was wrong for an existing project that already releases when an update adds them: they say releases are tagged when `AGENTS.md`'s Landing section sets `release: tag`, and published too with `tag+release`. Both files are project-owned, so a project that already has them deletes the closing clause that names `release: none` from `GOVERNANCE.md`'s Releases section and `docs/architecture.md`'s Build and Release section itself. ([#412](https://github.com/NCodeGroup/project-template/issues/412))
+
+## [0.99.1] - 2026-11-16
+
+### Fixed
+
+- With `file_headers`, `.template/Test-FileHeaders.ps1` checks Astro components, stylesheets and hand-written declaration files, which it skipped: an `.astro` file holds the two lines as `//` comments inside its frontmatter, so they never reach the built page, and `-Fix` adds them right after the opening `---` line, or in a `---` block of their own when the file has none; a `.css`, `.scss` or `.less` file holds them as `/* */` comments; and every tracked `.d.ts` file is checked, since generated ones sit in git-ignored folders. Files under a `vendor/` folder, other authors' code, are skipped as `node_modules/` is. ([#416](https://github.com/NCodeGroup/project-template/issues/416), [ADR-0027](template/docs/decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md))
+- With `coverage_gate`, the Coverage check of `docs/best-practices-criteria.md` no longer says CI doesn't gate on coverage beside the sentence that names the gate. ([#416](https://github.com/NCodeGroup/project-template/issues/416))
+
+## [0.99.0] - 2026-11-16
+
+### Added
+
+- A `/best-practices` command, in Claude Code, Copilot Chat and Copilot CLI, verifies a project's OpenSSF Best Practices answers in its repository: it runs the checks of `docs/best-practices-criteria.md` (coverage, a gitleaks scan of the whole history, cryptography and TLS, outbound addresses, the build, regression tests), resolves each evidence link, compares the answers saved at bestpractices.dev once the project is registered, and writes the prompt that registers the project or updates its answers to `best-practices-prompt.txt`, which `.gitignore` ignores. ([#401](https://github.com/NCodeGroup/project-template/issues/401))
+- A Node.js project's CI and Landing `gate` run Biome, `<package_manager> run lint`, with the rules in a project-owned `biome.json`, under the new `node_lint` answer; `CONTRIBUTING.md` says how to pin Biome and add its `lint` and `format` scripts. ([#402](https://github.com/NCodeGroup/project-template/issues/402), [ADR-0201](template/docs/decisions/project-template/0201-biome-lints-and-formats-javascript-and-typescript.md))
+- Under the new `coverage_gate` answer, CI fails below 90% of the statements or 80% of the branches, the gold thresholds, through `.template/Test-Coverage.ps1`: `build/dod.ps1` collects .NET's coverage in a Coverage stage, the default Python and PowerShell test commands write `coverage.xml`, and a Node.js project's `test` script writes `lcov.info`. ([#403](https://github.com/NCodeGroup/project-template/issues/403), [ADR-0026](template/docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md))
+- Under the new `file_headers` answer, for every stack but .NET, CI fails on a source file without the copyright line and the `SPDX-License-Identifier` line, through `.template/Test-FileHeaders.ps1`, whose `-Fix` adds them. ([#405](https://github.com/NCodeGroup/project-template/issues/405), [ADR-0027](template/docs/decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md))
+- On GitLab, a Node.js or Python project's CI audits its dependencies on every pipeline, and `tools/Set-GitLabBaseline.ps1` schedules a weekly pipeline, "Weekly dependency audit", so the checks also run when nothing is pushed. ([#407](https://github.com/NCodeGroup/project-template/issues/407), [ADR-0029](template/docs/decisions/project-template/0029-gitlab-projects-audit-their-dependencies-in-ci.md))
+- `.template\Update-Project.ps1` prints the badge line to add when `best_practices_project` is set and `README.md` doesn't show the badge, also when the project is already up to date. ([#408](https://github.com/NCodeGroup/project-template/issues/408), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
+- In a public GitHub repository, `tag-release.yml` signs each release tag with gitsign, and `.template/Publish-Release.ps1 -Sign` tags with `git tag -s`; `SECURITY.md`'s new Verify a Release section says how to check a tag with `gitsign verify-tag`. ([#409](https://github.com/NCodeGroup/project-template/issues/409), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+
+### Changed
+
+- `node_lint`, `coverage_gate` and `file_headers` are on for a new project and off for an updated or adopted one, as `csharp_format` is: turn one on with `.\.template\Update-Project.ps1 -Data @{ <answer> = $true }`. ([#402](https://github.com/NCodeGroup/project-template/issues/402), [#403](https://github.com/NCodeGroup/project-template/issues/403), [#405](https://github.com/NCodeGroup/project-template/issues/405))
+- `tag-release.yml` runs `ci.yml` again on a release's commit, through `ci.yml`'s new `workflow_call` trigger, and tags the release only once it passes; `.template\Update-Project.ps1` warns when `ci.yml` can't be called. ([#406](https://github.com/NCodeGroup/project-template/issues/406), [ADR-0026](template/docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md))
+- `tools/Set-RepositoryBaseline.ps1` turns on immutable releases, so GitHub signs an attestation of each release, except in a repository with `release-provenance.yml`; a new GitHub project's `SECURITY.md` says how to check one with `gh release verify`. ([#404](https://github.com/NCodeGroup/project-template/issues/404), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+- `docs/best-practices-criteria.md` answers `coding_standards_enforced`, `warnings`, the coverage criteria, `dynamic_analysis`, `copyright_per_file`, `license_per_file`, `signed_releases`, `version_tags_signed` and, on GitLab, `dependency_monitoring` from the checks a project has turned on. ([#402](https://github.com/NCodeGroup/project-template/issues/402), [#403](https://github.com/NCodeGroup/project-template/issues/403), [#404](https://github.com/NCodeGroup/project-template/issues/404), [#405](https://github.com/NCodeGroup/project-template/issues/405), [#406](https://github.com/NCodeGroup/project-template/issues/406), [#407](https://github.com/NCodeGroup/project-template/issues/407), [#409](https://github.com/NCodeGroup/project-template/issues/409))
+
+## [0.98.0] - 2026-11-16
+
+### Added
+
+- Every project gets `docs/best-practices-criteria.md`, which the template owns and updates: all 145 OpenSSF Best Practices criteria of the passing, silver and gold levels, each with its requirement at that level, whether N/A and a URL apply, and the answer to expect, Met, Check, N/A, Gap, Person or Unmet, with its evidence for the project's stack and host; what stops a level, the checks to run before answering and, on GitHub, the prompts that register the project and update its answers in Claude in Chrome. ([#398](https://github.com/NCodeGroup/project-template/issues/398), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
+- The `best_practices_project` answer, never asked, records the project's number at bestpractices.dev once it is registered: `.\.template\Update-Project.ps1 -Data @{ best_practices_project = '<number>' }`. `docs/best-practices-criteria.md` then shows the badge for `README.md` and the address of the saved answers, and a project created or adopted with the answer gets the badge in `README.md` and `docs/best-practices-badge.md`. ([#398](https://github.com/NCodeGroup/project-template/issues/398), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
+
+### Changed
+
+- A new project's `SECURITY.md` promises an acknowledgement within 14 days, its `CONTRIBUTING.md` has a Review Requirements section and names the `good first issue` label, its `docs/assurance-case.md` has a Security Reviews section, and its `docs/best-practices-badge.md` links the criteria page, says where the project stands and lists the gold criteria that need a person. These files are project-owned: an update shows the template's changes to them, to take what fits. ([#398](https://github.com/NCodeGroup/project-template/issues/398), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
+- ADR-0023 and, on GitHub, ADR-0020 name the criteria page and what the gold level needs from people. ([#398](https://github.com/NCodeGroup/project-template/issues/398), [ADR-0025](template/docs/decisions/project-template/0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md))
+- On GitHub, a new .NET, Node.js or Python project's `CONTRIBUTING.md` says that a reformat or a large move brings back dismissed CodeQL alerts, which need dismissing again, and to keep a dismissal's reason that the code doesn't show in a comment beside it. ([#398](https://github.com/NCodeGroup/project-template/issues/398))
+
+## [0.97.0] - 2026-11-15
+
+### Added
+
+- `.template\Update-Project.ps1`, also when the project is already up to date, and `Adopt-Project.ps1` warn when the repository has no `LICENSE` or `COPYING` file: for a blank `license` answer they print the command that adds Apache-2.0, `.\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }`, in which another SPDX expression can take its place, and for any other answer they say to add that license's text as `LICENSE.txt`. ([#397](https://github.com/NCodeGroup/project-template/issues/397), [ADR-0024](template/docs/decisions/project-template/0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md))
+
+### Changed
+
+- The `license` question defaults to `Apache-2.0`, NCode Group's license, so a new project gets `LICENSE.txt` and `COPYRIGHT.txt`; answer another SPDX expression, such as `MIT`, or blank for none. A project keeps the answer it has, and one from before the question, or adopted without a license the adoption can read, gets a blank answer, never the default. ([#397](https://github.com/NCodeGroup/project-template/issues/397), [ADR-0024](template/docs/decisions/project-template/0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md))
+
+### Fixed
+
+- ADR-0020's License row no longer says every GitHub project ships a license file: it names `LICENSE.txt` for an Apache-2.0 or MIT `license`, and otherwise the command that adds one. ([#397](https://github.com/NCodeGroup/project-template/issues/397), [ADR-0020](template/docs/decisions/project-template/0020-github-projects-are-scored-by-openssf-scorecard.md.jinja))
 
 ## [0.96.0] - 2026-11-15
 
@@ -1556,8 +1656,17 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.96.1...HEAD
-[0.96.1]: https://github.com/NCodeGroup/project-template/compare/v0.96.0...v0.96.1
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.102.1...HEAD
+[0.102.1]: https://github.com/NCodeGroup/project-template/compare/v0.102.0...v0.102.1
+[0.102.0]: https://github.com/NCodeGroup/project-template/compare/v0.101.1...v0.102.0
+[0.101.1]: https://github.com/NCodeGroup/project-template/compare/v0.101.0...v0.101.1
+[0.101.0]: https://github.com/NCodeGroup/project-template/compare/v0.100.0...v0.101.0
+[0.100.0]: https://github.com/NCodeGroup/project-template/compare/v0.99.2...v0.100.0
+[0.99.2]: https://github.com/NCodeGroup/project-template/compare/v0.99.1...v0.99.2
+[0.99.1]: https://github.com/NCodeGroup/project-template/compare/v0.99.0...v0.99.1
+[0.99.0]: https://github.com/NCodeGroup/project-template/compare/v0.98.0...v0.99.0
+[0.98.0]: https://github.com/NCodeGroup/project-template/compare/v0.97.0...v0.98.0
+[0.97.0]: https://github.com/NCodeGroup/project-template/compare/v0.96.0...v0.97.0
 [0.96.0]: https://github.com/NCodeGroup/project-template/compare/v0.95.0...v0.96.0
 [0.95.0]: https://github.com/NCodeGroup/project-template/compare/v0.94.0...v0.95.0
 [0.94.0]: https://github.com/NCodeGroup/project-template/compare/v0.93.0...v0.94.0

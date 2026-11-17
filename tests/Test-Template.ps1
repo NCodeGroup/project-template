@@ -124,8 +124,8 @@ $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
-    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.vscode\settings.json', '.vscode\extensions.json',
-    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'GOVERNANCE.md', 'ROADMAP.md', 'docs\architecture.md', 'docs\assurance-case.md', 'docs\best-practices-badge.md'
+    '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.template\Test-Coverage.ps1', '.template\Test-FileHeaders.ps1', '.vscode\settings.json', '.vscode\extensions.json',
+    'docs\decisions\README.md', 'docs\decisions\0000-template.md', 'docs\decisions\project-template\README.md', 'docs\README.md', 'docs\designs\_template.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'GOVERNANCE.md', 'ROADMAP.md', 'docs\architecture.md', 'docs\assurance-case.md', 'docs\best-practices-badge.md', 'docs\best-practices-criteria.md'
 $allTools = 'claude', 'copilot', 'local'
 $toolFiles = @{
     claude = 'CLAUDE.md', '.claude\settings.json', '.claude\agents\plan-executor.md', '.claude\commands\plan-feature.md',
@@ -154,9 +154,11 @@ $cases = @(
     @{ Name = 'dotnet-no-format'; Stack = 'dotnet'; Host = 'github'; Data = @{ csharp_format = 'false' } }
     @{ Name = 'other-gitlab-code-review'; Stack = 'other'; Host = 'gitlab'; Data = @{ code_review = 'true' } }
     @{ Name = 'python-gitlab'; Stack = 'python'; Host = 'gitlab' }
+    @{ Name = 'python-no-gate'; Stack = 'python'; Host = 'gitlab'; Data = @{ coverage_gate = 'false'; file_headers = 'false' } }
     @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
     @{ Name = 'node-pnpm'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'pnpm' } }
     @{ Name = 'node-bun'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'bun' } }
+    @{ Name = 'node-no-lint'; Stack = 'node'; Host = 'github'; Data = @{ node_lint = 'false' } }
     @{ Name = 'node-yarn-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'yarn' } }
     @{ Name = 'node-bun-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'bun' } }
     @{ Name = 'dotnet-node'; Stack = 'dotnet'; Host = 'github'; Data = @{ uses_node = 'true' } }
@@ -169,9 +171,11 @@ $cases = @(
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
     @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'Apache-2.0' } }
     @{ Name = 'dotnet-library-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT' } }
-    @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true' }; Refused = 'Required for a NuGet package' }
+    @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = '' }; Refused = 'Required for a NuGet package' }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
-    @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT'; conduct_contact = 'conduct@example.test' } }
+    @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT'; conduct_contact = 'conduct@example.test'; best_practices_project = '16752' } }
+    @{ Name = 'python-unlicensed'; Stack = 'python'; Host = 'github'; Data = @{ license = '' } }
+    @{ Name = 'python-bad-project-number'; Stack = 'python'; Host = 'github'; Data = @{ best_practices_project = 'abc' }; Refused = 'number at bestpractices.dev, such as 16752' }
     @{ Name = 'python-claude'; Stack = 'python'; Host = 'github'; Tools = @('claude') }
     @{ Name = 'dotnet-author-comment'; Stack = 'dotnet'; Host = 'github'; Data = @{ author_name = 'C# Tools; Inc.' } }
 )
@@ -263,6 +267,8 @@ foreach ($case in $cases) {
     }
     $dest = Join-Path $Work $name
     $tools = if ($case.Tools) { @($case.Tools) } else { $allTools }
+    # The license answered, else copier.yml's default.
+    $wantLicense = if ($case.Data -and $case.Data.Contains('license')) { $case.Data.license } else { 'Apache-2.0' }
 
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
@@ -278,12 +284,27 @@ foreach ($case in $cases) {
     $roadmapHeadings = '## Scope', '## Next Twelve Months', '## Not Planned'
     $architectureHeadings = '## Components', '## Design Rules', '## Build and Release'
     Check "${name}: ROADMAP.md and docs/architecture.md have their sections" (-not ($roadmapHeadings | Where-Object { -not $roadmap.Contains($_) }) -and -not ($architectureHeadings | Where-Object { -not $architecture.Contains($_) })) ($roadmap + $architecture)
+    Check "${name}: GOVERNANCE.md and docs/architecture.md describe how releases are turned on without naming the project's setting" (-not $governance.Contains('release: none') -and -not $architecture.Contains('release: none')) ($governance + $architecture)
     $assurance = [IO.File]::ReadAllText((Join-Path $dest 'docs\assurance-case.md'))
     $assuranceHeadings = '## Security Requirements', '## Threat Model', '## Secure Design Principles Applied', '## Common Weaknesses Countered', '## Evidence'
     $assuranceWantsPublishing = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package -and $case.Host -eq 'github'
     Check "${name}: docs/assurance-case.md has its sections" (-not ($assuranceHeadings | Where-Object { -not $assurance.Contains($_) }) -and $assurance.Contains('trusted publishing') -eq $assuranceWantsPublishing) $assurance
     $badge = [IO.File]::ReadAllText((Join-Path $dest 'docs\best-practices-badge.md'))
-    Check "${name}: docs/best-practices-badge.md maps the silver criteria" ($badge.Contains('## Toward Silver') -and $badge.Contains('access_continuity') -and $badge.Contains('PROJECT_ID') -and $badge.Contains('signed_releases') -eq $assuranceWantsPublishing) $badge
+    Check "${name}: docs/best-practices-badge.md maps the silver criteria" ($badge.Contains('## Toward Silver') -and $badge.Contains('access_continuity') -and $badge.Contains('PROJECT_ID') -ne [bool]$case.Data.best_practices_project -and $badge.Contains('signed_releases') -eq $assuranceWantsPublishing) $badge
+    $criteriaText = [IO.File]::ReadAllText((Join-Path $dest 'docs\best-practices-criteria.md'))
+    $criteriaRows = [regex]::Matches($criteriaText, '(?m)^\| `[A-Za-z0-9_]+` \| (MUST|SHOULD|SUGGESTED) \| (yes|no) \| (yes|no) \| ').Count
+    Check "${name}: docs/best-practices-criteria.md maps all 145 criteria, says what stops a level and how to check, and holds the registration prompt on GitHub only" ($criteriaRows -eq 145 -and $criteriaText.Contains('## Where a Level Stops') -and $criteriaText.Contains('## Checks') -and $criteriaText.Contains('## Register and Answer') -and $criteriaText.Contains('REPORT AT THE END') -eq ($case.Host -eq 'github')) "$criteriaRows rows"
+    $coverageGated = $case.Stack -in 'dotnet', 'python', 'node', 'powershell' -and $case.Data.coverage_gate -ne 'false'
+    $coverageCheck = [regex]::Match($criteriaText, '(?m)^- \*\*Coverage\*\* .*$').Value
+    Check "${name}: docs/best-practices-criteria.md's Coverage check says CI doesn't gate on coverage exactly when it doesn't, and names Test-Coverage.ps1 exactly when it does" ($coverageCheck -and $coverageCheck.Contains("even when CI doesn't gate on it") -ne $coverageGated -and $coverageCheck.Contains('Test-Coverage.ps1') -eq $coverageGated) $coverageCheck
+    $projectNumber = $case.Data.best_practices_project
+    $readmeText = [IO.File]::ReadAllText((Join-Path $dest 'README.md'))
+    $answersText = [IO.File]::ReadAllText((Join-Path $dest '.copier-answers.yml'))
+    $projectOk = if ($projectNumber) { $badgeUrl = "https://www.bestpractices.dev/projects/$projectNumber/badge"; $readmeText.Contains($badgeUrl) -and $badge.Contains($badgeUrl) -and $criteriaText.Contains($badgeUrl) -and $answersText -match "(?m)^best_practices_project: '?$projectNumber'?\r?$" } else { -not $readmeText.Contains('bestpractices.dev/projects/') -and $answersText -notmatch '(?m)^best_practices_project:' }
+    Check "${name}: best_practices_project, when answered, is recorded and puts the badge in README.md, docs/best-practices-badge.md and docs/best-practices-criteria.md" $projectOk $answersText
+    $contributingText = [IO.File]::ReadAllText((Join-Path $dest 'CONTRIBUTING.md'))
+    $securityText = [IO.File]::ReadAllText((Join-Path $dest 'SECURITY.md'))
+    Check "${name}: CONTRIBUTING.md has Review Requirements and names good first issue, SECURITY.md acknowledges within 14 days, and docs/assurance-case.md records security reviews" ($contributingText.Contains('## Review Requirements') -and $contributingText.Contains('`good first issue`') -and $securityText.Contains('within 14 days') -and $assurance.Contains('## Security Reviews'))
     # Every template decision record a rendered Markdown file cites by number is one the project has.
     $recordNumbers = @(Get-ChildItem -LiteralPath (Join-Path $dest 'docs\decisions'), (Join-Path $dest 'docs\decisions\project-template') -File -Filter '*.md' | ForEach-Object { if ($_.Name -match '^(\d{4})-') { $Matches[1] } })
     $unknownCitations = @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force -Filter '*.md' | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } | ForEach-Object {
@@ -375,19 +396,19 @@ foreach ($case in $cases) {
         $libraryWrong = @($libraryOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -ErrorAction SilentlyContinue) -ne $library })
         Check "${name}: library decisions only for a library" (-not $libraryWrong) ($libraryWrong -join ', ')
         $license = Join-Path $dest 'LICENSE.txt'
-        $licenseOk = switch ($case.Data.license) {
+        $licenseOk = switch ($wantLicense) {
             'MIT' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).StartsWith("MIT License`n`nCopyright (c) NCode Group`n") }
             'Apache-2.0' { (Test-Path -LiteralPath $license) -and (Get-Content -LiteralPath $license -Raw).Contains('Apache License') }
             default { -not (Test-Path -LiteralPath $license) }
         }
         Check "${name}: LICENSE.txt for the license answered" $licenseOk
-        Check "${name}: COPYRIGHT.txt only for an Apache-2.0 library" ((Test-Path -LiteralPath (Join-Path $dest 'COPYRIGHT.txt')) -eq ($case.Data.license -eq 'Apache-2.0'))
+        Check "${name}: COPYRIGHT.txt only for an Apache-2.0 library" ((Test-Path -LiteralPath (Join-Path $dest 'COPYRIGHT.txt')) -eq ($wantLicense -eq 'Apache-2.0'))
         $templateIcon = Join-Path $dest 'NCodeGroup.png'
         Check "${name}: the template's icon only for a library that uses it" ((Test-Path -LiteralPath $templateIcon) -eq ($library -and $icon -eq 'NCodeGroup.png'))
         $editorconfig = Get-Content -LiteralPath (Join-Path $dest '.editorconfig') -Raw
         # Roslyn ends an .editorconfig value at the first ; or #, so the header must hold neither to be read whole: an author_name holding either gets no header.
         $author = if ($case.Data.author_name) { $case.Data.author_name } else { 'NCode Group' }
-        $headerLicense = if ($case.Data.license) { $case.Data.license } else { '' }
+        $headerLicense = $wantLicense
         $header = "file_header_template = Copyright $([char]0xA9) $author" + $(if ($headerLicense) { '\nSPDX-License-Identifier: ' + $headerLicense } else { '' })
         $headerLines = @($editorconfig -split '\r?\n' | Where-Object { $_.StartsWith('file_header_template') })
         $headerOk = if ($author -match '[;#]') { $headerLines.Count -eq 0 -and $editorconfig.Contains('# No file_header_template: author_name holds a ; or #, where Roslyn would cut the header short.') }
@@ -440,11 +461,22 @@ foreach ($case in $cases) {
     $indexHistory = if ($case.Host -eq 'github') { $ciForIndex -match '(?s)  build-and-test:.*?fetch-depth: 0.*?- name: Check the decision index' } else { $ciForIndex.Contains('- pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"') -and $ciForIndex.Contains('GIT_DEPTH: "0"') }
     Check "${name}: CI checks the decision index with the history to tell a new record" $indexHistory $ciForIndex
     # The repository's license: the license answer.
-    $licenseAnswer = if ($case.Data.license) { $case.Data.license } else { '' }
+    $licenseAnswer = $wantLicense
     $licensePath = Join-Path $dest 'LICENSE.txt'
     $licenseText = if (Test-Path -LiteralPath $licensePath) { Get-Content -LiteralPath $licensePath -Raw } else { '' }
     $licenseRight = switch ($licenseAnswer) { 'MIT' { $licenseText.StartsWith("MIT License`n`nCopyright (c) NCode Group`n") } 'Apache-2.0' { $licenseText.Contains('Apache License') } default { -not $licenseText } }
     Check "${name}: LICENSE.txt for an MIT or Apache-2.0 license, on any stack" $licenseRight $licenseText
+    # ADR-0020's License row follows the license answer.
+    $scorecardRecord = Join-Path $dest 'docs\decisions\project-template\0020-github-projects-are-scored-by-openssf-scorecard.md'
+    if (Test-Path -LiteralPath $scorecardRecord) {
+        $licenseRow = @(Get-Content -LiteralPath $scorecardRecord | Where-Object { $_.StartsWith('| License |') })
+        $licenseRowRight = if ($licenseAnswer -in 'Apache-2.0', 'MIT') {
+            $licenseRow.Count -eq 1 -and $licenseRow[0].Contains("``LICENSE.txt`` ships, for the ``$licenseAnswer`` license") -and $licenseRow[0].EndsWith('| Nothing. |')
+        } else {
+            $licenseRow.Count -eq 1 -and $licenseRow[0].Contains("-Data @{ license = 'Apache-2.0' }")
+        }
+        Check "${name}: ADR-0020's License row says whether LICENSE.txt ships" $licenseRowRight ($licenseRow -join ' | ')
+    }
     # The Copilot cloud agent's environment: only for a GitHub project that uses Copilot.
     $copilotSetup = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
     $wantsSetup = $case.Host -eq 'github' -and 'copilot' -in $tools
@@ -535,6 +567,8 @@ foreach ($case in $cases) {
         $releaseWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\tag-release.yml') -Raw
         $uses = [regex]::Matches($releaseWorkflow, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the release workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $releaseWorkflow
+        Check "${name}: the release workflow runs CI again before it tags, and CI can be called" ($releaseWorkflow -match '(?m)^    uses: \./\.github/workflows/ci\.yml\r?$' -and $releaseWorkflow -match '(?m)^    needs: \[policy, test\]\r?$' -and $ci.Contains('workflow_call:')) $releaseWorkflow
+        Check "${name}: the release workflow signs a public repository's tag with a pinned gitsign" ($releaseWorkflow.Contains('chainguard-dev/actions/setup-gitsign@d496b2ab65497cac13d77ccd5038b8aae7e8c43b # v1.8.2') -and $releaseWorkflow.Contains('if: ${{ !github.event.repository.private }}') -and $releaseWorkflow.Contains('id-token: write') -and $releaseWorkflow.Contains("-Sign:(`$env:SIGN -eq 'true')")) $releaseWorkflow
         # The Scorecard workflow: every GitHub project gets it.
         $scorecard = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\scorecard.yml') -Raw
         $uses = [regex]::Matches($scorecard, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
@@ -587,13 +621,13 @@ foreach ($case in $cases) {
                 'two pins removed and one added' = @(, @((New-ChangedFile -Patch "@@ -60,3 +60,2 @@`n-$oldPin`n-$oldPin`n+$newPin")))
                 'no file at all' = @(, @())
             }
-            foreach ($case in $passes.Keys) {
-                $r = Invoke-AutoMergeDiffCheck $diffCheck $passes[$case] $diffFolder
-                Check "${name}: the auto-merge diff check passes $case" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=true' -and -not $r.Printed -and ($r.Calls -join '|') -eq 'api --paginate --slurp repos/o/r/pulls/7/files') "output=$($r.Output) printed=$($r.Printed) calls=$($r.Calls -join '|') error=$($r.Error)"
+            foreach ($scenario in $passes.Keys) {
+                $r = Invoke-AutoMergeDiffCheck $diffCheck $passes[$scenario] $diffFolder
+                Check "${name}: the auto-merge diff check passes $scenario" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=true' -and -not $r.Printed -and ($r.Calls -join '|') -eq 'api --paginate --slurp repos/o/r/pulls/7/files') "output=$($r.Output) printed=$($r.Printed) calls=$($r.Calls -join '|') error=$($r.Error)"
             }
-            foreach ($case in $refuses.Keys) {
-                $r = Invoke-AutoMergeDiffCheck $diffCheck $refuses[$case] $diffFolder
-                Check "${name}: the auto-merge diff check refuses $case" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=false' -and $r.Printed -like 'Left for a person to merge: *') "output=$($r.Output) printed=$($r.Printed) error=$($r.Error)"
+            foreach ($scenario in $refuses.Keys) {
+                $r = Invoke-AutoMergeDiffCheck $diffCheck $refuses[$scenario] $diffFolder
+                Check "${name}: the auto-merge diff check refuses $scenario" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=false' -and $r.Printed -like 'Left for a person to merge: *') "output=$($r.Output) printed=$($r.Printed) error=$($r.Error)"
             }
             # The merge step that picks the merge method, against fixture repository settings and branch rules.
             $mergeScript = Get-StepScript $autoMerge 'merge'
@@ -610,10 +644,10 @@ foreach ($case in $cases) {
                 'a pull request rule that lists no merge methods' = @($all, @(, @(@{ type = 'pull_request'; parameters = @{ required_approving_review_count = 0 } })), 'merge')
                 'a squash-only repository whose rules, on two pages, require linear history and allow only squash' = @($squashOnly, @(@(@{ type = 'required_linear_history' }), @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('squash') } })), 'squash')
             }
-            foreach ($case in $picks.Keys) {
-                $method = $picks[$case][2]
-                $r = Invoke-AutoMergeMethod $mergeScript $picks[$case][0] $picks[$case][1]
-                Check "${name}: the auto-merge method check picks $method for $case" ($mergeScript -and -not $r.Error -and ($r.Calls -join '|') -eq "repo view o/r --json mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed|api --paginate --slurp repos/o/r/rules/branches/main|pr merge --auto --$method --match-head-commit 0123456789abcdef0123456789abcdef01234567 https://github.com/o/r/pull/7") "calls=$($r.Calls -join '|') error=$($r.Error)"
+            foreach ($scenario in $picks.Keys) {
+                $method = $picks[$scenario][2]
+                $r = Invoke-AutoMergeMethod $mergeScript $picks[$scenario][0] $picks[$scenario][1]
+                Check "${name}: the auto-merge method check picks $method for $scenario" ($mergeScript -and -not $r.Error -and ($r.Calls -join '|') -eq "repo view o/r --json mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed|api --paginate --slurp repos/o/r/rules/branches/main|pr merge --auto --$method --match-head-commit 0123456789abcdef0123456789abcdef01234567 https://github.com/o/r/pull/7") "calls=$($r.Calls -join '|') error=$($r.Error)"
             }
             $r = Invoke-AutoMergeMethod $mergeScript $squashOnly @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('merge') } }))
             Check "${name}: the auto-merge method check turns on nothing for a squash-only repository whose ruleset allows only merge commits" ($mergeScript -and $r.Error -like 'No merge method is allowed by both*' -and -not ($r.Calls -like 'pr merge*')) "calls=$($r.Calls -join '|') error=$($r.Error)"
@@ -625,6 +659,9 @@ foreach ($case in $cases) {
     }
     if ($case.Stack -eq 'node') {
         $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }
+        $lint = $case.Data.node_lint -ne 'false'
+        $agentsForLint = Get-Content -LiteralPath (Join-Path $dest 'AGENTS.md') -Raw
+        Check "${name}: biome.json, the CI lint step and the Landing gate exactly when node_lint is not false" ((Test-Path -LiteralPath (Join-Path $dest 'biome.json')) -eq $lint -and $ci.Contains("$pm run lint") -eq $lint -and ($agentsForLint -match "(?m)^- gate: $([regex]::Escape("if (Test-Path package.json) { $pm run lint }"))\r?$") -eq $lint) $ci
         $install = @{ npm = 'npm ci'; pnpm = 'pnpm install --frozen-lockfile'; yarn = 'yarn install'; bun = 'bun install --frozen-lockfile' }[$pm]
         $setup = @{ npm = ''; pnpm = 'corepack enable pnpm'; yarn = 'corepack enable yarn'; bun = if ($case.Host -eq 'github') { 'oven-sh/setup-bun@' } else { 'image: oven/bun:1' } }[$pm]
         $otherManagers = @('npm', 'pnpm', 'yarn', 'bun') | Where-Object { $_ -ne $pm }
@@ -643,6 +680,21 @@ foreach ($case in $cases) {
             Check "${name}: GitLab CI selects the .node-version Node.js through use-node.sh, installing the pinned nvs only when needed, before it installs anything" ($ci.Contains('bash ./.template/install-nvs.sh') -and -not $ci.Contains('jasongin/nvs') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf($install) -and ($pm -notin 'pnpm', 'yarn' -or $useNode -lt $ci.IndexOf('corepack'))) $ci
         }
         else { Check "${name}: GitLab CI runs Bun without nvs" (-not $ci.Contains('install-nvs.sh') -and -not $ci.Contains('use-node.sh')) $ci }
+    }
+    if ($case.Stack -in 'python', 'node', 'powershell') {
+        $gate = $case.Data.coverage_gate -ne 'false'
+        Check "${name}: CI checks the coverage exactly when coverage_gate is not false" ($ci.Contains('Test-Coverage.ps1') -eq $gate) $ci
+    }
+    if ($case.Host -eq 'gitlab') {
+        $audit = @{ npm = 'npm audit --audit-level=moderate'; pnpm = 'pnpm audit --audit-level moderate'; yarn = 'yarn npm audit --all --recursive --severity moderate'; bun = 'bun audit --audit-level=moderate' }
+        $wantAudit = if ($case.Stack -eq 'node') { $audit[$(if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' })] } elseif ($case.Stack -eq 'python') { 'pip-audit -r requirements.txt' } else { '' }
+        Check "${name}: GitLab CI audits the dependencies exactly for Node.js and Python" ($ci.Contains('dependency-audit:') -eq [bool]$wantAudit -and (-not $wantAudit -or $ci.Contains($wantAudit))) $ci
+    }
+    $licensed = -not ($case.Data -and $case.Data.ContainsKey('license') -and $case.Data.license -eq '')
+    $wantHeaders = $case.Stack -ne 'dotnet' -and $licensed -and $case.Data.file_headers -ne 'false'
+    Check "${name}: CI checks the file headers exactly when file_headers is on" ($ci.Contains('Test-FileHeaders.ps1') -eq $wantHeaders) $ci
+    if ($case.Stack -eq 'python') {
+        Check "${name}: the default test command writes coverage.xml exactly when coverage_gate is not false" ((Get-Content -Raw -LiteralPath (Join-Path $dest 'AGENTS.md')).Contains('--cov --cov-branch --cov-report=xml') -eq ($case.Data.coverage_gate -ne 'false')) ''
     }
     if ($case.Host -eq 'gitlab' -and $case.Stack -in 'dotnet', 'python', 'powershell', 'other') {
         $useNode = $ci.IndexOf('. ./.template/use-node.sh')
@@ -1184,6 +1236,16 @@ $m += @(foreach ($root in '', 'template\') { foreach ($pair in @(
     if (-not ($t.Contains($pushSessionText) -and $settleAt -ge 0 -and $settleAt -lt $hooksAt -and $hooksAt -ge 0 -and $createAt -ge $hooksAt + $gitHooksText.Length -and -not $t.Substring($hooksAt + $gitHooksText.Length, $createAt - $hooksAt - $gitHooksText.Length).Trim())) { "${file}: the push branch, the hooks and the worktree are not in that order" }
 } })
 Check 'workflow: every planning command, run-issues and address-feedback settle the hooks and the push branch in the main checkout before they create a worktree' (-not $m) ($m -join '; ')
+# Each planning command's worktree setup installs a Node.js project's packages in the main checkout when it has none, since a tool in the worktree can resolve the main checkout's config (#415).
+$mainInstallText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_main-checkout-install.md')).Body.Trim()
+$m = @(foreach ($cmd in $worktreeKinds.create + $worktreeKinds.analyze) { foreach ($rel in ".claude\commands\$cmd.md", ".github\prompts\$cmd.prompt.md", ".github\skills\$cmd\SKILL.md") { foreach ($root in '', 'template\') {
+    if (-not [IO.File]::ReadAllText((Join-Path $repoRoot "$root$rel")).Contains("under Context for the executor. $mainInstallText")) { "$root${rel}: lacks the main checkout's install in item 4" }
+} } })
+$m += @(Get-MissingText ('template\.github\agents\copilot-planner.agent.md', 'template\.github\agents\hybrid-planner.agent.md') $mainInstallText)
+$m += @(Get-MissingText $copilotRunFiles 'the Node.js install a planning stage''s worktree item 4 runs there')
+$m += @(Get-MissingText $rulesJinja 'A planning command runs the install in the main checkout too when it has no `node_modules`.')
+$m += @(Get-MissingText 'USAGE.md' 'Tsconfig not found astro/tsconfigs/strict')
+Check 'workflow: the planning commands install a Node.js project''s packages in the main checkout when it has none, which a build in a worktree can need (#415)' (-not $m) ($m -join '; ')
 # A command never switches or creates a branch in the main checkout (#349): only the legacy finish of a plan written without a worktree, a pre-v0.11.0 template update, and a command the user is told to run do.
 $switchAllowed = @{
     'finish-plan'          = @('`git switch <default branch>`')
