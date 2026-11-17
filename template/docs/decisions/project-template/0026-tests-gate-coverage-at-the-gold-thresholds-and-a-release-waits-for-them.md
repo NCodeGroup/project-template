@@ -36,8 +36,9 @@ again on its commit.
   against what its caller grants when the run starts, whatever the job's `if:` says, and fails the whole run when one
   asks for more. So no job of `ci.yml`, and not its top-level `permissions:`, asks for more than `contents: read`: a job
   that needs more, such as a coverage upload through OIDC with `id-token: write`, goes in a workflow of its own.
-- `.template/Update-Project.ps1` and `Adopt-Project.ps1` warn when `tag-release.yml` calls `ci.yml` and `ci.yml` has no
-  `workflow_call` trigger, or when its top-level `permissions:` or a job's asks for more than `contents: read`.
+- `.template/Update-Project.ps1` and the template's `Adopt-Project.ps1` warn when `tag-release.yml` calls `ci.yml`
+  and `ci.yml` has no `workflow_call` trigger, or when its top-level `permissions:` or a job's asks for more than
+  `contents: read`.
 - CI's concurrency group holds the commit SHA on the default branch, so the call waits for the push's own CI run and is
   never cancelled.
 
