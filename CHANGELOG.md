@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.99.1] - 2026-11-16
+
+### Fixed
+
+- With `file_headers`, `.template/Test-FileHeaders.ps1` checks Astro components, stylesheets and hand-written declaration files, which it skipped: an `.astro` file holds the two lines as `//` comments inside its frontmatter, so they never reach the built page, and `-Fix` adds them right after the opening `---` line, or in a `---` block of their own when the file has none; a `.css`, `.scss` or `.less` file holds them as `/* */` comments; and every tracked `.d.ts` file is checked, since generated ones sit in git-ignored folders. Files under a `vendor/` folder, other authors' code, are skipped as `node_modules/` is. ([#416](https://github.com/NCodeGroup/project-template/issues/416), [ADR-0027](template/docs/decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md))
+- With `coverage_gate`, the Coverage check of `docs/best-practices-criteria.md` no longer says CI doesn't gate on coverage beside the sentence that names the gate. ([#416](https://github.com/NCodeGroup/project-template/issues/416))
+
 ## [0.99.0] - 2026-11-16
 
 ### Added
@@ -1589,7 +1596,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.99.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.99.1...HEAD
+[0.99.1]: https://github.com/NCodeGroup/project-template/compare/v0.99.0...v0.99.1
 [0.99.0]: https://github.com/NCodeGroup/project-template/compare/v0.98.0...v0.99.0
 [0.98.0]: https://github.com/NCodeGroup/project-template/compare/v0.97.0...v0.98.0
 [0.97.0]: https://github.com/NCodeGroup/project-template/compare/v0.96.0...v0.97.0
