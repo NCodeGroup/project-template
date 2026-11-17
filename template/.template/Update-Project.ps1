@@ -243,7 +243,7 @@ function Test-ReleaseAssetWorkflow([string]$Text) {
 # SECURITY.md's Verify a Release section says releases are immutable, which the template's
 # tools/Set-RepositoryBaseline.ps1 leaves off where a workflow runs on a release event or uploads release assets
 # (ADR-0028).
-# Adopt-Project.ps1 has a copy of this function; tests/Test-UpdateNotes.ps1 keeps the copies equal.
+# The template's Adopt-Project.ps1 has a copy of this function; tests/Test-UpdateNotes.ps1 keeps the copies equal.
 function Get-ImmutableReleaseNote([bool]$Offered) {
     $says = (Test-Path -LiteralPath SECURITY.md) -and (Get-Content -LiteralPath SECURITY.md -Raw) -match '(?m)^Releases are immutable'
     if (-not ($says -or $Offered) -or -not (Test-Path -LiteralPath .github/workflows)) { return }
