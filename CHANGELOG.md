@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.102.0] - 2026-11-16
+
+### Changed
+
+- The Node.js section of the template's rules says that a plan's worktree lies inside the main checkout, so a tool such as Vite can resolve the main checkout's `tsconfig.json` and the packages it names from the main checkout's `node_modules`, and to run the install in the main checkout when a build in a worktree fails to find such a package. ([#415](https://github.com/NCodeGroup/project-template/issues/415))
+
+### Fixed
+
+- A Node.js project's build and tests no longer fail in a plan's worktree, such as with `Tsconfig not found astro/tsconfigs/strict`, when a tool such as Vite reaches the main checkout's `tsconfig.json`, whose `extends` names a package the main checkout has no `node_modules` for: each planning and analysis command's worktree setup, which `/run-issues` and `/address-feedback` also follow, runs the project's install in the main checkout too when it has a `package.json` and no `node_modules`, and the plan says so under Context for the executor. ([#415](https://github.com/NCodeGroup/project-template/issues/415))
+
 ## [0.101.0] - 2026-11-16
 
 ### Added
@@ -1626,7 +1636,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.101.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.102.0...HEAD
+[0.102.0]: https://github.com/NCodeGroup/project-template/compare/v0.101.0...v0.102.0
 [0.101.0]: https://github.com/NCodeGroup/project-template/compare/v0.100.0...v0.101.0
 [0.100.0]: https://github.com/NCodeGroup/project-template/compare/v0.99.2...v0.100.0
 [0.99.2]: https://github.com/NCodeGroup/project-template/compare/v0.99.1...v0.99.2
