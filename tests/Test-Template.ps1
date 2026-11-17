@@ -284,6 +284,7 @@ foreach ($case in $cases) {
     $roadmapHeadings = '## Scope', '## Next Twelve Months', '## Not Planned'
     $architectureHeadings = '## Components', '## Design Rules', '## Build and Release'
     Check "${name}: ROADMAP.md and docs/architecture.md have their sections" (-not ($roadmapHeadings | Where-Object { -not $roadmap.Contains($_) }) -and -not ($architectureHeadings | Where-Object { -not $architecture.Contains($_) })) ($roadmap + $architecture)
+    Check "${name}: GOVERNANCE.md and docs/architecture.md describe how releases are turned on without naming the project's setting" (-not $governance.Contains('release: none') -and -not $architecture.Contains('release: none')) ($governance + $architecture)
     $assurance = [IO.File]::ReadAllText((Join-Path $dest 'docs\assurance-case.md'))
     $assuranceHeadings = '## Security Requirements', '## Threat Model', '## Secure Design Principles Applied', '## Common Weaknesses Countered', '## Evidence'
     $assuranceWantsPublishing = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package -and $case.Host -eq 'github'
