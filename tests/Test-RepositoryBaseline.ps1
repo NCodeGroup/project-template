@@ -370,9 +370,10 @@ $repos = @{
     releaseJobOnly = New-Repo -Workflows @('.github/workflows/tag-release.yml') -WorkflowText @{
         '.github/workflows/tag-release.yml' = (Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/tag-release.yml')) }
     releaseUnreadable = New-Repo -Workflows @('.github/workflows/big.yml') -WorkflowText @{ '.github/workflows/big.yml' = $null }
-    # Immutable releases already on, beside a workflow on a release event and beside one the contents API sends without text.
+    # Immutable releases already on, beside a workflow on a release event, beside one the contents API sends without text, and where .github/workflows can't be listed.
     releaseAssetsImmutable = New-Repo -Security @{ 'immutable-releases' = 'on' } -Workflows @('.github/workflows/publish.yml') -WorkflowText @{ '.github/workflows/publish.yml' = "on:`n  release:`n    types: [published]`n" }
     immutableUnreadable = New-Repo -Security @{ 'immutable-releases' = 'on' } -Workflows @('.github/workflows/big.yml') -WorkflowText @{ '.github/workflows/big.yml' = $null }
+    immutableListUnreadable = New-Repo -Security @{ 'immutable-releases' = 'on' } -Workflows @('fail:500')
     partial = New-Repo -SecretScanning 'enabled' -Security @{ 'actions/permissions/workflow' = 'readApproves'; 'vulnerability-alerts' = 'on'; 'private-vulnerability-reporting' = 'on' } -AutoMerge $true
     # Auto-merge: an answer that leaves allow_auto_merge out, as GitHub's does for someone who can't change it.
     autoMergeUnread = New-Repo -AutoMerge $null
@@ -808,6 +809,9 @@ try {
 
     $r = Invoke-Baseline @('-Repo', 'immutableUnreadable')
     Check 'security: immutable releases already on beside a workflow that can''t be read say so, and the run still succeeds' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape("immutableUnreadable: couldn't read the workflows to check them against its immutable releases (couldn't read .github/workflows/big.yml")) "$($r.ExitCode) $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'immutableListUnreadable')
+    Check 'security: immutable releases already on, where .github/workflows can''t be listed, say so' ($r.Output -match [regex]::Escape("immutableListUnreadable: couldn't read the workflows to check them against its immutable releases (couldn't read .github/workflows: ")) "$($r.ExitCode) $($r.Output)"
 
     $r = Invoke-Baseline @('-Repo', 'complete')
     Check 'security: immutable releases already on with no workflows print no notice' ($r.Output -notmatch [regex]::Escape('notice: immutable releases')) $r.Output
