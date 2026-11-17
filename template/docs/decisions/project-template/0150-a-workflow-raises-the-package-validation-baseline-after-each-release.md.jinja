@@ -16,7 +16,8 @@ succeeds, so the raise cannot run in the release itself.
   packable project (30-second requests, a failed request counts as not listed yet, back-off from 15 to 120 seconds with
   jitter, 30 minutes by default), then raises every `PackageValidationBaselineVersion` that `Directory.Build.props` or a
   project file sets and that is lower, never lowering one and adding none. It adds a `### Changed` entry under
-  `## [Unreleased]` of a Keep a Changelog file with a release section. A prerelease is never a baseline.
+  `## [Unreleased]` of a Keep a Changelog file with a release section, in place of any baseline entry an earlier run
+  left there, so a raise that merges after the next release leaves one entry. A prerelease is never a baseline.
 - On GitHub, `.github/workflows/raise-baseline.yml` runs it when `publish.yml` calls it after publishing a
   stable version, or by hand with a tag, pushes `baseline-<version>`, opens it as a draft pull request, as workflows
   that open pull requests do, which a person marks ready and merges after CI, and starts `ci.yml` on the branch with
