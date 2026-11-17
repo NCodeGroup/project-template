@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - The template's ADR-0030 records that the repository baseline adds the code-scanning rule only where CodeQL's default setup analyzes a language, amending ADR-0005, and a new project's `docs/assurance-case.md` says static analysis is enforced there. ([ADR-0030](template/docs/decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md))
-- The template's ADR-0031 records that the repository baseline turns off approval of the last push in its own "Protect main" ruleset where no approval is required, amending ADR-0022, which had it print the command and write nothing. ([ADR-0031](template/docs/decisions/project-template/0031-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md))
+- The template's ADR-0031 records that the repository baseline turns off approval of the last push in its own "Protect main" ruleset where no approval is required, amending ADR-0022, which had it print the command and write nothing, and its sentence that the script never loosens a ruleset: this setting of its own ruleset is the one exception. ([ADR-0031](template/docs/decisions/project-template/0031-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md))
 
 ### Fixed
 

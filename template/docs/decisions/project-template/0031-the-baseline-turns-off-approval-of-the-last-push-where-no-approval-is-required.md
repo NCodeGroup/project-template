@@ -50,6 +50,11 @@ With zero required approvals, the baseline never has approval of the last push o
    0014-every-pull-request-discussion-is-remediated-and-replied-to-before-it-merges.md)).
 5. Dismissing stale reviews on push stays on in "Protect main": with zero approvals it dismisses nothing a merge
    waits for, and with one it makes NCode Review's approval cover the latest push.
+6. This amends ADR-0022's decision 2, whose last sentence reads "The script never loosens a ruleset: it prints the fix
+   only for approval of the last push with no required approval." ADR-0022's text stays as it was written, and this
+   record changes that sentence: the script never loosens a ruleset of the owner's, and it loosens its own "Protect
+   main" in this one way alone, turning off approval of the last push where no approval is required. For a ruleset of
+   the owner's the sentence stands as written.
 
 ## Options considered
 
@@ -71,7 +76,7 @@ With zero required approvals, the baseline never has approval of the last push o
   on the next run of the baseline; `-All -WhatIf` lists each such repository first.
 - A maintainer who wants approval of the last push raises the required approvals to one or more, which the baseline
   keeps, or passes `approve: true`, as ADR-0022 says. With zero approvals it can't be kept.
-- The baseline now loosens one setting in its own ruleset, the only exception to "the baseline never loosens a ruleset"
+- The baseline loosens one setting in its own ruleset, the only exception to "the baseline never loosens a ruleset"
   in ADR-0022 and [ADR-0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md). It makes no
   other ruleset looser, and the setting it turns off could not be met, so nothing a merge could have waited for goes.
 - Where GitHub refuses the change, the run says it was not available, with the reason, prints the notice with the

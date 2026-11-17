@@ -53,8 +53,11 @@ at least one language.
 - Start a setup run, with an update that sends `state` `configured`, so GitHub detects the repository's languages, and
   add the rule once they appear. Deferred: the baseline would wait for the run, 45 seconds on NCodeGroup/docs, on every
   such repository, or decide before it ends, and no such update has been tried, so nothing shows that it sets a
-  language up. The owner's settings, then a later run with `-RequireChecks`, do the same.
-- Remove a kept rule where the setup analyzes no language. Rejected: the baseline never loosens a ruleset, and the
+  language up. The owner's settings, then a later run with `-RequireChecks`, do the same. Tracked in
+  [#424](https://github.com/NCodeGroup/project-template/issues/424).
+- Remove a kept rule where the setup analyzes no language. Rejected: the baseline never loosens a ruleset, apart from
+  the one setting
+  [ADR-0031](0031-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md) names, and the
   branch would have no code scanning once the languages are set up.
 - Leave the rule out, and warn where one is kept (chosen).
 
