@@ -109,7 +109,7 @@ A reformat or a large move brings back the CodeQL alerts dismissed on the code i
 {%- endif %}
 {%- if file_headers is defined and file_headers and stack != 'dotnet' %}
 
-Each source file starts with two comment lines, `Copyright © {{ author_name }}` and `SPDX-License-Identifier: {{ spdx }}`. CI checks them with `./.template/Test-FileHeaders.ps1`, and `./.template/Test-FileHeaders.ps1 -Fix` adds them to every file without them ([the decision](docs/decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md)).
+Each source file starts with two comment lines, `Copyright © {{ author_name }}` and `SPDX-License-Identifier: {{ spdx }}`. CI checks them with `./.template/Test-FileHeaders.ps1`, and `./.template/Test-FileHeaders.ps1 -Fix` adds them to every file without them ([the decision](docs/decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md)). A stylesheet holds them as `/* */` comments, and an Astro component as `//` comments right after its frontmatter's opening `---` line, so they never reach the built page. Files under a `vendor/` or `node_modules/` folder hold other authors' code and aren't checked.
 {%- endif %}
 
 ## AI-Assisted Work
