@@ -19,6 +19,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `tools/Set-RepositoryBaseline.ps1` no longer turns on immutable releases in a repository where a workflow on the default branch runs on a `release` event or uploads release assets, such as a project's own `publish.yml` that attaches files to a published release, which an immutable release refuses: it read only `release-provenance.yml`. Its line names those workflows, or one it can't read. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
 
+## [0.99.2] - 2026-11-16
+
+### Fixed
+
+- `GOVERNANCE.md` and `docs/architecture.md` no longer say a project starts with `release: none`, which was wrong for an existing project that already releases when an update adds them: they say releases are tagged when `AGENTS.md`'s Landing section sets `release: tag`, and published too with `tag+release`. Both files are project-owned, so a project that already has them deletes the closing clause that names `release: none` from `GOVERNANCE.md`'s Releases section and `docs/architecture.md`'s Build and Release section itself. ([#412](https://github.com/NCodeGroup/project-template/issues/412))
+
 ## [0.99.1] - 2026-11-16
 
 ### Fixed
@@ -1610,7 +1616,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
 [unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.100.0...HEAD
-[0.100.0]: https://github.com/NCodeGroup/project-template/compare/v0.99.1...v0.100.0
+[0.100.0]: https://github.com/NCodeGroup/project-template/compare/v0.99.2...v0.100.0
+[0.99.2]: https://github.com/NCodeGroup/project-template/compare/v0.99.1...v0.99.2
 [0.99.1]: https://github.com/NCodeGroup/project-template/compare/v0.99.0...v0.99.1
 [0.99.0]: https://github.com/NCodeGroup/project-template/compare/v0.98.0...v0.99.0
 [0.98.0]: https://github.com/NCodeGroup/project-template/compare/v0.97.0...v0.98.0
