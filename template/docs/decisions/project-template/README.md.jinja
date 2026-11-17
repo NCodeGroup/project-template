@@ -52,7 +52,7 @@ never brings a number the project already uses
 {%- if git_host == 'gitlab' %}
 | [0029](0029-gitlab-projects-audit-their-dependencies-in-ci.md) | On GitLab, a Node.js or Python project's CI audits its dependencies on every pipeline, and a weekly pipeline runs it when nothing is pushed |
 {%- endif %}
-| [0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md) | The repository baseline adds the code-scanning rule only where CodeQL's default setup analyzes a language, switches no other setup's suite, and warns where a kept rule waits on a setup that analyzes none (amends 0005) |
+| [0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md) | The repository baseline adds the code-scanning rule only where CodeQL's default setup analyzes a language, switches no setup's suite where it analyzes no language, and warns where a kept rule waits on a setup that analyzes none (amends 0005) |
 | [0031](0031-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md) | The repository baseline turns off approval of the last push in its own "Protect main" ruleset where no approval is required, since GitHub then waits for an approval no author can give, and keeps it where approvals are required (amends 0022) |
 {%- if stack == 'dotnet' %}
 

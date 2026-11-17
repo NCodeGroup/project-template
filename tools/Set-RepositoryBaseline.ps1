@@ -571,7 +571,7 @@ function Enable-ThreadResolution {
         $rule.parameters | Add-Member -NotePropertyName require_last_push_approval -NotePropertyValue $true -Force
     }
     Write-LastPushNotice $Name $Ruleset
-    if (-not $PSCmdlet.ShouldProcess($Name, "turn on $label")) { Write-Host "${Name}: ${label}: would set"; return }
+    if (-not $PSCmdlet.ShouldProcess($Name, "update $label")) { Write-Host "${Name}: ${label}: would set"; return }
     $result = Invoke-HostWrite PUT "repos/$Owner/$Name/rulesets/$($Ruleset.id)" @{ rules = @($Ruleset.rules) }
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Name}: ${label}: set" }
     else {

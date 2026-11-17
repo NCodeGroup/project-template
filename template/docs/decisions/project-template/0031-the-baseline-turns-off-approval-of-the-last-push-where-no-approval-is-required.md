@@ -38,10 +38,12 @@ With zero required approvals, the baseline never has approval of the last push o
 2. A run that finds "Protect main" with approval of the last push on and no required approval, whatever wrote it,
    turns the setting off, changing nothing else in the ruleset, and says so: a line naming the ruleset and the change
    (`turn off approval of the last push, which blocks every merge while no approval is required`) that ends in `set`,
-   `would set` with `-WhatIf` or `not available` with the reason where GitHub refuses it, and, on a run that writes the
-   whole ruleset, as with `-RequireChecks`, the summary says it too. It does so in the same write as the other
-   settings the script turns on, such as conversation resolution, whether the ruleset is alone or beside one of the
-   owner's.
+   `would set` with `-WhatIf` or, on a plain run where GitHub refuses it, `not available` with the reason. A run that
+   writes the whole ruleset, as with `-RequireChecks`, turns the setting off in that write and says so in its summary;
+   where GitHub refuses that write, the run reports the repository as failed ("Couldn't update the ruleset"), as it
+   does for any refused write of the whole ruleset, and prints no command. On a plain run it does so in the same write
+   as the other settings the script turns on, such as conversation resolution, whether the ruleset is alone or beside
+   one of the owner's.
 3. A "Protect main" ruleset that requires at least one approval keeps approval of the last push as it is, on or off,
    and its count; the baseline turns it on only where `code-review.yml` passes `approve: true`. It never turns it on
    with zero required approvals.
@@ -79,9 +81,11 @@ With zero required approvals, the baseline never has approval of the last push o
 - The baseline loosens one setting in its own ruleset, the only exception to "the baseline never loosens a ruleset"
   in ADR-0022 and [ADR-0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md). It makes no
   other ruleset looser, and the setting it turns off could not be met, so nothing a merge could have waited for goes.
-- Where GitHub refuses the change, the run says it was not available, with the reason, prints the notice with the
-  command that turns the setting off, as it does for a ruleset of the owner's, and goes on; the owner then runs the
-  command or unticks the setting in the ruleset.
+- On a plain run, where GitHub refuses the change, the run says it was not available, with the reason, prints the notice
+  with the command that turns the setting off, as it does for a ruleset of the owner's, and goes on; the owner then
+  runs the command or unticks the setting in the ruleset. On a run with `-RequireChecks`, which writes the whole
+  ruleset, a refused write fails the repository like any other refused ruleset write, and the owner runs the baseline
+  again, without `-RequireChecks` if the refusal is about this setting.
 
 ## References
 

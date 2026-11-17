@@ -8,7 +8,7 @@ Written so another session can continue if this one stops. It holds no credentia
 - NCodeGroup/brand#1: Instrument design system, released as v0.1.0 (tag 88482a17fb4210670dc4919692d2240f3f5413ac). Follow-ups: brand#2 to #7.
 
 ## In progress
-1. project-template fix on branch claude/trusting-maxwell-syoxdm (ADR-0024: add the code-scanning rule only where CodeQL analyzes a language; ADR-0025: turn off approval of the most recent push where no approval is required). Finish the review fixes (three surviving mutations and the refused-write notice), run tests/Test-RepositoryBaseline.ps1, Test-DecisionIndex, Test-ChangelogHeadings and Test-ScriptAnalyzer, commit, push, open a draft pull request, answer NCode Review on every finding, nits included, and comment /review (up to 3 rounds). Drop this PLAN.md before merging.
+1. project-template fix on branch claude/trusting-maxwell-syoxdm (ADR-0030: add the code-scanning rule only where CodeQL analyzes a language; ADR-0031: turn off approval of the most recent push where no approval is required). The review fixes are done. Run tests/Test-RepositoryBaseline.ps1, Test-DecisionIndex, Test-ChangelogHeadings and Test-ScriptAnalyzer, commit, push, open a draft pull request, answer NCode Review on every finding, nits included, and comment /review (up to 3 rounds). Drop this PLAN.md in a commit before the pull request is marked ready, and confirm with `git ls-files PLAN.md`.
 
 ## Next, in the owner's choice of order
 2. docs#2: vendor brand v0.1.0 into NCodeGroup/docs with vendoring/vendor-brand.mjs and its lock; move src/styles/theme.css to the --nc- names and starlight.css's mapping; remove vendor/instrument.
