@@ -43,7 +43,8 @@
     policies or is refused, says for a refusal that asks to upgrade the organization's plan that it needs GitHub Team or
     above and to run it per repository, and otherwise names the admin:org scope, takes no -Repo, -All or -RequireChecks;
     that immutable releases stay off, with the reason, where a workflow runs on a release event or uploads release
-    assets, can't be read, or -SkipImmutableReleases is given;
+    assets, can't be read, or -SkipImmutableReleases is given; that a repository whose releases are already
+    immutable gets a notice with the command that turns them off where a workflow needs them off;
     that -All skips archived repositories and forks;
     and that bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
 
@@ -369,6 +370,9 @@ $repos = @{
     releaseJobOnly = New-Repo -Workflows @('.github/workflows/tag-release.yml') -WorkflowText @{
         '.github/workflows/tag-release.yml' = (Get-Content -Raw (Join-Path $repoRoot 'template/.github/workflows/tag-release.yml')) }
     releaseUnreadable = New-Repo -Workflows @('.github/workflows/big.yml') -WorkflowText @{ '.github/workflows/big.yml' = $null }
+    # Immutable releases already on, beside a workflow on a release event and beside one the contents API sends without text.
+    releaseAssetsImmutable = New-Repo -Security @{ 'immutable-releases' = 'on' } -Workflows @('.github/workflows/publish.yml') -WorkflowText @{ '.github/workflows/publish.yml' = "on:`n  release:`n    types: [published]`n" }
+    immutableUnreadable = New-Repo -Security @{ 'immutable-releases' = 'on' } -Workflows @('.github/workflows/big.yml') -WorkflowText @{ '.github/workflows/big.yml' = $null }
     partial = New-Repo -SecretScanning 'enabled' -Security @{ 'actions/permissions/workflow' = 'readApproves'; 'vulnerability-alerts' = 'on'; 'private-vulnerability-reporting' = 'on' } -AutoMerge $true
     # Auto-merge: an answer that leaves allow_auto_merge out, as GitHub's does for someone who can't change it.
     autoMergeUnread = New-Repo -AutoMerge $null
@@ -796,6 +800,17 @@ try {
 
     $r = Invoke-Baseline @('-Repo', 'fresh', '-SkipImmutableReleases')
     Check 'security: -SkipImmutableReleases leaves releases mutable, and says why' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape('fresh: immutable releases: not available (-SkipImmutableReleases leaves them off)')) "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'releaseAssetsImmutable')
+    Check 'security: immutable releases already on beside a workflow on a release event stay on, with a notice and the command that turns them off' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape('releaseAssetsImmutable: immutable releases: already set') -and $r.Output -match [regex]::Escape('releaseAssetsImmutable: notice: immutable releases are on, but these workflows run on a release event') -and $r.Output -match [regex]::Escape('gh api -X DELETE repos/NCodeGroup/releaseAssetsImmutable/immutable-releases')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'releaseAssetsImmutable', '-WhatIf')
+    Check 'security: the notice about immutable releases is printed with -WhatIf too' ($r.Output -match [regex]::Escape('releaseAssetsImmutable: notice: immutable releases are on, but these workflows run on a release event')) "$($r.Changes -join '|') $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'immutableUnreadable')
+    Check 'security: immutable releases already on beside a workflow that can''t be read say so, and the run still succeeds' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape("immutableUnreadable: couldn't read the workflows to check them against its immutable releases (couldn't read .github/workflows/big.yml")) "$($r.ExitCode) $($r.Output)"
+
+    $r = Invoke-Baseline @('-Repo', 'complete')
+    Check 'security: immutable releases already on with no workflows print no notice' ($r.Output -notmatch [regex]::Escape('notice: immutable releases')) $r.Output
 
     $r = Invoke-Baseline @('-Repo', 'private')
     Check 'security: secret scanning is left out of a repository that is not public, with the reason, since it would be paid there' (@($r.Bodies | Where-Object { $_.body.security_and_analysis }).Count -eq 0 -and $r.Output -match [regex]::Escape("private: secret scanning: not available (the repository isn't public") -and $r.Output -match [regex]::Escape("private: secret scanning push protection: not available (the repository isn't public")) $r.Output

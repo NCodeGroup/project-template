@@ -91,7 +91,8 @@
     for a repository it creates; Adopt-Project.ps1 prints the command to run.
 
     -SkipImmutableReleases leaves immutable releases off in every repository it runs on, and says so; one already on
-    stays on, since the script never loosens a setting.
+    stays on, since the script never loosens a setting. Where they are already on and a workflow runs on a release
+    event or uploads release assets, it prints a notice with the command that turns them off.
 
     -OrganizationPolicy, with -Owner alone, creates the same policy once for the organization, on every repository
     (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
@@ -614,6 +615,15 @@ function Find-ReleaseAssetWorkflows([string]$Name, [string]$Branch) {
     [pscustomobject]@{ Files = @($files); Why = $null }
 }
 
+# Immutable releases already on refuse the files a workflow attaches after a release is published. This script never
+# loosens a setting, so this only reads the workflows and prints a notice with the command that turns them off.
+function Write-ImmutableReleaseNotice([string]$Name, [string]$Branch) {
+    $found = Find-ReleaseAssetWorkflows $Name $Branch
+    if ($found.Why) { Write-Host "${Name}: couldn't read the workflows to check them against its immutable releases ($($found.Why))"; return }
+    if (-not $found.Files.Count) { return }
+    Write-Host "${Name}: notice: immutable releases are on, but these workflows run on a release event or upload release assets, which an immutable release refuses once it is published: $($found.Files -join ', '). This script never loosens a setting; to turn them off, run: gh api -X DELETE repos/$Owner/$Name/immutable-releases"
+}
+
 # Reads the Actions policies at $Path (a repository's or an organization's). A repository's list is an object,
 # { total_count, policies }, whose items leave out their conditions and rules, which a read by its id gives; a bare array
 # is read too. Why is the reason a policy couldn't be read, or $null. Status is the HTTP status of the read that failed, or of the list when none did, and $null when a call got no response.
@@ -744,6 +754,7 @@ function Set-SecuritySettings([string]$Name, $Info) {
         elseif ($found.Files.Count) { $state = "these workflows run on a release event or upload release assets, which an immutable release refuses once it is published: $($found.Files -join ', ')" }
     }
     Set-SecuritySetting $Name 'immutable releases' $state PUT "$base/immutable-releases"
+    if ($state -is [bool] -and $state) { Write-ImmutableReleaseNotice $Name $Info.default_branch }
 }
 
 # "Allow auto-merge", which the template's code-review-auto-merge.yml needs to have a Dependabot bump of NCode Review

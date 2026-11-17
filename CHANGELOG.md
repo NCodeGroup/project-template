@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - `tools/Set-RepositoryBaseline.ps1 -SkipImmutableReleases` leaves a repository's releases mutable, for a project whose releases get files after they are published in a way the script doesn't detect. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+- `tools/Set-RepositoryBaseline.ps1` prints a notice with the `gh api -X DELETE repos/OWNER/REPO/immutable-releases` command where a repository's releases are already immutable and a workflow on its default branch runs on a `release` event or uploads release assets, whose next release would fail; it never turns them off itself. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
 - `.template/Update-Project.ps1` says to delete, or leave out of the template's change, `SECURITY.md`'s paragraph that says releases are immutable when a workflow in `.github/workflows` runs on a release event or uploads release assets, also when the project is already up to date. ([#411](https://github.com/NCodeGroup/project-template/issues/411), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
 
 ### Fixed
