@@ -6,7 +6,9 @@
     From the project template; template updates replace this file. Sets PackageValidationBaselineVersion in each
     Directory.Build.props and project file that already sets it, so package validation compares each package with the
     release just published. It never lowers the baseline: it changes nothing when no file sets the property, or when
-    every file already holds the version or a later one. It prints the version it set, or nothing.
+    every file already holds the version or a later one. It adds a ### Changed entry under ## [Unreleased] of a Keep a
+    Changelog file with a release section, in place of any baseline entry an earlier run left there, and never touches a
+    release section. It prints the version it set, or nothing.
 
     A prerelease is never a baseline, so the version must be a stable one such as 1.4.0 or v1.4.0.
 
@@ -164,7 +166,13 @@ if (Test-Path -LiteralPath $changelogPath -PathType Leaf) {
         $unreleased = [regex]::Match($text, '(?s)## \[Unreleased\]\n(.*?)(?=\n## \[|\n\[unreleased\]:)')
         if ($unreleased.Success) {
             $body = $unreleased.Groups[1].Value
-            if ($body -match '(?m)^### Changed\n') {
+            $baseline = 'Package validation compares each package with the published \d+\.\d+\.\d+ package\.'
+            $earlier = [regex]::Match($body, '(?m)^- ' + $baseline + '$')
+            if ($earlier.Success) {
+                $rest = [regex]::Replace($body.Substring($earlier.Index + $earlier.Length), '\n- ' + $baseline + '(?=\n|\z)', '')
+                $newBody = $body.Substring(0, $earlier.Index) + $entry + $rest
+            }
+            elseif ($body -match '(?m)^### Changed\n') {
                 $newBody = [regex]::Replace($body, '(?m)^### Changed\n\n?', "### Changed`n`n$entry`n", 1)
             }
             elseif (($later = [regex]::Match($body, '(?m)^### (Deprecated|Removed|Fixed|Security)\n')).Success) {
