@@ -731,7 +731,7 @@ function Get-GitVersioningReference {
     @($found) | Sort-Object
 }
 
-# The project's own build scripts that run CSharpier's check, which build/dod.ps1 runs in its Format stage once .config/dotnet-tools.json names CSharpier (ADR-0148): such a wrapper checks the formatting twice. Only a command that runs the check counts, found through PowerShell's parser, so a comment, comment-based help or a string that names it doesn't.
+# The project's own build scripts that run CSharpier's check, which build/dod.ps1 runs in its Format stage once .config/dotnet-tools.json names CSharpier (ADR-0148): such a wrapper checks the formatting twice. Only a command that runs the check counts, found through PowerShell's parser, so a comment, comment-based help or a string that names it doesn't. A script with a syntax error is searched as far as the parser recovers, without a warning, since a broken wrapper fails on its own.
 function Get-CSharpierWrapper([string[]]$TemplateFiles) {
     if (-not (Test-Path -LiteralPath .config/dotnet-tools.json -PathType Leaf) -or (Get-Content -LiteralPath .config/dotnet-tools.json -Raw) -notmatch '(?i)csharpier') { return }
     foreach ($file in @(Get-ChildItem -LiteralPath build -Filter *.ps1 -File -ErrorAction SilentlyContinue | Sort-Object Name)) {

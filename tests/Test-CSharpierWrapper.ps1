@@ -93,6 +93,10 @@ $cases = [ordered]@{
         Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "dotnet csharpier format .`n" }
         Expect = @()
     }
+    'a script with a syntax error still runs the check' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "dotnet csharpier check .`nif (`n" }
+        Expect = @('build/check.ps1')
+    }
     'two scripts come back in name order' = @{
         Files  = [ordered]@{ '.config/dotnet-tools.json' = $manifest; 'build/b.ps1' = $check; 'build/a.ps1' = $check }
         Expect = @('build/a.ps1', 'build/b.ps1')
