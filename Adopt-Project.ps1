@@ -27,6 +27,11 @@
     it prints the warning .\.template\Update-Project.ps1 prints (ADR-0151): until publish.yml calls each, no release
     gets the provenance or the baseline pull request the missing one makes.
 
+    When the SECURITY.md the adoption leaves says releases are immutable and a workflow in .github/workflows runs on a
+    release event or uploads release assets, it prints the note .\.template\Update-Project.ps1 prints: delete that
+    paragraph, since the template's tools/Set-RepositoryBaseline.ps1 leaves such a repository's releases mutable
+    (ADR-0028).
+
     It answers license blank, never copier.yml's Apache-2.0 default, when it works out no license and -Data gives none, so it never chooses a license for existing code (ADR-0024). With no LICENSE or COPYING file at the root, it prints the warning .\.template\Update-Project.ps1 prints: for a blank answer with the command that adds Apache-2.0, for any other answer saying to add that license's text.
 
     For a library it lists the stale NuGet logistics it finds as follow-ups (Get-NuGetLogistics): a .props file no project imports, GeneratePackageOnBuild, settings the template already makes, a .sln, a UTF-8 BOM and projects at the repository root, and the package Description and PackageTags that differ from the newest published package (Get-PackageMetadataDrift).
@@ -74,6 +79,58 @@ function Get-Answer([string]$Key) {
 
 function Get-NormalPath([string]$Value) {
     [IO.Path]::GetFullPath($Value).TrimEnd('\', '/')
+}
+
+# The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, the keys or items
+# indented below it, or - items at its own indent, with quotes, comments and blank lines allowed. A mapping in braces, or
+# no on: key, gives none.
+# A copy of .template/Update-Project.ps1's; tests/Test-UpdateNotes.ps1 keeps the copies equal.
+function Get-WorkflowEvents([string]$Text) {
+    $lines = @($Text -split '\r?\n')
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -notmatch '^(on|"on"|''on''):(.*)$') { continue }
+        $rest = ($Matches[2] -replace '(^|\s)#.*$', '').Trim()
+        $names = if ($rest.StartsWith('[')) { $rest.Trim('[', ']') -split ',' }
+        elseif ($rest.StartsWith('{')) { @() }
+        elseif ($rest) { @($rest) }
+        else {
+            $indent = -1
+            @(for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                $line = $lines[$j]
+                if ($line -match '^\s*(#.*)?$') { continue }
+                $null = $line -match '^(\s*)(.*)$'
+                $lead = $Matches[1].Length
+                $item = $Matches[2]
+                # A line at column 0 ends the block, unless it is a - item of a sequence at the key's own indent.
+                if (-not $lead -and -not ($indent -le 0 -and $item -match '^-(\s|$)')) { break }
+                if ($indent -lt 0) { $indent = $lead }
+                if ($lead -ne $indent) { continue }
+                if ($item -match '^-\s*([^\s#]+)') { $Matches[1] }
+                elseif ($item -match '^([^\s:#]+)\s*:') { $Matches[1] }
+            })
+        }
+        return @($names | ForEach-Object { $_.Trim().Trim('"', "'") } | Where-Object { $_ -match '^[A-Za-z_]+$' })
+    }
+    @()
+}
+
+# Whether a workflow's text runs on a release event, or uploads release assets with gh, an upload action or the API.
+# A copy of .template/Update-Project.ps1's; tests/Test-UpdateNotes.ps1 keeps the copies equal.
+function Test-ReleaseAssetWorkflow([string]$Text) {
+    [bool](((Get-WorkflowEvents $Text) -contains 'release') -or ($Text -match 'gh\s+release\s+upload|upload-release-asset|uploadReleaseAsset|action-gh-release'))
+}
+
+# SECURITY.md's Verify a Release section says releases are immutable, which the template's
+# tools/Set-RepositoryBaseline.ps1 leaves off where a workflow runs on a release event or uploads release assets
+# (ADR-0028).
+# A copy of .template/Update-Project.ps1's; tests/Test-UpdateNotes.ps1 keeps the copies equal.
+function Get-ImmutableReleaseNote([bool]$Offered) {
+    $says = (Test-Path -LiteralPath SECURITY.md) -and (Get-Content -LiteralPath SECURITY.md -Raw) -match '(?m)^Releases are immutable'
+    if (-not ($says -or $Offered) -or -not (Test-Path -LiteralPath .github/workflows)) { return }
+    $files = @(Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Name -match '\.ya?ml$' -and (Test-ReleaseAssetWorkflow (Get-Content -LiteralPath $_.FullName -Raw)) } | ForEach-Object { ".github/workflows/$($_.Name)" })
+    if (-not $files) { return }
+    ''
+    "$(if ($says) { 'SECURITY.md says' } else { 'The template''s change to SECURITY.md above says' }) releases are immutable, but $($files -join ', ') run on a release event or upload release assets, which an immutable release refuses once it is published, so the template's tools/Set-RepositoryBaseline.ps1 leaves this repository's releases mutable (the template's ADR-0028, in docs/decisions/project-template/). $(if ($says) { 'Delete' } else { 'Leave out' }) the paragraph of its Verify a Release section that starts `"Releases are immutable`"."
 }
 
 if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw "$Path isn't a folder." }
@@ -298,6 +355,9 @@ try {
         ''
         '.github/workflows/publish.yml doesn''t call .github/workflows/release-provenance.yml or .github/workflows/raise-baseline.yml, or both, which no longer start on workflow_run, since GitHub starts none for the run tag-release.yml starts: until it calls each, no release gets the provenance or the baseline pull request the missing one makes. Add the provenance and baseline jobs of the template''s publish.yml (the template''s ADR-0151). To attest an earlier release while its Publish packages run''s artifact is kept (14 days): gh workflow run release-provenance.yml -f tag=<tag> -f run-id=<run id>'
     }
+    # SECURITY.md's "Releases are immutable" paragraph, where a workflow needs mutable releases (ADR-0028). The note is
+    # .template/Update-Project.ps1's, word for word.
+    Get-ImmutableReleaseNote $false
     # No license (ADR-0024): the warnings are .template/Update-Project.ps1's, word for word; tests/Test-LicenseWarning.ps1 keeps them equal.
     if (-not (Get-ChildItem -LiteralPath $project -File | Where-Object Name -Match '^(LICEN[CS]E|COPYING)(\.\w+)?$')) {
         $licenseAnswer = "$(Get-Answer 'license')".Trim()

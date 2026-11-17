@@ -16,7 +16,8 @@
       immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise.
       copies    Get-WorkflowEvents and Test-ReleaseAssetWorkflow in Update-Project.ps1 are character for character
-                the ones in tools/Set-RepositoryBaseline.ps1.
+                the ones in tools/Set-RepositoryBaseline.ps1, and Adopt-Project.ps1's copies of those and
+                Get-ImmutableReleaseNote are the ones in Update-Project.ps1.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notes-test-<process ID> in the temp
@@ -188,6 +189,14 @@ $immutableNote = & {
         if (-not $copy -or -not $original -or $copy.Extent.Text -ne $original.Extent.Text) { $fnName }
     }
     Check 'copies: Get-WorkflowEvents and Test-ReleaseAssetWorkflow match tools/Set-RepositoryBaseline.ps1''s' (-not $differ) "differ: [$($differ -join ', ')]"
+    $adoptAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'Adopt-Project.ps1'), [ref]$null, [ref]$null)
+    $adoptDiffer = foreach ($fnName in 'Get-WorkflowEvents', 'Test-ReleaseAssetWorkflow', 'Get-ImmutableReleaseNote') {
+        $isFn = { param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }
+        $copy = $adoptAst.Find($isFn, $true)
+        $original = $ast.Find($isFn, $true)
+        if (-not $copy -or -not $original -or $copy.Extent.Text -ne $original.Extent.Text) { $fnName }
+    }
+    Check 'copies: Adopt-Project.ps1''s Get-WorkflowEvents, Test-ReleaseAssetWorkflow and Get-ImmutableReleaseNote match Update-Project.ps1''s' (-not $adoptDiffer) "differ: [$($adoptDiffer -join ', ')]"
 }
 $immutableNote
 

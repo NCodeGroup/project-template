@@ -10,7 +10,8 @@
     tests/New-TemplateSnapshot.ps1 builds. They run apart from tests/Test-Adoption.ps1, which adopts the plain and
     scaffold fixtures, so a parallel tests/Invoke-AllTests.ps1 run ends sooner. Prints PASS or FAIL per check and exits
     1 on any failure. A library's kept publish.yml that doesn't call release-provenance.yml and raise-baseline.yml gets
-    the warning Update-Project.ps1 prints, word for word (ADR-0151).
+    the warning Update-Project.ps1 prints, word for word (ADR-0151). A repository whose own workflow runs on a release
+    event gets Update-Project.ps1's note on SECURITY.md's immutable-releases paragraph (ADR-0028).
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-adopt-edge-test-<process ID> in the
@@ -64,6 +65,7 @@ Check 'ci-existing: asks for no commit attribution job' (-not $ciOut.Contains('c
 Check 'ci-existing: the baseline command suggests -RequireChecks auto for its own CI' ($ciOut.Contains('-Repo ci-existing -Owner example') -and $ciOut.Contains('keeps its own CI: add -RequireChecks auto')) $ciOut
 Check 'ci-existing: says it left local out and how to add it' ($ciOut.Contains("workflow_tools: [claude, copilot], the template's default") -and $ciOut.Contains("-Data @{ workflow_tools = 'claude', 'copilot', 'local' }")) $ciOut
 Check 'ci-existing: a kept publish.yml with workflow_dispatch gets no warning' (-not $ciOut.Contains('has no workflow_dispatch trigger')) $ciOut
+Check 'ci-existing: says to delete SECURITY.md''s immutable-releases paragraph, since publish.yml runs on a release event' ($ciOut.Contains('SECURITY.md says releases are immutable, but .github/workflows/publish.yml run on a release event or upload release assets') -and $ciOut.Contains('Delete the paragraph of its Verify a Release section')) $ciOut
 
 # A .NET repository with catch-all .gitattributes rules, a global.json with a partial SDK version, an image, its own
 # workflow and a publish.yml of its own without a workflow_dispatch trigger: four gaps found by adopting NCodeGroup's
@@ -118,6 +120,7 @@ $copilotOnly = New-Fixture 'copilot-only' @{
     '.github/agents/plan-executor.agent.md'       = "old`n"
 } 'https://github.com/example/copilot-only.git'
 $coOut = & $adopt -Path $copilotOnly -Template $tpl -Ref v0.1.0 -NoVerify | Out-String
+Check 'copilot-only: no workflow runs on a release event, so no immutable-releases note' (-not $coOut.Contains('releases are immutable, but')) $coOut
 $coAnswers = Get-Content -Raw -LiteralPath (Join-Path $copilotOnly '.copier-answers.yml')
 $coSettings = Get-Content -Raw -LiteralPath (Join-Path $copilotOnly '.vscode\settings.json')
 $coLocal = @('.github\agents\hybrid-planner.agent.md', '.github\agents\local-implementer.agent.md', '.github\prompts\execute-step-local.prompt.md' | Where-Object { Test-Path -LiteralPath (Join-Path $copilotOnly $_) })
