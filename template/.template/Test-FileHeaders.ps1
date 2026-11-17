@@ -10,7 +10,9 @@
     comment line within its first 10 lines. The comment follows the file's extension: "#" for scripts, "//" for the C
     family and JavaScript, "/* ... */" on each line for .css, .scss and .less, and "//" inside the frontmatter for
     .astro, whose lines must sit between its leading "---" lines so nothing reaches the built page. Files of other
-    kinds, and names ending in .min.js or .d.ts, aren't checked.
+    kinds, and names ending in .min.js, aren't checked. A hand-written declaration file (.d.ts) is checked like any
+    TypeScript file; a generated one, like other build output, sits in a git-ignored folder, which git ls-files
+    leaves out.
     Prints each miss and exits 1 when there is one, else 0. With -Fix, it adds the missing lines instead, after any #!
     line or an .astro file's opening "---" line, giving an .astro file without frontmatter a "---" block that holds
     them, keeping the file's line endings and byte order mark, and exits 0. Without an author_name answer there is no
@@ -66,7 +68,7 @@ $utf8 = [Text.UTF8Encoding]::new($false)
 $checked = 0
 $failing = 0
 foreach ($path in $paths) {
-    if ($path -match '^(\.template|\.claude|\.github|\.githooks|\.vscode)/' -or $path -match '(^|/)(node_modules|vendor)/' -or $path -match '\.(min\.js|d\.ts)$') { continue }
+    if ($path -match '^(\.template|\.claude|\.github|\.githooks|\.vscode)/' -or $path -match '(^|/)(node_modules|vendor)/' -or $path -match '\.min\.js$') { continue }
     $extension = [IO.Path]::GetExtension($path).ToLowerInvariant()
     $open, $close = if ($hashMarker -contains $extension) { '#', '' } elseif ($slashMarker -contains $extension) { '//', '' } elseif ($blockMarker -contains $extension) { '/*', '*/' } else { continue }
     $file = Join-Path $Root $path

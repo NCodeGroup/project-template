@@ -6,11 +6,13 @@
     Runs the script with pwsh -NoProfile -File and -Root set to a fixture Git repository, and checks its exit code,
     output and files. Prints PASS or FAIL per check and exits 1 on any failure (ADR-0024).
       check        A run fails and names the files without the copyright line or the SPDX line, among them .astro and
-                   stylesheet files and an .astro file whose lines sit outside its frontmatter, and not the files
-                   under .template/ or a vendor/ folder, the files of other kinds, or the files that have both lines.
+                   stylesheet files, a tracked .d.ts file and an .astro file whose lines sit outside its frontmatter,
+                   and not the files under .template/, a vendor/ folder or a git-ignored folder, the files of other
+                   kinds, or the files that have both lines.
       fix          -Fix exits 0, adds the header at the top or after a #! line, inside an .astro file's frontmatter or
-                   in a --- block of its own, and as /* */ comments in a stylesheet, adds only the SPDX line to a file
-                   with a copyright line, leaves the other files as they were, and a second run passes.
+                   in a --- block of its own, and as /* */ comments in a stylesheet, adds the header above a .d.ts
+                   file's /// directives, adds only the SPDX line to a file with a copyright line, leaves the other
+                   files as they were, and a second run passes.
       endings      -Fix keeps a file's CRLF line endings and its UTF-8 byte order mark.
       no-license   With a blank license answer only the copyright line is required.
       no-author    Without an author_name answer there is nothing to check.
@@ -78,6 +80,9 @@ $files = @{
     'styles/half.less'     = "/* $copyright */`n`n@gap: 1rem;`n"
     'vendor/lib/fonts.css' = "@font-face { font-family: Lib; }`n"
     'web/vendor/lib.js'    = "export const lib = 1;`n"
+    'src/env.d.ts'         = "/// <reference types=`"astro/client`" />`n"
+    'dist/types.d.ts'      = "export declare const x: number;`n"
+    '.gitignore'           = "dist/`n"
     '.template/Script.ps1' = "Write-Output 'template'`n"
     'notes.md'             = "# Notes`n"
 }
@@ -86,8 +91,9 @@ $run = Invoke-Headers $project
 Check 'check: a run fails' ($run.ExitCode -eq 1) $run.Output
 Check 'check: names the files without a header' ($run.Output.Contains('src/no-header.ts: no copyright line') -and $run.Output.Contains('run.sh: no copyright line') -and $run.Output.Contains('src/half.ps1: no SPDX-License-Identifier line')) $run.Output
 Check 'check: names the Astro and stylesheet files without a header, and an Astro file whose lines sit outside its frontmatter' ($run.Output.Contains('src/Card.astro: no copyright line') -and $run.Output.Contains('src/Plain.astro: no copyright line') -and $run.Output.Contains('src/Outside.astro: no copyright line') -and $run.Output.Contains('styles/site.css: no copyright line') -and $run.Output.Contains('styles/half.less: no SPDX-License-Identifier line') -and -not $run.Output.Contains('styles/half.less: no copyright line')) $run.Output
+Check 'check: names a tracked declaration file, and not one in a git-ignored folder' ($run.Output.Contains('src/env.d.ts: no copyright line') -and -not $run.Output.Contains('dist/')) $run.Output
 Check 'check: leaves out the template files, vendor/ folders, other kinds and the files with both lines' (-not $run.Output.Contains('Script.ps1') -and -not $run.Output.Contains('vendor/') -and -not $run.Output.Contains('notes.md') -and -not $run.Output.Contains('src/ok.py') -and -not $run.Output.Contains('src/Ok.astro') -and -not $run.Output.Contains('styles/ok.scss')) $run.Output
-Check 'check: says how to fix and counts the files' ($run.Output.Contains('Run ./.template/Test-FileHeaders.ps1 -Fix to add them.') -and $run.Output.Contains('File headers: FAILED (9 files)')) $run.Output
+Check 'check: says how to fix and counts the files' ($run.Output.Contains('Run ./.template/Test-FileHeaders.ps1 -Fix to add them.') -and $run.Output.Contains('File headers: FAILED (10 files)')) $run.Output
 
 $fix = Invoke-Headers $project @('-Fix')
 Check 'fix: exits 0 and reports each file' ($fix.ExitCode -eq 0 -and $fix.Output.Contains('src/no-header.ts: header added')) $fix.Output
@@ -99,7 +105,8 @@ Check 'fix: an Astro file without frontmatter gets a --- block that holds the he
 Check 'fix: an empty Astro frontmatter gets the header and no blank line before its closing ---' ((Read-Text $project 'src/Empty.astro') -eq "---`n// $copyright`n// SPDX-License-Identifier: MIT`n---`n<p>empty</p>`n") (Read-Text $project 'src/Empty.astro')
 Check 'fix: a stylesheet gets the header as /* */ comments' ((Read-Text $project 'styles/site.css') -eq "/* $copyright */`n/* SPDX-License-Identifier: MIT */`n`nbody { margin: 0; }`n") (Read-Text $project 'styles/site.css')
 Check 'fix: a stylesheet with a copyright line gets only the SPDX line after it' ((Read-Text $project 'styles/half.less') -eq "/* $copyright */`n/* SPDX-License-Identifier: MIT */`n`n@gap: 1rem;`n") (Read-Text $project 'styles/half.less')
-Check 'fix: other files are left as they were' ((Read-Text $project 'notes.md') -eq $files['notes.md'] -and (Read-Text $project '.template/Script.ps1') -eq $files['.template/Script.ps1'] -and (Read-Text $project 'vendor/lib/fonts.css') -eq $files['vendor/lib/fonts.css'] -and (Read-Text $project 'web/vendor/lib.js') -eq $files['web/vendor/lib.js'] -and (Read-Text $project 'src/ok.py') -eq $files['src/ok.py'] -and (Read-Text $project 'src/Ok.astro') -eq $files['src/Ok.astro'] -and (Read-Text $project 'styles/ok.scss') -eq $files['styles/ok.scss'])
+Check 'fix: a declaration file gets the header above its directives' ((Read-Text $project 'src/env.d.ts') -eq "// $copyright`n// SPDX-License-Identifier: MIT`n`n/// <reference types=`"astro/client`" />`n") (Read-Text $project 'src/env.d.ts')
+Check 'fix: other files are left as they were' ((Read-Text $project 'notes.md') -eq $files['notes.md'] -and (Read-Text $project '.template/Script.ps1') -eq $files['.template/Script.ps1'] -and (Read-Text $project 'vendor/lib/fonts.css') -eq $files['vendor/lib/fonts.css'] -and (Read-Text $project 'web/vendor/lib.js') -eq $files['web/vendor/lib.js'] -and (Read-Text $project 'dist/types.d.ts') -eq $files['dist/types.d.ts'] -and (Read-Text $project 'src/ok.py') -eq $files['src/ok.py'] -and (Read-Text $project 'src/Ok.astro') -eq $files['src/Ok.astro'] -and (Read-Text $project 'styles/ok.scss') -eq $files['styles/ok.scss'])
 $again = Invoke-Headers $project
 Check 'fix: a second run passes' ($again.ExitCode -eq 0 -and $again.Output.Contains('File headers: PASSED')) $again.Output
 
