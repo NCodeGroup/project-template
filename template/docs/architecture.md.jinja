@@ -35,10 +35,10 @@ Not described yet.
 (`{{ '.github/workflows/ci.yml' if git_host == 'github' else '.gitlab-ci.yml' }}`) runs on every {{ pr }}, and runs the
 project's build and test commands once it has them.{% endif %} {% if ghlib %}Releases are tagged and published as
 [ADR-0016](decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md)
-records.{% else %}Releases are tagged once `AGENTS.md`'s Landing section sets `release: tag`, and published too with
+records.{% else %}Releases are tagged when `AGENTS.md`'s Landing section sets `release: tag`, and published too with
 `tag+release`, as
-[ADR-0016](decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md) records;
-it starts with `release: none`.{% endif %}
+[ADR-0016](decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md)
+records.{% endif %}
 {%- if ghlib %} `publish.yml` tests and packs the tagged commit, pushes to nuget.org through trusted publishing once a
 maintainer approves the `nuget` environment, and calls `release-provenance.yml` and `raise-baseline.yml`
 ([ADR-0137](decisions/project-template/0137-the-release-workflow-starts-package-publishing.md),
