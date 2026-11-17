@@ -789,12 +789,22 @@ function Get-GitVersioningReference {
     @($found) | Sort-Object
 }
 
-# The project's own build scripts that run CSharpier's check, which build/dod.ps1 runs in its Format stage once .config/dotnet-tools.json names CSharpier (ADR-0148): such a wrapper checks the formatting twice.
+# The project's own build scripts that run CSharpier's check, which build/dod.ps1 runs in its Format stage once .config/dotnet-tools.json names CSharpier (ADR-0148): such a wrapper checks the formatting twice. Only a command that runs the check counts, found through PowerShell's parser, so a comment, comment-based help or a string that names it doesn't. A script with a syntax error is searched as far as the parser recovers, without a warning, since a broken wrapper fails on its own.
 function Get-CSharpierWrapper([string[]]$TemplateFiles) {
     if (-not (Test-Path -LiteralPath .config/dotnet-tools.json -PathType Leaf) -or (Get-Content -LiteralPath .config/dotnet-tools.json -Raw) -notmatch '(?i)csharpier') { return }
     foreach ($file in @(Get-ChildItem -LiteralPath build -Filter *.ps1 -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
         $relative = "build/$($file.Name)"
-        if ($relative -notin $TemplateFiles -and (Get-Content -LiteralPath $file.FullName -Raw) -match '(?m)^[^#\r\n]*\bcsharpier\s+check\b') { $relative }
+        if ($relative -in $TemplateFiles) { continue }
+        $script = [Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$null)
+        $run = $script.Find({
+                param($node)
+                if ($node -isnot [Management.Automation.Language.CommandAst]) { return $false }
+                $words = @($node.CommandElements | ForEach-Object { if ($_ -is [Management.Automation.Language.StringConstantExpressionAst]) { $_.Value } else { '' } })
+                $at = 0
+                if ($words[0] -in 'dotnet', 'dotnet.exe') { $at = if ($words[1] -ceq 'tool' -and $words[2] -ceq 'run') { 3 } else { 1 } }
+                $words.Count -ge $at + 2 -and $words[$at] -ceq 'csharpier' -and $words[$at + 1] -ceq 'check'
+            }, $true)
+        if ($run) { $relative }
     }
 }
 
