@@ -8,6 +8,6 @@
    - Choose the base: the branch that `git symbolic-ref --short refs/remotes/origin/HEAD` prints, such as `origin/main`. If that command fails, run `git remote set-head origin --auto` and run it once more. In a clone without `origin`, the base is `HEAD`.
    - Run `git worktree add --no-track -b worktree-<name> .claude/worktrees/<name> <base>`, which never switches the main checkout's branch.
    - `<plan folder>` is now the new worktree's absolute path.
-4. A worktree is a fresh checkout, without ignored files such as installed dependencies. If the build or test command needs a setup step first, such as `npm ci`, run it in the worktree and, in a plan, list it under Context for the executor.
+4. A worktree is a fresh checkout, without ignored files such as installed dependencies. If the build or test command needs a setup step first, such as `npm ci`, run it in the worktree and, in a plan, list it under Context for the executor. {{PROMPT:_main-checkout-install}}
 
-From here on, `<plan folder>` is the repository root: read, write and run commands only there, never in the main checkout. {{PROMPT:_copilot-plan-folder}}
+From here on, `<plan folder>` is the repository root: read, write and run commands only there, never in the main checkout, except the install item 4 runs there. {{PROMPT:_copilot-plan-folder}}

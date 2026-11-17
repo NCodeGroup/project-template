@@ -545,6 +545,7 @@ A Dependabot pull request that only moves the NCode Review pin in `.github/workf
 | Every executor — the Copilot Implementer, the `execute-step` prompt, and the Copilot CLI and Claude Code `plan-executor` agents — runs on Claude Sonnet 5.5 | Always |
 | Each tool's planning commands create the plan's worktree, and the commands that execute, re-plan, review or finish a plan join it; no Copilot file uses Claude Code's worktree tools | Always |
 | The planning commands and `/run-issues` settle the hooks and the push branch in the main checkout before they create a worktree | Always |
+| The planning commands' worktree setup, in each tool, runs a Node.js project's install in the main checkout too when it has none, through `workflow/templates/_main-checkout-install.md`; Copilot's `/run-issues` allows that install there, the Node.js rules say why, and USAGE.md's troubleshooting names the fix | Always |
 | No generated command, prompt, skill or agent switches or creates a branch in the main checkout | Always |
 | Every rendered `.gitignore` ignores `.claude/worktrees/` | Always |
 | `ship-plan` and `run-issues` delete agent attribution lines from a pull request's title and description before `gh pr create` or `gh pr edit` sends them, through `workflow/templates/_pr-attribution.md` | Always |

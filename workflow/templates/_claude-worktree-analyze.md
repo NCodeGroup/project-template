@@ -10,8 +10,8 @@ An analysis or a decision record lives in its own git worktree, as a plan does, 
    - Choose the base: the branch that `git symbolic-ref --short refs/remotes/origin/HEAD` prints, such as `origin/main`. If that command fails, run `git remote set-head origin --auto` and run it once more. In a clone without `origin`, the base is `HEAD`.
    - Run `git worktree add --no-track -b worktree-<name> .claude/worktrees/<name> <base>`, which never switches the main checkout's branch.
    - Switch into it with the `EnterWorktree` tool and its `path`, the worktree's absolute path. Claude Code never removes a worktree entered by path, so the worktree keeps the analysis, which is never committed, without an empty commit.
-4. A worktree is a fresh checkout, without ignored files such as installed dependencies. If the build or test command needs a setup step first, such as `npm ci`, run it in the worktree and, in a plan, list it under Context for the executor.
+4. A worktree is a fresh checkout, without ignored files such as installed dependencies. If the build or test command needs a setup step first, such as `npm ci`, run it in the worktree and, in a plan, list it under Context for the executor. {{PROMPT:_main-checkout-install}}
 
-From here on, the repository root is the worktree's root: read, write and run commands only there, never in the main checkout.
+From here on, the repository root is the worktree's root: read, write and run commands only there, never in the main checkout, except the install item 4 runs there.
 
 {{PROMPT:_analysis-worktree}} End your reply with the worktree's name, folder and branch, and how to go on: a planning command, such as `/plan-feature`, in this session, or from a terminal `claude --worktree <name>` and then the planning command, plans in the same worktree; `/continue-plan` lists it; and `/finish-plan <name>`, from a session in the main checkout, removes it once you no longer need it.

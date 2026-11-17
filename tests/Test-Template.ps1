@@ -1236,6 +1236,16 @@ $m += @(foreach ($root in '', 'template\') { foreach ($pair in @(
     if (-not ($t.Contains($pushSessionText) -and $settleAt -ge 0 -and $settleAt -lt $hooksAt -and $hooksAt -ge 0 -and $createAt -ge $hooksAt + $gitHooksText.Length -and -not $t.Substring($hooksAt + $gitHooksText.Length, $createAt - $hooksAt - $gitHooksText.Length).Trim())) { "${file}: the push branch, the hooks and the worktree are not in that order" }
 } })
 Check 'workflow: every planning command, run-issues and address-feedback settle the hooks and the push branch in the main checkout before they create a worktree' (-not $m) ($m -join '; ')
+# Each planning command's worktree setup installs a Node.js project's packages in the main checkout when it has none, since a tool in the worktree can resolve the main checkout's config (#415).
+$mainInstallText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_main-checkout-install.md')).Body.Trim()
+$m = @(foreach ($cmd in $worktreeKinds.create + $worktreeKinds.analyze) { foreach ($rel in ".claude\commands\$cmd.md", ".github\prompts\$cmd.prompt.md", ".github\skills\$cmd\SKILL.md") { foreach ($root in '', 'template\') {
+    if (-not [IO.File]::ReadAllText((Join-Path $repoRoot "$root$rel")).Contains("under Context for the executor. $mainInstallText")) { "$root${rel}: lacks the main checkout's install in item 4" }
+} } })
+$m += @(Get-MissingText ('template\.github\agents\copilot-planner.agent.md', 'template\.github\agents\hybrid-planner.agent.md') $mainInstallText)
+$m += @(Get-MissingText $copilotRunFiles 'the Node.js install a planning stage''s worktree item 4 runs there')
+$m += @(Get-MissingText $rulesJinja 'A planning command runs the install in the main checkout too when it has no `node_modules`.')
+$m += @(Get-MissingText 'USAGE.md' 'Tsconfig not found astro/tsconfigs/strict')
+Check 'workflow: the planning commands install a Node.js project''s packages in the main checkout when it has none, which a build in a worktree can need (#415)' (-not $m) ($m -join '; ')
 # A command never switches or creates a branch in the main checkout (#349): only the legacy finish of a plan written without a worktree, a pre-v0.11.0 template update, and a command the user is told to run do.
 $switchAllowed = @{
     'finish-plan'          = @('`git switch <default branch>`')
