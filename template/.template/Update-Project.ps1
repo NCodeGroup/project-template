@@ -232,10 +232,12 @@ function Get-WorkflowEvents([string]$Text) {
     @()
 }
 
-# Whether a workflow's text runs on a release event, or uploads release assets with gh, an upload action or the API.
+# Whether a workflow's text runs on a release event, or uploads release assets with gh, an upload action or the API
+# on a line that isn't a comment.
 # A copy of tools/Set-RepositoryBaseline.ps1's; the copies must match.
 function Test-ReleaseAssetWorkflow([string]$Text) {
-    [bool](((Get-WorkflowEvents $Text) -contains 'release') -or ($Text -match 'gh\s+release\s+upload|upload-release-asset|uploadReleaseAsset|action-gh-release'))
+    $code = $Text -replace '(?m)^\s*#.*$', ''
+    [bool](((Get-WorkflowEvents $Text) -contains 'release') -or ($code -match 'gh\s+release\s+upload|upload-release-asset|uploadReleaseAsset|action-gh-release'))
 }
 
 # SECURITY.md's Verify a Release section says releases are immutable, which the template's

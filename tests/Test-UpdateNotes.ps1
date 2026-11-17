@@ -18,7 +18,8 @@
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
       immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
-                when a workflow runs on a release event or uploads release assets, and nothing otherwise.
+                when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
+                for an upload named only in a comment line.
       copies    Get-WorkflowEvents and Test-ReleaseAssetWorkflow in Update-Project.ps1 are character for character
                 the ones in tools/Set-RepositoryBaseline.ps1, and Adopt-Project.ps1's copies of those and
                 Get-ImmutableReleaseNote are the ones in Update-Project.ps1.
@@ -199,6 +200,7 @@ $immutableNote = & {
         'offered, upload workflow'       = @{ Security = "# Security`n"; File = 'attach.yml'; Workflow = "on: workflow_dispatch`njobs:`n  a:`n    steps:`n      - run: gh release upload v1.0.0 dist/app.tgz`n"; Offered = $true; Want = @('The template''s change to SECURITY.md above', 'Leave out the paragraph') }
         'paragraph, no release workflow' = @{ Security = $paragraph; File = 'tag-release.yml'; Workflow = "on:`n  push:`njobs:`n  release:`n    runs-on: x`n"; Offered = $false; Want = @() }
         'no paragraph'                   = @{ Security = "# Security`n"; File = 'publish.yml'; Workflow = $releaseEvent; Offered = $false; Want = @() }
+        'paragraph, upload in a comment' = @{ Security = $paragraph; File = 'notes.yml'; Workflow = "on: workflow_dispatch`njobs:`n  a:`n    runs-on: x`n    steps:`n      # gh release upload runs in attach.yml`n      - run: echo hi`n"; Offered = $false; Want = @() }
     }
     foreach ($name in $immutableCases.Keys) {
         $case = $immutableCases[$name]
