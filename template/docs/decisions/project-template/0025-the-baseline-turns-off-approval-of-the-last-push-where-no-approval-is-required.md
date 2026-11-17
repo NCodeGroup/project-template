@@ -74,8 +74,9 @@ With zero required approvals, the baseline never has approval of the last push o
 - The baseline now loosens one setting in its own ruleset, the only exception to "the baseline never loosens a ruleset"
   in ADR-0022 and [ADR-0024](0024-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md). It makes no
   other ruleset looser, and the setting it turns off could not be met, so nothing a merge could have waited for goes.
-- Where GitHub refuses the change, the run says it was not available, with the reason, and goes on; the owner then
-  unticks the setting in the ruleset.
+- Where GitHub refuses the change, the run says it was not available, with the reason, prints the notice with the
+  command that turns the setting off, as it does for a ruleset of the owner's, and goes on; the owner then runs the
+  command or unticks the setting in the ruleset.
 
 ## References
 

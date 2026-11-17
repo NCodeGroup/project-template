@@ -350,6 +350,9 @@ $repos = @{
     oursBlockedRefused = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true)) -WriteFails @{ 'rulesets/101' = 403 }
     ownedThenOursBlocked = New-Repo -Rulesets @((New-Ruleset 'owner rules' -LastPush $true), (New-Ruleset 'Protect main' -LastPush $true))
     oursApproved = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 2))
+    oursApprovedOff = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $false -Approvals 2))
+    oursOneApproval = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 1))
+    oursOneApprovalOff = New-Repo -Rulesets @((New-Ruleset 'Protect main' -LastPush $false -Approvals 1))
     ownedLoose = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false))
     oursLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $false))
     oursStaleLoose = New-Repo -Rulesets @((New-Ruleset 'Protect main' -Threads $true -Stale $false))
@@ -642,6 +645,21 @@ try {
     Check 'last push: -RequireChecks run on a ruleset with last-push approval and no approval says it turns it off, with no notice' ($r1.Output.Contains('done: oursBlocked (main): update ''Protect main'' with 1 required check(s): test') -and $r1.Output.Contains(', and turns off approval of the last push, which blocks every merge while no approval is required') -and $r1.Output -notmatch 'notice:' -and $r4.Output -notmatch 'turns off') "$($r1.Output) $($r4.Output)"
     $r5 = Invoke-Baseline @('-Repo', 'oursApproved')
     Check 'last push: a Protect main that requires approvals keeps approval of the last push, and is not written' (($r5.Changes -join '|') -notmatch 'rulesets/101' -and $r5.Output -notmatch 'notice:|turn off') "$($r5.Changes -join '|') $($r5.Output)"
+    # The setting is never turned on without an approval, and a ruleset with one approval or more keeps its setting, on or
+    # off (ADR-0025): the boundary is between zero and one, on -RequireChecks and on a plain run.
+    $r6 = Invoke-Baseline @('-Repo', 'oursApprovedOff', '-RequireChecks', 'test')
+    $p6 = ($r6.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'last push: -RequireChecks on a ruleset with two required approvals and the setting off keeps both, and does not turn it on' ($p6.require_last_push_approval -eq $false -and $p6.required_approving_review_count -eq 2 -and $r6.Output -notmatch 'turns off|notice:') "$($p6 | ConvertTo-Json -Compress) $($r6.Output)"
+    $r7 = Invoke-Baseline @('-Repo', 'oursOneApproval', '-RequireChecks', 'test')
+    $p7 = ($r7.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'last push: -RequireChecks on a ruleset with one required approval and the setting on keeps both' ($p7.require_last_push_approval -eq $true -and $p7.required_approving_review_count -eq 1 -and $r7.Output -notmatch 'turns off|notice:') "$($p7 | ConvertTo-Json -Compress) $($r7.Output)"
+    $r8 = Invoke-Baseline @('-Repo', 'oursOneApprovalOff', '-RequireChecks', 'test')
+    $p8 = ($r8.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'last push: -RequireChecks on a ruleset with one required approval and the setting off does not turn it on' ($p8.require_last_push_approval -eq $false -and $p8.required_approving_review_count -eq 1) "$($p8 | ConvertTo-Json -Compress)"
+    foreach ($name in 'oursOneApproval', 'oursOneApprovalOff', 'oursApprovedOff') {
+        $r9 = Invoke-Baseline @('-Repo', $name)
+        Check "last push: a plain run on $name writes no ruleset and prints no notice or turn-off" (-not @($r9.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' }).Count -and ($r9.Changes -join '|') -notmatch "$name/rulesets/101" -and $r9.Output -notmatch 'notice:|turn off|turns off') "$($r9.Changes -join '|') $($r9.Output)"
+    }
     $scan = @(($r.Body.rules | Where-Object type -eq 'code_scanning').parameters.code_scanning_tools)
     $r2 = Invoke-Baseline @('-Repo', 'oursWithoutCodeQL', '-RequireChecks', 'test')
     Check 'update: a ruleset with a code-scanning rule keeps it, whatever the default setup says (advanced setup runs CodeQL too)' ((@($r2.Body.rules.type) -contains 'code_scanning') -and $r2.Output -match 'keeps its code-scanning rule') "$(@($r2.Body.rules.type) -join ',') $($r2.Output)"
@@ -660,7 +678,10 @@ try {
     $r = Invoke-Baseline @('-Repo', 'oursBlockedApprover')
     $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/oursBlockedApprover/rulesets/101' })
     $ap = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
-    Check 'approval: a Protect main with last-push approval and no approval gets one approval, and no notice' ($puts.Count -eq 1 -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $r.Output -notmatch 'notice:') "$($r.Changes -join '|') $($r.Output)"
+    Check 'approval: a Protect main with last-push approval and no approval gets one approval, and no notice, and the output never says it turns last-push approval off' ($puts.Count -eq 1 -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $r.Output -notmatch 'notice:|turn off' -and $r.Output.Contains("oursBlockedApprover: 'Protect main': require at least one approval, of the last push: set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'oursBlockedApprover', '-RequireChecks', 'test')
+    $ap = ($r.Body.rules | Where-Object type -eq 'pull_request').parameters
+    Check 'approval: -RequireChecks on that ruleset ends at one approval with last-push approval on, and says nothing about turning it off' ($ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $r.Output -notmatch 'turn off|turns off|notice:') "$($ap | ConvertTo-Json -Compress) $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'ownedApprover')
     Check 'approval: a ruleset of the owner''s is not written for the approval' (($r.Changes -join '|') -notmatch 'rulesets/101' -and -not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/101' }).Count) "$($r.Changes -join '|') $($r.Output)"
 
@@ -681,6 +702,11 @@ try {
     Check 'last push: with conversations and stale reviews loose too, one PUT sets all three' ($puts.Count -eq 1 -and $lp.require_last_push_approval -eq $false -and $lp.required_review_thread_resolution -eq $true -and $lp.dismiss_stale_reviews_on_push -eq $true -and $r.Output.Contains("oursBlockedLoose: 'Protect main': require every conversation resolved, and dismiss stale reviews on push, and turn off approval of the last push, which blocks every merge while no approval is required: set")) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'oursBlockedRefused')
     Check 'last push: a refused change is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("oursBlockedRefused: 'Protect main': turn off approval of the last push, which blocks every merge while no approval is required: not available (HTTP 403") -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    $line = ($r.Output -split "`r?`n" | Where-Object { $_ -like "*oursBlockedRefused: notice: 'Protect main' requires approval of the last push*" } | Select-Object -First 1)
+    $cmd = $line -replace '^.*, or run: ', ''
+    $parseErrors = $null
+    $null = [Management.Automation.Language.Parser]::ParseInput("$cmd", [ref]$null, [ref]$parseErrors)
+    Check 'last push: a refused change also prints the notice, saying GitHub refused it, with a command that parses and names the ruleset' ($line -and $line.Contains('GitHub refused the change, so it is still on') -and $cmd -ne $line -and -not $parseErrors.Count -and $cmd.Contains('repos/NCodeGroup/oursBlockedRefused/rulesets/101')) "$line $($parseErrors -join '; ')"
     $r = Invoke-Baseline @('-Repo', 'ownedThenOursBlocked')
     $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/*' })
     $lp = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }

@@ -519,12 +519,16 @@ function Set-BranchRuleset {
 # Prints the command that turns off approval of the last push in a ruleset of the owner's that has it on with no approving
 # review required: GitHub then wants someone other than the pusher to approve the newest push, which blocks every merge
 # where only the author can approve (#385). This script changes no ruleset but its own "Protect main", which it turns
-# the setting off in (ADR-0025), so the maintainer runs the printed command.
-function Write-LastPushNotice([string]$Name, $Ruleset) {
+# the setting off in (ADR-0025), so the maintainer runs the printed command. -Refused is for the script's own ruleset
+# when GitHub refused the write that turns it off: the setting is still on, so the notice says so and prints the command.
+function Write-LastPushNotice([string]$Name, $Ruleset, [switch]$Refused) {
     $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
-    if (-not $rule -or $rule.parameters.require_last_push_approval -ne $true -or [int]$rule.parameters.required_approving_review_count -ge 1) { return }
+    if (-not $Refused -and (-not $rule -or $rule.parameters.require_last_push_approval -ne $true -or [int]$rule.parameters.required_approving_review_count -ge 1)) { return }
     $path = "repos/$Owner/$Name/rulesets/$($Ruleset.id)"
-    Write-Host "${Name}: notice: '$($Ruleset.name)' requires approval of the last push but no approving review, which blocks every merge where nobody but the author can approve. This script changes no ruleset but its own '$rulesetName'; to turn it off, run: `$rs = gh api $path | ConvertFrom-Json; (`$rs.rules | Where-Object type -eq 'pull_request').parameters.require_last_push_approval = `$false; @{ rules = `$rs.rules } | ConvertTo-Json -Depth 20 | gh api -X PUT $path --input -"
+    $command = "`$rs = gh api $path | ConvertFrom-Json; (`$rs.rules | Where-Object type -eq 'pull_request').parameters.require_last_push_approval = `$false; @{ rules = `$rs.rules } | ConvertTo-Json -Depth 20 | gh api -X PUT $path --input -"
+    $why = if ($Refused) { "GitHub refused the change, so it is still on; untick it in the ruleset's settings, or run" }
+    else { "This script changes no ruleset but its own '$rulesetName'; to turn it off, run" }
+    Write-Host "${Name}: notice: '$($Ruleset.name)' requires approval of the last push but no approving review, which blocks every merge where nobody but the author can approve. ${why}: $command"
 }
 
 # Turns on "require conversations resolved" in a ruleset that already requires pull requests, and changes nothing else in
@@ -559,7 +563,10 @@ function Enable-ThreadResolution {
     if (-not $PSCmdlet.ShouldProcess($Name, "turn on $label")) { Write-Host "${Name}: ${label}: would set"; return }
     $result = Invoke-HostWrite PUT "repos/$Owner/$Name/rulesets/$($Ruleset.id)" @{ rules = @($Ruleset.rules) }
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Name}: ${label}: set" }
-    else { Write-Host "${Name}: ${label}: not available ($(Get-FailureReason $result))" }
+    else {
+        Write-Host "${Name}: ${label}: not available ($(Get-FailureReason $result))"
+        if ($needLastPushOff) { Write-LastPushNotice $Name $Ruleset -Refused }
+    }
 }
 
 # The release tags' ruleset: no v* tag is deleted or updated (moved), by anyone, since a release tag names one published
