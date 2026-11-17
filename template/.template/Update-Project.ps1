@@ -742,7 +742,9 @@ function Get-CSharpierWrapper([string[]]$TemplateFiles) {
                 param($node)
                 if ($node -isnot [Management.Automation.Language.CommandAst]) { return $false }
                 $words = @($node.CommandElements | ForEach-Object { if ($_ -is [Management.Automation.Language.StringConstantExpressionAst]) { $_.Value } else { '' } })
-                ($words.Count -ge 3 -and $words[0] -in 'dotnet', 'dotnet.exe' -and $words[1] -ceq 'csharpier' -and $words[2] -ceq 'check') -or ($words.Count -ge 2 -and $words[0] -ceq 'csharpier' -and $words[1] -ceq 'check')
+                $at = 0
+                if ($words[0] -in 'dotnet', 'dotnet.exe') { $at = if ($words[1] -ceq 'tool' -and $words[2] -ceq 'run') { 3 } else { 1 } }
+                $words.Count -ge $at + 2 -and $words[$at] -ceq 'csharpier' -and $words[$at + 1] -ceq 'check'
             }, $true)
         if ($run) { $relative }
     }

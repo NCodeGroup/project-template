@@ -81,6 +81,18 @@ $cases = [ordered]@{
         Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "if (`$true) { csharpier check . }`n" }
         Expect = @('build/check.ps1')
     }
+    'dotnet.exe runs the check' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "dotnet.exe csharpier check .`n" }
+        Expect = @('build/check.ps1')
+    }
+    'dotnet tool run runs the check' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "dotnet tool run csharpier check .`n" }
+        Expect = @('build/check.ps1')
+    }
+    'another csharpier command' = @{
+        Files  = @{ '.config/dotnet-tools.json' = $manifest; 'build/check.ps1' = "dotnet csharpier format .`n" }
+        Expect = @()
+    }
     'two scripts come back in name order' = @{
         Files  = [ordered]@{ '.config/dotnet-tools.json' = $manifest; 'build/b.ps1' = $check; 'build/a.ps1' = $check }
         Expect = @('build/a.ps1', 'build/b.ps1')
