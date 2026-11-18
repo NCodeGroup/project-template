@@ -1281,6 +1281,17 @@ $m += @(Get-MissingText $copilotFeedbackFiles ('`.github/skills/address-feedback
 $m += @(foreach ($p in $feedbackFiles + $copilotFeedbackFiles) { $t = [IO.File]::ReadAllText((Join-Path $repoRoot $p)); foreach ($x in 'a nit, left for the maintainer', 'the merge is already recommended, so this run leaves') { if ($t.Contains($x)) { "${p}: still has $x" } } })
 $m += @(foreach ($p in $copilotFeedbackFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'ExitWorktree', 'EnterWorktree', '.claude/commands/', '$ARGUMENTS', '{{', 'as a background command') { if ($t.Contains($x)) { "${p}: has $x" } } } })
 Check 'workflow: run-feedback reaches Claude Code from run-feedback.md, and Copilot Chat and Copilot CLI from run-feedback-copilot.md, which sleeps in the foreground; each loops address-feedback passes with run-issues'' limits, comments /review after each push, and never merges, resolves or force-pushes' (-not $m) ($m -join '; ')
+# A pull request closes the open follow-up issues its work completes, which ship-plan, run-issues and run-feedback look for before each push, and an issue it only partly completes gets a comment once it lands (#428).
+$followUpCheckText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_follow-up-check.md')).Body.Trim()
+$followUpShipFiles = foreach ($root in '', 'template\') { "$root.claude\commands\ship-plan.md"; "$root.github\prompts\ship-plan.prompt.md"; "$root.github\skills\ship-plan\SKILL.md" }
+$m = @(Get-MissingText ($followUpShipFiles + $feedbackFiles + $copilotFeedbackFiles) ($followUpCheckText, 'git log -1 --format=%cI "<first>^"'))
+$m += @(Get-MissingText $followUpShipFiles ('Add each issue the work completes to the `Completes:` line', "$([char]0x2014) partly completes #<number>", 'then one for each reference on its `Completes:` line', 'or `PLAN.md` has a `Completes:` line', 'gh issue edit <number> <repo args> --body-file <file>'))
+$m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('record them in `PLAN.md`, as `ship-plan` item 4 says', 'then one for each reference on its `Completes:` line'))
+$m += @(Get-MissingText ($feedbackFiles + $copilotFeedbackFiles) ('edit its description except to add the `Closes` and `Partly completes` lines Push adds', 'first comment on each issue a `Partly completes` line of the pull request''s description names', 'Save the description as above whenever it changes, also when the work completes no issue.'))
+$m += @(Get-MissingText $rulesJinja ('then one per issue on its `Completes:` line', 'created since the branch left the default branch'))
+$m += @(Get-MissingText 'USAGE.md' 'on a `Completes:` line of `PLAN.md`')
+$m += @(if ($followUpCheckText.Contains('--search')) { 'workflow\templates\_follow-up-check.md: lists the issues with --search' })
+Check 'workflow: ship-plan, run-issues and run-feedback close the open follow-up issues a pull request completes, found since the branch left the default branch, and comment on one it partly completes once it lands (#428)' (-not $m) ($m -join '; ')
 # The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
 $prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
 $prAttributionFiles = [ordered]@{
