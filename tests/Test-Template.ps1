@@ -1292,6 +1292,13 @@ $m += @(Get-MissingText $rulesJinja ('then one per issue on its `Completes:` lin
 $m += @(Get-MissingText 'USAGE.md' 'on a `Completes:` line of `PLAN.md`')
 $m += @(if ($followUpCheckText.Contains('--search')) { 'workflow\templates\_follow-up-check.md: lists the issues with --search' })
 Check 'workflow: ship-plan, run-issues and run-feedback close the open follow-up issues a pull request completes, found since the branch left the default branch, and comment on one it partly completes once it lands (#428)' (-not $m) ($m -join '; ')
+# With integrate: direct no pull request closes the follow-up issues a plan's work completes, so ship-plan looks for them before that push too and closes each one on the Completes: line once the commits land (#430).
+$m = @(Get-MissingText $followUpShipFiles ('4. First, when `landed` isn''t `yes`, find the follow-up issues this plan''s work completes.', 'or, with `integrate: direct`, item 10 comments on and closes each once the commits land', 'First, once `landed` is `yes`, close each open issue on the plan''s `Completes:` line', 'Close them before the issues on the `Issue:` line'))
+$m += @(foreach ($p in $followUpShipFiles) { if ([IO.File]::ReadAllText((Join-Path $repoRoot $p)).Contains('when `integrate` is `pull-request` and `landed` isn''t `yes`')) { "${p}: skips the follow-up check with integrate: direct" } })
+$m += @(Get-MissingText 'workflow\templates\_plan-format.md' 'or, with `integrate: direct`, `/ship-plan` closes them once the commits land')
+$m += @(Get-MissingText $rulesJinja 'after it looks for the same follow-up issues, and once the commits land it comments on and closes each one its work completes')
+$m += @(Get-MissingText 'USAGE.md' 'With `integrate: direct`, which opens no pull request, it looks for them the same way before it pushes to the default branch')
+Check 'workflow: with integrate: direct, ship-plan looks for the follow-up issues a plan completes before it pushes, and comments on and closes each one on the Completes: line once the commits land (#430)' (-not $m) ($m -join '; ')
 # The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
 $prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
 $prAttributionFiles = [ordered]@{
