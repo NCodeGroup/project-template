@@ -415,6 +415,24 @@ if (Test-Path -LiteralPath $libraryDest) {
             [IO.File]::Delete($bare)
         }
         Check 'dotnet-library-apache: IDE0073 matches a file that starts with the header .editorconfig sets and fails one without it' ($headerOutput -match 'HeadedBare\.cs\(1,1\): error IDE0073' -and $headerOutput -notmatch '[\\/]Headed\.cs\(\d+,\d+\): error IDE0073') (($headerOutput -split "`n" | Select-String -Pattern 'IDE0073' | Select-Object -First 3) -join ' | ')
+        # The package's project page: the site docs/site/site.config.json names, else the repository, unless the project file sets one (ADR-0152).
+        $linkArgs = @('src/Greetings', '-t:ProjectTemplateRepositoryLinks', '-getProperty:PackageProjectUrl', '-p:RepositoryUrl=https://github.com/example/Greetings.git', '-p:EnableSourceControlManagerQueries=false')
+        $repositoryPage = "$(dotnet msbuild @linkArgs 2>&1)".Trim()
+        $siteFolder = Join-Path (Get-Location) 'docs/site'
+        $csprojPath = Join-Path (Get-Location) 'src/Greetings/Greetings.csproj'
+        $csprojText = [IO.File]::ReadAllText($csprojPath)
+        try {
+            New-Item -ItemType Directory -Force $siteFolder | Out-Null
+            [IO.File]::WriteAllText((Join-Path $siteFolder 'site.config.json'), "{`n  ""title"": ""Greetings"",`n  ""repository"": { ""url"": ""https://github.com/example/Greetings"" },`n  ""site"": {`n    ""url"": ""https://example.github.io/Greetings""`n  },`n  ""sidebar"": [{ ""label"": ""Start"", ""items"": [""index""] }]`n}`n")
+            $sitePage = "$(dotnet msbuild @linkArgs 2>&1)".Trim()
+            [IO.File]::WriteAllText($csprojPath, $csprojText.Replace('</Project>', "  <PropertyGroup>`n    <PackageProjectUrl>https://example.com/greetings</PackageProjectUrl>`n  </PropertyGroup>`n</Project>"))
+            $ownPage = "$(dotnet msbuild @linkArgs 2>&1)".Trim()
+        }
+        finally {
+            [IO.File]::WriteAllText($csprojPath, $csprojText)
+            Remove-Item -LiteralPath $siteFolder -Recurse -Force -ErrorAction Ignore
+        }
+        Check 'dotnet-library-apache: the package''s project page is the site docs/site/site.config.json names, else the repository, and the project file''s own wins' ($repositoryPage -eq 'https://github.com/example/Greetings' -and $sitePage -eq 'https://example.github.io/Greetings/' -and $ownPage -eq 'https://example.com/greetings') "repository: $repositoryPage | site: $sitePage | own: $ownPage"
     }
     finally { Pop-Location }
 }
