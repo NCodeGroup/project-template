@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.103.0] - 2026-11-17
+
+### Added
+
+- `/ship-plan` adds a `Closes` line to a plan's pull request description for each open follow-up issue the plan's work completes. Before it opens the pull request, and each time it pushes to an open one, such as after a renumber or merge step, it lists the open issues labelled with the Landing section's `follow-up-label` that were created since the plan's branch left the default branch, judges each against the branch's diff from the default branch as a review would, and records each one the work completes on a new `Completes:` line of `PLAN.md`, which `/run-issues` keeps when it rewrites the description after a review round. An issue the work only partly completes stays open: once the plan has landed, it gets an `Autopilot:` comment naming what the plan did and what remains, and its body is rewritten to describe only what remains. ([#428](https://github.com/NCodeGroup/project-template/issues/428))
+- `/run-feedback` runs the same check after each push and adds the `Closes` lines to the pull request's description, the one edit to the description it makes; an issue the pull request only partly completes gets the comment and the rewritten body once it merges. ([#428](https://github.com/NCodeGroup/project-template/issues/428))
+
+### Changed
+
+- The template's rules say that a push made without `/ship-plan` first finds the follow-up issues its branch completes the same way, puts them on the plan's `Completes:` line, and drafts the pull request description with a `Closes` line for each. ([#428](https://github.com/NCodeGroup/project-template/issues/428))
+
+### Fixed
+
+- A follow-up issue filed while another plan was still open, such as one `/ship-plan` filed from a plan that had just landed, no longer stays open after that other plan's own work completes it and its pull request merges: the pull request now closes it. ([#428](https://github.com/NCodeGroup/project-template/issues/428))
+
 ## [0.102.2] - 2026-11-17
 
 ### Fixed
@@ -1662,7 +1677,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.102.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.103.0...HEAD
+[0.103.0]: https://github.com/NCodeGroup/project-template/compare/v0.102.2...v0.103.0
 [0.102.2]: https://github.com/NCodeGroup/project-template/compare/v0.102.1...v0.102.2
 [0.102.1]: https://github.com/NCodeGroup/project-template/compare/v0.102.0...v0.102.1
 [0.102.0]: https://github.com/NCodeGroup/project-template/compare/v0.101.1...v0.102.0
