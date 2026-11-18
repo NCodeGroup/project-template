@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- With `integrate: direct`, `/ship-plan` looks for the open follow-up issues a plan's work completes before it pushes to the default branch, as it does before it opens a pull request, and once the commits land it comments on and closes each issue on the plan's `Completes:` line, which no pull request closes there; before, such an issue stayed open. The template's rules, the plan format and `USAGE.md` say so. ([#430](https://github.com/NCodeGroup/project-template/issues/430))
+- With `integrate: direct`, `/ship-plan` looks for the open follow-up issues a plan's work completes before it pushes to the default branch, as it does before it opens a pull request, and once the commits land it comments on and closes each issue on the plan's `Completes:` line, which no pull request closes there; before, such an issue stayed open. The template's rules, the plan format and `USAGE.md` say so, and the rules also say to comment on and close those issues after a push to the default branch made without `/ship-plan`. ([#430](https://github.com/NCodeGroup/project-template/issues/430))
 
 ## [0.103.0] - 2026-11-17
 
