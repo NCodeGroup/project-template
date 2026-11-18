@@ -1287,7 +1287,7 @@ $followUpShipFiles = foreach ($root in '', 'template\') { "$root.claude\commands
 $m = @(Get-MissingText ($followUpShipFiles + $feedbackFiles + $copilotFeedbackFiles) ($followUpCheckText, 'git log -1 --format=%cI "<first>^"'))
 $m += @(Get-MissingText $followUpShipFiles ('Add each issue the work completes to the `Completes:` line', "$([char]0x2014) partly completes #<number>", 'then one for each reference on its `Completes:` line', 'or `PLAN.md` has a `Completes:` line', 'gh issue edit <number> <repo args> --body-file <file>'))
 $m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('record them in `PLAN.md`, as `ship-plan` item 4 says', 'then one for each reference on its `Completes:` line'))
-$m += @(Get-MissingText ($feedbackFiles + $copilotFeedbackFiles) ('edit its description except to add the `Closes` and `Partly completes` lines Push adds', 'first comment on each issue a `Partly completes` line of the pull request''s description names'))
+$m += @(Get-MissingText ($feedbackFiles + $copilotFeedbackFiles) ('edit its description except to add the `Closes` and `Partly completes` lines Push adds', 'first comment on each issue a `Partly completes` line of the pull request''s description names', 'Save the description as above whenever it changes, also when the work completes no issue.'))
 $m += @(Get-MissingText $rulesJinja ('then one per issue on its `Completes:` line', 'created since the branch left the default branch'))
 $m += @(Get-MissingText 'USAGE.md' 'on a `Completes:` line of `PLAN.md`')
 $m += @(if ($followUpCheckText.Contains('--search')) { 'workflow\templates\_follow-up-check.md: lists the issues with --search' })
