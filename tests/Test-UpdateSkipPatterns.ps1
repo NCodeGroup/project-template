@@ -11,9 +11,10 @@
     refreshed, saying its local edit is discarded, not as a discarded local edit, and leave the project's own
     README.md as it is while showing the template's change to it. A second project's update renames it to a name only
     v0.2.0 accepts, so Copier can't render v0.1.0: the update must warn with Copier's error that it skipped
-    refreshing the index, list nothing as refreshed, keep the index's local line and still reach v0.2.0. Also checks
-    that Test-CopierPattern reads file patterns as Copier does and that every _skip_if_exists entry in copier.yml
-    starts with /. Prints PASS or FAIL per check and exits 1 on any failure.
+    refreshing the index, list nothing as refreshed, keep the index's local line and still reach v0.2.0. A third
+    project's index already matches v0.2.0's: the update must list it neither as refreshed nor as a discarded local
+    edit (#432). Also checks that Test-CopierPattern reads file patterns as Copier does and that every _skip_if_exists
+    entry in copier.yml starts with /. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-skip-test-<process ID> in the
@@ -136,6 +137,21 @@ try {
     Check 'update: lists the decision index as refreshed, not as a discarded local edit' (($r.Output -match '(?m)^Refreshed — .*\r?\n  docs/decisions/project-template/README\.md\r?$') -and -not $r.Output.Contains('Local edits discarded')) $detail
     Check 'update: says that refreshing the decision index discards its local edit' ((-not $index.Contains('Local note the refresh discards.')) -and $r.Output.Contains('a local edit to one is discarded, so make the change in a project file instead:')) $detail
     Check "update: leaves the project's own README.md untouched and shows the template's change to it" (((Get-FileHash -LiteralPath (Join-Path $path 'README.md')).Hash -eq $readmeHash) -and ($r.Output -match '(?m)^  README\.md:\r?$') -and $r.Output.Contains('+## Development and Tests')) $detail
+}
+finally { Pop-Location }
+
+# A third project whose index already matches v0.2.0's: the refresh resets it to v0.1.0's and the update brings it back, so it is listed neither as refreshed nor as discarded (#432).
+$currentIndex = [IO.File]::ReadAllText($nested)
+$samePath = Join-Path $Work 'skip-same'
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Skip' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tpl $samePath | Out-Null
+$sameNested = Join-Path $samePath 'docs/decisions/project-template/README.md'
+[IO.File]::WriteAllText($sameNested, $currentIndex)
+Push-Location $samePath
+try {
+    Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Render project-template v0.1.0'
+    $r = Invoke-Update $null $samePath
+    $detail = "exit $($r.ExitCode)`n$($r.Output.Trim())"
+    Check 'update: lists an index that already matches the target version neither as refreshed nor as a discarded local edit (#432)' (($r.ExitCode -eq 0) -and $r.Output.Contains('Committed "Update from project-template v0.2.0"') -and ([IO.File]::ReadAllText($sameNested) -eq $currentIndex) -and $r.Output -notmatch '(?m)^Refreshed ' -and -not $r.Output.Contains('Local edits discarded')) $detail
 }
 finally { Pop-Location }
 

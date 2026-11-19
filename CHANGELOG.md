@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.104.0] - 2026-11-18
+
+### Added
+
+- A .NET library whose `docs/site/site.config.json`, the NCodeGroup/docs toolchain's config, names a documentation site in `site.url` gets that site as its package's project page on nuget.org, unless it sets `PackageProjectUrl` itself; a library without one still gets its repository. ([#434](https://github.com/NCodeGroup/project-template/issues/434), [ADR-0152](template/docs/decisions/project-template/0152-a-packages-project-page-is-its-documentation-site.md))
+
+### Changed
+
+- The plan format names every writer of a plan's `Completes:` line: `/ship-plan`, `/run-issues` after it pushes fix steps, and a push made without `/ship-plan`, never a planner or an executor. ([#433](https://github.com/NCodeGroup/project-template/issues/433))
+
+### Fixed
+
+- `.template/Update-Project.ps1` no longer lists a file under "Local edits discarded", "Restored" or "Refreshed" when the update leaves it as the project had it, such as a local edit the new version also makes or a deleted file it also deletes; before, it said such an edit was discarded and should move to a project file. ([#432](https://github.com/NCodeGroup/project-template/issues/432))
+
 ## [0.103.1] - 2026-11-17
 
 ### Fixed
@@ -1683,7 +1697,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.103.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.104.0...HEAD
+[0.104.0]: https://github.com/NCodeGroup/project-template/compare/v0.103.1...v0.104.0
 [0.103.1]: https://github.com/NCodeGroup/project-template/compare/v0.103.0...v0.103.1
 [0.103.0]: https://github.com/NCodeGroup/project-template/compare/v0.102.2...v0.103.0
 [0.102.2]: https://github.com/NCodeGroup/project-template/compare/v0.102.1...v0.102.2

@@ -140,7 +140,7 @@ $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\Pro
 # Files only a project that needs Node.js gets (stack node, or uses_node answered yes).
 $nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', '.template\install-nvs.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
-$libraryOnly = 'docs\decisions\project-template\013*.md', 'docs\decisions\project-template\0147-*.md', 'docs\decisions\project-template\0149-*.md', 'build\Update-PublicApi.ps1', 'docs\api-compatibility.md'
+$libraryOnly = 'docs\decisions\project-template\013*.md', 'docs\decisions\project-template\0147-*.md', 'docs\decisions\project-template\0149-*.md', 'docs\decisions\project-template\0152-*.md', 'build\Update-PublicApi.ps1', 'docs\api-compatibility.md'
 $hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml', '.github\workflows\scorecard.yml'; gitlab = @('.gitlab-ci.yml') }
 # tests\Test-TemplateDotnet.ps1 renders the dotnet and dotnet-library-apache cases again with the same answers: change both together.
 $cases = @(
@@ -1299,6 +1299,10 @@ $m += @(Get-MissingText 'workflow\templates\_plan-format.md' 'or, with `integrat
 $m += @(Get-MissingText $rulesJinja 'after it looks for the same follow-up issues, and once the commits land it comments on and closes each one its work completes')
 $m += @(Get-MissingText 'USAGE.md' 'With `integrate: direct`, which opens no pull request, it looks for them the same way before it pushes to the default branch')
 Check 'workflow: with integrate: direct, ship-plan looks for the follow-up issues a plan completes before it pushes, and comments on and closes each one on the Completes: line once the commits land (#430)' (-not $m) ($m -join '; ')
+# The plan format names every writer of the Completes: line, not /ship-plan alone (#433).
+$m = @(Get-MissingText 'workflow\templates\_plan-format.md' 'written by `/ship-plan`, by `/run-issues` after it pushes fix steps, or before a push made without `/ship-plan`, never by a planner or an executor;')
+$m += @(if ([IO.File]::ReadAllText((Join-Path $repoRoot 'workflow\templates\_plan-format.md')).Contains('only `/ship-plan` writes it')) { 'workflow\templates\_plan-format.md: still says only /ship-plan writes the Completes: line' })
+Check 'workflow: the plan format names every writer of the Completes: line, ship-plan, run-issues and a push made without ship-plan, never a planner or an executor (#433)' (-not $m) ($m -join '; ')
 # The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
 $prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
 $prAttributionFiles = [ordered]@{

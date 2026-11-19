@@ -73,7 +73,7 @@ Use exactly this structure; the step runner parses the `### [ ] N.` headings and
 Issue: <issue reference, such as #42, or up to three separated by spaces, such as #25 #24 #26; only when the request names issues>
 Release: <version, such as v1.4.0; only when AGENTS.md's Landing section releases>
 Refs: <issue reference, or several separated by spaces, such as owner/repo#90; only when the request names an issue the plan relates to but doesn't resolve>
-Completes: <open follow-up issues the plan's work completes, separated by spaces, such as #77 #78; only `/ship-plan` writes it, and its pull request closes them, or, with `integrate: direct`, `/ship-plan` closes them once the commits land>
+Completes: <open follow-up issues the plan's work completes, separated by spaces, such as #77 #78; written by `/ship-plan`, by `/run-issues` after it pushes fix steps, or before a push made without `/ship-plan`, never by a planner or an executor; the plan's pull request closes them, or, with `integrate: direct`, `/ship-plan` closes them once the commits land, as the session that pushed does after a push made without `/ship-plan`>
 
 ## Goal
 <What changes for the user or system, and why. 2-4 sentences.>

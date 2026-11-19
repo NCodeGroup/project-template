@@ -69,7 +69,13 @@
     <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- The package's project page and release notes point at the repository Source Link finds from the git remote, unless the project sets them. -->
+  <!-- A documentation site built with the NCodeGroup/docs toolchain is the package's project page: site.url in docs/site/site.config.json, read here, so a PackageProjectUrl the project sets later still wins (ADR-0152). -->
+  <PropertyGroup Condition="'$(PackageProjectUrl)' == '' and Exists('$(MSBuildThisFileDirectory)../docs/site/site.config.json')">
+    <_ProjectTemplateSiteUrl>$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../docs/site/site.config.json')), '(?s)^(?:.*?"site"\s*:\s*\{[^{}]*?"url"\s*:\s*"(https?://[^"\s]+)".*|.*)$', '$1').TrimEnd('/'))</_ProjectTemplateSiteUrl>
+    <PackageProjectUrl Condition="'$(_ProjectTemplateSiteUrl)' != ''">$(_ProjectTemplateSiteUrl)/</PackageProjectUrl>
+  </PropertyGroup>
+
+  <!-- Without a documentation site, the package's project page points at the repository Source Link finds from the git remote, and its release notes at the changelog there, unless the project sets them. -->
   <Target Name="ProjectTemplateRepositoryLinks" BeforeTargets="GenerateNuspec" DependsOnTargets="InitializeSourceControlInformation" Condition="'$(RepositoryUrl)' != '' or '$(PrivateRepositoryUrl)' != ''">
     <PropertyGroup>
       <_ProjectTemplateRepository>$(RepositoryUrl)</_ProjectTemplateRepository>

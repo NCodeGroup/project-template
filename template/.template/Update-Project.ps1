@@ -16,6 +16,8 @@
                       restored; the script lists both. A template-owned file that an earlier version's
                       _skip_if_exists kept from updates, such as docs/decisions/project-template/README.md, is
                       reset first, discarding a local edit, and listed as refreshed.
+                      A file the update leaves as the project had it, such as an edit the new version also
+                      makes or a deleted file it also deletes, is listed under none of these.
       Merged          Files whose tools can't include a second file (copier.yml's _merged_files). The template's
                       changes are merged with the project's edits, like a Git merge; the same lines changed on
                       both sides conflict. An adopted project's own lines at the end of .gitignore,
@@ -1048,8 +1050,11 @@ try {
     if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; Get-BadgeReminder; Get-ImmutableReleaseNote $false; exit 0 }
     "Template $from -> ${to}:"
     $changes | Sort-Object Kind, File | ForEach-Object { '  {0,-9} {1}' -f $_.Kind, $_.File }
-    $edited = @($reset | Where-Object Kind -NE 'added' | ForEach-Object File)
-    $restored = @($reset | Where-Object Kind -EQ 'added' | ForEach-Object File)
+    # A file the update leaves as the project had it lost nothing, such as a local edit the new version also makes or a deleted file it also deletes: list only the files that differ from the commit the update started from.
+    $differs = @((git -c core.quotePath=false diff --name-only --no-renames -z $head) -split "`0" | Where-Object { $_ })
+    $edited = @($reset | Where-Object { $_.Kind -ne 'added' -and $_.File -in $differs } | ForEach-Object File)
+    $restored = @($reset | Where-Object { $_.Kind -eq 'added' -and $_.File -in $differs } | ForEach-Object File)
+    $refreshed = @($refreshed | Where-Object { $_ -in $differs })
     if ($edited) { ''; 'Local edits discarded — these files are the template''s; make the change in a project file instead:'; $edited | ForEach-Object { "  $_" } }
     if ($restored) { ''; 'Restored — these files are the template''s, so the project can''t delete them:'; $restored | ForEach-Object { "  $_" } }
     if ($droppedTextRules) { ''; "Left out of the lines .gitattributes kept from this repository at adoption: its catch-all text rule ($($droppedTextRules -join '; ')). Git uses the last rule that matches, so the rule overrode the template's binary rules, such as *.png binary and *.ico binary, and git add dropped the CR of each CR LF pair in a binary file it staged. Check the binary files committed while the rule applied, and replace any that no longer open." }
