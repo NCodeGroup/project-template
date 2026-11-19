@@ -11,10 +11,10 @@
     refreshed, saying its local edit is discarded, not as a discarded local edit, and leave the project's own
     README.md as it is while showing the template's change to it. A second project's update renames it to a name only
     v0.2.0 accepts, so Copier can't render v0.1.0: the update must warn with Copier's error that it skipped
-    refreshing the index, list nothing as refreshed, keep the index's local line and still reach v0.2.0. A third project's index already
-    matches v0.2.0's: the update must list it neither as refreshed nor as a discarded local edit (#432). Also checks
-    that Test-CopierPattern reads file patterns as Copier does and that every _skip_if_exists entry in copier.yml
-    starts with /. Prints PASS or FAIL per check and exits 1 on any failure.
+    refreshing the index, list nothing as refreshed, keep the index's local line and still reach v0.2.0. A third
+    project's index already matches v0.2.0's: the update must list it neither as refreshed nor as a discarded local
+    edit (#432). Also checks that Test-CopierPattern reads file patterns as Copier does and that every _skip_if_exists
+    entry in copier.yml starts with /. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-skip-test-<process ID> in the
