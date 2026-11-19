@@ -425,6 +425,10 @@ if (Test-Path -LiteralPath $libraryDest) {
             New-Item -ItemType Directory -Force $siteFolder | Out-Null
             [IO.File]::WriteAllText((Join-Path $siteFolder 'site.config.json'), "{`n  ""title"": ""Greetings"",`n  ""repository"": { ""url"": ""https://github.com/example/Greetings"" },`n  ""site"": {`n    ""url"": ""https://example.github.io/Greetings""`n  },`n  ""sidebar"": [{ ""label"": ""Start"", ""items"": [""index""] }]`n}`n")
             $sitePage = "$(dotnet msbuild @linkArgs 2>&1)".Trim()
+            [IO.File]::WriteAllText((Join-Path $siteFolder 'site.config.json'), "{`n  ""title"": ""Greetings"",`n  ""site"": {`n    ""url"": ""https://example.github.io/Greetings/""`n  }`n}`n")
+            $slashPage = "$(dotnet msbuild @linkArgs 2>&1)".Trim()
+            [IO.File]::WriteAllText((Join-Path $siteFolder 'site.config.json'), "{`n  ""title"": ""Greetings"",`n  ""repository"": { ""url"": ""https://example.com/elsewhere"" }`n}`n")
+            $noSitePage = "$(dotnet msbuild @linkArgs 2>&1)".Trim()
             [IO.File]::WriteAllText($csprojPath, $csprojText.Replace('</Project>', "  <PropertyGroup>`n    <PackageProjectUrl>https://example.com/greetings</PackageProjectUrl>`n  </PropertyGroup>`n</Project>"))
             $ownPage = "$(dotnet msbuild @linkArgs 2>&1)".Trim()
         }
@@ -432,7 +436,7 @@ if (Test-Path -LiteralPath $libraryDest) {
             [IO.File]::WriteAllText($csprojPath, $csprojText)
             Remove-Item -LiteralPath $siteFolder -Recurse -Force -ErrorAction Ignore
         }
-        Check 'dotnet-library-apache: the package''s project page is the site docs/site/site.config.json names, else the repository, and the project file''s own wins' ($repositoryPage -eq 'https://github.com/example/Greetings' -and $sitePage -eq 'https://example.github.io/Greetings/' -and $ownPage -eq 'https://example.com/greetings') "repository: $repositoryPage | site: $sitePage | own: $ownPage"
+        Check 'dotnet-library-apache: the package''s project page is the site docs/site/site.config.json names, with one trailing /, else the repository, also for a config without site.url, and the project file''s own wins' ($repositoryPage -eq 'https://github.com/example/Greetings' -and $sitePage -eq 'https://example.github.io/Greetings/' -and $slashPage -eq 'https://example.github.io/Greetings/' -and $noSitePage -eq 'https://github.com/example/Greetings' -and $ownPage -eq 'https://example.com/greetings') "repository: $repositoryPage | site: $sitePage | slash: $slashPage | no site.url: $noSitePage | own: $ownPage"
     }
     finally { Pop-Location }
 }
