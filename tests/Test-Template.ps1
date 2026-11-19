@@ -1299,6 +1299,10 @@ $m += @(Get-MissingText 'workflow\templates\_plan-format.md' 'or, with `integrat
 $m += @(Get-MissingText $rulesJinja 'after it looks for the same follow-up issues, and once the commits land it comments on and closes each one its work completes')
 $m += @(Get-MissingText 'USAGE.md' 'With `integrate: direct`, which opens no pull request, it looks for them the same way before it pushes to the default branch')
 Check 'workflow: with integrate: direct, ship-plan looks for the follow-up issues a plan completes before it pushes, and comments on and closes each one on the Completes: line once the commits land (#430)' (-not $m) ($m -join '; ')
+# The plan format names every writer of the Completes: line, not /ship-plan alone (#433).
+$m = @(Get-MissingText 'workflow\templates\_plan-format.md' 'written by `/ship-plan`, by `/run-issues` after it pushes fix steps, or before a push made without `/ship-plan`, never by a planner or an executor;')
+$m += @(if ([IO.File]::ReadAllText((Join-Path $repoRoot 'workflow\templates\_plan-format.md')).Contains('only `/ship-plan` writes it')) { 'workflow\templates\_plan-format.md: still says only /ship-plan writes the Completes: line' })
+Check 'workflow: the plan format names every writer of the Completes: line, ship-plan, run-issues and a push made without ship-plan, never a planner or an executor (#433)' (-not $m) ($m -join '; ')
 # The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
 $prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
 $prAttributionFiles = [ordered]@{
