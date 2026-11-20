@@ -57,6 +57,9 @@ never brings a number the project already uses
 | [0031](0031-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md) | The repository baseline turns off approval of the last push in its own "Protect main" ruleset where no approval is required, since GitHub then waits for an approval no author can give, and keeps it where approvals are required (amends 0022) |
 | [0032](0032-a-plan-is-released-only-when-it-changes-what-a-release-ships.md) | A plan gets a `Release:` line, and its merge a tag and a release, only when it changes what a release ships: the product's code, a file its package carries or its build output; site pages, CI, decision records, tests and repository docs wait under `## [Unreleased]` (amends 0016) |
 | [0033](0033-an-all-in-run-lifts-the-autopilots-limits-on-the-maintainers-word.md) | `/run-issues-all-in` takes every issue into one pull request with no question and no caps, fixes every follow-up and finding there, protected paths included for issues it names, and ends at the merge recommendation (amends 0014) |
+{%- if git_host == 'github' %}
+| [0034](0034-with-one-writer-the-baseline-requires-no-approval.md) | Where one person has write access, the repository baseline requires no approval and no approval of the last push, even where NCode Review approves, since GitHub counts neither the author's approval nor NCode Review's; NCode Review keeps approving and gets no write access (amends 0020 and 0022) |
+{%- endif %}
 {%- if stack == 'dotnet' %}
 
 ## .NET
