@@ -22,8 +22,9 @@
     reference definitions and at the next ## heading. Also checks that release.yml runs the script on a push to main
     that changes CHANGELOG.md, with contents: write and the merged commit. Also checks that -Policy prints the release
     policy and does nothing else, and that tag-release.yml is named Tag and publish release, reads the policy in a
-    read-only job and runs its write job only for release: tag or tag+release. Prints PASS or FAIL per check and exits 1
-    on any failure.
+    read-only job and runs its write job only for release: tag or tag+release. Also checks that a merged pull request
+    without a Release: line, once the changelog's newest section is tagged and published, tags, publishes and starts
+    nothing. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .EXAMPLE
     .\tests\Test-PublishRelease.ps1
@@ -317,6 +318,18 @@ try {
     Check 'publish.yml with workflow_dispatch: it starts publish.yml once, on the tag, with the tag as input' ($run.Code -eq 0 -and (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/actions/workflows/publish\.yml/dispatches -f ref=v0\.2\.0 -f inputs\[tag\]=v0\.2\.0').Count -eq 1) ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
     $run = Invoke-Publish $work
     Check 'publish.yml with workflow_dispatch: a second run starts nothing' ($run.Code -eq 0 -and -not (@(Get-Calls) -match 'dispatches')) ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
+
+    # A merged pull request without a Release: line, such as a plan's that changes nothing a release ships, after the newest section's release: it tags, publishes and starts nothing (#439).
+    $work = New-Clone 'no-release-line' '- release: tag+release' -Files @{ '.github/workflows/publish.yml' = $publishWith }
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $null = Invoke-Publish $work
+    Set-Content -LiteralPath (Join-Path $work 'CHANGELOG.md') -Encoding utf8NoBOM -Value ($changelog -replace '(?m)^## \[Unreleased\]\r?$', "## [Unreleased]`n`n### Changed`n`n- The site's pages read better.")
+    & git -C $work commit -q -am 'Change only the site'
+    & git -C $work push -q origin HEAD:refs/heads/main 2>$null
+    $head = (& git -C $work rev-parse HEAD)
+    Set-Pulls $head "Summary.`n`nCloses #5"
+    $run = Invoke-Publish $work
+    Check 'a pull request without a Release: line after the newest section''s release: it tags, publishes and starts nothing (#439)' ($run.Code -eq 0 -and @(Get-OriginTag $work).Count -eq 1 -and (& git -C $work rev-parse 'v0.2.0^{commit}') -ne $head -and -not (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases -f|dispatches') -and $run.Output -match 'has the tag v0\.2\.0 already' -and $run.Output -match 'has the release v0\.2\.0 already') ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
 
     $work = New-Clone 'publish-no-dispatch' '- release: tag+release' -Files @{ '.github/workflows/publish.yml' = $publishWithout }
     Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue

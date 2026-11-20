@@ -19,7 +19,9 @@
     without tagging. With pre-release: untracked and no release heading, the version is the pull request's `Release:`
     line and the notes are the `## [Unreleased]` section. With no such line, or with pre-release: tracked and no
     release heading, it publishes nothing and leaves the release to /ship-plan. The merged pull request is the one
-    GitHub's commits/<sha>/pulls endpoint returns whose merge_commit_sha is -Commit.
+    GitHub's commits/<sha>/pulls endpoint returns whose merge_commit_sha is -Commit. A pull request without a Release:
+    line, such as a plan's that changes nothing a release ships, finds the newest section's tag on the remote, so it
+    tags nothing, and its changelog entries wait under ## [Unreleased] for the next release.
 
     It tags -Commit, the commit the pull request merged as, with an annotated tag, and only when the version is newer
     than every version tag the remote has, so an edit to an older section tags nothing. It's safe to run again: a tag the
