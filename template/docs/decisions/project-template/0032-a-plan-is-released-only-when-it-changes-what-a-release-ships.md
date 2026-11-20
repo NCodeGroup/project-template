@@ -27,7 +27,9 @@ the site deploys from every push to the default branch, with or without a releas
 4. `/ship-plan` lands a plan without the line with no tag and no release, and writes no `Release:` line into its pull
    request. `.template/Get-PlanState.ps1` prints its `tag` as `-` and sends it to `/finish-plan` once it has landed.
 5. `.github/workflows/tag-release.yml` needs no change: a merge without a `Release:` line finds the changelog's newest
-   section already tagged, so `.template/Publish-Release.ps1` tags nothing and starts no `publish.yml`.
+   section already tagged and published, so `.template/Publish-Release.ps1` tags nothing, publishes nothing and starts
+   no `publish.yml`. When that earlier release's tag or GitHub release is still missing, because its own run failed,
+   the merge's run finishes that release, as any run of the script does, and never makes a version of its own.
 
 ## Options considered
 
