@@ -116,6 +116,11 @@
     the organization's plan, with an answer that asks to upgrade, such as "Upgrade to GitHub Team to enable this
     feature.", it says so and to run it for each repository instead, with -Repo <name> or -All.
 
+    For a repository an organization owns, it also reports the organization's two-factor requirement, as
+    "organization two-factor requirement: required", "not required" or "not available" with the reason (GitHub shows
+    the field to an owner only). It reports and never sets it, -WhatIf prints the same, and a failed read never fails
+    the run. require_2FA and secure_2FA in docs/best-practices-criteria.md stay Unmet until an owner confirms it.
+
 .EXAMPLE
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -WhatIf     # shows what it would do, and each setting's state
     .\tools\Set-RepositoryBaseline.ps1 -Repo Buffers -RequireChecks 'build-and-test'
@@ -310,6 +315,22 @@ function Set-Baseline([string]$Name) {
     Set-SecuritySettings $Name $info
     Set-AutoMerge $Name $info
     Set-EventPolicy $Name $info
+    Write-OrganizationTwoFactor $Name $info
+}
+
+# Reports whether the organization that owns the repository requires two-factor authentication of its members. It only
+# reads: the setting is the organization's, an owner changes it, and -WhatIf prints the same. GitHub shows the field to
+# an owner only, so an answer without it, or a refused read, is reported as not available and never fails the run. A
+# repository a user owns has no organization, and gets no line.
+function Write-OrganizationTwoFactor([string]$Name, $Info) {
+    if ("$($Info.owner.type)" -ne 'Organization') { return }
+    $read = Invoke-HostApi gh "orgs/$Owner"
+    $label = 'organization two-factor requirement'
+    if ($read.Status -ne 200) { Write-Host "${Name}: ${label}: not available ($(Get-FailureReason $read))"; return }
+    $answer = try { $read.Body | ConvertFrom-Json -ErrorAction Stop } catch { $null }
+    if ($null -eq $answer) { Write-Host "${Name}: ${label}: not available (an answer that is not JSON)"; return }
+    if ($null -eq $answer.two_factor_requirement_enabled) { Write-Host "${Name}: ${label}: not available (the answer doesn't include it; GitHub shows it to an owner only)"; return }
+    Write-Host "${Name}: ${label}: $(if ($answer.two_factor_requirement_enabled) { 'required' } else { 'not required' })"
 }
 
 # Reads CodeQL's default setup. Status is the HTTP status, or $null for no response; Answer the parsed answer, or $null;
