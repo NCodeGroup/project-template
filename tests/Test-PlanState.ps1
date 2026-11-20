@@ -263,6 +263,12 @@ $r = Test-State (Get-State $repo) @{ landed = 'yes'; ahead = '0'; conflicts = '-
 Check 'local: work pushed to the default branch is landed' $r.Ok $r.Detail
 $r = Test-State (Get-State $repo) @{ next = 'ship-plan' }
 Check 'next: a landed plan without its tag is shipped again' $r.Ok $r.Detail
+# A plan without a Release: line, which changes nothing a release ships, needs no tag once it has landed (#439).
+$landedPlanText = [IO.File]::ReadAllText($planFile)
+Write-Text $planFile $landedPlanText.Replace("Release: v0.2.0`n", '')
+$r = Test-State (Get-State $repo -NoFetch) @{ release = '-'; tag = '-'; renumber = '-'; published = '-'; landed = 'yes'; next = 'finish-plan' }
+Check 'next: a landed plan without a Release: line needs no tag and is finished (#439)' $r.Ok $r.Detail
+Write-Text $planFile $landedPlanText
 
 # 8b. A release tag only the clone has, such as one a failed push left.
 Push-Location $repo

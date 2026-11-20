@@ -14,3 +14,4 @@ Plan documentation for:
 3. List each document or section to write or update, with the facts it must contain. The executor writes the prose; you supply the facts.
 4. Point at an existing document whose structure and tone to follow.
 5. Make each Done-when objective: the file exists, it contains the required headings (`Select-String`), links resolve, or the docs build passes.
+6. {{PROMPT:_words-unchanged}}

@@ -1303,6 +1303,31 @@ Check 'workflow: with integrate: direct, ship-plan looks for the follow-up issue
 $m = @(Get-MissingText 'workflow\templates\_plan-format.md' 'written by `/ship-plan`, by `/run-issues` after it pushes fix steps, or before a push made without `/ship-plan`, never by a planner or an executor;')
 $m += @(if ([IO.File]::ReadAllText((Join-Path $repoRoot 'workflow\templates\_plan-format.md')).Contains('only `/ship-plan` writes it')) { 'workflow\templates\_plan-format.md: still says only /ship-plan writes the Completes: line' })
 Check 'workflow: the plan format names every writer of the Completes: line, ship-plan, run-issues and a push made without ship-plan, never a planner or an executor (#433)' (-not $m) ($m -join '; ')
+# A plan gets a Release: line only when it changes what a release ships, and ship-plan lands one without it with no tag and no release (#439).
+$m = @(Get-MissingText ('workflow\templates\_plan-format.md', 'template\.claude\commands\plan-feature.md', 'template\.github\skills\plan-issue\SKILL.md') ('add the `Release:` line when the plan changes something a release ships', 'gets no `Release:` line: its changelog entries go under `## [Unreleased]`'))
+$m += @(Get-MissingText $followUpShipFiles ('When `release` isn''t `none` and `<version>` is `-`, the plan has no `Release:` line', '8. Publish when `release` is `tag+release`, `<version>` isn''t `-` and `published` isn''t `yes`.'))
+$m += @(foreach ($p in $followUpShipFiles) { if ([IO.File]::ReadAllText((Join-Path $repoRoot $p)).Contains('stop when `<version>` is `-`, because the plan has no `Release:` line')) { "${p}: still stops on a plan without a Release: line" } })
+$m += @(Get-MissingText $rulesJinja 'A plan has a `Release:` line only when it changes something a release ships')
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' 'a plan has that line only when it changes something a release ships')
+Check 'workflow: a plan gets a Release: line only when it changes what a release ships, and ship-plan lands one without it with no tag and no release (#439)' (-not $m) ($m -join '; ')
+# Set-Location doesn't move the process's folder, so a Copilot session passes no relative path to a .NET method, and a plan says so when a step runs a script (#440).
+$relativePathsText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_copilot-relative-paths.md')).Body.Trim()
+$m = @(Get-MissingText ('template\.github\skills\plan-feature\SKILL.md', 'template\.github\prompts\orchestrate-plan.prompt.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\agents\copilot-implementer.agent.md', 'template\.github\skills\finish-plan\SKILL.md') $relativePathsText)
+$m += @(Get-MissingText ($copilotRunFiles + $copilotAddressFiles) $relativePathsText)
+$m += @(foreach ($p in 'template\.claude\commands\plan-feature.md', 'template\.claude\agents\plan-executor.md') { if ([IO.File]::ReadAllText((Join-Path $repoRoot $p)).Contains($relativePathsText)) { "${p}: a Claude Code file has the Copilot rule" } })
+$m += @(Get-MissingText 'workflow\templates\_plan-format.md' 'A script or command never passes a relative path to a .NET method')
+$m += @(Get-MissingText $rulesJinja 'so a script there never passes a relative path to a .NET method')
+Check 'workflow: a Copilot session never passes a relative path to a .NET method, which resolves it against the main checkout, and a plan repeats the rule for its scripts (#440)' (-not $m) ($m -join '; ')
+# A plan's worktree is .claude/worktrees/<name>/, so a command reaches a sibling repository from the folder that holds the main checkout, never through .. (#441).
+$m = @(Get-MissingText ('workflow\templates\_plan-format.md', 'template\.claude\commands\plan-feature.md', 'template\.github\skills\plan-issue\SKILL.md') ('finds it from the folder that holds the main checkout, never through `..`', 'Join-Path (Split-Path -Parent (Split-Path -Parent (git rev-parse --path-format=absolute --git-common-dir))) <repository>'))
+$m += @(Get-MissingText $rulesJinja 'never through `..`, which from a plan''s worktree is `.claude/worktrees/`')
+Check 'workflow: a command reaches a sibling repository from the folder that holds the main checkout, never through .. (#441)' (-not $m) ($m -join '; ')
+# A plan that changes how pages present their text proves each step keeps every word, and the review looks at the built pages (#442).
+$wordsUnchangedText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_words-unchanged.md')).Body.Trim()
+$m = @(Get-MissingText ('template\.claude\commands\plan-docs.md', 'template\.claude\commands\plan-refactor.md', 'template\.github\skills\plan-docs\SKILL.md', 'template\.github\skills\plan-refactor\SKILL.md', 'template\.claude\commands\plan-issue.md') $wordsUnchangedText)
+$m += @(if (-not ($wordsUnchangedText.Contains('git show <base>:<path>') -and $wordsUnchangedText.Contains('as sorted lists'))) { 'workflow\templates\_words-unchanged.md' })
+$m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\skills\review-plan-diff\SKILL.md', 'template\.github\prompts\review-plan-diff.prompt.md') 'build it with that command after the checks, then look at each changed page as built')
+Check 'workflow: a plan that changes how pages present their text proves each step keeps every word, and review-plan-diff looks at the built pages (#442)' (-not $m) ($m -join '; ')
 # The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
 $prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
 $prAttributionFiles = [ordered]@{
