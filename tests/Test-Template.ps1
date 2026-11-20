@@ -1303,6 +1303,13 @@ Check 'workflow: with integrate: direct, ship-plan looks for the follow-up issue
 $m = @(Get-MissingText 'workflow\templates\_plan-format.md' 'written by `/ship-plan`, by `/run-issues` after it pushes fix steps, or before a push made without `/ship-plan`, never by a planner or an executor;')
 $m += @(if ([IO.File]::ReadAllText((Join-Path $repoRoot 'workflow\templates\_plan-format.md')).Contains('only `/ship-plan` writes it')) { 'workflow\templates\_plan-format.md: still says only /ship-plan writes the Completes: line' })
 Check 'workflow: the plan format names every writer of the Completes: line, ship-plan, run-issues and a push made without ship-plan, never a planner or an executor (#433)' (-not $m) ($m -join '; ')
+# A plan gets a Release: line only when it changes what a release ships, and ship-plan lands one without it with no tag and no release (#439).
+$m = @(Get-MissingText ('workflow\templates\_plan-format.md', 'template\.claude\commands\plan-feature.md', 'template\.github\skills\plan-issue\SKILL.md') ('add the `Release:` line when the plan changes something a release ships', 'gets no `Release:` line: its changelog entries go under `## [Unreleased]`'))
+$m += @(Get-MissingText $followUpShipFiles ('When `release` isn''t `none` and `<version>` is `-`, the plan has no `Release:` line', '8. Publish when `release` is `tag+release`, `<version>` isn''t `-` and `published` isn''t `yes`.'))
+$m += @(foreach ($p in $followUpShipFiles) { if ([IO.File]::ReadAllText((Join-Path $repoRoot $p)).Contains('stop when `<version>` is `-`, because the plan has no `Release:` line')) { "${p}: still stops on a plan without a Release: line" } })
+$m += @(Get-MissingText $rulesJinja 'A plan has a `Release:` line only when it changes something a release ships')
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' 'a plan has that line only when it changes something a release ships')
+Check 'workflow: a plan gets a Release: line only when it changes what a release ships, and ship-plan lands one without it with no tag and no release (#439)' (-not $m) ($m -join '; ')
 # The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
 $prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
 $prAttributionFiles = [ordered]@{
