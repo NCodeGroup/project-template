@@ -45,6 +45,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Test-Bom([string]$Path) {
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+}
+
 if ($Version -notmatch '^v?(\d+\.\d+\.\d+)$') {
     throw "'$Version' isn't a stable version such as 1.4.0 or v1.4.0: a prerelease is never a baseline."
 }
@@ -86,8 +91,7 @@ foreach ($candidate in $candidates) {
             return $m.Groups[1].Value + $target + $m.Groups[3].Value
         })
     if ($newText -ceq $text) { continue }
-    $bytes = [IO.File]::ReadAllBytes($path)
-    $hadBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+    $hadBom = Test-Bom $path
     $changed[$path] = @{ Text = $newText; HadBom = $hadBom; NewMajor = $raise.NewMajor }
 }
 
@@ -117,8 +121,7 @@ foreach ($candidate in $candidates) {
     $text = [IO.File]::ReadAllText($path)
     $kept = [regex]::Replace($text, $suppressionPattern, { param($m) if ($m.Value -match $baselineEntry) { '' } else { $m.Value } })
     if ($kept -ceq $text) { continue }
-    $bytes = [IO.File]::ReadAllBytes($path)
-    $hadBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+    $hadBom = Test-Bom $path
     $keptText = if ($kept -match '<Suppression>') { $kept } else { $null }
     $suppressions[$path] = @{ Text = $keptText; HadBom = $hadBom; Relative = [IO.Path]::GetRelativePath($Root, $path) }
 }
@@ -223,8 +226,7 @@ if (Test-Path -LiteralPath $changelogPath -PathType Leaf) {
             $group = $unreleased.Groups[1]
             $newText = $text.Substring(0, $group.Index) + $newBody + $text.Substring($group.Index + $group.Length)
             if ($crlf) { $newText = $newText.Replace("`n", "`r`n") }
-            $bytes = [IO.File]::ReadAllBytes($changelogPath)
-            $hadBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+            $hadBom = Test-Bom $changelogPath
             [IO.File]::WriteAllText($changelogPath, $newText, [Text.UTF8Encoding]::new($hadBom))
         }
     }
