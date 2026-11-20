@@ -15,3 +15,4 @@ Plan this refactor so that behavior does not change:
 4. Sequence the change so the build and tests stay green after every step: add the new structure, move callers over in small groups, then delete the old structure.
 5. Every step's Done-when runs the full relevant test suite, not only new tests.
 6. Under Out of scope, forbid behavior changes, renames beyond the plan, and formatting-only churn.
+7. {{PROMPT:_words-unchanged}}

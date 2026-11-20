@@ -35,6 +35,7 @@ ${input:details:What to document and for whom}
 3. List each document or section to write or update, with the facts it must contain. The executor writes the prose; you supply the facts.
 4. Point at an existing document whose structure and tone to follow.
 5. Make each Done-when objective: the file exists, it contains the required headings (`Select-String`), links resolve, or the docs build passes.
+6. When the plan changes how pages present their text and not what they say, such as a documentation site's layout, components or Markdown structure, give every step that changes pages a Done-when that proves their words are unchanged from the plan's base commit: the commit `git rev-parse HEAD` prints while you plan, written into the command as a literal hash. The command reads each page the step changes, at that commit with `git show <base>:<path>` and in the working tree, removes from both what the step may change, such as labels, Markdown emphasis, list markers, whitespace and case, and compares what is left; it compares component tags, such as each evidence mark, separately, as sorted lists. A step that drops, adds or moves a word then fails. When several steps need the comparison, the first step adds it to the repository as a script, written in the first language ADR-0021 in `docs/decisions/project-template/` lists that fits, and each Done-when runs it with that step's pages.
 
 ## Output: PLAN.md for the executor model
 
