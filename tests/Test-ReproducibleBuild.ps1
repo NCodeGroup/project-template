@@ -66,10 +66,7 @@ $unpackable = New-Fixture 'unpackable' '<IsPackable>false</IsPackable>'
 $result = Invoke-Check $unpackable
 Check 'a project that packs nothing has no packages to compare' ($result.Exit -eq 0 -and $result.Output.Contains('No packages to compare.')) "exit=$($result.Exit) $($result.Output)"
 
-if ($failures.Count) {
-    "$($failures.Count) failed."
-    exit 1
-}
-if ($ownWork) { Remove-Item -LiteralPath $Work -Recurse -Force }
-'All checks passed.'
+if ($failures.Count) { "Kept the work folder: $Work"; "Reproducible build tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
+'Reproducible build tests: PASSED'
 exit 0
