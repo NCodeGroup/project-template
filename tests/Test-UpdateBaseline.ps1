@@ -177,7 +177,8 @@ $folder = New-Case 'workflow-body' @{
 git -c init.defaultBranch=main -C $folder init -q
 git -C $folder config core.autocrlf false
 git -C $folder add -A
-git -C $folder -c user.name=Test -c user.email=test@example.test -c commit.gpgsign=false commit -q -m Fixture
+git -C $folder -c user.name=Test -c user.email=test@example.test -c commit.gpgsign=false -c core.hooksPath=NUL commit -q -m Fixture
+if ($LASTEXITCODE) { throw "git commit failed with exit code $LASTEXITCODE." }
 $out = Invoke-Baseline $folder
 # The workflow's own lines that list the suppression files and write the description, run in the fixture.
 $workflow = Join-Path $repoRoot 'template\.github\workflows\raise-baseline.yml'
