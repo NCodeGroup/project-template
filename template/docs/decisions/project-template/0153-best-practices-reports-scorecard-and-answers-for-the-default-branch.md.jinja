@@ -1,6 +1,6 @@
 # 0153. /best-practices reports the Scorecard gaps and answers for the default branch
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0035)
 - **Date:** 2026-11-20
 
 ## Context
