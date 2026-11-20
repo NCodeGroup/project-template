@@ -204,6 +204,12 @@ if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
     if ($status -ne 200) { exit 1 }
     exit 0
 }
+# Who can write: writers lists the logins with push access or more, or fail:<code> refuses the read.
+if ($path -match '^repos/[^/]+/([^/]+)/collaborators\?') {
+    $writers = $data.repos[$Matches[1]].writers
+    if ($writers -is [string]) { Out-Answer ([int]$writers.Substring(5)) '{"message":"Stand-in refused to read them"}' }
+    Out-Answer 200 (ConvertTo-Json -Compress -InputObject @(@($writers | Where-Object { $_ }) | ForEach-Object { @{ login = $_; type = 'User'; role_name = 'write' } }))
+}
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets/(\d+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].full["$($Matches[2])"] -Depth 10; exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets$') { ConvertTo-Json -InputObject @($data.repos[$Matches[1]].rulesets) -Depth 5; exit 0 }
 # Pull requests, and the check runs and workflow runs of a commit, for -RequireChecks auto.
@@ -260,8 +266,9 @@ function New-EventPolicy([string]$Name, [string[]]$Events = @('pull_request_targ
 # (New-EventPolicy), or fail:<code>. $WorkflowText maps a workflow file to its text, which the contents API answers as base64.
 # $Languages lists the languages CodeQL's default setup analyzes, those of NCodeGroup/Buffers unless it says otherwise:
 # @() for none, and $null leaves languages out of the answer.
+# $Writers lists the logins with write access, two unless it says otherwise, or fail:<code>.
 function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', $Languages = @('actions', 'csharp'), [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
-    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), [hashtable]$WorkflowText = @{}, $Policies = @(), [string]$OwnerType = '') {
+    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), [hashtable]$WorkflowText = @{}, $Policies = @(), [string]$OwnerType = '', $Writers = @('maintainer', 'collaborator')) {
     $full = @{}
     $summaries = @()
     $id = 100
@@ -276,7 +283,8 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
     @{ info = $info
         rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; languages = $Languages; switchFails = $SwitchFails
         pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails
-        workflows = @($Workflows); workflowText = $WorkflowText; policies = if ($Policies -is [string]) { $Policies } else { @($Policies) } }
+        workflows = @($Workflows); workflowText = $WorkflowText; policies = if ($Policies -is [string]) { $Policies } else { @($Policies) }
+        writers = if ($Writers -is [string]) { $Writers } else { @($Writers) } }
 }
 $allSecurityOn = @{ 'actions/permissions/workflow' = 'on'; 'vulnerability-alerts' = 'on'; 'automated-security-fixes' = 'on'; 'private-vulnerability-reporting' = 'on'; 'immutable-releases' = 'on' }
 function New-Pull([int]$Number, [string]$Sha, [string]$MergedAt) { @{ number = $Number; head = @{ sha = $Sha }; merged_at = if ($MergedAt) { $MergedAt } else { $null } } }
@@ -382,6 +390,14 @@ $repos = @{
     oursApprover = New-Repo -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml } -Rulesets @((New-Ruleset 'Protect main'))
     oursBlockedApprover = New-Repo -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml } -Rulesets @((New-Ruleset 'Protect main' -LastPush $true))
     ownedApprover = New-Repo -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml } -Rulesets @((New-Ruleset 'owner rules'))
+    # One person with write access (ADR-0034): GitHub counts no approval from the author or from NCode Review.
+    soleApprover = New-Repo -Writers @('maintainer') -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
+    soleOursApproved = New-Repo -Writers @('maintainer') -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml } -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 1))
+    soleOursTwo = New-Repo -Writers @('maintainer') -Rulesets @((New-Ruleset 'Protect main' -Approvals 2))
+    soleOursRefused = New-Repo -Writers @('maintainer') -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 1)) -WriteFails @{ 'rulesets/101' = 403 }
+    soleOwned = New-Repo -Writers @('maintainer') -Rulesets @((New-Ruleset 'owner rules' -Approvals 1))
+    writersUnreadable = New-Repo -Writers 'fail:403' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
+    writersUnreadableOurs = New-Repo -Writers 'fail:403' -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 1))
     looseRefused = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false)) -WriteFails @{ 'rulesets/101' = 403 }
     ownedBare = New-Repo -Rulesets @($bareRuleset)
     twoOwnedLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $false), (New-Ruleset 'team rules' -Threads $false))
