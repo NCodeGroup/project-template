@@ -230,6 +230,13 @@ function Set-ProtectedTag {
     else { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
 }
 
+# Revokes a created project access token that the variable can't use, and reports why the variable isn't set.
+function Revoke-BaselineToken([string]$Label, [string]$TokenId, [string]$Reason) {
+    $revoked = Invoke-Glab DELETE "$endpoint/access_tokens/$TokenId"
+    if ($revoked.Status -ge 200 -and $revoked.Status -lt 300) { Write-Host "${Project}: ${Label}: not available ($Reason; the access token was revoked)" }
+    else { Write-Host "${Project}: ${Label}: not available ($Reason; the access token $TokenId is still there, revoke it by hand)" }
+}
+
 # With -BaselineToken: the masked and protected CI/CD variable BASELINE_TOKEN that the template's raise-baseline job needs, holding a
 # new project access token. The token is read from the first answer and only ever passed to the second call: it is never
 # printed, logged or put in a message.
@@ -246,7 +253,13 @@ function Set-BaselineToken {
     if (-not ($created.Status -ge 200 -and $created.Status -lt 300)) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $created))"; return }
     $token = try { "$(($created.Body | ConvertFrom-Json -ErrorAction Stop).token)" } catch { '' }
     $tokenId = try { "$(($created.Body | ConvertFrom-Json -ErrorAction Stop).id)" } catch { '' }
-    if (-not $token) { Write-Host "${Project}: ${label}: not available (the access token's answer has no token)"; return }
+    if (-not $token) {
+        $noToken = "the access token's answer has no token"
+        # An answer with an id but no token left an access token nobody can use: revoke it.
+        if ($tokenId) { Revoke-BaselineToken $label $tokenId $noToken }
+        else { Write-Host "${Project}: ${label}: not available ($noToken)" }
+        return
+    }
     $body = @{ key = 'BASELINE_TOKEN'; value = $token; masked = $true; protected = $true } | ConvertTo-Json -Compress
     $result = Invoke-Glab POST "$endpoint/variables" -Body $body
     $body = $null
@@ -255,10 +268,7 @@ function Set-BaselineToken {
     elseif (-not $tokenId) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
     else {
         # The variable couldn't be stored, so the access token would stay unused and a rerun would make another: revoke it.
-        $reason = Get-FailureReason $result
-        $revoked = Invoke-Glab DELETE "$endpoint/access_tokens/$tokenId"
-        if ($revoked.Status -ge 200 -and $revoked.Status -lt 300) { Write-Host "${Project}: ${label}: not available ($reason; the access token was revoked)" }
-        else { Write-Host "${Project}: ${label}: not available ($reason; the access token $tokenId is still there, revoke it by hand)" }
+        Revoke-BaselineToken $label $tokenId (Get-FailureReason $result)
     }
 }
 
