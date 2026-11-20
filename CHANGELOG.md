@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.107.0] - 2026-11-20
+
+### Added
+
+- `/run-issues-all-in #42 #43`, for Claude Code, Copilot Chat and Copilot CLI, runs `/run-issues` with its answers given and its caps lifted, and takes no switches. Every issue the request names, or every ready issue a filter finds, goes into one plan and one draft pull request. It asks nothing. It fixes every follow-up and every NCode Review finding that holds in that pull request, out of scope included, and protected paths too when the request names the issues by number rather than a filter, and lists each protected path it changes in the pull request description. It asks NCode Review for a review after every push, and sets no limit on reviews or replies, stopping a loop only when two reviews in a row add fix steps while the commits between them changed nothing. It ends once the pull request is clean and the merge is recommended: you merge, then run `/finish-plan`. `/run-issues` is unchanged. ([ADR-0033](template/docs/decisions/project-template/0033-an-all-in-run-lifts-the-autopilots-limits-on-the-maintainers-word.md))
+
 ## [0.106.1] - 2026-11-19
 
 ### Fixed
@@ -1730,7 +1736,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.106.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.107.0...HEAD
+[0.107.0]: https://github.com/NCodeGroup/project-template/compare/v0.106.1...v0.107.0
 [0.106.1]: https://github.com/NCodeGroup/project-template/compare/v0.106.0...v0.106.1
 [0.106.0]: https://github.com/NCodeGroup/project-template/compare/v0.105.0...v0.106.0
 [0.105.0]: https://github.com/NCodeGroup/project-template/compare/v0.104.0...v0.105.0

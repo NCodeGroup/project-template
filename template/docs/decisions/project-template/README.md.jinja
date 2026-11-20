@@ -55,6 +55,7 @@ never brings a number the project already uses
 | [0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md) | The repository baseline adds the code-scanning rule only where CodeQL's default setup analyzes a language, switches no setup's suite where it analyzes no language, and warns where a kept rule waits on a setup that analyzes none (amends 0005) |
 | [0031](0031-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md) | The repository baseline turns off approval of the last push in its own "Protect main" ruleset where no approval is required, since GitHub then waits for an approval no author can give, and keeps it where approvals are required (amends 0022) |
 | [0032](0032-a-plan-is-released-only-when-it-changes-what-a-release-ships.md) | A plan gets a `Release:` line, and its merge a tag and a release, only when it changes what a release ships: the product's code, a file its package carries or its build output; site pages, CI, decision records, tests and repository docs wait under `## [Unreleased]` (amends 0016) |
+| [0033](0033-an-all-in-run-lifts-the-autopilots-limits-on-the-maintainers-word.md) | `/run-issues-all-in` takes every issue into one pull request with no question and no caps, fixes every follow-up and finding there, protected paths included for issues it names, and ends at the merge recommendation (amends 0014) |
 {%- if stack == 'dotnet' %}
 
 ## .NET
