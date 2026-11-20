@@ -136,6 +136,7 @@ _exclude:
     docs/decisions/project-template/0149-stale-nuget-logistics-are-named-not-fixed.md
     docs/decisions/project-template/0150-a-workflow-raises-the-package-validation-baseline-after-each-release.md
     docs/decisions/project-template/0152-a-packages-project-page-is-its-documentation-site.md
+    docs/decisions/project-template/0154-a-library-build-takes-nothing-from-the-clock-and-ci-builds-it-twice.md
     {% endif %}
   - |-
     {% if git_host is defined and stack is defined and nuget_package is defined and not (git_host == 'github' and stack == 'dotnet' and nuget_package) %}
