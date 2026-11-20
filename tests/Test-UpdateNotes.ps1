@@ -312,6 +312,7 @@ $codeReviewNote = & {
         'current'                       = @{ Workflow = (& $review 'v1.4.0' $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
         'newer, two jobs'               = @{ Workflow = (& $review 'v1.10.0' $true) + "      - uses: $pin # v1.12.1`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
         'no draft line'                 = @{ Workflow = (& $review 'v1.4.0' $true); Agents = "# P`n`n## Landing`n`n- integrate: pull-request`n"; Want = @('has no draft line'); Not = @('pins', 'passes no approve') }
+        'tag pin, no comment'           = @{ Workflow = "jobs:`n  review:`n    steps:`n      - uses: NCodeGroup/code-review@v1.3.0`n        with:`n          approve: true`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @('pins NCodeGroup/code-review v1.3.0'); Not = @('passes no approve', 'says draft', 'has no draft line') }
         'no code-review.yml'            = @{ Workflow = $null; Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @(); Not = @() }
     }
     foreach ($name in $reviewCases.Keys) {
