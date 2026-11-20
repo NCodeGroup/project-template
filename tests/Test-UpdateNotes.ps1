@@ -210,6 +210,7 @@ $gitVersioningNote
 
 # publisher: Get-NuGetPublisherAnswer, run from inside each fixture folder, which is also the project.
 $publisherAnswer = & {
+    Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
     $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
     foreach ($fnName in 'Get-NuGetPublisher', 'Get-NuGetPublisherAnswer') {
         $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
@@ -233,9 +234,10 @@ $publisherAnswer = & {
             foreach ($file in $case.Files.Keys) { [IO.File]::WriteAllText((Join-Path $workflows $file), $case.Files[$file]) }
         }
         Push-Location $folder
-        try { $got = "$(Get-NuGetPublisherAnswer)" }
+        try { $got = "$(Get-NuGetPublisherAnswer)"; $adoptGot = "$(Adoption\Get-NuGetPublisherAnswer)" }
         finally { Pop-Location }
         Check "publisher: $name" ($got -eq $case.Want) "got [$got], want [$($case.Want)]"
+        Check "publisher: ${name}: the adoption answers the same" ($adoptGot -eq $got) "update [$got], adopt [$adoptGot]"
     }
 }
 $publisherAnswer

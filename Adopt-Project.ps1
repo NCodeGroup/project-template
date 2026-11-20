@@ -170,6 +170,11 @@ try {
     foreach ($k in $Data.Keys) { $answers[$k] = $Data[$k] }
     # Never copier.yml's Apache-2.0 default for existing code (ADR-0024): without a license worked out or given, the answer is blank, and the warning below says how to add one.
     if (-not $answers.Contains('license')) { $answers['license'] = '' }
+    # The nuget_publisher answer keeps the template's publish.yml, release-provenance.yml and raise-baseline.yml out of a library whose own workflow pushes its packages, and has the documents name that workflow.
+    if ("$($answers['nuget_package'])" -eq 'true' -and -not $answers.Contains('nuget_publisher')) {
+        $publisherAnswer = Get-NuGetPublisherAnswer
+        if ($publisherAnswer) { $answers['nuget_publisher'] = $publisherAnswer }
+    }
     # Files the repository owns, merged or template-owned (its project_owned_files answer): Copier leaves them as they are, and updates show the template's changes to them.
     $ownedFiles = @()
     if ($answers.Contains('project_owned_files')) { $ownedFiles = Get-OwnedFile $answers['project_owned_files'] $ownable; $answers['project_owned_files'] = $ownedFiles }
@@ -243,11 +248,9 @@ try {
                 }
             }
         }
-        # A repository whose own workflow already pushes NuGet packages keeps it alone, without the template's publish.yml beside it.
-        $publishers = @(Get-NuGetPublisher)
-        if ($publishers.Count -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and '.github/workflows/publish.yml' -notin @(git ls-tree -r --name-only $head -- .github/workflows)) {
-            Remove-Item -LiteralPath .github/workflows/publish.yml
-            $report.Add("  Skipped .github/workflows/publish.yml $([char]0x2014) $($publishers -join ', ') already push NuGet packages")
+        # A repository whose own workflow already pushes NuGet packages keeps it alone: its nuget_publisher answer kept the template's publish.yml and the release follow-ups it calls out.
+        if ($answers.Contains('nuget_publisher') -and $answers['nuget_publisher']) {
+            $report.Add("  Skipped .github/workflows/publish.yml, release-provenance.yml and raise-baseline.yml $([char]0x2014) $($answers['nuget_publisher']) already push NuGet packages")
         }
         # A version.json this adoption brought in starts at the patch after the newest release tag, with the AssemblyVersion its current major shipped.
         if ($versionFileNew -and (Test-Path -LiteralPath version.json -PathType Leaf)) {

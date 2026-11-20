@@ -497,6 +497,13 @@ function Get-NuGetPublisher {
     @($found) | Sort-Object
 }
 
+# The nuget_publisher answer: the workflows other than publish.yml that run nuget push, joined with ", ", when the library has no publish.yml,
+# else blank. template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-NuGetPublisherAnswer {
+    if (Test-Path -LiteralPath .github/workflows/publish.yml) { return '' }
+    @(Get-NuGetPublisher) -join ', '
+}
+
 # For a library whose build/ProjectTemplate.props pins the assembly version and whose Directory.Build.props sets none:
 # the highest assembly version a version tag of the newest major shipped, when it exceeds <major>.0.0.0, as Tag,
 # AssemblyVersion and Major. A tag shipped its Directory.Build.props's AssemblyVersion, else <major>.0.0.0 when its
@@ -872,4 +879,4 @@ function Get-GitVersioningWorkflowNote {
     'Nerdbank.GitVersioning fails the build on a shallow clone ("Shallow clone lacks the objects required to calculate version height"), which actions/checkout makes unless fetch-depth is 0, and it ignores -p:Version, so a release would carry version.json''s version, not the tag''s. Set fetch-depth: 0 on each actions/checkout step named, drop each -p:Version, and build a release with -p:PublicRelease=true, as the publish.yml the project template gives a .NET library on GitHub does.'
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote
