@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.106.1] - 2026-11-19
+
+### Fixed
+
+- `build/Update-Baseline.ps1` removes the baseline suppressions from the `CompatibilitySuppressions.xml` beside each project whose baseline it raises to a new major version, the entries marked `<IsBaselineSuppression>true</IsBaselineSuppression>` and the `PKV006` and `PKV007` entries for a dropped target framework, keeps the others, and deletes the file when none is left, so the pull request `raise-baseline.yml` opens passes package validation, which rejects a suppression that matches nothing, without a manual fix; its description names the files. ([#447](https://github.com/NCodeGroup/project-template/issues/447), [ADR-0150](template/docs/decisions/project-template/0150-a-workflow-raises-the-package-validation-baseline-after-each-release.md.jinja))
+
 ## [0.106.0] - 2026-11-19
 
 ### Added
@@ -1724,7 +1730,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.106.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.106.1...HEAD
+[0.106.1]: https://github.com/NCodeGroup/project-template/compare/v0.106.0...v0.106.1
 [0.106.0]: https://github.com/NCodeGroup/project-template/compare/v0.105.0...v0.106.0
 [0.105.0]: https://github.com/NCodeGroup/project-template/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/NCodeGroup/project-template/compare/v0.103.1...v0.104.0
