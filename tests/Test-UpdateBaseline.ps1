@@ -5,8 +5,9 @@
 .DESCRIPTION
     Builds one fixture folder per case and runs the script with -SkipNugetCheck: the file edits, the changelog entry and
     the earlier baseline entries it replaces, the baseline suppressions it removes from CompatibilitySuppressions.xml at
-    a new major version, the cases that change nothing, a custom changelog file named by AGENTS.md, CRLF and byte order
-    mark preservation, and a prerelease version. Prints PASS or FAIL per check and exits 1 on any failure.
+    a new major version, the pull request description raise-baseline.yml writes from them, run in a Git fixture, the
+    cases that change nothing, a custom changelog file named by AGENTS.md, CRLF and byte order mark preservation, and a
+    prerelease version. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-baseline-test-<process ID> in the
@@ -165,6 +166,29 @@ $folder = New-Case 'minor-keeps' @{
 $out = Invoke-Baseline $folder
 $ok = $out.Count -eq 1 -and $out[0] -eq '5.0.2' -and (Read-Text $folder $suppressions) -ceq (Get-Suppressions @($baselineCp, $droppedTfm))
 Check 'Update-Baseline: a raise within one major version keeps the suppressions' $ok "Output: $($out -join ', ')"
+
+$folder = New-Case 'workflow-body' @{
+    'Directory.Build.props'          = $props.Replace('5.0.0', '4.1.0')
+    $csproj                          = $noBaseline
+    $suppressions                    = Get-Suppressions @($baselineCp, $droppedTfm)
+    'src/Fixture.B/Fixture.B.csproj' = $noBaseline.Replace('Fixture.A', 'Fixture.B')
+    $suppressionsB                   = Get-Suppressions @($baselineCp, $tfmCp)
+}
+git -c init.defaultBranch=main -C $folder init -q
+git -C $folder config core.autocrlf false
+git -C $folder add -A
+git -C $folder -c user.name=Test -c user.email=test@example.test -c commit.gpgsign=false commit -q -m Fixture
+$out = Invoke-Baseline $folder
+# The workflow's own lines that list the suppression files and write the description, run in the fixture.
+$workflow = Join-Path $repoRoot 'template\.github\workflows\raise-baseline.yml'
+$lines = @(Get-Content -LiteralPath $workflow | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^(\$deleted = |\$edited = |\$body = |if \(\$deleted\.Count\) |if \(\$edited\.Count\) )' })
+$savedVersion = $env:VERSION
+$env:VERSION = '5.0.2'
+Push-Location -LiteralPath $folder
+try { $body = "$(& ([scriptblock]::Create(($lines -join "`n") + "`n`$body")))" }
+finally { Pop-Location; $env:VERSION = $savedVersion }
+$ok = $lines.Count -eq 5 -and $out.Count -eq 1 -and $body.StartsWith('Raises `PackageValidationBaselineVersion` to 5.0.2,') -and $body.Contains('Deletes `src/Fixture.A/CompatibilitySuppressions.xml`: the baseline reached a new major version') -and $body.Contains('from `src/Fixture.B/CompatibilitySuppressions.xml`, keeping the others.')
+Check 'raise-baseline.yml: the pull request description names the suppression files the script deleted and edited' $ok "Lines: $($lines.Count); body: $body"
 
 $changelog = "$changelogHead`n$changelogTail"
 $plain = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><PackageId>Fixture.A</PackageId></PropertyGroup></Project>' + "`n"
