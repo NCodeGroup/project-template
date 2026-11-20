@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.108.0] - 2026-11-20
+
+### Added
+
+- `/best-practices` reads a GitHub project's OpenSSF Scorecard result and, for each check under 10, names the action that raises it and who takes it: property tests for Fuzzing, the two ways to clear old unsigned release assets for Signed-Releases, a ruleset that lacks the approvals `code-review.yml` expects for Branch-Protection, and the registration for CII-Best-Practices. It finds an existing registration at `bestpractices.dev/projects.json?url=`, so a project registered before `best_practices_project` was recorded gets the update prompt and is never registered twice, and the registration prompt looks a project up there first. It fetches gitleaks, checksum-verified and past the dependency cooldown, when it isn't installed, and ends with an ordered list of next steps. ([#451](https://github.com/NCodeGroup/project-template/issues/451), [ADR-0153](template/docs/decisions/project-template/0153-best-practices-reports-scorecard-and-answers-for-the-default-branch.md.jinja))
+
+### Changed
+
+- `/best-practices` answers for the tip of the default branch, the commit Scorecard and bestpractices.dev see, in a temporary worktree when the checkout is elsewhere, and reports evidence that only unmerged commits hold instead of dropping it. ([#451](https://github.com/NCodeGroup/project-template/issues/451), [ADR-0153](template/docs/decisions/project-template/0153-best-practices-reports-scorecard-and-answers-for-the-default-branch.md.jinja))
+- ADR-0020's Fuzzing row says the template adds no property tests and what to write, and its Signed-Releases rows name the 14-day backfill limit and the rule never to attest registry packages. ([#451](https://github.com/NCodeGroup/project-template/issues/451), [ADR-0020](template/docs/decisions/project-template/0020-github-projects-are-scored-by-openssf-scorecard.md.jinja))
+
+### Fixed
+
+- `.template/Test-FileHeaders.ps1` skips the five `build/` scripts the template owns, `dod.ps1`, `Update-PublicApi.ps1`, `Get-TestRuntimes.ps1`, `Install-Dotnet.ps1` and `Update-Baseline.ps1`, so a .NET project's file header check passes without a header in a file template updates replace. ([#449](https://github.com/NCodeGroup/project-template/issues/449), [ADR-0027](template/docs/decisions/project-template/0027-source-files-carry-a-copyright-and-spdx-license-header.md))
+
 ## [0.107.0] - 2026-11-20
 
 ### Added
@@ -1736,7 +1751,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.107.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.108.0...HEAD
+[0.108.0]: https://github.com/NCodeGroup/project-template/compare/v0.107.0...v0.108.0
 [0.107.0]: https://github.com/NCodeGroup/project-template/compare/v0.106.1...v0.107.0
 [0.106.1]: https://github.com/NCodeGroup/project-template/compare/v0.106.0...v0.106.1
 [0.106.0]: https://github.com/NCodeGroup/project-template/compare/v0.105.0...v0.106.0

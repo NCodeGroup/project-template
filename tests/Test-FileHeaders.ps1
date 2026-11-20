@@ -15,6 +15,7 @@
                    file's /// directives, adds only the SPDX line to a file with a copyright line, leaves the other
                    files as they were, and a second run passes.
       endings      -Fix keeps a file's CRLF line endings and its UTF-8 byte order mark.
+      template-owned The five build scripts the template owns are skipped, a build script of the project's own is checked.
       no-license   With a blank license answer only the copyright line is required.
       no-author    Without an author_name answer there is nothing to check.
 
@@ -119,6 +120,11 @@ $crlfFix = Invoke-Headers $crlf @('-Fix')
 $bytes = [IO.File]::ReadAllBytes((Join-Path $crlf 'src/win.js'))
 $expected = [Text.UTF8Encoding]::new($true).GetPreamble() + [Text.UTF8Encoding]::new($false).GetBytes("// $copyright`r`n// SPDX-License-Identifier: MIT`r`n`r`nconst a = 1;`r`nconst b = 2;`r`n")
 Check 'endings: -Fix keeps CRLF and the byte order mark' ($crlfFix.ExitCode -eq 0 -and ($bytes -join ',') -eq ($expected -join ',')) ($bytes -join ',')
+
+# template-owned: the five build scripts the template owns aren't checked, a build script of the project's own is.
+$owned = New-Fixture 'template-owned' $answers @{ 'build/dod.ps1' = "<#`n.SYNOPSIS`n#>`n"; 'build/Update-PublicApi.ps1' = "<#`n.SYNOPSIS`n#>`n"; 'build/Get-TestRuntimes.ps1' = "<#`n.SYNOPSIS`n#>`n"; 'build/Install-Dotnet.ps1' = "<#`n.SYNOPSIS`n#>`n"; 'build/Update-Baseline.ps1' = "<#`n.SYNOPSIS`n#>`n"; 'build/gate.ps1' = "Write-Output 'gate'`n" }
+$ownedRun = Invoke-Headers $owned
+Check 'template-owned: the build scripts the template owns pass without a header, a build script of the project''s own fails' ($ownedRun.ExitCode -eq 1 -and $ownedRun.Output.Contains('build/gate.ps1: no copyright line') -and $ownedRun.Output.Contains('File headers: FAILED (1 files)') -and -not $ownedRun.Output.Contains('build/dod.ps1') -and -not $ownedRun.Output.Contains('Update-PublicApi') -and -not $ownedRun.Output.Contains('Get-TestRuntimes') -and -not $ownedRun.Output.Contains('Install-Dotnet') -and -not $ownedRun.Output.Contains('Update-Baseline')) $ownedRun.Output
 
 # no-license: a blank license answer.
 $unlicensed = New-Fixture 'no-license' "author_name: Test Org`nlicense: ''`n" @{ 'a.py' = "# $copyright`nprint('a')`n"; 'b.py' = "print('b')`n" }
