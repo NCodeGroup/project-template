@@ -7,7 +7,7 @@
     Works out the template's answers from what the repository already has (stack, project name, git host, workflow tools, authors,
     build and test commands), applies -Data over them, and runs `copier copy --overwrite --defaults` into the
     repository (Copier from PATH, or through uvx). The answers are recorded in .copier-answers.yml, so the project
-    can update itself with .\.template\Update-Project.ps1 afterwards. The answers include pre_release = tracked, so an AGENTS.md the template writes, for a repository that has none, says pre-release: tracked, since the repository has a history (ADR-0015); Copier records that answer nowhere. A repository that uses Node.js without being a Node.js project answers uses_node, and a .nvmrc without a .node-version gives .node-version its version (ADR-0200). A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
+    can update itself with .\.template\Update-Project.ps1 afterwards. The answers include pre_release = tracked, so an AGENTS.md the template writes, for a repository that has none, says pre-release: tracked, since the repository has a history (ADR-0015); Copier records that answer nowhere. A repository whose own AGENTS.md the adoption keeps gets the release_policy answer from that file's Landing section, none without a release line, so SECURITY.md describes signed release tags only when something makes them; Copier records that answer nowhere either. A repository that uses Node.js without being a Node.js project answers uses_node, and a .nvmrc without a .node-version gives .node-version its version (ADR-0200). A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
 
     The repository must be the root of a Git repository with no uncommitted changes and no .copier-answers.yml.
     The result is one commit, "Adopt project-template <version>"; -NoCommit stages it instead. Before committing, the
@@ -174,6 +174,11 @@ try {
     if ("$($answers['nuget_package'])" -eq 'true' -and -not $answers.Contains('nuget_publisher')) {
         $publisherAnswer = Get-NuGetPublisherAnswer
         if ($publisherAnswer) { $answers['nuget_publisher'] = $publisherAnswer }
+    }
+    # The release_policy answer follows the release line of the AGENTS.md the adoption keeps, none without one, as the release workflow reads it, so SECURITY.md describes signed release tags only when something makes them.
+    if (-not $answers.Contains('release_policy')) {
+        $releasePolicy = Get-ReleasePolicyAnswer
+        if ($releasePolicy) { $answers['release_policy'] = $releasePolicy }
     }
     # Files the repository owns, merged or template-owned (its project_owned_files answer): Copier leaves them as they are, and updates show the template's changes to them.
     $ownedFiles = @()

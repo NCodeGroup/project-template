@@ -370,6 +370,7 @@ if (-not $UnitOnly) {
         'src/Lib/Lib.csproj' = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n</Project>`n"
         'README.md'          = "# Lib`n"
         'LICENSE'            = "Own license.`n"
+        'AGENTS.md'          = "# Lib`n`nOwn rules.`n"
         '.github/workflows/release.yml' = "name: release`non: release`njobs:`n  push:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push out/*.nupkg`n"
     } 'https://github.com/example/lib.git'
     Invoke-Git -C $ownLicense tag v2.3.0
@@ -377,6 +378,7 @@ if (-not $UnitOnly) {
     Check 'own-license: keeps its own license, without LICENSE.txt or COPYRIGHT.txt, and says so' ((Get-Content -Raw -LiteralPath (Join-Path $ownLicense 'LICENSE')) -eq "Own license.`n" -and -not (Test-Path -LiteralPath (Join-Path $ownLicense 'LICENSE.txt')) -and -not (Test-Path -LiteralPath (Join-Path $ownLicense 'COPYRIGHT.txt')) -and $licenseOut.Contains('Skipped LICENSE.txt') -and $licenseOut.Contains('Skipped COPYRIGHT.txt') -and -not (git -C $ownLicense status --porcelain)) $licenseOut
     Check 'own-license: leaves publish.yml out beside its own publishing workflow, and says so' (-not (Test-Path -LiteralPath (Join-Path $ownLicense '.github/workflows/publish.yml')) -and (Test-Path -LiteralPath (Join-Path $ownLicense '.github/workflows/release.yml')) -and $licenseOut.Contains('Skipped .github/workflows/publish.yml')) $licenseOut
     Check 'own-license: leaves out release-provenance.yml and raise-baseline.yml, and records nuget_publisher' (-not (Test-Path -LiteralPath (Join-Path $ownLicense '.github/workflows/release-provenance.yml')) -and -not (Test-Path -LiteralPath (Join-Path $ownLicense '.github/workflows/raise-baseline.yml')) -and (Select-String -LiteralPath (Join-Path $ownLicense '.copier-answers.yml') -Pattern '^nuget_publisher: \.github/workflows/release\.yml\s*$' -Quiet)) $licenseOut
+    Check 'own-license: a kept AGENTS.md without a release line leaves the gitsign section out of SECURITY.md' ((Test-Path -LiteralPath (Join-Path $ownLicense 'SECURITY.md')) -and -not (Select-String -LiteralPath (Join-Path $ownLicense 'SECURITY.md') -SimpleMatch -Pattern 'gitsign' -Quiet) -and -not (Select-String -LiteralPath (Join-Path $ownLicense '.copier-answers.yml') -Pattern '^release_policy:' -Quiet)) $licenseOut
     $licenseVersion = Get-Content -Raw -LiteralPath (Join-Path $ownLicense 'version.json') | ConvertFrom-Json
     Check 'own-license: adds version.json at the patch after v2.3.0, with the AssemblyVersion v2.3.0 shipped, and no Directory.Build.props follow-up' ($licenseVersion.version -eq '2.3.1' -and $licenseVersion.assemblyVersion.version -eq '2.3' -and $licenseVersion.assemblyVersion.precision -eq 'minor' -and $licenseOut.Contains('Set version.json') -and -not $licenseOut.Contains('set <AssemblyVersion>')) $licenseOut
 

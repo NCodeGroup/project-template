@@ -155,9 +155,10 @@ function Get-PreReleaseAnswer {
 
 # The release_policy answer, which Copier never records (copier.yml says when: false): the value of the "- release:" line of
 # AGENTS.md's Landing section, none without the line, as .template/Publish-Release.ps1 reads it. Nothing for a value that
-# script refuses or without AGENTS.md, so the answer's default applies.
+# script refuses or without AGENTS.md, so the answer's default applies. Runs in the project folder.
+# tools/adopt/Adoption.psm1 has a deliberate copy of this function, kept equal by tests/Test-UpdateNotes.ps1.
 function Get-ReleasePolicyAnswer {
-    $agents = Join-Path $project 'AGENTS.md'
+    $agents = 'AGENTS.md'
     if (-not (Test-Path -LiteralPath $agents -PathType Leaf)) { return }
     $value = 'none'
     $inLanding = $false

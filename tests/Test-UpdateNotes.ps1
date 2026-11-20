@@ -26,7 +26,7 @@
                 without .github/workflows.
       release-policy Get-ReleasePolicyAnswer reads the release line of AGENTS.md's Landing section, with or without
                 double quotes, none without the line or outside that section, and nothing for a value
-                .template\Publish-Release.ps1 refuses or without AGENTS.md.
+                .template\Publish-Release.ps1 refuses or without AGENTS.md. tools\adopt\Adoption.psm1's copy answers the same.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.4.0 or passes
@@ -244,6 +244,7 @@ $publisherAnswer
 
 # release-policy: Get-ReleasePolicyAnswer, run from inside each fixture folder, which is also the project.
 $releasePolicyAnswer = & {
+    Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
     $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
     $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-ReleasePolicyAnswer' }, $true)
     . ([scriptblock]::Create($fn.Extent.Text))
@@ -261,12 +262,11 @@ $releasePolicyAnswer = & {
         $folder = Join-Path $Work "release-policy-$($name -replace '\W+', '-')"
         $null = New-Item -ItemType Directory -Path $folder -Force
         if ($null -ne $case.Agents) { [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), $case.Agents) }
-        # Set-Variable: only the loaded function reads project, which the script analyzer can't see.
-        Set-Variable -Name project -Value $folder
         Push-Location $folder
-        try { $got = "$(Get-ReleasePolicyAnswer)" }
+        try { $got = "$(Get-ReleasePolicyAnswer)"; $adoptGot = "$(Adoption\Get-ReleasePolicyAnswer)" }
         finally { Pop-Location }
         Check "release-policy: $name" ($got -eq $case.Want) "got [$got], want [$($case.Want)]"
+        Check "release-policy: ${name}: the adoption answers the same" ($adoptGot -eq $got) "update [$got], adopt [$adoptGot]"
     }
 }
 $releasePolicyAnswer

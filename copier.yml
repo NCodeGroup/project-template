@@ -388,7 +388,7 @@ pre_release:
   validator: "{% if pre_release not in ['tracked', 'untracked'] %}Either tracked or untracked{% endif %}"
 
 # Never asked or recorded: the release line of the AGENTS.md the template writes, and whether SECURITY.md says how to verify a
-# release tag. .template/Update-Project.ps1 reads it from AGENTS.md's Landing section for every render.
+# release tag. .template/Update-Project.ps1 and Adopt-Project.ps1 read it from AGENTS.md's Landing section.
 release_policy:
   type: str
   when: false
