@@ -1310,6 +1310,14 @@ $m += @(foreach ($p in $followUpShipFiles) { if ([IO.File]::ReadAllText((Join-Pa
 $m += @(Get-MissingText $rulesJinja 'A plan has a `Release:` line only when it changes something a release ships')
 $m += @(Get-MissingText 'template\AGENTS.md.jinja' 'a plan has that line only when it changes something a release ships')
 Check 'workflow: a plan gets a Release: line only when it changes what a release ships, and ship-plan lands one without it with no tag and no release (#439)' (-not $m) ($m -join '; ')
+# Set-Location doesn't move the process's folder, so a Copilot session passes no relative path to a .NET method, and a plan says so when a step runs a script (#440).
+$relativePathsText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_copilot-relative-paths.md')).Body.Trim()
+$m = @(Get-MissingText ('template\.github\skills\plan-feature\SKILL.md', 'template\.github\prompts\orchestrate-plan.prompt.md', 'template\.github\agents\plan-executor.agent.md', 'template\.github\agents\copilot-implementer.agent.md', 'template\.github\skills\finish-plan\SKILL.md') $relativePathsText)
+$m += @(Get-MissingText ($copilotRunFiles + $copilotAddressFiles) $relativePathsText)
+$m += @(foreach ($p in 'template\.claude\commands\plan-feature.md', 'template\.claude\agents\plan-executor.md') { if ([IO.File]::ReadAllText((Join-Path $repoRoot $p)).Contains($relativePathsText)) { "${p}: a Claude Code file has the Copilot rule" } })
+$m += @(Get-MissingText 'workflow\templates\_plan-format.md' 'A script or command never passes a relative path to a .NET method')
+$m += @(Get-MissingText $rulesJinja 'so a script there never passes a relative path to a .NET method')
+Check 'workflow: a Copilot session never passes a relative path to a .NET method, which resolves it against the main checkout, and a plan repeats the rule for its scripts (#440)' (-not $m) ($m -join '; ')
 # The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
 $prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
 $prAttributionFiles = [ordered]@{
