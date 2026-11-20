@@ -1318,6 +1318,10 @@ $m += @(foreach ($p in 'template\.claude\commands\plan-feature.md', 'template\.c
 $m += @(Get-MissingText 'workflow\templates\_plan-format.md' 'A script or command never passes a relative path to a .NET method')
 $m += @(Get-MissingText $rulesJinja 'so a script there never passes a relative path to a .NET method')
 Check 'workflow: a Copilot session never passes a relative path to a .NET method, which resolves it against the main checkout, and a plan repeats the rule for its scripts (#440)' (-not $m) ($m -join '; ')
+# A plan's worktree is .claude/worktrees/<name>/, so a command reaches a sibling repository from the folder that holds the main checkout, never through .. (#441).
+$m = @(Get-MissingText ('workflow\templates\_plan-format.md', 'template\.claude\commands\plan-feature.md', 'template\.github\skills\plan-issue\SKILL.md') ('finds it from the folder that holds the main checkout, never through `..`', 'Join-Path (Split-Path -Parent (Split-Path -Parent (git rev-parse --path-format=absolute --git-common-dir))) <repository>'))
+$m += @(Get-MissingText $rulesJinja 'never through `..`, which from a plan''s worktree is `.claude/worktrees/`')
+Check 'workflow: a command reaches a sibling repository from the folder that holds the main checkout, never through .. (#441)' (-not $m) ($m -join '; ')
 # The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
 $prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
 $prAttributionFiles = [ordered]@{
