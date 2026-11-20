@@ -33,7 +33,7 @@ succeeds, so the raise cannot run in the release itself.
   project's own `publish` job when it has one, pushes `baseline-<version>` from the default branch's tip and opens a
   draft merge request; it needs the masked CI/CD variable `BASELINE_TOKEN`, a project access token with the Developer
   role and the `api` and `write_repository` scopes, and is skipped without it;
-  `tools/Set-GitLabBaseline.ps1 -BaselineToken` creates them.
+  the project template's `tools/Set-GitLabBaseline.ps1 -BaselineToken` creates them.
 {%- endif %}
 - The workflow needs "Allow GitHub Actions to create and approve pull requests", which
   `tools/Set-RepositoryBaseline.ps1` in the project template turns on only where this workflow is on the default branch;

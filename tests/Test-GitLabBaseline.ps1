@@ -102,7 +102,11 @@ if ($rest -like '/pipeline_schedules*') {
     }
     Out-Answer 200 (ConvertTo-Json -Compress -Depth 5 -InputObject @(if ($project.schedules) { $project.schedules }))
 }
-if ($rest -like '/variables*' -or $rest -eq '/access_tokens') {
+if ($rest -like '/variables*' -or $rest -like '/access_tokens*') {
+    if ($rest -eq '/access_tokens/1' -and $method -eq 'DELETE') {
+        if ($project.revokeFails) { Out-Answer ([int]$project.revokeFails) '{"message":"Stand-in refused revoke"}' }
+        Out-Answer 204 ''
+    }
     if ($rest -eq '/variables/BASELINE_TOKEN') { if ($project.variable) { Out-Answer 200 '{"key":"BASELINE_TOKEN"}' } else { Out-Answer 404 '{"message":"404 Variable Not Found"}' } }
     if ($rest -eq '/access_tokens') {
         if ($project.tokenFails) { Out-Answer ([int]$project.tokenFails) '{"message":"Stand-in refused token"}' }
@@ -175,6 +179,7 @@ Write-Text (Join-Path $bin 'projects.json') (ConvertTo-Json -Depth 6 -InputObjec
     'gitlab.com/grp/tokenset' = $madeProject + @{ variable = $true }
     'gitlab.com/grp/tokenrefused' = $madeProject + @{ tokenFails = 403 }
     'gitlab.com/grp/variablerefused' = $madeProject + @{ variableFails = 400 }
+    'gitlab.com/grp/revokerefused' = $madeProject + @{ variableFails = 400; revokeFails = 403 }
     'gitlab.com/grp/old' = @{ info = @{ archived = $true; $threads = $false; $pipelines = $false } }
     'gitlab.com/grp/empty' = @{ raw = '' }
     'gitlab.com/grp/text' = @{ raw = 'not json' }
@@ -318,6 +323,7 @@ try {
     $sentBody = try { $r.Bodies | Select-Object -First 1 | ConvertFrom-Json -ErrorAction Stop } catch { $null }
     Check 'token: one token request with both scopes, the Developer level and an expiry, then one masked variable request' ($r.ExitCode -eq 0 -and $tokenPosts.Count -eq 1 -and $tokenPosts[0] -like '*-F name=raise-baseline*' -and $tokenPosts[0].Contains('-F scopes[]=api') -and $tokenPosts[0].Contains('-F scopes[]=write_repository') -and $tokenPosts[0] -like '*-F access_level=30*' -and $tokenPosts[0] -match '-F expires_at=\d{4}-\d{2}-\d{2}' -and $variablePosts.Count -eq 1 -and $variablePosts[0] -like '*--input -*' -and $variablePosts[0] -notlike '* -F *' -and $r.Bodies.Count -eq 1 -and $sentBody.key -eq 'BASELINE_TOKEN' -and $sentBody.masked -eq $true -and $sentBody.protected -eq $false -and $r.Output -match [regex]::Escape('grp/tokenless: BASELINE_TOKEN variable: set')) "tokens=$($tokenPosts -join '|') variables=$($variablePosts -join '|') bodies=$($r.Bodies.Count) output=$($r.Output)"
     Check 'token secret: the token appears in no printed output' (-not $r.Output.Contains($secret) -and -not $r.Output.Contains('STANDIN-SECRET')) $r.Output
+    Check 'token: a successful run makes no DELETE' (@($r.Log | Where-Object { $_ -like '*--method DELETE*' }).Count -eq 0) "log=$($r.Log -join '|')"
     Check 'token secret: the token appears in no argument line of any call, only in the body on standard input' (@($r.Log | Where-Object { $_.Contains('STANDIN-SECRET') }).Count -eq 0 -and $sentBody.value -eq $secret) "log=$($r.Log -join '|')"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/tokenset', '-BaselineToken')
     Check 'token already: an existing variable is reported and no token is requested' ($r.ExitCode -eq 0 -and $r.Tokens.Count -eq 0 -and @($r.Variables | Where-Object { $_ -like '*--method POST*' }).Count -eq 0 -and $r.Output -match [regex]::Escape('grp/tokenset: BASELINE_TOKEN variable: already set')) "tokens=$($r.Tokens -join '|') output=$($r.Output)"
@@ -326,7 +332,10 @@ try {
     $r = Invoke-GitLabBaseline @('-Project', 'grp/tokenrefused', '-BaselineToken')
     Check 'token refused: a refused token is reported, no variable is made and the run succeeds' ($r.ExitCode -eq 0 -and @($r.Variables | Where-Object { $_ -like '*--method POST*' }).Count -eq 0 -and $r.Output -match [regex]::Escape('grp/tokenrefused: BASELINE_TOKEN variable: not available (HTTP 403: Stand-in refused token)')) "output=$($r.Output)"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/variablerefused', '-BaselineToken')
-    Check 'variable refused: a refused variable is reported without the token and the run succeeds' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape('grp/variablerefused: BASELINE_TOKEN variable: not available (HTTP 400: Stand-in refused variable)') -and -not $r.Output.Contains('STANDIN-SECRET')) "output=$($r.Output)"
+    Check 'variable refused: a refused variable is reported without the token, the token is revoked and the run succeeds' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape('grp/variablerefused: BASELINE_TOKEN variable: not available (HTTP 400: Stand-in refused variable; the access token was revoked)') -and -not $r.Output.Contains('STANDIN-SECRET')) "output=$($r.Output)"
+    Check 'variable refused: exactly one DELETE of that token follows the refused variable call' (@($r.Tokens | Where-Object { $_ -like '*--method DELETE*' }).Count -eq 1 -and @($r.Tokens | Where-Object { $_ -like '*--method DELETE*projects/grp%2Fvariablerefused/access_tokens/1' }).Count -eq 1) "tokens=$($r.Tokens -join '|')"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/revokerefused', '-BaselineToken')
+    Check 'revoke refused: the report names the token to revoke by hand and the run succeeds' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape('grp/revokerefused: BASELINE_TOKEN variable: not available (HTTP 400: Stand-in refused variable; the access token 1 is still there, revoke it by hand)') -and -not $r.Output.Contains('STANDIN-SECRET')) "output=$($r.Output)"
 
     # 10. A project named by a clone's origin remote.
     $httpsClone = Join-Path $Work 'clone-https'

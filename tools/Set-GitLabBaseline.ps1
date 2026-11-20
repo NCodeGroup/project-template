@@ -226,13 +226,21 @@ function Set-BaselineToken {
     $created = Invoke-Glab POST "$endpoint/access_tokens" @('name=raise-baseline', 'scopes[]=api', 'scopes[]=write_repository', 'access_level=30', "expires_at=$expires")
     if (-not ($created.Status -ge 200 -and $created.Status -lt 300)) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $created))"; return }
     $token = try { "$(($created.Body | ConvertFrom-Json -ErrorAction Stop).token)" } catch { '' }
+    $tokenId = try { "$(($created.Body | ConvertFrom-Json -ErrorAction Stop).id)" } catch { '' }
     if (-not $token) { Write-Host "${Project}: ${label}: not available (the access token's answer has no token)"; return }
     $body = @{ key = 'BASELINE_TOKEN'; value = $token; masked = $true; protected = $false } | ConvertTo-Json -Compress
     $result = Invoke-Glab POST "$endpoint/variables" -Body $body
     $body = $null
     $token = $null
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Project}: ${label}: set" }
-    else { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
+    elseif (-not $tokenId) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
+    else {
+        # The variable couldn't be stored, so the access token would stay unused and a rerun would make another: revoke it.
+        $reason = Get-FailureReason $result
+        $revoked = Invoke-Glab DELETE "$endpoint/access_tokens/$tokenId"
+        if ($revoked.Status -ge 200 -and $revoked.Status -lt 300) { Write-Host "${Project}: ${label}: not available ($reason; the access token was revoked)" }
+        else { Write-Host "${Project}: ${label}: not available ($reason; the access token $tokenId is still there, revoke it by hand)" }
+    }
 }
 
 Set-ProjectSetting 'All threads must be resolved' 'only_allow_merge_if_all_discussions_are_resolved' $info
