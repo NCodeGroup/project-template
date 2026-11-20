@@ -158,6 +158,7 @@ _exclude:
     {% if stack is defined and nuget_package is defined and not (stack == 'dotnet' and nuget_package) %}
     build/Update-PublicApi.ps1
     build/Update-Baseline.ps1
+    .template/Test-ReproducibleBuild.ps1
     docs/api-compatibility.md
     /version.json
     {% endif %}
