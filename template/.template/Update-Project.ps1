@@ -79,6 +79,7 @@
     ADR-0151). When the project has version.json, it also warns about a publish.yml or a
     .gitlab-ci.yml that packs without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning
     themselves (the template's ADR-0138).
+    It also names each job of the project's own workflows, other than publish.yml, that builds, packs, tests without --no-build or pushes packages with an actions/checkout step without fetch-depth: 0, on which Nerdbank.GitVersioning fails the build, or with a -p:Version argument, which it ignores.
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     An existing project keeps off the checks a new one starts with until -Data turns them on: csharp_format, node_lint, coverage_gate and file_headers are false when its answers lack them.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
@@ -329,6 +330,62 @@ function Get-CodeReviewNote {
     if (-not $findings.Count) { return }
     ''
     "NCode Review approves a clean pull request only with approve: true, which NCodeGroup/code-review v1.4.0 and later take, and the template's tools/Set-RepositoryBaseline.ps1 then requires that approval (the template's ADR-0022, in docs/decisions/project-template/): $($findings -join '; '). Pin v1.4.0 or later and pass approve: true in .github/workflows/code-review.yml, as the template's code-review.yml does, set - draft: yes in AGENTS.md's Landing section, so a pull request opens as a draft and marking it ready is the maintainer's review, then run the template's tools/Set-RepositoryBaseline.ps1 again, so the default branch requires one approval, dismisses stale approvals and requires approval of the last push."
+}
+
+# Nerdbank.GitVersioning, which version.json turns on (the template's ADR-0138), fails a build on a shallow clone and ignores -p:Version: name each job of the project's own workflows, other than publish.yml, which has its own check, that builds, packs, tests without --no-build or pushes packages with a shallow actions/checkout or a -p:Version argument.
+# tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-GitVersioningWorkflowNote {
+    if (-not (Test-Path -LiteralPath version.json) -or -not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
+    $findings = [Collections.Generic.List[string]]::new()
+    foreach ($file in @(Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Name -match '\.ya?ml$' -and $_.Name -ne 'publish.yml' } | Sort-Object Name)) {
+        # The lines of each job under the top-level jobs: key, by job name.
+        $jobs = [ordered]@{}
+        $inJobs = $false
+        $jobIndent = -1
+        $current = $null
+        foreach ($line in Get-Content -LiteralPath $file.FullName) {
+            if ($line -match '^\s*(#.*)?$') { continue }
+            $indent = $line.Length - $line.TrimStart().Length
+            if ($indent -eq 0) { $inJobs = $line -match '^jobs:\s*(#.*)?$'; $jobIndent = -1; $current = $null; continue }
+            if (-not $inJobs) { continue }
+            if ($jobIndent -lt 0) { $jobIndent = $indent }
+            if ($indent -eq $jobIndent -and $line -match '^\s*([\w-]+):') {
+                $current = $Matches[1]
+                $jobs[$current] = [Collections.Generic.List[string]]::new()
+                continue
+            }
+            if ($current) { $jobs[$current].Add($line) }
+        }
+        foreach ($name in $jobs.Keys) {
+            $lines = @($jobs[$name])
+            $builds = @($lines | Where-Object { $_ -match '(?i)\bdotnet\s+(?:build|pack)\b' -or ($_ -match '(?i)\bdotnet\s+test\b' -and $_ -notmatch '--no-build') -or $_ -match '(?i)\bnuget(?:\.exe)?\s+push\b' })
+            if (-not $builds.Count) { continue }
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -notmatch '\buses:\s*[''"]?actions/checkout@') { continue }
+                # The step starts at the nearest line at or above that starts a list item, and ends before the next one no deeper.
+                $start = $i
+                while ($start -ge 0 -and $lines[$start] -notmatch '^\s*-\s') { $start-- }
+                if ($start -lt 0) { $start = $i }
+                $startIndent = $lines[$start].Length - $lines[$start].TrimStart().Length
+                $end = $lines.Count
+                for ($j = $start + 1; $j -lt $lines.Count; $j++) {
+                    if ($lines[$j] -match '^\s*-\s' -and ($lines[$j].Length - $lines[$j].TrimStart().Length) -le $startIndent) { $end = $j; break }
+                }
+                $step = @($lines[$start..($end - 1)])
+                if (-not @($step | Where-Object { $_ -match '(?<![\w-])fetch-depth:\s*[''"]?0[''"]?(?![\w.])' }).Count) {
+                    $findings.Add(".github/workflows/$($file.Name), job ${name}: actions/checkout without fetch-depth: 0")
+                }
+            }
+            foreach ($m in [regex]::Matches(($lines -join "`n"), '(?i)(?<![\w-])[-/]p(?:roperty)?:Version=\S+')) {
+                $findings.Add(".github/workflows/$($file.Name), job ${name}: $($m.Value)")
+            }
+        }
+    }
+    if (-not $findings.Count) { return }
+    ''
+    'These workflows build with Nerdbank.GitVersioning, which version.json turns on (the template''s ADR-0138, in docs/decisions/project-template/):'
+    foreach ($finding in $findings) { "  - $finding" }
+    'Nerdbank.GitVersioning fails the build on a shallow clone ("Shallow clone lacks the objects required to calculate version height"), which actions/checkout makes unless fetch-depth is 0, and it ignores -p:Version, so a release would carry version.json''s version, not the tag''s. Set fetch-depth: 0 on each actions/checkout step named, drop each -p:Version, and build a release with -p:PublicRelease=true, as the publish.yml the project template gives a .NET library on GitHub does.'
 }
 
 # Render the template at a version into a folder with the project's answers;
@@ -1247,6 +1304,7 @@ try {
                 ".gitlab-ci.yml packs or pushes packages without $($missing -join ' and '). Nerdbank.GitVersioning takes each package's version from version.json and ignores -p:Version, adds a -g<commit> suffix without PublicRelease, and fails on a shallow clone, which GitLab CI makes unless GIT_DEPTH is `"0`". Add -p:PublicRelease=true to its dotnet pack command and set GIT_DEPTH: `"0`" in its variables, as the publish.yml the project template gives a .NET library on GitHub does (the template's ADR-0138, in docs/decisions/project-template/)."
             }
         }
+        Get-GitVersioningWorkflowNote
         $gitVersioning = @(Get-GitVersioningReference)
         if ($gitVersioning.Count -gt 0) {
             ''

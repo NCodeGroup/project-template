@@ -15,6 +15,11 @@
       ci-perms  Get-CiPermissionNote names each job of ci.yml, or its top-level permissions, that asks for more than
                 contents: read when tag-release.yml calls it, and says nothing for contents: read, none or no tag-release.yml;
                 tools\adopt\Adoption.psm1's copy prints the same.
+      gitversioning Get-GitVersioningWorkflowNote names each job of a workflow other than publish.yml that builds,
+                packs, tests without --no-build or pushes packages with an actions/checkout step without
+                fetch-depth: 0 or with a -p:Version argument when version.json exists, and says nothing for full
+                history, a flow mapping, --no-build, a job that doesn't build, publish.yml or a project without
+                version.json.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.4.0 or passes
@@ -158,6 +163,42 @@ $ciPermissionNote = & {
     }
 }
 $ciPermissionNote
+
+# gitversioning: Get-GitVersioningWorkflowNote, run from inside each fixture folder, which is also the project.
+$gitVersioningNote = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-GitVersioningWorkflowNote' }, $true)
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $head = "on: push`njobs:`n  build:`n    runs-on: ubuntu-latest`n    steps:`n"
+    $shallow = $head + "      - uses: actions/checkout@v4`n      - run: dotnet build --configuration Release /p:Version=`"`${BUILD_VERSION}`"`n      - run: dotnet nuget push out/*.nupkg`n"
+    $versionCases = [ordered]@{
+        'shallow and version'    = @{ Text = $shallow; Want = @('.github/workflows/main.yml, job build: actions/checkout without fetch-depth: 0', '.github/workflows/main.yml, job build: /p:Version="${BUILD_VERSION}"', 'Shallow clone lacks the objects') }
+        'full history'           = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          fetch-depth: 0`n      - run: dotnet pack -c Release`n"; Want = @() }
+        'flow mapping'           = @{ Text = $head + "      - uses: actions/checkout@v4`n        with: { fetch-depth: 0 }`n      - run: dotnet build`n"; Want = @() }
+        'named step'             = @{ Text = $head + "      - name: Check out`n        uses: actions/checkout@v4`n        with:`n          persist-credentials: false`n      - run: dotnet test`n"; Want = @('job build: actions/checkout without fetch-depth: 0') }
+        'tests without a build'  = @{ Text = $head + "      - uses: actions/checkout@v4`n      - run: dotnet test --no-build`n"; Want = @() }
+        'other job'              = @{ Text = "on: push`njobs:`n  lint:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n      - run: npm run lint`n  pack:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n        with:`n          fetch-depth: 0`n      - run: dotnet pack`n"; Want = @() }
+        'publish.yml'            = @{ Text = $shallow; File = 'publish.yml'; Want = @() }
+        'no version.json'        = @{ Text = $shallow; VersionJson = $false; Want = @() }
+    }
+    foreach ($name in $versionCases.Keys) {
+        $case = $versionCases[$name]
+        $folder = Join-Path $Work "gitversioning-$($name -replace '\W+', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        if ($case.VersionJson -ne $false) { [IO.File]::WriteAllText((Join-Path $folder 'version.json'), '{}') }
+        [IO.File]::WriteAllText((Join-Path $workflows $(if ($case.File) { $case.File } else { 'main.yml' })), $case.Text)
+        Push-Location $folder
+        try { $note = (Get-GitVersioningWorkflowNote) -join "`n" }
+        finally { Pop-Location }
+        if ($case.Want.Count) {
+            $missing = @($case.Want | Where-Object { -not $note.Contains($_) })
+            Check "gitversioning: $name" (-not $missing.Count) "missing [$($missing -join '], [')] in [$note]"
+        }
+        else { Check "gitversioning: $name" (-not $note.Trim()) "got [$note]" }
+    }
+}
+$gitVersioningNote
 
 # badge: Get-BadgeReminder, run from inside each fixture folder, which is also the project.
 $badgeReminder = & {
