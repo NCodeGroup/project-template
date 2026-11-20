@@ -156,7 +156,7 @@ function Get-PreReleaseAnswer {
 # The release_policy answer, which Copier never records (copier.yml says when: false): the value of the "- release:" line of
 # AGENTS.md's Landing section, none without the line, as .template/Publish-Release.ps1 reads it. Nothing for a value that
 # script refuses or without AGENTS.md, so the answer's default applies. Runs in the project folder.
-# tools/adopt/Adoption.psm1 has a deliberate copy of this function, kept equal by tests/Test-UpdateNotes.ps1.
+# tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
 function Get-ReleasePolicyAnswer {
     $agents = 'AGENTS.md'
     if (-not (Test-Path -LiteralPath $agents -PathType Leaf)) { return }
@@ -680,7 +680,7 @@ function Get-NuGetPublisher {
 }
 
 # The nuget_publisher answer: the workflows other than publish.yml that run nuget push, joined with ", ", when the library has no publish.yml,
-# else blank. tools/adopt/Adoption.psm1 has a deliberate copy of this function, kept equal by tests/Test-UpdateNotes.ps1.
+# else blank. tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
 function Get-NuGetPublisherAnswer {
     if (Test-Path -LiteralPath .github/workflows/publish.yml) { return '' }
     @(Get-NuGetPublisher) -join ', '
