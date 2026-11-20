@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.110.0] - 2026-11-20
+
+### Added
+
+- `tools/Dismiss-ScorecardAlerts.ps1 -Repo <owner>/<name>` dismisses, in a repository with one writer, the open OpenSSF Scorecard alerts of Branch-Protection, CII-Best-Practices and Contributors as won't fix with a standard comment, after listing every open Scorecard alert, and leaves the others open; `-WhatIf` shows it, and with two writers or more it dismisses nothing. ([#456](https://github.com/NCodeGroup/project-template/issues/456), [ADR-0035](template/docs/decisions/project-template/0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md))
+- For a public repository with one writer, `tools/Set-RepositoryBaseline.ps1` ends with a notice naming `tools/Dismiss-ScorecardAlerts.ps1`. ([#456](https://github.com/NCodeGroup/project-template/issues/456), [ADR-0035](template/docs/decisions/project-template/0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md))
+
+### Changed
+
+- `/best-practices` counts the people with write access, reports a Scorecard check whose alert is dismissed as accepted, with its reason, never recommends a required approval or approval of the last push to a project with one writer, and names `tools/Dismiss-ScorecardAlerts.ps1` for the checks one person can't clear. ([#456](https://github.com/NCodeGroup/project-template/issues/456), [#455](https://github.com/NCodeGroup/project-template/issues/455), [ADR-0035](template/docs/decisions/project-template/0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md))
+- ADR-0020's Scorecard table gives the score one writer reaches on Branch-Protection, CII-Best-Practices and Contributors, and points to ADR-0035 for dismissing their alerts. ([#456](https://github.com/NCodeGroup/project-template/issues/456), [ADR-0035](template/docs/decisions/project-template/0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md))
+- `code-review.yml`, `code-review-auto-merge.yml`, `AGENTS.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, the update's NCode Review note and the message after a project is made say that NCode Review's approval gates the merge only once a second person has write access. ([#455](https://github.com/NCodeGroup/project-template/issues/455), [ADR-0034](template/docs/decisions/project-template/0034-with-one-writer-the-baseline-requires-no-approval.md))
+
+### Fixed
+
+- `tools/Set-RepositoryBaseline.ps1` requires no approval and no approval of the last push where one person has write access, also where `code-review.yml` passes `approve: true`, and turns both off in an earlier "Protect main" that requires an approval, saying so: GitHub counts no approval from the author or from NCode Review, whose app has no write access, so a sole maintainer could merge nothing. It keeps dismissing stale reviews, and names a collaborators list it can't read, adding no approval and keeping those a ruleset has. ([#455](https://github.com/NCodeGroup/project-template/issues/455), [ADR-0034](template/docs/decisions/project-template/0034-with-one-writer-the-baseline-requires-no-approval.md))
+
 ## [0.109.0] - 2026-11-20
 
 ### Added
@@ -1770,7 +1787,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.109.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.110.0...HEAD
+[0.110.0]: https://github.com/NCodeGroup/project-template/compare/v0.109.0...v0.110.0
 [0.109.0]: https://github.com/NCodeGroup/project-template/compare/v0.108.0...v0.109.0
 [0.108.0]: https://github.com/NCodeGroup/project-template/compare/v0.107.0...v0.108.0
 [0.107.0]: https://github.com/NCodeGroup/project-template/compare/v0.106.1...v0.107.0
