@@ -57,16 +57,20 @@ $WhatIfPreference = $false
 Add-Content -LiteralPath (Join-Path $PSScriptRoot 'calls.log') -Value ($args -join ' ')
 $data = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'projects.json') | ConvertFrom-Json -AsHashtable
 if ($args[0] -ne 'api') { exit 1 }
-$hostname = ''; $method = 'GET'; $endpoint = ''; $fields = @()
+$hostname = ''; $method = 'GET'; $endpoint = ''; $fields = @(); $readsInput = $false
 for ($i = 1; $i -lt $args.Count; $i++) {
     switch ($args[$i]) {
         '--hostname' { $i++; $hostname = $args[$i] }
         '--method' { $i++; $method = $args[$i] }
         '-F' { $i++; $fields += $args[$i] }
+        '--header' { $i++ }
+        '--input' { $i++; if ($args[$i] -eq '-') { $readsInput = $true } }
         '--include' { }
         default { $endpoint = $args[$i] }
     }
 }
+# A call with --input - sends its JSON body on standard input: it is logged on its own, apart from the arguments.
+if ($readsInput) { Add-Content -LiteralPath (Join-Path $PSScriptRoot 'bodies.log') -Value (@($input) -join "`n") }
 if ($endpoint -notmatch '^projects/(?<id>[^/]+)(?<rest>/.*)?$') { exit 1 }
 $key = "$hostname/$([uri]::UnescapeDataString($Matches.id))"
 $rest = "$($Matches.rest)"
@@ -180,9 +184,11 @@ Write-Text (Join-Path $bin 'projects.json') (ConvertTo-Json -Depth 6 -InputObjec
 
 $script = Join-Path $repoRoot 'tools/Set-GitLabBaseline.ps1'
 $calls = Join-Path $bin 'calls.log'
+$bodies = Join-Path $bin 'bodies.log'
 # A run in the folder $In: its output and exit code, and its changes, the calls that PUT, in order.
 function Invoke-GitLabBaseline([string[]]$Arguments, [string]$In = $Work) {
     if (Test-Path -LiteralPath $calls) { Remove-Item -LiteralPath $calls -Force }
+    if (Test-Path -LiteralPath $bodies) { Remove-Item -LiteralPath $bodies -Force }
     Push-Location $In
     try {
         $output = & pwsh -NoProfile -File $script @Arguments 2>&1 | Out-String
@@ -198,6 +204,8 @@ function Invoke-GitLabBaseline([string[]]$Arguments, [string]$In = $Work) {
         Schedules = @($log | Where-Object { $_ -like '*--method POST*pipeline_schedules*' })
         Tokens = @($log | Where-Object { $_ -like '*access_tokens*' })
         Variables = @($log | Where-Object { $_ -like '*/variables*' })
+        Log = @($log)
+        Bodies = @(if (Test-Path -LiteralPath $bodies) { Get-Content -LiteralPath $bodies })
     }
 }
 
@@ -307,8 +315,10 @@ try {
     $r = Invoke-GitLabBaseline @('-Project', 'grp/tokenless', '-BaselineToken')
     $tokenPosts = @($r.Tokens | Where-Object { $_ -like '*--method POST*' })
     $variablePosts = @($r.Variables | Where-Object { $_ -like '*--method POST*' })
-    Check 'token: one token request with both scopes, the Developer level and an expiry, then one masked variable request' ($r.ExitCode -eq 0 -and $tokenPosts.Count -eq 1 -and $tokenPosts[0] -like '*-F name=raise-baseline*' -and $tokenPosts[0].Contains('-F scopes[]=api') -and $tokenPosts[0].Contains('-F scopes[]=write_repository') -and $tokenPosts[0] -like '*-F access_level=30*' -and $tokenPosts[0] -match '-F expires_at=\d{4}-\d{2}-\d{2}' -and $variablePosts.Count -eq 1 -and $variablePosts[0] -like '*-F key=BASELINE_TOKEN*' -and $variablePosts[0] -like '*-F masked=true*' -and $variablePosts[0] -like '*-F protected=false*' -and $r.Output -match [regex]::Escape('grp/tokenless: BASELINE_TOKEN variable: set')) "tokens=$($tokenPosts -join '|') variables=$($variablePosts -join '|') output=$($r.Output)"
+    $sentBody = try { $r.Bodies | Select-Object -First 1 | ConvertFrom-Json -ErrorAction Stop } catch { $null }
+    Check 'token: one token request with both scopes, the Developer level and an expiry, then one masked variable request' ($r.ExitCode -eq 0 -and $tokenPosts.Count -eq 1 -and $tokenPosts[0] -like '*-F name=raise-baseline*' -and $tokenPosts[0].Contains('-F scopes[]=api') -and $tokenPosts[0].Contains('-F scopes[]=write_repository') -and $tokenPosts[0] -like '*-F access_level=30*' -and $tokenPosts[0] -match '-F expires_at=\d{4}-\d{2}-\d{2}' -and $variablePosts.Count -eq 1 -and $variablePosts[0] -like '*--input -*' -and $variablePosts[0] -notlike '* -F *' -and $r.Bodies.Count -eq 1 -and $sentBody.key -eq 'BASELINE_TOKEN' -and $sentBody.masked -eq $true -and $sentBody.protected -eq $false -and $r.Output -match [regex]::Escape('grp/tokenless: BASELINE_TOKEN variable: set')) "tokens=$($tokenPosts -join '|') variables=$($variablePosts -join '|') bodies=$($r.Bodies.Count) output=$($r.Output)"
     Check 'token secret: the token appears in no printed output' (-not $r.Output.Contains($secret) -and -not $r.Output.Contains('STANDIN-SECRET')) $r.Output
+    Check 'token secret: the token appears in no argument line of any call, only in the body on standard input' (@($r.Log | Where-Object { $_.Contains('STANDIN-SECRET') }).Count -eq 0 -and $sentBody.value -eq $secret) "log=$($r.Log -join '|')"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/tokenset', '-BaselineToken')
     Check 'token already: an existing variable is reported and no token is requested' ($r.ExitCode -eq 0 -and $r.Tokens.Count -eq 0 -and @($r.Variables | Where-Object { $_ -like '*--method POST*' }).Count -eq 0 -and $r.Output -match [regex]::Escape('grp/tokenset: BASELINE_TOKEN variable: already set')) "tokens=$($r.Tokens -join '|') output=$($r.Output)"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/tokenless', '-BaselineToken', '-WhatIf')

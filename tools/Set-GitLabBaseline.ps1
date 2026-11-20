@@ -83,17 +83,19 @@ $endpoint = "projects/$([uri]::EscapeDataString($Project))"
 # status line (--include), never from the CLI's wording, and stderr stays out of the body, so a warning can't spoil the
 # JSON; its first line is kept as the reason for a call with no status. A call that got no response at all (no network, no login) has no status. Every call names the host, so it never
 # depends on the folder glab runs in.
-function Invoke-Glab([string]$Method, [string]$Endpoint, [string[]]$Fields = @()) {
+function Invoke-Glab([string]$Method, [string]$Endpoint, [string[]]$Fields = @(), [string]$Body = '') {
     $fieldArgs = @(foreach ($f in $Fields) { '-F'; $f })
-    $all = @(& glab api --hostname $Hostname --method $Method --include $Endpoint @fieldArgs 2>&1)
+    # A secret goes in the JSON body on standard input, never in a field: the arguments of a process are readable by every user of the machine.
+    $all = if ($Body) { @($Body | & glab api --hostname $Hostname --method $Method --include $Endpoint --header 'Content-Type: application/json' --input - 2>&1) }
+    else { @(& glab api --hostname $Hostname --method $Method --include $Endpoint @fieldArgs 2>&1) }
     $lines = @($all | Where-Object { $_ -isnot [Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
     $errorLine = @($all | Where-Object { $_ -is [Management.Automation.ErrorRecord] } | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) | Select-Object -First 1
     $status = $null
     if ($lines.Count -and $lines[0] -match '^HTTP/\S+\s+(\d{3})\b') { $status = [int]$Matches[1] }
     $blank = -1
     for ($i = 0; $i -lt $lines.Count; $i++) { if (-not $lines[$i].Trim()) { $blank = $i; break } }
-    $body = if ($blank -ge 0 -and $blank -lt $lines.Count - 1) { $lines[($blank + 1)..($lines.Count - 1)] -join "`n" } else { '' }
-    [pscustomobject]@{ Status = $status; Body = $body; Error = "$errorLine" }
+    $answer = if ($blank -ge 0 -and $blank -lt $lines.Count - 1) { $lines[($blank + 1)..($lines.Count - 1)] -join "`n" } else { '' }
+    [pscustomobject]@{ Status = $status; Body = $answer; Error = "$errorLine" }
 }
 
 # Why a call failed, for the line that reports it: the status and, when the answer has one, the API's message.
@@ -225,7 +227,9 @@ function Set-BaselineToken {
     if (-not ($created.Status -ge 200 -and $created.Status -lt 300)) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $created))"; return }
     $token = try { "$(($created.Body | ConvertFrom-Json -ErrorAction Stop).token)" } catch { '' }
     if (-not $token) { Write-Host "${Project}: ${label}: not available (the access token's answer has no token)"; return }
-    $result = Invoke-Glab POST "$endpoint/variables" @('key=BASELINE_TOKEN', "value=$token", 'masked=true', 'protected=false')
+    $body = @{ key = 'BASELINE_TOKEN'; value = $token; masked = $true; protected = $false } | ConvertTo-Json -Compress
+    $result = Invoke-Glab POST "$endpoint/variables" -Body $body
+    $body = $null
     $token = $null
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Project}: ${label}: set" }
     else { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
