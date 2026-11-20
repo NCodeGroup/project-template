@@ -41,10 +41,19 @@
     GitLab, and a token that can edit the project. New-Project.ps1 runs it for a GitLab project it creates;
     Adopt-Project.ps1 prints the command to run.
 
+    With -BaselineToken it also makes one more setting, the masked CI/CD variable BASELINE_TOKEN that the template's
+    raise-baseline job (.gitlab-ci.yml) needs to push baseline-<version> and open its merge request: when the variable
+    isn't there, it creates a project access token named raise-baseline (role Developer, scopes api and
+    write_repository, expiring in a year) and stores it in the variable, masked and not protected. The token is only
+    passed from one call to the other and is never printed. The token expires after a year, and a run after that
+    replaces nothing: delete the variable first. A project without raise-baseline in its .gitlab-ci.yml has no use
+    for it. Without the switch, as in New-Project.ps1's run, nothing about tokens or variables is read or written.
+
 .EXAMPLE
     .\tools\Set-GitLabBaseline.ps1 -Project bixbots/qso-viewer -WhatIf     # shows each setting's state
     .\tools\Set-GitLabBaseline.ps1 -Project tools/qso-viewer -Hostname gitlab.example.com
     .\tools\Set-GitLabBaseline.ps1 -Path C:\src\qso-viewer
+    .\tools\Set-GitLabBaseline.ps1 -Project bixbots/qso-viewer -BaselineToken   # also creates BASELINE_TOKEN
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -53,7 +62,9 @@ param(
     # The GitLab's host name. With -Path, the origin remote's host unless this is given; otherwise gitlab.com.
     [string]$Hostname,
     # A clone of the project, whose origin remote names the project and the host. Not with -Project.
-    [string]$Path = '.'
+    [string]$Path = '.',
+    # Also creates the project access token and the masked CI/CD variable BASELINE_TOKEN that raise-baseline needs.
+    [switch]$BaselineToken
 )
 $ErrorActionPreference = 'Stop'
 if ($Project -and $PSBoundParameters.ContainsKey('Path')) { throw 'Pass -Project or -Path, not both.' }
@@ -198,8 +209,31 @@ function Set-WeeklyPipeline {
     else { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
 }
 
+# With -BaselineToken: the masked CI/CD variable BASELINE_TOKEN that the template's raise-baseline job needs, holding a
+# new project access token. The token is read from the first answer and only ever passed to the second call: it is never
+# printed, logged or put in a message.
+function Set-BaselineToken {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+    $label = 'BASELINE_TOKEN variable'
+    $read = Invoke-Glab GET "$endpoint/variables/BASELINE_TOKEN"
+    if ($read.Status -eq 200) { Write-Host "${Project}: ${label}: already set"; return }
+    if ($read.Status -ne 404) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $read))"; return }
+    if (-not $PSCmdlet.ShouldProcess($Project, "create the project access token and the variable BASELINE_TOKEN")) { Write-Host "${Project}: ${label}: would set"; return }
+    $expires = (Get-Date).AddDays(365).ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+    $created = Invoke-Glab POST "$endpoint/access_tokens" @('name=raise-baseline', 'scopes[]=api', 'scopes[]=write_repository', 'access_level=30', "expires_at=$expires")
+    if (-not ($created.Status -ge 200 -and $created.Status -lt 300)) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $created))"; return }
+    $token = try { "$(($created.Body | ConvertFrom-Json -ErrorAction Stop).token)" } catch { '' }
+    if (-not $token) { Write-Host "${Project}: ${label}: not available (the access token's answer has no token)"; return }
+    $result = Invoke-Glab POST "$endpoint/variables" @('key=BASELINE_TOKEN', "value=$token", 'masked=true', 'protected=false')
+    $token = $null
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Project}: ${label}: set" }
+    else { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
+}
+
 Set-ProjectSetting 'All threads must be resolved' 'only_allow_merge_if_all_discussions_are_resolved' $info
 Set-ProjectSetting 'Pipelines must succeed' 'only_allow_merge_if_pipeline_succeeds' $info
 Set-ProjectSetting 'Do not allow squash commits' 'squash_option' $info 'never'
 Set-DefaultBranchPush $info
 Set-WeeklyPipeline $info
+if ($BaselineToken) { Set-BaselineToken }
