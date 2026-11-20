@@ -17,6 +17,9 @@
                 tools\adopt\Adoption.psm1's copy prints the same.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
+      code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.4.0 or passes
+                no approve: true, and an AGENTS.md Landing section that doesn't say draft: yes, and says nothing for a
+                current setup or a project without code-review.yml.
       immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
                 for an upload named only in a comment line.
@@ -184,6 +187,40 @@ $badgeReminder = & {
     }
 }
 $badgeReminder
+
+# code-review: Get-CodeReviewNote, run from inside each fixture folder, which is also the project.
+$codeReviewNote = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-CodeReviewNote' }, $true)
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $pin = 'NCodeGroup/code-review@0123456789abcdef0123456789abcdef01234567'
+    $review = { param([string]$Tag, [bool]$Approve) "jobs:`n  review:`n    steps:`n      - uses: $pin # $Tag`n        with:`n$(if ($Approve) { "          approve: true`n" })" }
+    $reviewCases = [ordered]@{
+        'old pin, no approve, draft no' = @{ Workflow = (& $review 'v1.3.0' $false); Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @('pins NCodeGroup/code-review v1.3.0', 'passes no approve: true', 'says draft: no', 'Set-RepositoryBaseline.ps1 again'); Not = @() }
+        'current'                       = @{ Workflow = (& $review 'v1.4.0' $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
+        'newer, two jobs'               = @{ Workflow = (& $review 'v1.10.0' $true) + "      - uses: $pin # v1.12.1`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
+        'no draft line'                 = @{ Workflow = (& $review 'v1.4.0' $true); Agents = "# P`n`n## Landing`n`n- integrate: pull-request`n"; Want = @('has no draft line'); Not = @('pins', 'passes no approve') }
+        'no code-review.yml'            = @{ Workflow = $null; Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @(); Not = @() }
+    }
+    foreach ($name in $reviewCases.Keys) {
+        $case = $reviewCases[$name]
+        $folder = Join-Path $Work "code-review-$($name -replace '\W+', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), $case.Agents)
+        if ($case.Workflow) { [IO.File]::WriteAllText((Join-Path $workflows 'code-review.yml'), $case.Workflow) }
+        Push-Location $folder
+        try { $note = (Get-CodeReviewNote) -join "`n" }
+        finally { Pop-Location }
+        if ($case.Want.Count) {
+            $missing = @($case.Want | Where-Object { -not $note.Contains($_) })
+            $unwanted = @($case.Not | Where-Object { $note.Contains($_) })
+            Check "code-review: $name" (-not $missing.Count -and -not $unwanted.Count) "missing [$($missing -join '], [')], unwanted [$($unwanted -join '], [')] in [$note]"
+        }
+        else { Check "code-review: $name" (-not $note.Trim()) "got [$note]" }
+    }
+}
+$codeReviewNote
 
 # immutable: Get-ImmutableReleaseNote, run from inside each fixture folder, which is also the project.
 $immutableNote = & {

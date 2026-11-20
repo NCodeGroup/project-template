@@ -93,6 +93,7 @@
     in .github/workflows runs on a release event or uploads release assets, whose releases the template's
     tools/Set-RepositoryBaseline.ps1 leaves mutable, it says to delete or leave out that paragraph, also when the
     project is already up to date (the template's ADR-0028).
+    With NCode Review, when .github/workflows/code-review.yml pins NCodeGroup/code-review before v1.4.0 or passes no approve: true, or AGENTS.md's Landing section doesn't say draft: yes, it says what to change and to run the template's tools/Set-RepositoryBaseline.ps1 again, also when the project is already up to date (the template's ADR-0022).
 
     On Windows it stops before it changes anything when the project's template version has a path Git for Windows
     refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
@@ -297,6 +298,37 @@ function Get-CiPermissionNote {
     if (-not $findings) { return }
     ''
     ".github/workflows/ci.yml asks for more than contents: read: $($findings -join '; '). .github/workflows/tag-release.yml runs ci.yml as a reusable workflow before it tags a release and grants it only contents: read, and GitHub fails that run as it starts when a job of ci.yml asks for more, whatever the job's if: says, so no release is tagged or published. Move each such job into a workflow of its own, such as .github/workflows/coverage.yml, and keep ci.yml's top-level permissions at contents: read (the template's ADR-0026, in docs/decisions/project-template/)."
+}
+
+# NCode Review approves a clean pull request only with approve: true, which NCodeGroup/code-review v1.4.0 and later take,
+# and code-review.yml and AGENTS.md are project-owned, so the update can only say what they still lack (the template's ADR-0022).
+function Get-CodeReviewNote {
+    $workflow = '.github/workflows/code-review.yml'
+    if (-not (Test-Path -LiteralPath $workflow -PathType Leaf)) { return }
+    $text = Get-Content -LiteralPath $workflow -Raw
+    $versions = @(foreach ($m in [regex]::Matches($text, '(?im)^\s*(?:-\s+)?uses:\s*[''"]?NCodeGroup/code-review(?:/[\w./-]+)?@([^\s''"#]+)[''"]?[ \t]*(?:#[ \t]*(\S+))?')) {
+        if ($m.Groups[2].Success -and $m.Groups[2].Value -match '^v?(\d+\.\d+\.\d+)$') { [version]$Matches[1] }
+        elseif ($m.Groups[1].Value -match '^v?(\d+\.\d+\.\d+)$') { [version]$Matches[1] }
+    })
+    $findings = [Collections.Generic.List[string]]::new()
+    if ($versions.Count) {
+        $lowest = @($versions | Sort-Object)[0]
+        if ($lowest -lt [version]'1.4.0') { $findings.Add(".github/workflows/code-review.yml pins NCodeGroup/code-review v$lowest") }
+    }
+    if ($text -notmatch '(?m)^\s+approve:\s*[''"]?true[''"]?\s*(?:#.*)?$') { $findings.Add('.github/workflows/code-review.yml passes no approve: true') }
+    if (Test-Path -LiteralPath AGENTS.md) {
+        $draft = $null
+        $inLanding = $false
+        foreach ($line in Get-Content -LiteralPath AGENTS.md) {
+            if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
+            if ($inLanding -and $line -match '^## ') { break }
+            if ($inLanding -and $line -match '^- draft:\s*`?([^`\s]+)`?\s*$') { $draft = $Matches[1] }
+        }
+        if ($draft -ne 'yes') { $findings.Add($(if ($null -eq $draft) { 'AGENTS.md''s Landing section has no draft line' } else { "AGENTS.md's Landing section says draft: $draft" })) }
+    }
+    if (-not $findings.Count) { return }
+    ''
+    "NCode Review approves a clean pull request only with approve: true, which NCodeGroup/code-review v1.4.0 and later take, and the template's tools/Set-RepositoryBaseline.ps1 then requires that approval (the template's ADR-0022, in docs/decisions/project-template/): $($findings -join '; '). Pin v1.4.0 or later and pass approve: true in .github/workflows/code-review.yml, as the template's code-review.yml does, set - draft: yes in AGENTS.md's Landing section, so a pull request opens as a draft and marking it ready is the maintainer's review, then run the template's tools/Set-RepositoryBaseline.ps1 again, so the default branch requires one approval, dismisses stale approvals and requires approval of the last push."
 }
 
 # Render the template at a version into a folder with the project's answers;
@@ -1047,7 +1079,7 @@ try {
         })
 
     # A success ends with exit 0, not return, which would hand a caller that runs this with & the exit code of the last git command, such as git apply --check's 1 for a hunk the project lacks.
-    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; Get-BadgeReminder; Get-ImmutableReleaseNote $false; exit 0 }
+    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; Get-BadgeReminder; Get-ImmutableReleaseNote $false; Get-CodeReviewNote; exit 0 }
     "Template $from -> ${to}:"
     $changes | Sort-Object Kind, File | ForEach-Object { '  {0,-9} {1}' -f $_.Kind, $_.File }
     # A file the update leaves as the project had it lost nothing, such as a local edit the new version also makes or a deleted file it also deletes: list only the files that differ from the commit the update started from.
@@ -1155,6 +1187,7 @@ try {
     Get-CiPermissionNote
     $offered = [bool]@($shown | Where-Object { $_.File -eq 'SECURITY.md' } | ForEach-Object Lines | Where-Object { $_ -match '^\s*\+Releases are immutable' }).Count
     Get-ImmutableReleaseNote $offered
+    Get-CodeReviewNote
     # A publish.yml that doesn't call one of the release follow-ups, or either (ADR-0151): they no longer start on
     # workflow_run, so a release misses what each one it doesn't call makes.
     $publishText = if (Test-Path -LiteralPath .github/workflows/publish.yml) { Get-Content -LiteralPath .github/workflows/publish.yml -Raw } else { '' }
