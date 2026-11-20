@@ -187,6 +187,8 @@ if (-not [IO.Path]::IsPathRooted($Page)) { $Page = Join-Path $repoRoot $Page }
 $pageRows = @(Get-PageCriteria (Get-Content -Raw -LiteralPath $Page))
 $problems = @(Compare-Criteria $upstream $pageRows)
 Check 'repository: the criteria map lists every criterion of criteria.yml at its level, with its Req, N/A and URL' ($problems.Count -eq 0) ($problems -join '; ')
+$pageText = Get-Content -Raw -LiteralPath $Page
+Check 'repository: the registration prompt looks a project up by its repository URL at projects.json?url= before it searches by name' ($pageText.Contains('projects.json?url=') -and $pageText.IndexOf('projects.json?url=') -lt $pageText.IndexOf('/en/projects?q=')) 'the map lacks the projects.json?url= lookup before the name search'
 
 ''
 if ($failures.Count) { "Best Practices criteria tests: FAILED ($($failures.Count))"; exit 1 }

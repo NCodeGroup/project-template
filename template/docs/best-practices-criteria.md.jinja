@@ -357,7 +357,7 @@ RULES
 - Before saving each level, show me a table of criterion, answer and evidence, grouped into: from ANSWERS, from the map that you verified, and left open. List the MUST criteria that keep that level from being earned. Save only after I say "go". Never claim a level: report what the site shows.
 
 STEPS
-1. Find an existing entry: open https://www.bestpractices.dev/en/projects?q={{ project_name | urlencode }}. Text search matches names and descriptions, not repository URLs. If the project is there, note its number and go to step 3.
+1. Find an existing entry: open https://www.bestpractices.dev/projects.json?url=https%3A%2F%2Fgithub.com%2FOWNER%2FREPO (the project's address, URL-encoded, without /en/), which lists a registered project's id. If it lists one, note its number and go to step 3. Otherwise open https://www.bestpractices.dev/en/projects?q={{ project_name | urlencode }}; text search matches names and descriptions, not repository URLs. If the project is there, note its number and go to step 3.
 2. Register: open https://www.bestpractices.dev/en/projects/new, choose OWNER/REPO under "Select a GitHub repository", set the home page to the repository URL unless I give another, keep the Metal series, and submit. Wait for the redirect to /en/projects/<number>/passing/edit; autofill takes about 10 seconds.
 3. For each level (passing, silver, gold), open /en/projects/<number>/<level>/edit, click "Expand all panels" and read the form with JavaScript:
    - each criterion's radios are project[<id>_status], with values Met, Unmet, N/A and ?;
