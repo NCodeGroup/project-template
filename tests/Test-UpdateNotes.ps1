@@ -20,6 +20,7 @@
                 fetch-depth: 0 or with a -p:Version argument when version.json exists, and says nothing for full
                 history, a flow mapping, --no-build, a job that doesn't build, publish.yml or a project without
                 version.json.
+                tools\adopt\Adoption.psm1's copy prints the same.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.4.0 or passes
@@ -189,13 +190,14 @@ $gitVersioningNote = & {
         if ($case.VersionJson -ne $false) { [IO.File]::WriteAllText((Join-Path $folder 'version.json'), '{}') }
         [IO.File]::WriteAllText((Join-Path $workflows $(if ($case.File) { $case.File } else { 'main.yml' })), $case.Text)
         Push-Location $folder
-        try { $note = (Get-GitVersioningWorkflowNote) -join "`n" }
+        try { $note = (Get-GitVersioningWorkflowNote) -join "`n"; $adoptNote = (Adoption\Get-GitVersioningWorkflowNote) -join "`n" }
         finally { Pop-Location }
         if ($case.Want.Count) {
             $missing = @($case.Want | Where-Object { -not $note.Contains($_) })
             Check "gitversioning: $name" (-not $missing.Count) "missing [$($missing -join '], [')] in [$note]"
         }
         else { Check "gitversioning: $name" (-not $note.Trim()) "got [$note]" }
+        Check "gitversioning: ${name}: the adoption prints the same note" ($adoptNote -eq $note) "update [$note], adopt [$adoptNote]"
     }
 }
 $gitVersioningNote

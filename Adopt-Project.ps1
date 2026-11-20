@@ -29,6 +29,8 @@
 
     When tag-release.yml calls a ci.yml the repository kept, it prints the notes .\.template\Update-Project.ps1 prints when that ci.yml has no workflow_call trigger, or when its top-level permissions or a job's ask for more than contents: read, which tag-release.yml grants it: until then, no release is tagged (ADR-0026).
 
+    When the repository has version.json, it prints the note .\.template\Update-Project.ps1 prints for each job of the repository's own workflows, other than publish.yml, that builds with an actions/checkout step without fetch-depth: 0 or a -p:Version argument, which Nerdbank.GitVersioning fails on or ignores (ADR-0138).
+
     When the SECURITY.md the adoption leaves says releases are immutable and a workflow in .github/workflows runs on a
     release event or uploads release assets, it prints the note .\.template\Update-Project.ps1 prints: delete that
     paragraph, since the template's tools/Set-RepositoryBaseline.ps1 leaves such a repository's releases mutable
@@ -364,6 +366,9 @@ try {
     # .template/Update-Project.ps1's, word for word; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
     Get-CiCallNote
     Get-CiPermissionNote
+    # Nerdbank.GitVersioning, once version.json exists (ADR-0138): the note is .template/Update-Project.ps1's, word for word;
+    # tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+    Get-GitVersioningWorkflowNote
     # SECURITY.md's "Releases are immutable" paragraph, where a workflow needs mutable releases (ADR-0028). The note is
     # .template/Update-Project.ps1's, word for word.
     Get-ImmutableReleaseNote $false
