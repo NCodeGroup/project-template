@@ -19,9 +19,9 @@ A `file_headers` answer turns on a header check for every stack but .NET.
 - The header is the same two lines C# gets, as comments: `Copyright © <author_name>` and
   `SPDX-License-Identifier: <license>`.
 - `.template/Test-FileHeaders.ps1` checks every tracked source file outside the template's folders (`.template/`,
-  `.claude/`, `.github/`, `.githooks/`, `.vscode/`) and the five build scripts the template owns (`build/dod.ps1`, `build/Update-PublicApi.ps1`,
-  `build/Get-TestRuntimes.ps1`, `build/Install-Dotnet.ps1`, `build/Update-Baseline.ps1`) within its first 10 lines, and
-  `-Fix` adds the header after any `#!` line.
+  `.claude/`, `.github/`, `.githooks/`, `.vscode/`) and the five build scripts the template owns (`build/dod.ps1`,
+  `build/Update-PublicApi.ps1`, `build/Get-TestRuntimes.ps1`, `build/Install-Dotnet.ps1`, `build/Update-Baseline.ps1`)
+  within its first 10 lines, and `-Fix` adds the header after any `#!` line.
 - CI runs the check on GitHub and, in the .NET SDK image, on GitLab.
 
 ## Options considered
