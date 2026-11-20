@@ -23,6 +23,9 @@
     a ruleset of the owner's, with other changes or on -RequireChecks, gets it turned off and says so, also with -WhatIf and
     when GitHub refuses it, one that requires approvals keeps it, and a ruleset of the owner's gets a notice with a command
     that parses and is written to nothing;
+    that with one writer, as the collaborators list says, the ruleset requires no approval and no last-push approval, even
+    with approve: true, an earlier one has both turned off (plain run, -RequireChecks, -WhatIf, a refusal), an owner's is
+    not written, and a list it can't read is named;
     that -RequireChecks auto requires the GitHub Actions checks that passed on the
     latest merged pull request, found on any page of closed pull requests, reading every page of its check runs and
     workflow runs, Commit attribution among them, leaves out the review bot's Code review and its job, CodeQL and its
@@ -764,6 +767,39 @@ try {
     Check 'approval: -RequireChecks on that ruleset ends at one approval with last-push approval on, and says nothing about turning it off' ($ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $r.Output -notmatch 'turn off|turns off|notice:') "$($ap | ConvertTo-Json -Compress) $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'ownedApprover')
     Check 'approval: a ruleset of the owner''s is not written for the approval' (($r.Changes -join '|') -notmatch 'rulesets/101' -and -not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/101' }).Count) "$($r.Changes -join '|') $($r.Output)"
+
+    # 6d. One person with write access: no approval and no approval of the last push, even with approve: true (ADR-0034).
+    $soleLabel = "'Protect main': require no approval and no approval of the last push, which block every merge while one person has write access"
+    $r = Invoke-Baseline @('-Repo', 'soleApprover')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'writers: one writer and approve: true create the ruleset with no approval, no last-push approval and stale reviews dismissed, and say why' ($r.Body -and $ap.required_approving_review_count -eq 0 -and $ap.require_last_push_approval -eq $false -and $ap.dismiss_stale_reviews_on_push -eq $true -and $r.Output.Contains('soleApprover: code-review.yml passes approve: true, but one person has write access') -and $r.Output -notmatch 'one required approval') "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $log = if (Test-Path -LiteralPath $calls) { @(Get-Content -LiteralPath $calls) } else { @() }
+    Check 'writers: the script reads who can write' ($log -contains 'api --include repos/NCodeGroup/soleApprover/collaborators?affiliation=all&permission=push&per_page=100') ($log -join '|')
+    $r = Invoke-Baseline @('-Repo', 'soleApprover', '-WhatIf')
+    Check 'writers: -WhatIf with one writer writes nothing and shows no approval' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("would: soleApprover (main): create 'Protect main'") -and $r.Output -notmatch 'one required approval') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'soleOursApproved')
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/soleOursApproved/rulesets/101' })
+    $ap = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'writers: lower: a plain run turns off both in one PUT of its rules alone, and says so' ($puts.Count -eq 1 -and (@($puts[0].body.PSObject.Properties.Name) -join ',') -eq 'rules' -and $ap.required_approving_review_count -eq 0 -and $ap.require_last_push_approval -eq $false -and $ap.dismiss_stale_reviews_on_push -eq $true -and $ap.required_review_thread_resolution -eq $true -and $r.Output.Contains("soleOursApproved: ${soleLabel}: set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'soleOursApproved', '-WhatIf')
+    Check 'writers: lower: -WhatIf says it would set, and writes nothing' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("soleOursApproved: ${soleLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'soleOursTwo')
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/soleOursTwo/rulesets/101' })
+    $ap = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'writers: lower: two required approvals without approve: true are lowered too' ($puts.Count -eq 1 -and $ap.required_approving_review_count -eq 0) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'soleOursRefused')
+    Check 'writers: lower: a refused change is reported, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains("soleOursRefused: ${soleLabel}: not available (HTTP 403") -and $r.TagBody) "$($r.ExitCode) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'soleOursApproved', '-RequireChecks', 'test')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'writers: -RequireChecks writes the ruleset with neither, and says so' ($r.Body -and $ap.required_approving_review_count -eq 0 -and $ap.require_last_push_approval -eq $false -and $r.Output.Contains("done: soleOursApproved (main): update 'Protect main' with 1 required check(s): test") -and $r.Output.Contains(', and requires no approval and no approval of the last push, which block every merge while one person has write access')) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'soleOwned')
+    Check 'writers: a ruleset of the owner''s that requires an approval is not written' (-not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/101' }).Count) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'writersUnreadable')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    $unreadableNew = $r.Body -and $ap.required_approving_review_count -eq 0 -and $r.Output.Contains("writersUnreadable: couldn't read who has write access (HTTP 403")
+    $unreadableNewDetail = "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'writersUnreadableOurs')
+    Check 'writers: a list it can''t read is named, a new ruleset gets no approval, and an earlier one keeps its approvals' ($unreadableNew -and -not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/101' }).Count) "$unreadableNewDetail $($r.Changes -join '|') $($r.Output)"
 
     # 6b. Approval of the last push with no required approval waits for a reviewer other than the pusher, and GitHub never
     # lets an author approve their own pull request, so with one maintainer it blocks every merge (#385; NCodeGroup/docs on
