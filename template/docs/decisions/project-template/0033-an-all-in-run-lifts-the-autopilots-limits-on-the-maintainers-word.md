@@ -62,6 +62,13 @@ What doesn't change:
   and bot reviews than `/run-issues` spends.
 - A review bot's finding can now change CI, agent configuration, the build or the dependencies. The person who merges
   reads the `Protected paths changed:` list and the diff of each path on it before merging.
+- With a filter, the run takes issues the maintainer may not have read. On a public repository anyone can write them,
+  so their text can steer a change to a protected path. That risk is accepted: the issue's text stays data to verify,
+  the pull request stays a draft, and the `Protected paths changed:` list shows every such path to the person who
+  merges. A maintainer who doesn't accept it names the issues instead of a filter, or runs `/run-issues`.
+- The run has no ceiling on rounds, elapsed time or bot reviews. A review bot that never answers, or a stream of new
+  findings that each hold, keeps it going, and spending agent and bot time, until the session ends. That is the
+  maintainer's choice when they call the command. The progress check stops only a loop whose steps change nothing.
 - A comment after the merge recommendation gets no answer from the run; `/run-feedback` takes it.
 - Smell: a `/run-issues-all-in` pull request whose protected paths no issue or comment explains.
 
