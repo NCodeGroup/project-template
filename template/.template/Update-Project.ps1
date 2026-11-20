@@ -28,8 +28,8 @@
       Project-owned   Written once, never touched again (copier.yml's _skip_if_exists). When the template changed
                       one since the project's version, the script shows the template's change, rendered with
                       the project's answers, leaving out what the project's file already has.
-                      The render takes pre_release from AGENTS.md's Landing section: untracked only
-                      with - pre-release: untracked, else tracked.
+                      The render takes pre_release from AGENTS.md's Landing section, untracked only
+                      with - pre-release: untracked, else tracked, and release_policy from its release line.
                       A merged or template-owned file that the project's project_owned_files answer names
                       is project-owned too; a project that replaced one sets it with -Data @{ project_owned_files
                       = '.github/workflows/ci.yml', 'build/dod.ps1' }. The answer can name any file the version
@@ -80,6 +80,7 @@
     .gitlab-ci.yml that packs without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning
     themselves (the template's ADR-0138).
     It also names each job of the project's own workflows, other than publish.yml, that builds, packs, tests without --no-build or pushes packages with an actions/checkout step without fetch-depth: 0, on which Nerdbank.GitVersioning fails the build, or with a -p:Version argument, which it ignores.
+    Such a library's nuget_publisher answer names its own publishing workflows, so the update also leaves out or deletes release-provenance.yml and raise-baseline.yml, and its documents name those workflows instead of publish.yml.
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     An existing project keeps off the checks a new one starts with until -Data turns them on: csharp_format, node_lint, coverage_gate and file_headers are false when its answers lack them.
     A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
@@ -150,6 +151,22 @@ function Get-PreReleaseAnswer {
         if ($inLanding -and $line -match '^- pre-release:\s*(\S+)') { return $(if ($Matches[1] -eq 'untracked') { 'untracked' } else { 'tracked' }) }
     }
     'tracked'
+}
+
+# The release_policy answer, which Copier never records (copier.yml says when: false): the value of the "- release:" line of
+# AGENTS.md's Landing section, none without the line, as .template/Publish-Release.ps1 reads it. Nothing for a value that
+# script refuses or without AGENTS.md, so the answer's default applies.
+function Get-ReleasePolicyAnswer {
+    $agents = Join-Path $project 'AGENTS.md'
+    if (-not (Test-Path -LiteralPath $agents -PathType Leaf)) { return }
+    $value = 'none'
+    $inLanding = $false
+    foreach ($line in Get-Content -LiteralPath $agents) {
+        if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
+        if ($inLanding -and $line -match '^## ') { break }
+        if ($inLanding -and $line -match '^- release:\s*(.*?)\s*$') { $value = $Matches[1] -replace '^"(.*)"$', '$1'; break }
+    }
+    if ($value -in 'none', 'tag', 'tag+release') { $value }
 }
 
 # The checks a new project starts with and an existing one keeps off until it opts in (the template's ADR-0148,
@@ -661,6 +678,13 @@ function Get-NuGetPublisher {
     @($found) | Sort-Object
 }
 
+# The nuget_publisher answer: the workflows other than publish.yml that run nuget push, joined with ", ", when the library has no publish.yml,
+# else blank. tools/adopt/Adoption.psm1 has a deliberate copy of this function, kept equal by tests/Test-UpdateNotes.ps1.
+function Get-NuGetPublisherAnswer {
+    if (Test-Path -LiteralPath .github/workflows/publish.yml) { return '' }
+    @(Get-NuGetPublisher) -join ', '
+}
+
 function Get-AssemblyVersionFloor {
     if (-not (Test-Path -LiteralPath build/ProjectTemplate.props -PathType Leaf)) { return }
     if ((Get-Content -LiteralPath build/ProjectTemplate.props -Raw) -notmatch 'Name="ProjectTemplatePinAssemblyVersion"') { return }
@@ -979,6 +1003,11 @@ try {
     $ownable = @(Get-RenderedFile $TemplateClone $to | Where-Object { Test-OwnableName $_ })
     $notOwnable = @($ownedFiles | Where-Object { $_ -notin $ownable })
     if ($notOwnable) { throw "project_owned_files names $($notOwnable -join ', '), which template $to doesn't render or the update itself needs. It can name any file template $to renders except .copier-answers.yml, .template-version and the files in .template/." }
+    # The answers the template's documents and release workflows follow, in $Data so the update and every render take them; -Data wins.
+    # nuget_publisher names a library's own NuGet publishing workflows, which keeps publish.yml, release-provenance.yml and raise-baseline.yml out.
+    if ((Get-Answer 'nuget_package') -eq 'true' -and -not $Data.ContainsKey('nuget_publisher')) { $Data['nuget_publisher'] = Get-NuGetPublisherAnswer }
+    $releasePolicy = Get-ReleasePolicyAnswer
+    if ($releasePolicy -and -not $Data.ContainsKey('release_policy')) { $Data['release_policy'] = $releasePolicy }
     # A merged file the project rewrote shares few lines with the template's render of it, so the template's changes to it conflict in unrelated places (copier-org/copier#2759): suggest the project_owned_files answer. Only a file the template changed can conflict.
     $rewritten = @()
     $fromRendered = $null
@@ -1229,7 +1258,7 @@ try {
     # A library with its own NuGet publishing workflow (Get-NuGetPublisher).
     if ($publishLeftOut) {
         ''
-        "Left out .github/workflows/publish.yml: $($publishers -join ', ') already push NuGet packages, and a published release would run both. To publish through publish.yml instead, with nuget.org trusted publishing, delete $($publishers -join ', ') and run the update again."
+        "Left out .github/workflows/publish.yml: $($publishers -join ', ') already push NuGet packages, and a published release would run both. To publish through publish.yml instead, with nuget.org trusted publishing, delete $($publishers -join ', ') and run the update again. The update also leaves out release-provenance.yml and raise-baseline.yml, which only publish.yml calls, deleting them where an earlier update added them, and renders the documents it adds, and the template changes it shows, with $($publishers -join ', ') in place of publish.yml (the nuget_publisher answer)."
     }
     elseif ($publishers.Count -gt 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml)) {
         ''

@@ -21,6 +21,12 @@
                 history, a flow mapping, --no-build, a job that doesn't build, publish.yml or a project without
                 version.json.
                 tools\adopt\Adoption.psm1's copy prints the same.
+      publisher Get-NuGetPublisherAnswer names the workflows other than publish.yml that run nuget push, joined with
+                ", ", when the library has no publish.yml, and is blank beside a publish.yml, without such a workflow or
+                without .github/workflows.
+      release-policy Get-ReleasePolicyAnswer reads the release line of AGENTS.md's Landing section, with or without
+                double quotes, none without the line or outside that section, and nothing for a value
+                .template\Publish-Release.ps1 refuses or without AGENTS.md.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.4.0 or passes
@@ -201,6 +207,67 @@ $gitVersioningNote = & {
     }
 }
 $gitVersioningNote
+
+# publisher: Get-NuGetPublisherAnswer, run from inside each fixture folder, which is also the project.
+$publisherAnswer = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'Get-NuGetPublisher', 'Get-NuGetPublisherAnswer') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $push = "jobs:`n  push:`n    steps:`n      - run: dotnet nuget push out/*.nupkg`n"
+    $publisherCases = [ordered]@{
+        'own workflow'      = @{ Files = @{ 'release.yml' = $push }; Want = '.github/workflows/release.yml' }
+        'two workflows'     = @{ Files = @{ 'a.yml' = "      - run: nuget push x.nupkg`n"; 'b.yaml' = $push }; Want = '.github/workflows/a.yml, .github/workflows/b.yaml' }
+        'beside publish.yml' = @{ Files = @{ 'publish.yml' = "on: release`n"; 'release.yml' = $push }; Want = '' }
+        'no publisher'      = @{ Files = @{ 'ci.yml' = "      - run: dotnet build`n" }; Want = '' }
+        'no workflows'      = @{ Files = $null; Want = '' }
+    }
+    foreach ($name in $publisherCases.Keys) {
+        $case = $publisherCases[$name]
+        $folder = Join-Path $Work "publisher-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path $folder -Force
+        if ($case.Files) {
+            $workflows = Join-Path $folder '.github/workflows'
+            $null = New-Item -ItemType Directory -Path $workflows -Force
+            foreach ($file in $case.Files.Keys) { [IO.File]::WriteAllText((Join-Path $workflows $file), $case.Files[$file]) }
+        }
+        Push-Location $folder
+        try { $got = "$(Get-NuGetPublisherAnswer)" }
+        finally { Pop-Location }
+        Check "publisher: $name" ($got -eq $case.Want) "got [$got], want [$($case.Want)]"
+    }
+}
+$publisherAnswer
+
+# release-policy: Get-ReleasePolicyAnswer, run from inside each fixture folder, which is also the project.
+$releasePolicyAnswer = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-ReleasePolicyAnswer' }, $true)
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $policyCases = [ordered]@{
+        'tag+release'     = @{ Agents = "## Landing`n`n- release: tag+release`n"; Want = 'tag+release' }
+        'none'            = @{ Agents = "## Landing`n`n- release: none`n"; Want = 'none' }
+        'quoted'          = @{ Agents = "## Landing`n`n- release: `"tag`"`n"; Want = 'tag' }
+        'no line'         = @{ Agents = "## Landing`n`n- draft: no`n"; Want = 'none' }
+        'outside landing' = @{ Agents = "## Other`n`n- release: tag`n`n## Landing`n`n- draft: no`n"; Want = 'none' }
+        'unknown value'   = @{ Agents = "## Landing`n`n- release: sometimes`n"; Want = '' }
+        'no AGENTS.md'    = @{ Agents = $null; Want = '' }
+    }
+    foreach ($name in $policyCases.Keys) {
+        $case = $policyCases[$name]
+        $folder = Join-Path $Work "release-policy-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path $folder -Force
+        if ($null -ne $case.Agents) { [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), $case.Agents) }
+        # Set-Variable: only the loaded function reads project, which the script analyzer can't see.
+        Set-Variable -Name project -Value $folder
+        Push-Location $folder
+        try { $got = "$(Get-ReleasePolicyAnswer)" }
+        finally { Pop-Location }
+        Check "release-policy: $name" ($got -eq $case.Want) "got [$got], want [$($case.Want)]"
+    }
+}
+$releasePolicyAnswer
 
 # badge: Get-BadgeReminder, run from inside each fixture folder, which is also the project.
 $badgeReminder = & {
