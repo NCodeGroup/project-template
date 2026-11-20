@@ -1,5 +1,5 @@
 ---
-description: Take every issue named into one plan and one draft pull request in one session — no questions, every follow-up and finding fixed in that pull request, protected paths included, a review after every push, no caps — and stop once it is clean and the merge is recommended
+description: Take every issue named into one plan and one draft pull request in one session — no questions, every follow-up and finding fixed in that pull request, protected paths included for named issues, a review after every push, no caps — and stop once it is clean and the merge is recommended
 argument-hint: Issues to run in one pull request, such as #42 #43, or a filter such as label:bug, and push-branch:<name> to push through a session's designated branch
 role: orchestrator
 append-format: false
