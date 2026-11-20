@@ -100,6 +100,7 @@ The four VS Code agent templates are variant-neutral; the installer renders each
 | [_main-checkout-install.md](_main-checkout-install.md) | Why a plan's worktree can need the Node.js packages installed in the main checkout too, because a tool such as Vite reaches the main checkout's `tsconfig.json` from the worktree, and the install a planning command then runs there when the main checkout has a `package.json` and no `node_modules`; included in item 4 of `_claude-worktree-create`, `_claude-worktree-analyze` and `_copilot-new-worktree` |
 | [_copilot-find-plan.md](_copilot-find-plan.md) | The items that find a plan's folder, `<plan folder>`, in Copilot; included in `_copilot-worktree-join` and in the planner agent, which follows them with one sentence instead of a second copy of the plan-folder rules |
 | [_analysis-worktree.md](_analysis-worktree.md) | How an analysis keeps `ANALYSIS.md` untracked in its worktree and commits a decision record there; included in both analyze sections and the planner agent |
+| [_words-unchanged.md](_words-unchanged.md) | The Done-when a plan that changes how pages present their text, not what they say, gives each step: its pages compared with the plan's base commit after removing labels, emphasis, list markers, whitespace and case, with component tags compared as sorted lists; included in `plan-docs` and `plan-refactor` |
 
 ## Template Syntax
 

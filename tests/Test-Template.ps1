@@ -1322,6 +1322,12 @@ Check 'workflow: a Copilot session never passes a relative path to a .NET method
 $m = @(Get-MissingText ('workflow\templates\_plan-format.md', 'template\.claude\commands\plan-feature.md', 'template\.github\skills\plan-issue\SKILL.md') ('finds it from the folder that holds the main checkout, never through `..`', 'Join-Path (Split-Path -Parent (Split-Path -Parent (git rev-parse --path-format=absolute --git-common-dir))) <repository>'))
 $m += @(Get-MissingText $rulesJinja 'never through `..`, which from a plan''s worktree is `.claude/worktrees/`')
 Check 'workflow: a command reaches a sibling repository from the folder that holds the main checkout, never through .. (#441)' (-not $m) ($m -join '; ')
+# A plan that changes how pages present their text proves each step keeps every word, and the review looks at the built pages (#442).
+$wordsUnchangedText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_words-unchanged.md')).Body.Trim()
+$m = @(Get-MissingText ('template\.claude\commands\plan-docs.md', 'template\.claude\commands\plan-refactor.md', 'template\.github\skills\plan-docs\SKILL.md', 'template\.github\skills\plan-refactor\SKILL.md', 'template\.claude\commands\plan-issue.md') $wordsUnchangedText)
+$m += @(if (-not ($wordsUnchangedText.Contains('git show <base>:<path>') -and $wordsUnchangedText.Contains('as sorted lists'))) { 'workflow\templates\_words-unchanged.md' })
+$m += @(Get-MissingText ('template\.claude\commands\review-plan-diff.md', 'template\.github\skills\review-plan-diff\SKILL.md', 'template\.github\prompts\review-plan-diff.prompt.md') 'build it with that command after the checks, then look at each changed page as built')
+Check 'workflow: a plan that changes how pages present their text proves each step keeps every word, and review-plan-diff looks at the built pages (#442)' (-not $m) ($m -join '; ')
 # The commands that write a pull request's title or description delete agent attribution lines first, through {{PROMPT:_pr-attribution}}, before the command that sends them.
 $prAttributionText = (Read-HybridTemplateFile (Join-Path $workflow 'templates\_pr-attribution.md')).Body.Trim()
 $prAttributionFiles = [ordered]@{
