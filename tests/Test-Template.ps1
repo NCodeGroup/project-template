@@ -676,6 +676,8 @@ foreach ($case in $cases) {
     else {
         $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
         Check "${name}: CI checks the decision index in an always-on job, and runs no commit attribution check" ($ci.Contains('decision-index:') -and $ci.Contains('GIT_DEPTH: "0"') -and $ci.Contains('.template/Test-AdrIndex.ps1 -Base') -and -not $ci.Contains('Test-CommitAttribution') -and -not $ci.Contains('commit-attribution')) $ci
+        $wantsBaseline = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package
+        Check "${name}: GitLab CI raises a library's baseline from a version tag, with a token, and no other project's" ($ci.Contains('raise-baseline:') -eq $wantsBaseline -and (-not $wantsBaseline -or ($ci.Contains('build/Update-Baseline.ps1') -and $ci.Contains('BASELINE_TOKEN') -and $ci.Contains('merge_request.create')))) $ci
     }
     if ($case.Stack -eq 'node') {
         $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }
