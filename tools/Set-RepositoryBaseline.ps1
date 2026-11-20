@@ -61,7 +61,9 @@
     approval gets both turned off, and the run says so, also with -WhatIf: GitHub counts toward a required approval only
     a review from someone with write access, never the author's, and NCode Review's app has none, so either setting
     blocks every merge (the template's ADR-0034). Stale reviews are still dismissed on push. A collaborators list it
-    can't read is named; the ruleset then gets no approval it doesn't have, and keeps the ones it has.
+    can't read is named; the ruleset then gets no approval it doesn't have, and keeps the ones it has. For a public
+    repository with one writer, the run ends with a notice naming tools/Dismiss-ScorecardAlerts.ps1, which dismisses the
+    Scorecard alerts one person can't clear (the template's ADR-0035).
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
@@ -349,6 +351,7 @@ function Set-Baseline([string]$Name) {
     Set-AutoMerge $Name $info
     Set-EventPolicy $Name $info
     Write-OrganizationTwoFactor $Name $info
+    if ($soleWriter) { Write-ScorecardNotice $Name $info }
 }
 
 # Reports whether the organization that owns the repository requires two-factor authentication of its members. It only
@@ -364,6 +367,14 @@ function Write-OrganizationTwoFactor([string]$Name, $Info) {
     if ($null -eq $answer) { Write-Host "${Name}: ${label}: not available (an answer that is not JSON)"; return }
     if ($null -eq $answer.two_factor_requirement_enabled) { Write-Host "${Name}: ${label}: not available (the answer doesn't include it; GitHub shows it to an owner only)"; return }
     Write-Host "${Name}: ${label}: $(if ($answer.two_factor_requirement_enabled) { 'required' } else { 'not required' })"
+}
+
+# With one writer, Scorecard's Branch-Protection, CII-Best-Practices and Contributors checks stay below 10 and their
+# code scanning alerts stay open (ADR-0035). A private repository publishes no Scorecard result, so it gets no notice.
+function Write-ScorecardNotice([string]$Name, $Info) {
+    if ($Info.private) { return }
+    $helper = Join-Path $PSScriptRoot 'Dismiss-ScorecardAlerts.ps1'
+    Write-Host "${Name}: notice: one person has write access, so Scorecard's Branch-Protection, CII-Best-Practices and Contributors checks stay below 10 and their code scanning alerts stay open (the template's ADR-0035). To dismiss them as won't fix with the standard reason, run: & '$helper' -Repo '$Owner/$Name' -WhatIf, then again without -WhatIf"
 }
 
 # Reads CodeQL's default setup. Status is the HTTP status, or $null for no response; Answer the parsed answer, or $null;

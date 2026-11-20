@@ -25,7 +25,7 @@
     that parses and is written to nothing;
     that with one writer, as the collaborators list says, the ruleset requires no approval and no last-push approval, even
     with approve: true, an earlier one has both turned off (plain run, -RequireChecks, -WhatIf, a refusal), an owner's is
-    not written, and a list it can't read is named;
+    not written, and a list it can't read is named, and a public one gets a notice naming tools/Dismiss-ScorecardAlerts.ps1;
     that -RequireChecks auto requires the GitHub Actions checks that passed on the
     latest merged pull request, found on any page of closed pull requests, reading every page of its check runs and
     workflow runs, Commit attribution among them, leaves out the review bot's Code review and its job, CodeQL and its
@@ -401,6 +401,7 @@ $repos = @{
     soleOwned = New-Repo -Writers @('maintainer') -Rulesets @((New-Ruleset 'owner rules' -Approvals 1))
     writersUnreadable = New-Repo -Writers 'fail:403' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
     writersUnreadableOurs = New-Repo -Writers 'fail:403' -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 1))
+    solePrivate = New-Repo -Writers @('maintainer') -Visibility 'private'
     looseRefused = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false)) -WriteFails @{ 'rulesets/101' = 403 }
     ownedBare = New-Repo -Rulesets @($bareRuleset)
     twoOwnedLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $false), (New-Ruleset 'team rules' -Threads $false))
@@ -800,6 +801,12 @@ try {
     $unreadableNewDetail = "$($ap | ConvertTo-Json -Compress) $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'writersUnreadableOurs')
     Check 'writers: a list it can''t read is named, a new ruleset gets no approval, and an earlier one keeps its approvals' ($unreadableNew -and -not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/101' }).Count) "$unreadableNewDetail $($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'soleApprover')
+    Check 'writers: one writer on a public repository gets the notice naming Dismiss-ScorecardAlerts.ps1' ($r.Output.Contains("soleApprover: notice: one person has write access, so Scorecard's Branch-Protection, CII-Best-Practices and Contributors checks stay below 10") -and $r.Output.Contains("Dismiss-ScorecardAlerts.ps1' -Repo 'NCodeGroup/soleApprover' -WhatIf")) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'solePrivate')
+    $privateOutput = $r.Output
+    $r = Invoke-Baseline @('-Repo', 'fresh')
+    Check 'writers: a private repository with one writer, and a public one with two, get no Scorecard notice' (-not $privateOutput.Contains('Dismiss-ScorecardAlerts') -and -not $r.Output.Contains('Dismiss-ScorecardAlerts')) "$privateOutput $($r.Output)"
 
     # 6b. Approval of the last push with no required approval waits for a reviewer other than the pusher, and GitHub never
     # lets an author approve their own pull request, so with one maintainer it blocks every merge (#385; NCodeGroup/docs on
