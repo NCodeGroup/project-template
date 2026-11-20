@@ -34,6 +34,8 @@ NCodeGroup/PropertyBag scored 10 for Code-Review and 4 for Branch-Protection.
    those settings and conversation resolution, `-RequireChecks` writes them off in the whole ruleset, and `-WhatIf`
    says it would. Where GitHub refuses the change on a plain run, the run reports it and goes on.
 3. With two such users or more, ADR-0022 holds as written: one approval, of the last push, where `approve: true`.
+   The approval that meets it is another writer's: NCode Review's approval never counts toward it, and counts for
+   Scorecard's Code-Review.
 4. A list the script can't read is named, with the reason. A new ruleset then gets no approval, `approve: true` raises
    none, and an earlier ruleset keeps the approvals it has: requiring an approval that nobody may be able to give is
    worse than missing one.
