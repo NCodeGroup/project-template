@@ -27,7 +27,7 @@ The release change runs `./build/Update-PublicApi.ps1 -Release` and sets `versio
 
 ## An intended break
 
-`dotnet pack <project> -p:ApiCompatGenerateSuppressionFile=true` writes `CompatibilitySuppressions.xml`. Review it like the API diff, and delete it when the baseline moves to the first release of the new major version.
+`dotnet pack <project> -p:ApiCompatGenerateSuppressionFile=true` writes `CompatibilitySuppressions.xml`. Review it like the API diff. When `./build/Update-Baseline.ps1` raises the baseline to the first release of the new major version, it removes the baseline suppressions, the entries with `<IsBaselineSuppression>true</IsBaselineSuppression>` and the `PKV006` and `PKV007` entries for a dropped target framework, which then match nothing and which package validation rejects as unnecessary. It keeps any suppression between the package's own target frameworks and deletes the file when nothing is left. Remove them the same way when you raise the baseline by hand.
 
 ## Known limit
 

@@ -1,10 +1,11 @@
 # Raise the package validation baseline: publish.yml calls this workflow as its baseline job after it publishes a stable
 # release, or a person runs it by hand with a release tag. It runs build/Update-Baseline.ps1, which waits for nuget.org
-# to list the version and raises PackageValidationBaselineVersion to it, then pushes baseline-<version>, opens it as a
-# draft pull request, which a person marks ready and merges, and starts CI on its branch, because a pull request opened
-# with the workflow's token starts no workflow. It is not started by a workflow-run trigger, which GitHub never fires
-# for the run tag-release.yml starts with GITHUB_TOKEN. The template's ADR-0150 and ADR-0151 say why; it changes
-# nothing until the project sets the baseline once (ADR-0147).
+# to list the version and raises PackageValidationBaselineVersion to it, removing the baseline suppressions a new major
+# version leaves behind, then pushes baseline-<version>, opens it as a draft pull request, which a person marks ready
+# and merges, and starts CI on its branch, because a pull request opened with the workflow's token starts no workflow.
+# It is not started by a workflow-run trigger, which GitHub never fires for the run tag-release.yml starts with
+# GITHUB_TOKEN. The template's ADR-0150 and ADR-0151 say why; it changes nothing until the project sets the baseline
+# once (ADR-0147).
 #
 # Needs Settings > Actions > General > Workflow permissions > "Allow GitHub Actions to create and approve pull
 # requests", which tools/Set-RepositoryBaseline.ps1 in the project template turns on for a repository with this file.
@@ -89,11 +90,17 @@ jobs:
           if ($LASTEXITCODE) { throw "git config user.email failed with exit code $LASTEXITCODE." }
           git switch -c $branch
           if ($LASTEXITCODE) { throw "git switch failed with exit code $LASTEXITCODE." }
+          $deleted = @(git ls-files --deleted -- '*CompatibilitySuppressions.xml')
+          if ($LASTEXITCODE) { throw "git ls-files failed with exit code $LASTEXITCODE." }
+          $edited = @(git ls-files --modified -- '*CompatibilitySuppressions.xml' | Where-Object { $_ -notin $deleted })
+          if ($LASTEXITCODE) { throw "git ls-files failed with exit code $LASTEXITCODE." }
           git commit -am "Raise the package validation baseline to $env:VERSION"
           if ($LASTEXITCODE) { throw "git commit failed with exit code $LASTEXITCODE." }
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin $branch
           if ($LASTEXITCODE) { throw "git push failed with exit code $LASTEXITCODE." }
           $body = 'Raises `PackageValidationBaselineVersion` to {0}, which nuget.org now lists, so each pack is validated against the newest release (the template''s ADR-0150). Opened by `.github/workflows/raise-baseline.yml`, which started CI on this branch; mark it ready for review once CI passes.' -f $env:VERSION
+          if ($deleted.Count) { $body += "`n`n" + ('Deletes {0}: the baseline reached a new major version, and its suppressions all compared with the previous one, which package validation would now reject as unnecessary.' -f (($deleted | ForEach-Object { '`' + $_ + '`' }) -join ', ')) }
+          if ($edited.Count) { $body += "`n`n" + ('Removes the suppressions that compared with the previous major version from {0}, keeping the others.' -f (($edited | ForEach-Object { '`' + $_ + '`' }) -join ', ')) }
           gh pr create --base $env:DEFAULT_BRANCH --head $branch --draft --title "Raise the package validation baseline to $env:VERSION" --body $body
           if ($LASTEXITCODE) { throw "gh pr create failed with exit code $LASTEXITCODE." }
           gh workflow run ci.yml --ref $branch

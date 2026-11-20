@@ -4,9 +4,10 @@
 
 .DESCRIPTION
     Builds one fixture folder per case and runs the script with -SkipNugetCheck: the file edits, the changelog entry and
-    the earlier baseline entries it replaces, the cases that change nothing, a custom changelog file named by AGENTS.md,
-    CRLF and byte order mark preservation, and a prerelease version. Prints PASS or FAIL per check and exits 1 on any
-    failure.
+    the earlier baseline entries it replaces, the baseline suppressions it removes from CompatibilitySuppressions.xml at
+    a new major version, the pull request description raise-baseline.yml writes from them, run in a Git fixture, the
+    cases that change nothing, a custom changelog file named by AGENTS.md, CRLF and byte order mark preservation, and a
+    prerelease version. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-baseline-test-<process ID> in the
@@ -66,6 +67,31 @@ $csproj = 'src/Fixture.A/Fixture.A.csproj'
 function Get-Project([string]$Baseline) {
     "<Project Sdk=`"Microsoft.NET.Sdk`"><PropertyGroup><PackageId>Fixture.A</PackageId><PackageValidationBaselineVersion>$Baseline</PackageValidationBaselineVersion></PropertyGroup></Project>`n"
 }
+function Get-Suppressions([string[]]$Entries) {
+    "<?xml version=`"1.0`" encoding=`"utf-8`"?>`n<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->`n<Suppressions xmlns:xsd=`"http://www.w3.org/2001/XMLSchema`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`">`n" + ($Entries -join '') + "</Suppressions>`n"
+}
+$baselineCp = "  <Suppression>`n" +
+"    <DiagnosticId>CP0002</DiagnosticId>`n" +
+"    <Target>M:Fixture.A.Widget.Old</Target>`n" +
+"    <Left>lib/net10.0/Fixture.A.dll</Left>`n" +
+"    <Right>lib/net10.0/Fixture.A.dll</Right>`n" +
+"    <IsBaselineSuppression>true</IsBaselineSuppression>`n" +
+"  </Suppression>`n"
+$droppedTfm = "  <Suppression>`n" +
+"    <DiagnosticId>PKV006</DiagnosticId>`n" +
+"    <Target>net8.0</Target>`n" +
+"  </Suppression>`n"
+$droppedRid = "  <Suppression>`n" +
+"    <DiagnosticId>PKV007</DiagnosticId>`n" +
+"    <Target>net8.0-win-x64</Target>`n" +
+"  </Suppression>`n"
+$tfmCp = "  <Suppression>`n" +
+"    <DiagnosticId>CP0002</DiagnosticId>`n" +
+"    <Target>M:Fixture.A.Widget.Span</Target>`n" +
+"    <Left>lib/netstandard2.0/Fixture.A.dll</Left>`n" +
+"    <Right>lib/net10.0/Fixture.A.dll</Right>`n" +
+"    <IsBaselineSuppression>false</IsBaselineSuppression>`n" +
+"  </Suppression>`n"
 
 # The changelog cases: the Unreleased body before and after.
 $changelogCases = [ordered]@{
@@ -106,6 +132,64 @@ $folder = New-Case 'props-and-project' @{ 'Directory.Build.props' = $props; $csp
 $out = Invoke-Baseline $folder
 $ok = $out.Count -eq 1 -and $out[0] -eq '5.0.2' -and (Read-Text $folder 'Directory.Build.props') -ceq $props.Replace('5.0.0', '5.0.2') -and (Read-Text $folder $csproj) -ceq (Get-Project '6.0.0')
 Check 'Update-Baseline: only the file below the version changes' $ok "Output: $($out -join ', ')"
+
+# The suppression files: a raise to a new major version removes the baseline suppressions beside the project it raises.
+$suppressions = 'src/Fixture.A/CompatibilitySuppressions.xml'
+$suppressionsB = 'src/Fixture.B/CompatibilitySuppressions.xml'
+$noBaseline = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><PackageId>Fixture.A</PackageId></PropertyGroup></Project>' + "`n"
+$folder = New-Case 'major-props' @{
+    'Directory.Build.props'                = $props.Replace('5.0.0', '4.1.0')
+    $csproj                                = $noBaseline
+    $suppressions                          = Get-Suppressions @($baselineCp, $droppedTfm)
+    'src/Fixture.B/Fixture.B.csproj'       = (Get-Project '6.0.0')
+    $suppressionsB                         = Get-Suppressions @($baselineCp)
+}
+$out = Invoke-Baseline $folder
+$ok = $out.Count -eq 1 -and $out[0] -eq '5.0.2' -and -not (Test-Path -LiteralPath (Join-Path $folder $suppressions))
+Check 'Update-Baseline: a new major version deletes a suppression file that holds only baseline suppressions' $ok "Output: $($out -join ', ')"
+Check 'Update-Baseline: a project whose own baseline isn''t raised keeps its suppressions' ((Read-Text $folder $suppressionsB) -ceq (Get-Suppressions @($baselineCp))) ''
+
+$folder = New-Case 'major-mixed' @{
+    $csproj       = Get-Project '4.1.0'
+    $suppressions = @{ Text = (Get-Suppressions @($baselineCp, $tfmCp, $droppedRid)).Replace("`n", "`r`n"); Bom = $true }
+}
+$out = Invoke-Baseline $folder
+$actual = Read-Text $folder $suppressions
+$expected = (Get-Suppressions @($tfmCp)).Replace("`n", "`r`n")
+$ok = $actual -ceq $expected -and (Test-Bom $folder $suppressions)
+Check 'Update-Baseline: a new major version keeps a suppression that compares target frameworks, with CRLF and a byte order mark' $ok "Got:`n$($actual.Replace("`r", '\r'))"
+
+$folder = New-Case 'minor-keeps' @{
+    $csproj       = Get-Project '5.0.0'
+    $suppressions = Get-Suppressions @($baselineCp, $droppedTfm)
+}
+$out = Invoke-Baseline $folder
+$ok = $out.Count -eq 1 -and $out[0] -eq '5.0.2' -and (Read-Text $folder $suppressions) -ceq (Get-Suppressions @($baselineCp, $droppedTfm))
+Check 'Update-Baseline: a raise within one major version keeps the suppressions' $ok "Output: $($out -join ', ')"
+
+$folder = New-Case 'workflow-body' @{
+    'Directory.Build.props'          = $props.Replace('5.0.0', '4.1.0')
+    $csproj                          = $noBaseline
+    $suppressions                    = Get-Suppressions @($baselineCp, $droppedTfm)
+    'src/Fixture.B/Fixture.B.csproj' = $noBaseline.Replace('Fixture.A', 'Fixture.B')
+    $suppressionsB                   = Get-Suppressions @($baselineCp, $tfmCp)
+}
+git -c init.defaultBranch=main -C $folder init -q
+git -C $folder config core.autocrlf false
+git -C $folder add -A
+git -C $folder -c user.name=Test -c user.email=test@example.test -c commit.gpgsign=false -c core.hooksPath=NUL commit -q -m Fixture
+if ($LASTEXITCODE) { throw "git commit failed with exit code $LASTEXITCODE." }
+$out = Invoke-Baseline $folder
+# The workflow's own lines that list the suppression files and write the description, run in the fixture.
+$workflow = Join-Path $repoRoot 'template\.github\workflows\raise-baseline.yml'
+$lines = @(Get-Content -LiteralPath $workflow | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^(\$deleted = |\$edited = |\$body = |if \(\$deleted\.Count\) |if \(\$edited\.Count\) )' })
+$savedVersion = $env:VERSION
+$env:VERSION = '5.0.2'
+Push-Location -LiteralPath $folder
+try { $body = "$(& ([scriptblock]::Create(($lines -join "`n") + "`n`$body")))" }
+finally { Pop-Location; $env:VERSION = $savedVersion }
+$ok = $lines.Count -eq 5 -and $out.Count -eq 1 -and $body.StartsWith('Raises `PackageValidationBaselineVersion` to 5.0.2,') -and $body.Contains('Deletes `src/Fixture.A/CompatibilitySuppressions.xml`: the baseline reached a new major version') -and $body.Contains('from `src/Fixture.B/CompatibilitySuppressions.xml`, keeping the others.')
+Check 'raise-baseline.yml: the pull request description names the suppression files the script deleted and edited' $ok "Lines: $($lines.Count); body: $body"
 
 $changelog = "$changelogHead`n$changelogTail"
 $plain = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><PackageId>Fixture.A</PackageId></PropertyGroup></Project>' + "`n"
@@ -185,6 +269,10 @@ $folder = New-Case 'wait-timeout' (& $waitFiles '5.0.0')
 $r = Invoke-WaitCase $folder @(1..10 | ForEach-Object { 'throw' }) 1
 $ok = $r.Threw -and $r.Message.Contains('Fixture.A') -and $r.Message.Contains('5.0.2') -and $r.Message.Contains('The last error from nuget.org: Fixture.A: nuget.org stand-in: not found') -and $stubState.Sleeps.Count -eq 3 -and $stubState.Sleeps[0] -in 15..19 -and $stubState.Sleeps[1] -in 30..34 -and $stubState.Sleeps[2] -in 60..64 -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.0')
 Check 'Update-Baseline: gives up after three sleeps at a one minute timeout and changes nothing' $ok "Threw: $($r.Threw); message: $($r.Message); sleeps: $($stubState.Sleeps -join ', ')"
+
+$folder = New-Case 'wait-timeout-major' ((& $waitFiles '4.1.0') + @{ 'src/Fixture.A/CompatibilitySuppressions.xml' = (Get-Suppressions @($baselineCp)) })
+$r = Invoke-WaitCase $folder @(1..10 | ForEach-Object { 'throw' }) 1
+Check 'Update-Baseline: a timeout leaves the suppressions as they are' ($r.Threw -and (Read-Text $folder $suppressions) -ceq (Get-Suppressions @($baselineCp))) "Threw: $($r.Threw)"
 
 $folder = New-Case 'wait-already' (& $waitFiles '5.0.2')
 $r = Invoke-WaitCase $folder @()

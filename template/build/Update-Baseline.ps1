@@ -6,9 +6,12 @@
     From the project template; template updates replace this file. Sets PackageValidationBaselineVersion in each
     Directory.Build.props and project file that already sets it, so package validation compares each package with the
     release just published. It never lowers the baseline: it changes nothing when no file sets the property, or when
-    every file already holds the version or a later one. It adds a ### Changed entry under ## [Unreleased] of a Keep a
-    Changelog file with a release section, in place of any baseline entry an earlier run left there, and never touches a
-    release section. It prints the version it set, or nothing.
+    every file already holds the version or a later one. When it raises a project's baseline to a new major version, it
+    removes the baseline suppressions (IsBaselineSuppression true, PKV006 and PKV007) from the
+    CompatibilitySuppressions.xml beside the project, which match nothing once the baseline is that major's first
+    release, keeps the others, and deletes the file when none is left. It adds a ### Changed entry under
+    ## [Unreleased] of a Keep a Changelog file with a release section, in place of any baseline entry an earlier run
+    left there, and never touches a release section. It prints the version it set, or nothing.
 
     A prerelease is never a baseline, so the version must be a stable one such as 1.4.0 or v1.4.0.
 
@@ -42,6 +45,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Test-Bom([string]$Path) {
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+}
+
 if ($Version -notmatch '^v?(\d+\.\d+\.\d+)$') {
     throw "'$Version' isn't a stable version such as 1.4.0 or v1.4.0: a prerelease is never a baseline."
 }
@@ -61,14 +69,15 @@ $candidates = @(
 )
 
 $pattern = '(<PackageValidationBaselineVersion>\s*)([^<]*?)(\s*</PackageValidationBaselineVersion>)'
-$setters = 0
+$setterFiles = [Collections.Generic.List[IO.FileInfo]]::new()
 $changed = [ordered]@{}
 foreach ($candidate in $candidates) {
     $path = $candidate.File.FullName
     $relative = $candidate.Relative
     $text = [IO.File]::ReadAllText($path)
     if ($text -notmatch $pattern) { continue }
-    $setters++
+    $setterFiles.Add($candidate.File)
+    $raise = @{ NewMajor = $false }
     $newText = [regex]::Replace($text, $pattern, {
             param($m)
             $value = $m.Groups[2].Value
@@ -78,21 +87,43 @@ foreach ($candidate in $candidates) {
                 return $m.Value
             }
             if ($parsed -ge $targetVersion) { return $m.Value }
+            if ($parsed.Major -lt $targetVersion.Major) { $raise.NewMajor = $true }
             return $m.Groups[1].Value + $target + $m.Groups[3].Value
         })
     if ($newText -ceq $text) { continue }
-    $bytes = [IO.File]::ReadAllBytes($path)
-    $hadBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
-    $changed[$path] = @{ Text = $newText; HadBom = $hadBom }
+    $hadBom = Test-Bom $path
+    $changed[$path] = @{ Text = $newText; HadBom = $hadBom; NewMajor = $raise.NewMajor }
 }
 
-if ($setters -eq 0) {
+if ($setterFiles.Count -eq 0) {
     Write-Host 'No Directory.Build.props or project file sets PackageValidationBaselineVersion: set it once by hand, as the template''s ADR-0147 says, and this script raises it from then on.'
     return
 }
 if ($changed.Count -eq 0) {
     Write-Host "PackageValidationBaselineVersion is already $target or later."
     return
+}
+
+$suppressionPattern = '(?s)[ \t]*<Suppression>.*?</Suppression>[ \t]*(\r?\n)?'
+$baselineEntry = '<IsBaselineSuppression>\s*true\s*</IsBaselineSuppression>|<DiagnosticId>\s*PKV00[67]\s*</DiagnosticId>'
+$suppressions = [ordered]@{}
+foreach ($candidate in $candidates) {
+    $file = $candidate.File
+    if ($file.Extension -ne '.csproj') { continue }
+    $folder = $file.DirectoryName
+    $setter = if ($setterFiles.FullName -contains $file.FullName) { $file } else {
+        $setterFiles | Where-Object { $_.Name -eq 'Directory.Build.props' -and ($folder -eq $_.DirectoryName -or $folder.StartsWith($_.DirectoryName + [IO.Path]::DirectorySeparatorChar)) } |
+            Sort-Object { $_.DirectoryName.Length } -Descending | Select-Object -First 1
+    }
+    if (-not $setter -or -not $changed.Contains($setter.FullName) -or -not $changed[$setter.FullName].NewMajor) { continue }
+    $path = Join-Path $folder 'CompatibilitySuppressions.xml'
+    if ($suppressions.Contains($path) -or -not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+    $text = [IO.File]::ReadAllText($path)
+    $kept = [regex]::Replace($text, $suppressionPattern, { param($m) if ($m.Value -match $baselineEntry) { '' } else { $m.Value } })
+    if ($kept -ceq $text) { continue }
+    $hadBom = Test-Bom $path
+    $keptText = if ($kept -match '<Suppression>') { $kept } else { $null }
+    $suppressions[$path] = @{ Text = $keptText; HadBom = $hadBom; Relative = [IO.Path]::GetRelativePath($Root, $path) }
 }
 
 if (-not $SkipNugetCheck) {
@@ -145,6 +176,17 @@ if (-not $SkipNugetCheck) {
 foreach ($path in $changed.Keys) {
     [IO.File]::WriteAllText($path, $changed[$path].Text, [Text.UTF8Encoding]::new($changed[$path].HadBom))
 }
+foreach ($path in $suppressions.Keys) {
+    $s = $suppressions[$path]
+    if ($null -eq $s.Text) {
+        Remove-Item -LiteralPath $path
+        Write-Host "Deleted $($s.Relative): its suppressions all compared with the previous major version."
+    }
+    else {
+        [IO.File]::WriteAllText($path, $s.Text, [Text.UTF8Encoding]::new($s.HadBom))
+        Write-Host "Removed the suppressions that compared with the previous major version from $($s.Relative)."
+    }
+}
 
 $changelog = 'CHANGELOG.md'
 $agentsPath = Join-Path $Root 'AGENTS.md'
@@ -184,8 +226,7 @@ if (Test-Path -LiteralPath $changelogPath -PathType Leaf) {
             $group = $unreleased.Groups[1]
             $newText = $text.Substring(0, $group.Index) + $newBody + $text.Substring($group.Index + $group.Length)
             if ($crlf) { $newText = $newText.Replace("`n", "`r`n") }
-            $bytes = [IO.File]::ReadAllBytes($changelogPath)
-            $hadBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+            $hadBom = Test-Bom $changelogPath
             [IO.File]::WriteAllText($changelogPath, $newText, [Text.UTF8Encoding]::new($hadBom))
         }
     }
