@@ -5,11 +5,12 @@
 
 ## Context
 
-A by-hand OpenSSF Scorecard session on NCodeGroup/PropertyBag found four gaps in the `/best-practices` command (#451).
-It reported the Best Practices badge criteria but not the Scorecard checks the badge is one of. It wrote a registration
-prompt for a project that bestpractices.dev already listed, because it knew only the number the project had recorded.
-It answered for `HEAD`, which can hold evidence that Scorecard and bestpractices.dev, which read the default branch,
-can't see yet. And it left `no_leaked_credentials` open whenever `gitleaks` wasn't installed.
+A by-hand OpenSSF Scorecard session on NCodeGroup/PropertyBag found four gaps in the `/best-practices` command
+([#451](https://github.com/NCodeGroup/project-template/issues/451)). It reported the Best Practices badge criteria but
+not the Scorecard checks the badge is one of. It wrote a registration prompt for a project that bestpractices.dev
+already listed, because it knew only the number the project had recorded. It answered for `HEAD`, which can hold
+evidence that Scorecard and bestpractices.dev, which read the default branch, can't see yet. And it left
+`no_leaked_credentials` open whenever `gitleaks` wasn't installed.
 
 ## Decision
 
@@ -35,7 +36,8 @@ can't see yet. And it left `no_leaked_credentials` open whenever `gitleaks` wasn
 - A project that is already registered isn't registered twice.
 - The report separates what is true on the default branch from what a pending merge would change, and asks for a
   second run after the merge.
-- The Branch-Protection claim {%- if git_host == 'github' %} in ADR-0020 {%- endif %} stays as it is until #437.
+- The Branch-Protection claim {%- if git_host == 'github' %} in ADR-0020 {%- endif %} stays as it is until
+  [#437](https://github.com/NCodeGroup/project-template/issues/437).
 
 ## References
 
@@ -44,4 +46,4 @@ can't see yet. And it left `no_leaked_credentials` open whenever `gitleaks` wasn
 {% endif -%}
 - [ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md): the criteria page.
 - [ADR-0009](0009-new-dependency-versions-wait-a-cooldown.md): the cooldown for new versions.
-- #451
+- [#451](https://github.com/NCodeGroup/project-template/issues/451)
