@@ -195,6 +195,7 @@ Write-Text (Join-Path $bin 'projects.json') (ConvertTo-Json -Depth 6 -InputObjec
     'gitlab.com/grp/noidrefused' = $madeProject + @{ tokenAnswer = '{"token":"glpat-STANDIN-SECRET-VALUE"}'; variableFails = 400 }
     'gitlab.com/grp/tagexists' = $madeProject + @{ tagExists = $true }
     'gitlab.com/grp/tagrefused' = $madeProject + @{ tagFails = 403 }
+    'gitlab.com/grp/tagreadrefused' = $madeProject + @{ tagReadFails = 500 }
     'gitlab.com/grp/old' = @{ info = @{ archived = $true; $threads = $false; $pipelines = $false } }
     'gitlab.com/grp/empty' = @{ raw = '' }
     'gitlab.com/grp/text' = @{ raw = 'not json' }
@@ -369,6 +370,8 @@ try {
     Check 'tag whatif: the v* protection is shown as would set and nothing is written' ($r.ExitCode -eq 0 -and @($r.Log | Where-Object { $_ -like '*--method POST*protected_tags*' }).Count -eq 0 -and $r.Output -match [regex]::Escape('grp/tokenless: protected tag v*: would set')) "output=$($r.Output)"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/tagrefused', '-BaselineToken')
     Check 'tag refused: a refused v* protection is reported and the variable is still created' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape('grp/tagrefused: protected tag v*: not available (HTTP 403: Stand-in refused tag)') -and $r.Output -match [regex]::Escape('grp/tagrefused: BASELINE_TOKEN variable: set')) "output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/tagreadrefused', '-BaselineToken')
+    Check 'tag read refused: a refused read of the v* protection is reported, nothing is protected and the variable is still created' ($r.ExitCode -eq 0 -and @($r.Log | Where-Object { $_ -like '*--method POST*protected_tags*' }).Count -eq 0 -and $r.Output -match [regex]::Escape('grp/tagreadrefused: protected tag v*: not available (HTTP 500: Stand-in refused tag read)') -and $r.Output -match [regex]::Escape('grp/tagreadrefused: BASELINE_TOKEN variable: set')) "log=$($r.Log -join '|') output=$($r.Output)"
 
     # 10. A project named by a clone's origin remote.
     $httpsClone = Join-Path $Work 'clone-https'

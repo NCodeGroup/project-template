@@ -222,7 +222,6 @@ if ($path -match '^orgs/([^/]+)$') {
     if (-not $org) { Out-Answer 404 '{"message":"Not Found"}' }
     if ($state -eq 'notjson') { Out-Answer 200 'not json' }
     if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
-    if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
     $answer = @{ login = $Matches[1] }
     if ($state -in 'true', 'false') { $answer.two_factor_requirement_enabled = $state -eq 'true' }
     Out-Answer 200 (ConvertTo-Json -Compress -InputObject $answer)
