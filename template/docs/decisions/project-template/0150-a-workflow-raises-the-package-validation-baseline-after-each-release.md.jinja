@@ -28,6 +28,12 @@ succeeds, so the raise cannot run in the release itself.
   `gh workflow run`, because a pull request opened with the workflow's token starts no workflow. Its checkout keeps no
   credential; the push takes the token through `http.extraheader`. Its description names each
   `CompatibilitySuppressions.xml` the script deleted or edited.
+{%- if git_host == 'gitlab' %}
+- On GitLab, the `raise-baseline` job of `.gitlab-ci.yml` runs the script when a stable version tag is pushed, after the
+  project's own `publish` job when it has one, pushes `baseline-<version>` from the default branch's tip and opens a
+  draft merge request; it needs the masked CI/CD variable `BASELINE_TOKEN`, a project access token with the Developer
+  role and the `api` and `write_repository` scopes, and is skipped without it.
+{%- endif %}
 - The workflow needs "Allow GitHub Actions to create and approve pull requests", which
   `tools/Set-RepositoryBaseline.ps1` in the project template turns on only where this workflow is on the default branch;
   GitHub offers no setting that allows creating without approving.
@@ -44,7 +50,7 @@ succeeds, so the raise cannot run in the release itself.
 ## Consequences
 
 - The first set of the baseline stays manual.
-- A GitLab library runs the script by hand.
+- A GitLab library's `raise-baseline` job needs that token; without it, run the script by hand.
 - A merge of the pull request needs CI to pass, as any change does.
 {%- if git_host == 'github' %}
 - The same setting lets any workflow's token approve a pull request, which counts where NCode Review's approval is
