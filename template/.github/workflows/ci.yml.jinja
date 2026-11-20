@@ -171,3 +171,23 @@ jobs:
 {%- endif %}
 {%- endif %}
 {%- endif %}
+{%- if stack == 'dotnet' and nuget_package %}
+
+  # Proves a release's tag rebuilds to the same packages (ADR-0154). It holds no permission beyond the workflow's
+  # contents: read.
+  reproducible-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/install-dotnet
+      - name: Build the packages twice and compare them
+        if: {{ has_code }}
+        run: ./.template/Test-ReproducibleBuild.ps1
+{%- endif %}
