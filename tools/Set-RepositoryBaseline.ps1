@@ -8,16 +8,16 @@
       - adds a "Protect main" ruleset on the default branch, the same shape as project-template's: no deletion, no force
         push, a pull request required (no approvals, since the organization has one maintainer, except where
         code-review.yml passes approve: true and a second person has write access, as below) with every conversation
-        resolved, with stale reviews dismissed
-        on push, so a review finding from the bot, CodeQL or a person can't be merged past, merge-commit or rebase
-        merges only, never squash, so each commit of a plan stays on the branch, when CodeQL's default setup is
-        configured for the repository and analyzes at least one language a code-scanning rule that blocks a pull request
-        whose CodeQL results add an alert at warning level or above or a security alert of any severity, and, when
-        -RequireChecks names them, those CI jobs as required status checks, which must pass on a branch that is up to
-        date with the default branch. A setup that GitHub reports as configured with no language, as an organization's
-        security configuration can leave a new repository, runs CodeQL on no pull request, so the rule would block every
-        merge: it counts as not configured, and the script says why and that a later run with -RequireChecks adds the
-        rule once the repository's settings give CodeQL a language (the template's ADR-0030);
+        resolved, with stale reviews dismissed on push, so a review finding from the bot, CodeQL or a person can't be
+        merged past, merge-commit or rebase merges only, never squash, so each commit of a plan stays on the branch,
+        when CodeQL's default setup is configured for the repository and analyzes at least one language a code-scanning
+        rule that blocks a pull request whose CodeQL results add an alert at warning level or above or a security alert
+        of any severity, and, when -RequireChecks names them, those CI jobs as required status checks, which must pass
+        on a branch that is up to date with the default branch. A setup that GitHub reports as configured with no
+        language, as an organization's security configuration can leave a new repository, runs CodeQL on no pull
+        request, so the rule would block every merge: it counts as not configured, and the script says why and that a
+        later run with -RequireChecks adds the rule once the repository's settings give CodeQL a language (the
+        template's ADR-0030);
       - switches CodeQL's default setup, when it read it as configured with a language to analyze, to the extended query
         suite, before it writes the ruleset, so a switch that fails leaves the repository for the next run to retry. The
         switch sends the query suite alone and names no language, so it never runs on a setup that analyzes none;
