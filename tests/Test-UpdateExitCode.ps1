@@ -2,7 +2,7 @@
 .SYNOPSIS
     Test that a project's update exits 0 when it succeeds: staged with -NoCommit while it shows a project-owned
     change, and with nothing to update. It also checks that the update asks to backfill the changelog from a tag it
-    has no section for.
+    has no section for. It also checks that both runs say what a code-review.yml pinned to NCodeGroup/code-review v1.3.0 by tag lacks.
 
 .DESCRIPTION
     Run with &, the script used to leave $LASTEXITCODE at 1 from the git commands that show a project-owned change.
@@ -54,6 +54,9 @@ $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 $handoffMarker = 'Update-Project.ps1 from v0.2.0 is running.'
 $project = Join-Path $Work 'project'
 Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test Exit Code' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tpl $project
+# A code-review.yml of the project's own that pins NCode Review by tag before v1.4.0, without approve: true: both runs say what it lacks.
+$null = New-Item -ItemType Directory -Path (Join-Path $project '.github/workflows') -Force
+[IO.File]::WriteAllText((Join-Path $project '.github/workflows/code-review.yml'), "name: review`non: pull_request`njobs:`n  review:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: NCodeGroup/code-review@v1.3.0`n")
 Push-Location $project
 try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'; Invoke-Git tag v1.0.0 }
 finally { Pop-Location }
@@ -79,12 +82,14 @@ try {
     Check 'fixture: the update hands over to the v0.2.0 script and shows a README.md change the project lacks' ($output.Contains($handoffMarker) -and $output -match '(?m)^  README\.md:\r?$' -and $output.Contains('+## AI-Assisted Workflow, Updated')) $output.Trim()
     Check 'update -NoCommit: stages the update and exits 0' (($exitCode -eq 0) -and $output.Contains('Staged for review') -and ((git rev-parse HEAD) -eq $head) -and (@(git diff --cached --name-only) -contains '.copier-answers.yml')) $output.Trim()
     Check 'update: asks to backfill the changelog from a tag it has no section for' ($output.Contains('/plan-migration Backfill CHANGELOG.md from the releases v1.0.0')) $output.Trim()
+    Check 'update: says what code-review.yml and AGENTS.md lack for NCode Review''s approval' ($output.Contains('.github/workflows/code-review.yml pins NCodeGroup/code-review v1.3.0') -and $output.Contains('.github/workflows/code-review.yml passes no approve: true')) $output.Trim()
 
     Invoke-Git commit -q -m 'Update from project-template v0.2.0'
     $lines = [Collections.Generic.List[string]]::new()
     try { & (Join-Path $project '.template\Update-Project.ps1') 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
     $output = $lines -join "`n"
     Check 'update: a run with nothing to update exits 0' (($exitCode -eq 0) -and $output.Contains('Already up to date: template v0.2.0.')) $output.Trim()
+    Check 'update: with nothing to update, still says what code-review.yml lacks' ($output.Contains('.github/workflows/code-review.yml pins NCodeGroup/code-review v1.3.0')) $output.Trim()
 
     # A project whose answers still name polewskm/project-template moves to NCodeGroup/project-template with its next update,
     # even at the newest version. Git serves the new address from the local snapshot, as a host would.
