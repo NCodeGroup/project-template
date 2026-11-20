@@ -6,9 +6,12 @@
     From the project template; template updates replace this file. Sets PackageValidationBaselineVersion in each
     Directory.Build.props and project file that already sets it, so package validation compares each package with the
     release just published. It never lowers the baseline: it changes nothing when no file sets the property, or when
-    every file already holds the version or a later one. It adds a ### Changed entry under ## [Unreleased] of a Keep a
-    Changelog file with a release section, in place of any baseline entry an earlier run left there, and never touches a
-    release section. It prints the version it set, or nothing.
+    every file already holds the version or a later one. When it raises a project's baseline to a new major version, it
+    removes the baseline suppressions (IsBaselineSuppression true, PKV006 and PKV007) from the
+    CompatibilitySuppressions.xml beside the project, which match nothing once the baseline is that major's first
+    release, keeps the others, and deletes the file when none is left. It adds a ### Changed entry under
+    ## [Unreleased] of a Keep a Changelog file with a release section, in place of any baseline entry an earlier run
+    left there, and never touches a release section. It prints the version it set, or nothing.
 
     A prerelease is never a baseline, so the version must be a stable one such as 1.4.0 or v1.4.0.
 
@@ -97,6 +100,29 @@ if ($changed.Count -eq 0) {
     return
 }
 
+$suppressionPattern = '(?s)[ \t]*<Suppression>.*?</Suppression>[ \t]*(\r?\n)?'
+$baselineEntry = '<IsBaselineSuppression>\s*true\s*</IsBaselineSuppression>|<DiagnosticId>\s*PKV00[67]\s*</DiagnosticId>'
+$suppressions = [ordered]@{}
+foreach ($candidate in $candidates) {
+    $file = $candidate.File
+    if ($file.Extension -ne '.csproj') { continue }
+    $folder = $file.DirectoryName
+    $setter = if ($setterFiles.FullName -contains $file.FullName) { $file } else {
+        $setterFiles | Where-Object { $_.Name -eq 'Directory.Build.props' -and ($folder -eq $_.DirectoryName -or $folder.StartsWith($_.DirectoryName + [IO.Path]::DirectorySeparatorChar)) } |
+            Sort-Object { $_.DirectoryName.Length } -Descending | Select-Object -First 1
+    }
+    if (-not $setter -or -not $changed.Contains($setter.FullName) -or -not $changed[$setter.FullName].NewMajor) { continue }
+    $path = Join-Path $folder 'CompatibilitySuppressions.xml'
+    if ($suppressions.Contains($path) -or -not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+    $text = [IO.File]::ReadAllText($path)
+    $kept = [regex]::Replace($text, $suppressionPattern, { param($m) if ($m.Value -match $baselineEntry) { '' } else { $m.Value } })
+    if ($kept -ceq $text) { continue }
+    $bytes = [IO.File]::ReadAllBytes($path)
+    $hadBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+    $keptText = if ($kept -match '<Suppression>') { $kept } else { $null }
+    $suppressions[$path] = @{ Text = $keptText; HadBom = $hadBom; Relative = [IO.Path]::GetRelativePath($Root, $path) }
+}
+
 if (-not $SkipNugetCheck) {
     $ids = @(
         foreach ($candidate in $candidates) {
@@ -146,6 +172,17 @@ if (-not $SkipNugetCheck) {
 
 foreach ($path in $changed.Keys) {
     [IO.File]::WriteAllText($path, $changed[$path].Text, [Text.UTF8Encoding]::new($changed[$path].HadBom))
+}
+foreach ($path in $suppressions.Keys) {
+    $s = $suppressions[$path]
+    if ($null -eq $s.Text) {
+        Remove-Item -LiteralPath $path
+        Write-Host "Deleted $($s.Relative): its suppressions all compared with the previous major version."
+    }
+    else {
+        [IO.File]::WriteAllText($path, $s.Text, [Text.UTF8Encoding]::new($s.HadBom))
+        Write-Host "Removed the suppressions that compared with the previous major version from $($s.Relative)."
+    }
 }
 
 $changelog = 'CHANGELOG.md'
