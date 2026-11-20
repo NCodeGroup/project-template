@@ -3,7 +3,7 @@
 {% set licensed = (license | default('')) in ['Apache-2.0', 'MIT'] -%}
 # 0020. A GitHub project is scored by OpenSSF Scorecard
 
-- **Status:** Accepted (amended by 0022 and 0025)
+- **Status:** Accepted (amended by 0022, 0025 and 0153)
 - **Date:** 2026-11-14
 
 ## Context
@@ -36,9 +36,9 @@ The table lists each check, what the template does for it and what needs a perso
 | CI-Tests | Pull requests run the CI workflow. | Nothing. |
 | Maintained | Scheduled automation keeps the repository active. | Keep committing and answering issues. |
 {%- if stack == 'dotnet' and nuget_package %}
-| Signed-Releases | `publish.yml` calls `release-provenance.yml`, attaching packages, a signed `<tag>.intoto.jsonl` and an SBOM ([ADR-0139](0139-releases-carry-build-provenance.md), [ADR-0151](0151-release-follow-ups-are-jobs-publish-calls.md)). | The last five releases with assets are averaged: delete older unsigned assets (packages stay on nuget.org) or wait five releases. |
+| Signed-Releases | `publish.yml` calls `release-provenance.yml`, attaching packages, a signed `<tag>.intoto.jsonl` and an SBOM ([ADR-0139](0139-releases-carry-build-provenance.md), [ADR-0151](0151-release-follow-ups-are-jobs-publish-calls.md)). | The last five releases with assets are averaged: delete older unsigned assets (packages stay on nuget.org) or wait five releases. `release-provenance.yml`'s `workflow_dispatch` backfills a release only while the Publish run's `packages` artifact is kept (14 days); never attest packages downloaded from a registry, which claims a build the workflow never ran. |
 {%- else %}
-| Signed-Releases | Nothing: the template attaches no signature or provenance to this project's releases. | A signature or a *.intoto.jsonl provenance file among each release's assets. |
+| Signed-Releases | Nothing: the template attaches no signature or provenance to this project's releases. | A signature or a *.intoto.jsonl provenance file among each release's assets. Never attest packages downloaded from a registry, which claims a build the workflow never ran. |
 {%- endif %}
 {%- if library %}
 | Packaging | `publish.yml` publishes the packages. | The first successful `publish.yml` run. |
@@ -53,7 +53,7 @@ The table lists each check, what the template does for it and what needs a perso
 | Code-Review | Any non-author approval counts, a bot's included; where NCode Review runs, it approves a clean review ([ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md)), else nothing approves. | A non-author approval. |
 {%- endif %}
 | Contributors | None. | Contributors from other organizations. |
-| Fuzzing | A .NET project adds FsCheck property tests to its test project. | Write the property tests. |
+| Fuzzing | Nothing: the template adds no property tests or package. | Write property tests with the stack's property-test library, for .NET `FsCheck.Xunit` with `[Property(Replay = Seed)]`, which Scorecard detects. |
 | CII-Best-Practices | The six documents ([ADR-0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)) and `docs/best-practices-criteria.md`, which maps every criterion to the answer to expect and its evidence ([ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md)). | Register at https://www.bestpractices.dev: in progress 2, passing 5, silver 7, gold 10; silver needs `access_continuity`, a second owner of the organization{% if library %} and the package registry{% endif %}; gold needs two-person review, two unassociated contributors, the organization's two-factor settings and a security review. |
 
 ## Options considered
