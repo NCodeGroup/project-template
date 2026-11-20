@@ -1,10 +1,10 @@
 ---
-description: Verify the OpenSSF Best Practices answers in the repository, and write the prompt that registers the project or updates its answers
+description: Report the repository's OpenSSF Scorecard gaps, verify its Best Practices answers for the default branch, and write the prompt that registers the project or updates its answers
 argument-hint: Optional - what I confirm, such as a second maintainer or the organization's two-factor settings
 role: analyst
 append-format: false
 ---
-Verify this repository's OpenSSF Best Practices answers, and write the prompt Claude in Chrome runs to register the project or update its answers:
+Report this repository's OpenSSF Scorecard gaps, verify its Best Practices answers for the default branch, and write the prompt Claude in Chrome runs to register the project or update its answers:
 
 {{INPUT}}
 
