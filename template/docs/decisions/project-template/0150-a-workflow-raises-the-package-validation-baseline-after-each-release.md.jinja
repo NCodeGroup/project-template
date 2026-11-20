@@ -22,14 +22,15 @@ succeeds, so the raise cannot run in the release itself.
   `<IsBaselineSuppression>true</IsBaselineSuppression>` and the `PKV006` and `PKV007` entries, from the
   `CompatibilitySuppressions.xml` beside the project, keeps the others, and deletes the file when none is left: package
   validation rejects a suppression that matches nothing. A prerelease is never a baseline.
-- On GitHub, `.github/workflows/raise-baseline.yml` runs it when `publish.yml` calls it after publishing a
-  stable version, or by hand with a tag, pushes `baseline-<version>`, opens it as a draft pull request, as workflows
-  that open pull requests do, which a person marks ready and merges after CI, and starts `ci.yml` on the branch with
-  `gh workflow run`, because a pull request opened with the workflow's token starts no workflow. Its checkout keeps no credential; the push takes the token
-  through `http.extraheader`. Its description names each `CompatibilitySuppressions.xml` the script deleted or edited.
-- The workflow needs "Allow GitHub Actions to create and approve pull requests", which `tools/Set-RepositoryBaseline.ps1`
-  in the project template turns on only where this workflow is on the default branch; GitHub offers no setting that
-  allows creating without approving.
+- On GitHub, `.github/workflows/raise-baseline.yml` runs it when `publish.yml` calls it after publishing a stable
+  version, or by hand with a tag, pushes `baseline-<version>`, opens it as a draft pull request, as workflows that open
+  pull requests do, which a person marks ready and merges after CI, and starts `ci.yml` on the branch with
+  `gh workflow run`, because a pull request opened with the workflow's token starts no workflow. Its checkout keeps no
+  credential; the push takes the token through `http.extraheader`. Its description names each
+  `CompatibilitySuppressions.xml` the script deleted or edited.
+- The workflow needs "Allow GitHub Actions to create and approve pull requests", which
+  `tools/Set-RepositoryBaseline.ps1` in the project template turns on only where this workflow is on the default branch;
+  GitHub offers no setting that allows creating without approving.
 - A project's plans never raise the baseline or list raising it as a follow-up.
 
 ## Options considered
