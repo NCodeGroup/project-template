@@ -113,6 +113,8 @@ jobs:
             run: ./tests/Test-NuGetLogistics.ps1
           - name: Test the package validation baseline script
             run: ./tests/Test-UpdateBaseline.ps1
+          - name: Test the package reproducibility check
+            run: ./tests/Test-ReproducibleBuild.ps1
           - name: Test the CSharpier wrapper check
             run: ./tests/Test-CSharpierWrapper.ps1
           - name: Test dropping a repository's own GitVersioning reference

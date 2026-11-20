@@ -130,6 +130,7 @@ never brings a number the project already uses
 | [0149](0149-stale-nuget-logistics-are-named-not-fixed.md) | Adoption and update name the stale NuGet logistics of an older library and fix none (extends 0147) |
 | [0150](0150-a-workflow-raises-the-package-validation-baseline-after-each-release.md) | Once a release is on nuget.org, `build/Update-Baseline.ps1` raises the package validation baseline; on GitHub, `raise-baseline.yml` opens its pull request (amends 0147) |
 | [0152](0152-a-packages-project-page-is-its-documentation-site.md) | A package's project page is the documentation site `docs/site/site.config.json` names, else the repository, unless the project sets `PackageProjectUrl` (extends 0130) |
+| [0154](0154-a-library-build-takes-nothing-from-the-clock-and-ci-builds-it-twice.md) | A library's `Copyright` names no year, and CI builds its packages twice and compares them entry by entry, so a tag rebuilds to the same packages in any year (extends 0147) |
 {%- endif %}
 {%- if uses_node or stack == 'node' %}
 

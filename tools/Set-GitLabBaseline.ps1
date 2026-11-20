@@ -41,10 +41,22 @@
     GitLab, and a token that can edit the project. New-Project.ps1 runs it for a GitLab project it creates;
     Adopt-Project.ps1 prints the command to run.
 
+    With -BaselineToken it also makes two more settings. First it protects the tags v* (protected tag v*), with the
+    Maintainer role allowed to create them, so only a Maintainer can create a version tag; a tag a Developer pushes
+    starts no baseline job. Then it makes the masked and protected CI/CD variable BASELINE_TOKEN that the template's
+    raise-baseline job (.gitlab-ci.yml) needs to push baseline-<version> and open its merge request: when the variable
+    isn't there, it creates a project access token named raise-baseline (role Developer, scopes api and
+    write_repository, expiring in a year) and stores it in the variable, masked and protected, so only pipelines of
+    protected branches and tags, such as the raise-baseline tag pipeline, can read it. The token is only
+    passed from one call to the other and is never printed. The token expires after a year, and a run after that
+    replaces nothing: delete the variable first. A project without raise-baseline in its .gitlab-ci.yml has no use
+    for it. Without the switch, as in New-Project.ps1's run, nothing about tokens or variables is read or written.
+
 .EXAMPLE
     .\tools\Set-GitLabBaseline.ps1 -Project bixbots/qso-viewer -WhatIf     # shows each setting's state
     .\tools\Set-GitLabBaseline.ps1 -Project tools/qso-viewer -Hostname gitlab.example.com
     .\tools\Set-GitLabBaseline.ps1 -Path C:\src\qso-viewer
+    .\tools\Set-GitLabBaseline.ps1 -Project bixbots/qso-viewer -BaselineToken   # also creates BASELINE_TOKEN
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -53,7 +65,9 @@ param(
     # The GitLab's host name. With -Path, the origin remote's host unless this is given; otherwise gitlab.com.
     [string]$Hostname,
     # A clone of the project, whose origin remote names the project and the host. Not with -Project.
-    [string]$Path = '.'
+    [string]$Path = '.',
+    # Also protects the tags v* and creates the project access token and the masked, protected CI/CD variable BASELINE_TOKEN that raise-baseline needs.
+    [switch]$BaselineToken
 )
 $ErrorActionPreference = 'Stop'
 if ($Project -and $PSBoundParameters.ContainsKey('Path')) { throw 'Pass -Project or -Path, not both.' }
@@ -72,17 +86,19 @@ $endpoint = "projects/$([uri]::EscapeDataString($Project))"
 # status line (--include), never from the CLI's wording, and stderr stays out of the body, so a warning can't spoil the
 # JSON; its first line is kept as the reason for a call with no status. A call that got no response at all (no network, no login) has no status. Every call names the host, so it never
 # depends on the folder glab runs in.
-function Invoke-Glab([string]$Method, [string]$Endpoint, [string[]]$Fields = @()) {
+function Invoke-Glab([string]$Method, [string]$Endpoint, [string[]]$Fields = @(), [string]$Body = '') {
     $fieldArgs = @(foreach ($f in $Fields) { '-F'; $f })
-    $all = @(& glab api --hostname $Hostname --method $Method --include $Endpoint @fieldArgs 2>&1)
+    # A secret goes in the JSON body on standard input, never in a field: the arguments of a process are readable by every user of the machine.
+    $all = if ($Body) { @($Body | & glab api --hostname $Hostname --method $Method --include $Endpoint --header 'Content-Type: application/json' --input - 2>&1) }
+    else { @(& glab api --hostname $Hostname --method $Method --include $Endpoint @fieldArgs 2>&1) }
     $lines = @($all | Where-Object { $_ -isnot [Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
     $errorLine = @($all | Where-Object { $_ -is [Management.Automation.ErrorRecord] } | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) | Select-Object -First 1
     $status = $null
     if ($lines.Count -and $lines[0] -match '^HTTP/\S+\s+(\d{3})\b') { $status = [int]$Matches[1] }
     $blank = -1
     for ($i = 0; $i -lt $lines.Count; $i++) { if (-not $lines[$i].Trim()) { $blank = $i; break } }
-    $body = if ($blank -ge 0 -and $blank -lt $lines.Count - 1) { $lines[($blank + 1)..($lines.Count - 1)] -join "`n" } else { '' }
-    [pscustomobject]@{ Status = $status; Body = $body; Error = "$errorLine" }
+    $answer = if ($blank -ge 0 -and $blank -lt $lines.Count - 1) { $lines[($blank + 1)..($lines.Count - 1)] -join "`n" } else { '' }
+    [pscustomobject]@{ Status = $status; Body = $answer; Error = "$errorLine" }
 }
 
 # Why a call failed, for the line that reports it: the status and, when the answer has one, the API's message.
@@ -198,8 +214,67 @@ function Set-WeeklyPipeline {
     else { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
 }
 
+# With -BaselineToken: protects the tag pattern v*, so that only a Maintainer can create a version tag and the protected
+# variable BASELINE_TOKEN, which only pipelines of protected branches and tags can read, reaches the raise-baseline tag
+# pipeline. A protected tag that exists is left as it is, whatever its access level.
+function Set-ProtectedTag {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+    $label = 'protected tag v*'
+    $read = Invoke-Glab GET "$endpoint/protected_tags/v%2A"
+    if ($read.Status -eq 200) { Write-Host "${Project}: ${label}: already set"; return }
+    if ($read.Status -ne 404) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $read))"; return }
+    if (-not $PSCmdlet.ShouldProcess($Project, "protect the tags v*")) { Write-Host "${Project}: ${label}: would set"; return }
+    $result = Invoke-Glab POST "$endpoint/protected_tags" @('name=v*', 'create_access_level=40')
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Project}: ${label}: set" }
+    else { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
+}
+
+# Revokes a created project access token that the variable can't use, and reports why the variable isn't set.
+function Revoke-BaselineToken([string]$Label, [string]$TokenId, [string]$Reason) {
+    $revoked = Invoke-Glab DELETE "$endpoint/access_tokens/$TokenId"
+    if ($revoked.Status -ge 200 -and $revoked.Status -lt 300) { Write-Host "${Project}: ${Label}: not available ($Reason; the access token was revoked)" }
+    else { Write-Host "${Project}: ${Label}: not available ($Reason; the access token $TokenId is still there, revoke it by hand)" }
+}
+
+# With -BaselineToken: the masked and protected CI/CD variable BASELINE_TOKEN that the template's raise-baseline job needs, holding a
+# new project access token. The token is read from the first answer and only ever passed to the second call: it is never
+# printed, logged or put in a message.
+function Set-BaselineToken {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+    $label = 'BASELINE_TOKEN variable'
+    $read = Invoke-Glab GET "$endpoint/variables/BASELINE_TOKEN"
+    if ($read.Status -eq 200) { Write-Host "${Project}: ${label}: already set"; return }
+    if ($read.Status -ne 404) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $read))"; return }
+    if (-not $PSCmdlet.ShouldProcess($Project, "create the project access token and the variable BASELINE_TOKEN")) { Write-Host "${Project}: ${label}: would set"; return }
+    $expires = (Get-Date).AddDays(365).ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+    $created = Invoke-Glab POST "$endpoint/access_tokens" @('name=raise-baseline', 'scopes[]=api', 'scopes[]=write_repository', 'access_level=30', "expires_at=$expires")
+    if (-not ($created.Status -ge 200 -and $created.Status -lt 300)) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $created))"; return }
+    $token = try { "$(($created.Body | ConvertFrom-Json -ErrorAction Stop).token)" } catch { '' }
+    $tokenId = try { "$(($created.Body | ConvertFrom-Json -ErrorAction Stop).id)" } catch { '' }
+    if (-not $token) {
+        $noToken = "the access token's answer has no token"
+        # An answer with an id but no token left an access token nobody can use: revoke it.
+        if ($tokenId) { Revoke-BaselineToken $label $tokenId $noToken }
+        else { Write-Host "${Project}: ${label}: not available ($noToken)" }
+        return
+    }
+    $body = @{ key = 'BASELINE_TOKEN'; value = $token; masked = $true; protected = $true } | ConvertTo-Json -Compress
+    $result = Invoke-Glab POST "$endpoint/variables" -Body $body
+    $body = $null
+    $token = $null
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Project}: ${label}: set" }
+    elseif (-not $tokenId) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
+    else {
+        # The variable couldn't be stored, so the access token would stay unused and a rerun would make another: revoke it.
+        Revoke-BaselineToken $label $tokenId (Get-FailureReason $result)
+    }
+}
+
 Set-ProjectSetting 'All threads must be resolved' 'only_allow_merge_if_all_discussions_are_resolved' $info
 Set-ProjectSetting 'Pipelines must succeed' 'only_allow_merge_if_pipeline_succeeds' $info
 Set-ProjectSetting 'Do not allow squash commits' 'squash_option' $info 'never'
 Set-DefaultBranchPush $info
 Set-WeeklyPipeline $info
+if ($BaselineToken) { Set-ProtectedTag; Set-BaselineToken }

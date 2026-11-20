@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.109.0] - 2026-11-20
+
+### Added
+
+- `.template/Test-ReproducibleBuild.ps1` packs a library twice and compares the packages entry by entry, ignoring zip timestamps, and a .NET `nuget_package` on GitHub runs it as the `reproducible-build` job of `ci.yml`, which `tag-release.yml` also runs before it tags a release; on GitLab it runs by hand. ([#454](https://github.com/NCodeGroup/project-template/issues/454), [ADR-0154](template/docs/decisions/project-template/0154-a-library-build-takes-nothing-from-the-clock-and-ci-builds-it-twice.md))
+- A GitLab library's `.gitlab-ci.yml` has a `raise-baseline` job: when a stable version tag is pushed, after the project's own `publish` job when it has one, it runs `build/Update-Baseline.ps1`, pushes `baseline-<version>` and opens a draft merge request. It needs a project access token in the protected, masked variable `BASELINE_TOKEN`, with the `v*` tags protected so that tag pipelines can read it, and is skipped without the variable. ([#389](https://github.com/NCodeGroup/project-template/issues/389), [ADR-0150](template/docs/decisions/project-template/0150-a-workflow-raises-the-package-validation-baseline-after-each-release.md.jinja))
+- `tools/Set-GitLabBaseline.ps1 -BaselineToken` protects the `v*` tags and creates the project access token and the protected, masked `BASELINE_TOKEN` variable that a GitLab library's `raise-baseline` job needs. ([#389](https://github.com/NCodeGroup/project-template/issues/389))
+- `tools/Set-RepositoryBaseline.ps1` reports the organization's two-factor requirement as required, not required or not available, and never sets it. ([#453](https://github.com/NCodeGroup/project-template/issues/453))
+
+### Changed
+
+- The Best Practices criteria map says what shows assertions are enabled while the tests run and when Unmet is honest, makes copyright_per_file, license_per_file and dynamic_analysis Check rows with their commands, has the static_analysis_fixed and regression_tests_added50 checks name each won't-fix alert and each fix with its test, says autofill's two-factor Met is no evidence, keeps roles_responsibilities at `?` until the Who column names people, says what to do without a `good first issue`, adds library guidance for input_validation, internationalization and hardening, and gives hardened_site its justification and command. ([#453](https://github.com/NCodeGroup/project-template/issues/453))
+- The registration prompt lists the SUGGESTED criteria still `?`, waits for the form's radios before reading it, compares ANSWERS with the Security tab and releases before saving, reads the map with `get_page_text`, and ends with the commands that record the project number and add the badge; `/best-practices` compares its answers with the closed code scanning alerts, the fixes and the releases the same way. ([#453](https://github.com/NCodeGroup/project-template/issues/453))
+- `code-review.yml` no longer carries the sentence about the NCode Review v1.4.0 cooldown exception. ([#392](https://github.com/NCodeGroup/project-template/issues/392))
+
+### Fixed
+
+- `build/ProjectTemplate.props` sets `Copyright` without the year of the build machine's clock, so a rebuild of a release's tag in a later year produces the same assemblies and packages. ([#454](https://github.com/NCodeGroup/project-template/issues/454), [ADR-0154](template/docs/decisions/project-template/0154-a-library-build-takes-nothing-from-the-clock-and-ci-builds-it-twice.md))
+
 ## [0.108.0] - 2026-11-20
 
 ### Added
@@ -1751,7 +1770,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.108.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.109.0...HEAD
+[0.109.0]: https://github.com/NCodeGroup/project-template/compare/v0.108.0...v0.109.0
 [0.108.0]: https://github.com/NCodeGroup/project-template/compare/v0.107.0...v0.108.0
 [0.107.0]: https://github.com/NCodeGroup/project-template/compare/v0.106.1...v0.107.0
 [0.106.1]: https://github.com/NCodeGroup/project-template/compare/v0.106.0...v0.106.1

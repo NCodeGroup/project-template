@@ -214,6 +214,18 @@ if ($path -match '^repos/[^/]+/([^/]+)/commits/([^/]+)/check-runs\?') {
 if ($path -match '^repos/[^/]+/([^/]+)/actions/runs\?head_sha=([^&]+)') {
     Out-Pages 'workflow_runs' @($data.repos[$Matches[1]].workflowRuns[$Matches[2]] | Where-Object { $_ }); exit 0
 }
+# The organization itself: twoFactor is true or false (two_factor_requirement_enabled), absent (an answer without the
+# field, as a non-owner gets), notjson (a 200 whose body is not JSON) or fail:<code>.
+if ($path -match '^orgs/([^/]+)$') {
+    $org = $data.orgs[$Matches[1]]
+    $state = "$($org.twoFactor)"
+    if (-not $org) { Out-Answer 404 '{"message":"Not Found"}' }
+    if ($state -eq 'notjson') { Out-Answer 200 'not json' }
+    if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
+    $answer = @{ login = $Matches[1] }
+    if ($state -in 'true', 'false') { $answer.two_factor_requirement_enabled = $state -eq 'true' }
+    Out-Answer 200 (ConvertTo-Json -Compress -InputObject $answer)
+}
 if ($path -match '^repos/[^/]+/([^/]+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].info -Depth 5; exit 0 }
 exit 1
 '@
@@ -249,7 +261,7 @@ function New-EventPolicy([string]$Name, [string[]]$Events = @('pull_request_targ
 # $Languages lists the languages CodeQL's default setup analyzes, those of NCodeGroup/Buffers unless it says otherwise:
 # @() for none, and $null leaves languages out of the answer.
 function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', $Languages = @('actions', 'csharp'), [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
-    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), [hashtable]$WorkflowText = @{}, $Policies = @()) {
+    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), [hashtable]$WorkflowText = @{}, $Policies = @(), [string]$OwnerType = '') {
     $full = @{}
     $summaries = @()
     $id = 100
@@ -260,6 +272,7 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
     $analysis = @{ secret_scanning = @{ status = $SecretScanning }; secret_scanning_push_protection = @{ status = $PushProtection } }
     $info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork; private = $Visibility -ne 'public'; visibility = $Visibility; security_and_analysis = $analysis }
     if ($null -ne $AutoMerge) { $info.allow_auto_merge = $AutoMerge }
+    if ($OwnerType) { $info.owner = @{ type = $OwnerType } }
     @{ info = $info
         rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; languages = $Languages; switchFails = $SwitchFails
         pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails
@@ -444,6 +457,8 @@ $repos = @{
     reviewedUnreadable = New-Repo -Workflows $reviewWorkflows -Policies 'fail:403'
     reviewedRefused = New-Repo -Workflows $reviewWorkflows -WriteFails @{ 'actions/policies' = 403 }
     workflowsUnreadable = New-Repo -Workflows @('fail:500')
+    orgOwned = New-Repo -OwnerType 'Organization'
+    userOwned = New-Repo -OwnerType 'User'
 }
 $orgs = @{
     orgEmpty = @{ policies = @() }
@@ -459,6 +474,11 @@ $orgs = @{
     orgPullOnly = @{ policies = @((New-EventPolicy 'pull only everywhere' -Paths @('.github/workflows/*') -Repos @('~ALL') -Events @('pull_request_target'))) }
     orgFreeRead = @{ policies = 'fail:403'; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgFreeWrite = @{ policies = @(); writeFail = 403; message = 'Upgrade to GitHub Team to enable this feature.' }
+    orgTfaOn = @{ twoFactor = 'true' }
+    orgTfaOff = @{ twoFactor = 'false' }
+    orgTfaHidden = @{ twoFactor = 'absent' }
+    orgTfaRefused = @{ twoFactor = 'fail:403' }
+    orgTfaNotJson = @{ twoFactor = 'notjson' }
 }
 $orgPolicyId = 300
 foreach ($org in $orgs.Values) { if ($org.policies -isnot [string]) { foreach ($policy in $org.policies) { $orgPolicyId++; $policy.id = $orgPolicyId } } }
@@ -515,6 +535,27 @@ try {
         Check "whatif: shows the security setting it would turn on ($label)" ($r.Output -match [regex]::Escape("fresh: ${label}: would set")) $r.Output
     }
     Check 'whatif: shows that it would allow auto-merge' ($r.Output -match [regex]::Escape('fresh: allow auto-merge: would set')) $r.Output
+
+    # Organization two-factor requirement: reported for an organization's repository, never written, never fails the run.
+    foreach ($case in @(@('orgTfaOn', 'required'), @('orgTfaOff', 'not required'))) {
+        foreach ($whatIf in $false, $true) {
+            $tfaArgs = @('-Repo', 'orgOwned', '-Owner', $case[0]); if ($whatIf) { $tfaArgs += '-WhatIf' }
+            $r = Invoke-Baseline $tfaArgs
+            Check "two-factor: $($case[0])$(if ($whatIf) { ' with -WhatIf' }) is reported as $($case[1])" ($r.ExitCode -eq 0 -and $r.Output -match "orgOwned: organization two-factor requirement: $($case[1])\r?\n") "$($r.ExitCode) $($r.Output)"
+            Check "two-factor: $($case[0])$(if ($whatIf) { ' with -WhatIf' }) makes no write call for it" (-not @($r.Changes | Where-Object { $_ -match 'orgs/orgTfa' }).Count) ($r.Changes -join '|')
+        }
+    }
+    foreach ($case in @('orgTfaRefused', 'orgTfaHidden')) {
+        $r = Invoke-Baseline @('-Repo', 'orgOwned', '-Owner', $case)
+        Check "two-factor: $case is reported as not available, and the run goes on" ($r.ExitCode -eq 0 -and $r.Output -match 'orgOwned: organization two-factor requirement: not available \(' -and $r.Output -notmatch 'FAILED' -and $r.Output -match 'done: orgOwned') "$($r.ExitCode) $($r.Output)"
+    }
+    $r = Invoke-Baseline @('-Repo', 'orgOwned', '-Owner', 'orgTfaRefused')
+    Check 'two-factor: a refused read says why' ($r.Output.Contains('organization two-factor requirement: not available (HTTP 403')) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'orgOwned', '-Owner', 'orgTfaNotJson')
+    Check 'two-factor: an answer that is not JSON is reported as such, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains('organization two-factor requirement: not available (an answer that is not JSON)')) "$($r.ExitCode) $($r.Output)"
+    Check 'two-factor: an answer that is not JSON makes no write call for it' (-not @($r.Changes | Where-Object { $_ -match 'orgs/orgTfa' }).Count) ($r.Changes -join '|')
+    $r = Invoke-Baseline @('-Repo', 'userOwned', '-Owner', 'orgTfaOn')
+    Check 'two-factor: a repository a user owns gets no line' ($r.Output -notmatch 'two-factor' -and -not @((Get-Content -LiteralPath $calls) | Where-Object { $_ -match 'api (--include )?orgs/orgTfaOn$' }).Count) $r.Output
 
     # 2. A repository with no ruleset.
     $r = Invoke-Baseline @('-Repo', 'fresh')

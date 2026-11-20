@@ -2,6 +2,9 @@ workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+{%- if stack == 'dotnet' and nuget_package %}
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+{%- endif %}
 
 build-and-test:
 {%- if stack == 'dotnet' %}
@@ -145,6 +148,39 @@ dependency-audit:
     - if [ -f requirements.txt ]; then pip-audit -r requirements.txt; fi
     - if [ -f pyproject.toml ]; then pip-audit .; fi
 {%- endif %}
+{%- endif %}
+{%- if stack == 'dotnet' and nuget_package %}
+
+# Runs when a stable version tag is pushed, after the project's own publish job when it has one. It needs a project
+# access token (role Developer, scopes api and write_repository) in the protected, masked CI/CD variable
+# BASELINE_TOKEN; a protected variable reaches only pipelines of protected branches and tags, so the v* tags must be
+# protected for tag pipelines to read it; without the variable the job is skipped. It pushes baseline-<version> from
+# the default branch's tip and opens a draft merge request that a person marks ready (ADR-0150). The .NET SDK image
+# has git and PowerShell.
+raise-baseline:
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  needs:
+    - job: publish
+      optional: true
+  variables:
+    GIT_DEPTH: "0"
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/ && $BASELINE_TOKEN
+  script:
+    - export VERSION="${CI_COMMIT_TAG#v}"
+    - export BRANCH="baseline-$VERSION"
+    - export URL="https://baseline:${BASELINE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - git ls-remote --exit-code --heads "$URL" "$BRANCH" > /dev/null && STATUS=0 || STATUS=$?
+    - if [ "$STATUS" -eq 0 ]; then echo "$BRANCH exists already"; exit 0; fi
+    - if [ "$STATUS" -ne 2 ]; then echo "git ls-remote failed with exit code $STATUS"; exit 1; fi
+    - git config user.name "GitLab CI"
+    - git config user.email "gitlab-ci@${CI_SERVER_HOST}"
+    - git fetch "$URL" "$CI_DEFAULT_BRANCH"
+    - git switch -c "$BRANCH" FETCH_HEAD
+    - pwsh -NoProfile -File build/Update-Baseline.ps1 -Version "$VERSION"
+    - if git diff --quiet; then echo "The baseline is already at $VERSION"; exit 0; fi
+    - git commit -am "Raise the package validation baseline to $VERSION"
+    - 'git push "$URL" "HEAD:$BRANCH" -o merge_request.create -o merge_request.target="$CI_DEFAULT_BRANCH" -o "merge_request.title=Draft: Raise the package validation baseline to $VERSION"'
 {%- endif %}
 
 # The .NET SDK image has git and PowerShell. The job checks the decision index, which every project has, code or not,
