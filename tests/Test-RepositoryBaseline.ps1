@@ -215,11 +215,13 @@ if ($path -match '^repos/[^/]+/([^/]+)/actions/runs\?head_sha=([^&]+)') {
     Out-Pages 'workflow_runs' @($data.repos[$Matches[1]].workflowRuns[$Matches[2]] | Where-Object { $_ }); exit 0
 }
 # The organization itself: twoFactor is true or false (two_factor_requirement_enabled), absent (an answer without the
-# field, as a non-owner gets) or fail:<code>.
+# field, as a non-owner gets), notjson (a 200 whose body is not JSON) or fail:<code>.
 if ($path -match '^orgs/([^/]+)$') {
     $org = $data.orgs[$Matches[1]]
     $state = "$($org.twoFactor)"
     if (-not $org) { Out-Answer 404 '{"message":"Not Found"}' }
+    if ($state -eq 'notjson') { Out-Answer 200 'not json' }
+    if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
     if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
     $answer = @{ login = $Matches[1] }
     if ($state -in 'true', 'false') { $answer.two_factor_requirement_enabled = $state -eq 'true' }
@@ -477,6 +479,7 @@ $orgs = @{
     orgTfaOff = @{ twoFactor = 'false' }
     orgTfaHidden = @{ twoFactor = 'absent' }
     orgTfaRefused = @{ twoFactor = 'fail:403' }
+    orgTfaNotJson = @{ twoFactor = 'notjson' }
 }
 $orgPolicyId = 300
 foreach ($org in $orgs.Values) { if ($org.policies -isnot [string]) { foreach ($policy in $org.policies) { $orgPolicyId++; $policy.id = $orgPolicyId } } }
@@ -549,6 +552,9 @@ try {
     }
     $r = Invoke-Baseline @('-Repo', 'orgOwned', '-Owner', 'orgTfaRefused')
     Check 'two-factor: a refused read says why' ($r.Output.Contains('organization two-factor requirement: not available (HTTP 403')) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'orgOwned', '-Owner', 'orgTfaNotJson')
+    Check 'two-factor: an answer that is not JSON is reported as such, and the run goes on' ($r.ExitCode -eq 0 -and $r.Output.Contains('organization two-factor requirement: not available (an answer that is not JSON)')) "$($r.ExitCode) $($r.Output)"
+    Check 'two-factor: an answer that is not JSON makes no write call for it' (-not @($r.Changes | Where-Object { $_ -match 'orgs/orgTfa' }).Count) ($r.Changes -join '|')
     $r = Invoke-Baseline @('-Repo', 'userOwned', '-Owner', 'orgTfaOn')
     Check 'two-factor: a repository a user owns gets no line' ($r.Output -notmatch 'two-factor' -and -not @((Get-Content -LiteralPath $calls) | Where-Object { $_ -match 'api (--include )?orgs/orgTfaOn$' }).Count) $r.Output
 
