@@ -159,6 +159,8 @@ $rulesetName = 'Protect main'
 $tagRulesetName = 'Protect release tags'
 # Why the script turns off approval of the last push where no approval is required (ADR-0031).
 $lastPushWhy = 'which blocks every merge while no approval is required'
+# Why the script requires no approval where one person can write (ADR-0034).
+$soleWhy = 'which block every merge while one person has write access'
 # GitHub Actions' app id: required checks are matched to the app that reports them.
 $actionsAppId = 15368
 # -RequireChecks auto never requires these checks, whatever app reported them or event ran them: each name pattern
@@ -301,6 +303,21 @@ function Read-ReviewApproval([string]$Name, [string]$Branch) {
     [pscustomobject]@{ Approver = $text -match '(?m)^\s+approve:\s*["'']?true["'']?\s*(#.*)?$'; Why = $null }
 }
 
+# Counts the users the collaborators list gives with push access or more. GitHub counts toward a required approval only
+# a review from someone with write access, never the author's (ADR-0034). Count is $null and Why the reason when the
+# list can't be read.
+function Read-Writers([string]$Name) {
+    $read = Invoke-HostApi gh "repos/$Owner/$Name/collaborators?affiliation=all&permission=push&per_page=100"
+    $answer = $null
+    if ($read.Status -eq 200) {
+        try { $answer = @($read.Body | ConvertFrom-Json -ErrorAction Stop) } catch { $answer = $null }
+    }
+    if ($null -eq $answer) {
+        [pscustomobject]@{ Count = $null; Why = if ($read.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $read } }
+    }
+    else { [pscustomobject]@{ Count = @($answer | Where-Object { $_.type -eq 'User' }).Count; Why = $null } }
+}
+
 function Set-Baseline([string]$Name) {
     $info = Invoke-GhJson @('api', "repos/$Owner/$Name")
     if ($info.archived -or $info.fork) { Write-Host "${Name}: skipped (archived or fork)"; return }
@@ -309,8 +326,15 @@ function Set-Baseline([string]$Name) {
     })
     $review = Read-ReviewApproval $Name $info.default_branch
     if ($review.Why) { Write-Host "${Name}: couldn't read .github/workflows/code-review.yml to see whether NCode Review approves ($($review.Why)); the ruleset requires no approval" }
+    $writers = Read-Writers $Name
+    if ($writers.Why) { Write-Host "${Name}: couldn't read who has write access ($($writers.Why)); the ruleset gets no approval it doesn't have, and keeps the approvals it has" }
+    $soleWriter = $null -ne $writers.Count -and $writers.Count -le 1
+    $approver = [bool]($review.Approver -and $null -ne $writers.Count -and $writers.Count -ge 2)
+    if ($review.Approver -and $soleWriter) {
+        Write-Host "${Name}: code-review.yml passes approve: true, but one person has write access, and GitHub counts toward a required approval neither the author's approval nor NCode Review's, whose app has no write access: the ruleset requires no approval and no approval of the last push (the template's ADR-0034)"
+    }
     # A repository skipped for its default branch gets nothing else either: the reason printed says what to fix first.
-    if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets -Approver $review.Approver)) { return }
+    if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets -Approver $approver -SoleWriter $soleWriter)) { return }
     Set-TagRuleset $Name $rulesets
     Set-SecuritySettings $Name $info
     Set-AutoMerge $Name $info
@@ -389,7 +413,7 @@ function Write-CodeScanningNotice([string]$Name, $Ruleset) {
 # repository, which then changes nothing, and $true otherwise: done, shown by -WhatIf, or left alone.
 function Set-BranchRuleset {
     [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Name, [string]$Branch, [object[]]$Rulesets, [bool]$Approver = $false)
+    param([string]$Name, [string]$Branch, [object[]]$Rulesets, [bool]$Approver = $false, [bool]$SoleWriter = $false)
     $own = $null
     $others = @()
     foreach ($full in $Rulesets) {
@@ -459,10 +483,12 @@ function Set-BranchRuleset {
     # so every merge is blocked where one maintainer authors every pull request (#385; ADR-0031, which amends ADR-0022).
     # An update keeps the approval count and code-owner review of the ruleset it made, and the last-push approval of one
     # that requires approvals. Where code-review.yml passes approve: true, one approval is required, and then approval of
-    # the last push too (ADR-0022).
+    # the last push too (ADR-0022). With one writer no approval is required (ADR-0034).
     $ownPull = if ($own) { @($own.rules | Where-Object type -eq 'pull_request')[0].parameters } else { $null }
     $approvals = if ($ownPull) { [int]$ownPull.required_approving_review_count } else { 0 }
     $approvals = [Math]::Max($approvals, [int]$Approver)
+    $lowered = $SoleWriter -and $null -ne $ownPull -and [int]$ownPull.required_approving_review_count -ge 1
+    if ($SoleWriter) { $approvals = 0 }
     $lastPush = $approvals -ge 1 -and ($ownPull.require_last_push_approval -eq $true -or $Approver)
     $lastPushOff = $ownPull.require_last_push_approval -eq $true -and -not $lastPush
     $rules = @(
@@ -506,7 +532,7 @@ function Set-BranchRuleset {
     elseif ($codeql) { ", and a code-scanning rule (CodeQL's default setup analyzes $($languages -join ', '))" }
     elseif ($languageless) { ", and no code-scanning rule (CodeQL's default setup analyzes no language)" }
     else { ", and no code-scanning rule (CodeQL's default setup is not configured)" }
-    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$scanning$(if ($Approver) { ', at least one required approval, as code-review.yml passes approve: true' })$(if ($lastPushOff) { ", and turns off approval of the last push, $lastPushWhy" })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
+    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$scanning$(if ($Approver) { ', at least one required approval, as code-review.yml passes approve: true' })$(if ($lowered) { ", and requires no approval and no approval of the last push, $soleWhy" } elseif ($lastPushOff) { ", and turns off approval of the last push, $lastPushWhy" })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) {
         Write-Host "would: $summary"
         if ($autoChecks) {

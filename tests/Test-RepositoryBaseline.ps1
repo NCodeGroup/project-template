@@ -207,10 +207,10 @@ if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
     if ($status -ne 200) { exit 1 }
     exit 0
 }
-# Who can write: writers lists the logins with push access or more, or fail:<code> refuses the read.
+# Who can write: writers lists the logins with push access or more (a lone login may arrive as a string), or fail:<code> refuses the read.
 if ($path -match '^repos/[^/]+/([^/]+)/collaborators\?') {
     $writers = $data.repos[$Matches[1]].writers
-    if ($writers -is [string]) { Out-Answer ([int]$writers.Substring(5)) '{"message":"Stand-in refused to read them"}' }
+    if ($writers -is [string] -and $writers.StartsWith('fail:')) { Out-Answer ([int]$writers.Substring(5)) '{"message":"Stand-in refused to read them"}' }
     Out-Answer 200 (ConvertTo-Json -Compress -InputObject @(@($writers | Where-Object { $_ }) | ForEach-Object { @{ login = $_; type = 'User'; role_name = 'write' } }))
 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets/(\d+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].full["$($Matches[2])"] -Depth 10; exit 0 }
