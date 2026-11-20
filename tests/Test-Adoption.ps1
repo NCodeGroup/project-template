@@ -371,7 +371,7 @@ if (-not $UnitOnly) {
         'README.md'          = "# Lib`n"
         'LICENSE'            = "Own license.`n"
         'AGENTS.md'          = "# Lib`n`nOwn rules.`n"
-        '.github/workflows/release.yml' = "name: release`non: release`njobs:`n  push:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push out/*.nupkg`n"
+        '.github/workflows/release.yml' = "name: release`non: release`njobs:`n  push:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n      - run: dotnet nuget push out/*.nupkg`n"
     } 'https://github.com/example/lib.git'
     Invoke-Git -C $ownLicense tag v2.3.0
     $licenseOut = & $adopt -Path $ownLicense -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; nuget_package = $true; license = 'Apache-2.0'; test_command = '' } -NoVerify | Out-String
@@ -381,6 +381,7 @@ if (-not $UnitOnly) {
     Check 'own-license: a kept AGENTS.md without a release line leaves the gitsign section out of SECURITY.md' ((Test-Path -LiteralPath (Join-Path $ownLicense 'SECURITY.md')) -and -not (Select-String -LiteralPath (Join-Path $ownLicense 'SECURITY.md') -SimpleMatch -Pattern 'gitsign' -Quiet) -and -not (Select-String -LiteralPath (Join-Path $ownLicense '.copier-answers.yml') -Pattern '^release_policy:' -Quiet)) $licenseOut
     $licenseVersion = Get-Content -Raw -LiteralPath (Join-Path $ownLicense 'version.json') | ConvertFrom-Json
     Check 'own-license: adds version.json at the patch after v2.3.0, with the AssemblyVersion v2.3.0 shipped, and no Directory.Build.props follow-up' ($licenseVersion.version -eq '2.3.1' -and $licenseVersion.assemblyVersion.version -eq '2.3' -and $licenseVersion.assemblyVersion.precision -eq 'minor' -and $licenseOut.Contains('Set version.json') -and -not $licenseOut.Contains('set <AssemblyVersion>')) $licenseOut
+    Check 'own-license: names release.yml''s shallow checkout, which Nerdbank.GitVersioning breaks' ($licenseOut.Contains('.github/workflows/release.yml, job push: actions/checkout without fetch-depth: 0')) $licenseOut
 
     # A library with a publish.yml of its own that packs without -p:PublicRelease=true keeps it, and the report asks to add it.
     $ownPublishYml = "name: publish`non: release`njobs:`n  pack:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet pack --output out -p:Version=1.0.0`n"
