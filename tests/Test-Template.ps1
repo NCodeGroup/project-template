@@ -367,6 +367,7 @@ foreach ($case in $cases) {
         $nugetOk = if ($library) { $buildProps.Contains("<PackageLicenseExpression>$($case.Data.license)</PackageLicenseExpression>") -and $buildProps.Contains("<PackageIcon>$icon</PackageIcon>") -and $buildProps.Contains("../$icon") -and -not $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
             else { -not $buildProps.Contains('PackageLicenseExpression') -and $buildProps.Contains('<NoWarn>$(NoWarn);CS1591</NoWarn>') }
         Check "${name}: NuGet package settings" $nugetOk
+        Check "${name}: the build's Copyright names no year and nothing from the clock" ($buildProps -match '<Copyright>Copyright © [^<$]+</Copyright>' -and -not $buildProps.Contains('DateTime')) $buildProps
         Check "${name}: analyzers, banned APIs and test-project suppressions in the build settings" ($buildProps.Contains('<AnalysisLevel>latest-recommended</AnalysisLevel>') -and $buildProps.Contains('<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>') -and $buildProps.Contains('ProjectTemplate.globalconfig') -and $buildProps.Contains('BannedSymbols.txt') -and $buildProps.Contains('ProjectTemplate.Tests.globalconfig')) $buildProps
         $packages = Get-Content -LiteralPath (Join-Path $dest 'Directory.Packages.props') -Raw
         Check "${name}: every project references the banned API analyzer" ($packages -match '<GlobalPackageReference Include="Microsoft\.CodeAnalysis\.BannedApiAnalyzers" Version="\d+\.\d+\.\d+" />') $packages
