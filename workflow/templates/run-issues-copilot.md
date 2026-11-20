@@ -12,7 +12,7 @@ Take these issues from plan to landing, one queue entry at a time, in this sessi
 
 An entry is one issue, or a group of up to three related issues that triage-issues printed on one `/plan-issue` line, which gets one plan, worktree, pull request and release. Below, `<number>` is the number of an entry's first issue, which names its worktree `.claude/worktrees/issue-<number>` and its branch `worktree-issue-<number>`, and `<issues>` is the entry's references, such as `#25 #24 #26`.
 
-Each entry works in its own worktree. `<worktree path>` is the worktree's absolute path. The session stays in the main checkout, which it never switches or edits. Start each command for an entry with `Set-Location -LiteralPath '<worktree path>';`, and give file tools absolute paths. Give every stage it follows or delegates `<worktree path>` as the plan's folder. Entries land one after another, in queue order, and while one's draft pull request waits, the next runs ahead in its own worktree, with its own `<worktree path>`, as Run Ahead says.
+Each entry works in its own worktree. `<worktree path>` is the worktree's absolute path. The session stays in the main checkout, which it never switches or edits. Start each command for an entry with `Set-Location -LiteralPath '<worktree path>';`, and give file tools absolute paths. {{PROMPT:_copilot-relative-paths}} Give every stage it follows or delegates `<worktree path>` as the plan's folder. Entries land one after another, in queue order, and while one's draft pull request waits, the next runs ahead in its own worktree, with its own `<worktree path>`, as Run Ahead says.
 
 {{PROMPT:_copilot-stages}}
 
