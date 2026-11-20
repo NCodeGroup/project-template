@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- `tools/Set-RepositoryBaseline.ps1` requires no approval and no approval of the last push where one person has write access, also where `code-review.yml` passes `approve: true`, and turns both off in an earlier "Protect main" that requires an approval, saying so: GitHub counts no approval from the author or from NCode Review, whose app has no write access, so a sole maintainer could merge nothing. It keeps dismissing stale reviews, and names a collaborators list it can't read, adding no approval and keeping those a ruleset has. ([#455](https://github.com/NCodeGroup/project-template/issues/455), [ADR-0034](template/docs/decisions/project-template/0034-with-one-writer-the-baseline-requires-no-approval.md))
+- `tools/Set-RepositoryBaseline.ps1` requires no approval and no approval of the last push where one person has write access, also where `code-review.yml` passes `approve: true`, and turns both off in an earlier "Protect main" that requires an approval, saying so: GitHub counts no approval from the author or from NCode Review, whose app has no write access, so a sole maintainer could merge nothing. It keeps dismissing stale reviews, and names a collaborators list it can't read, adding no approval and keeping those a ruleset has. For a ruleset of the owner's that requires an approval, and when GitHub refuses the change, it prints the command that requires neither. ([#455](https://github.com/NCodeGroup/project-template/issues/455), [ADR-0034](template/docs/decisions/project-template/0034-with-one-writer-the-baseline-requires-no-approval.md))
 
 ## [0.109.0] - 2026-11-20
 

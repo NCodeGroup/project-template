@@ -32,14 +32,16 @@ NCodeGroup/PropertyBag scored 10 for Code-Review and 4 for Branch-Protection.
    an earlier "Protect main" that requires an approval turns both settings off and says so (`require no approval and no
    approval of the last push, which block every merge while one person has write access`): a plain run changes only
    those settings and conversation resolution, `-RequireChecks` writes them off in the whole ruleset, and `-WhatIf`
-   says it would. Where GitHub refuses the change on a plain run, the run reports it and goes on.
+   says it would. Where GitHub refuses the change on a plain run, the run reports it with the same command and goes on.
 3. With two such users or more, ADR-0022 holds as written: one approval, of the last push, where `approve: true`.
    The approval that meets it is another writer's: NCode Review's approval never counts toward it, and counts for
    Scorecard's Code-Review.
 4. A list the script can't read is named, with the reason. A new ruleset then gets no approval, `approve: true` raises
    none, and an earlier ruleset keeps the approvals it has: requiring an approval that nobody may be able to give is
    worse than missing one.
-5. A ruleset of the owner's keeps its shape, as ADR-0031 says; the baseline writes nothing in it for this.
+5. A ruleset of the owner's keeps its shape, as ADR-0031 says: the baseline writes nothing in it for this, and with one
+   writer prints a notice with the command that requires no approval and no approval of the last push in it, as
+   ADR-0031's notice does for approval of the last push.
 6. NCode Review keeps `approve: true` and gets no write access. An app installed across the organization's
    repositories with write access could push to each of them, far more than a review needs, and
    [ADR-0006](0006-a-person-merges-every-pull-request.md) keeps the merge with a person. Its approval still

@@ -61,9 +61,12 @@
     approval gets both turned off, and the run says so, also with -WhatIf: GitHub counts toward a required approval only
     a review from someone with write access, never the author's, and NCode Review's app has none, so either setting
     blocks every merge (the template's ADR-0034). Stale reviews are still dismissed on push. A collaborators list it
-    can't read is named; the ruleset then gets no approval it doesn't have, and keeps the ones it has. For a public
-    repository with one writer, the run ends with a notice naming tools/Dismiss-ScorecardAlerts.ps1, which dismisses the
-    Scorecard alerts one person can't clear (the template's ADR-0035).
+    can't read is named; the ruleset then gets no approval it doesn't have, and keeps the ones it has. A ruleset of the
+    owner's that requires an approval there keeps its shape, and the run prints a notice with the command that requires
+    no approval and no approval of the last push in it; where GitHub refuses the change to "Protect main", the notice
+    says so and gives the same command. For a public repository with one writer, the run ends with a notice naming
+    tools/Dismiss-ScorecardAlerts.ps1, which dismisses the Scorecard alerts one person can't clear (the template's
+    ADR-0035).
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
@@ -444,7 +447,7 @@ function Set-BranchRuleset {
         if ($full.rules.type -contains 'pull_request') { $others += $full }
     }
     if ($others.Count) {
-        foreach ($full in $others) { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full }
+        foreach ($full in $others) { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full; if ($SoleWriter) { Write-SoleWriterNotice $Name $full } }
         if ($own) {
             Enable-ThreadResolution $Name $own -Strict -Approver:$Approver -SoleWriter:$SoleWriter
             if ($own.rules.type -contains 'code_scanning') { Write-CodeScanningNotice $Name $own }
@@ -609,6 +612,20 @@ function Write-LastPushNotice([string]$Name, $Ruleset, [switch]$Refused) {
     Write-Host "${Name}: notice: '$($Ruleset.name)' requires approval of the last push but no approving review, which blocks every merge where nobody but the author can approve. ${why}: $command"
 }
 
+# Prints the command that sets no approval and no approval of the last push in a ruleset of the owner's that requires
+# an approval where one person has write access: GitHub counts no approval from the author or from NCode Review, so it
+# blocks every merge (ADR-0034). This script changes no ruleset but its own "Protect main". -Refused is for the script's
+# own ruleset when GitHub refused the write that sets both: it still requires an approval, so the notice says so.
+function Write-SoleWriterNotice([string]$Name, $Ruleset, [switch]$Refused) {
+    $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
+    if (-not $Refused -and (-not $rule -or [int]$rule.parameters.required_approving_review_count -lt 1)) { return }
+    $path = "repos/$Owner/$Name/rulesets/$($Ruleset.id)"
+    $command = "`$rs = gh api $path | ConvertFrom-Json; `$p = (`$rs.rules | Where-Object type -eq 'pull_request').parameters; `$p.required_approving_review_count = 0; `$p.require_last_push_approval = `$false; @{ rules = `$rs.rules } | ConvertTo-Json -Depth 20 | gh api -X PUT $path --input -"
+    $why = if ($Refused) { "GitHub refused the change, so it still requires one; set both in the ruleset's settings, or run" }
+    else { "This script changes no ruleset but its own '$rulesetName'; to require no approval and no approval of the last push in it, run" }
+    Write-Host "${Name}: notice: '$($Ruleset.name)' requires an approval while one person has write access, and GitHub counts no approval from the author or from NCode Review, so it blocks every merge (the template's ADR-0034). ${why}: $command"
+}
+
 # Turns on "require conversations resolved" in a ruleset that already requires pull requests, and changes nothing else in
 # it: its other rules and their parameters are sent back as they were read. A ruleset without a pull request rule, or
 # with the setting on already, is left as it is. A refusal is reported, not thrown, like a security setting's. A pull
@@ -650,6 +667,7 @@ function Enable-ThreadResolution {
     else {
         Write-Host "${Name}: ${label}: not available ($(Get-FailureReason $result))"
         if ($needLastPushOff) { Write-LastPushNotice $Name $Ruleset -Refused }
+        if ($needLower) { Write-SoleWriterNotice $Name $Ruleset -Refused }
     }
 }
 
