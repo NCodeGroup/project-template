@@ -59,6 +59,7 @@ never brings a number the project already uses
 | [0033](0033-an-all-in-run-lifts-the-autopilots-limits-on-the-maintainers-word.md) | `/run-issues-all-in` takes every issue into one pull request with no question and no caps, fixes every follow-up and finding there, protected paths included for issues it names, and ends at the merge recommendation (amends 0014) |
 {%- if git_host == 'github' %}
 | [0034](0034-with-one-writer-the-baseline-requires-no-approval.md) | Where one person has write access, the repository baseline requires no approval and no approval of the last push, even where NCode Review approves, since GitHub counts neither the author's approval nor NCode Review's; NCode Review keeps approving and gets no write access (amends 0020 and 0022) |
+| [0035](0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md) | With one writer, the Scorecard alerts of Branch-Protection, CII-Best-Practices and Contributors are dismissed as won't fix with a standard comment, through the project template's tools/Dismiss-ScorecardAlerts.ps1, and /best-practices reports a dismissed alert as accepted (amends 0020 and 0153) |
 {%- endif %}
 {%- if stack == 'dotnet' %}
 
