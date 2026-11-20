@@ -4,10 +4,9 @@
 
 .DESCRIPTION
     Builds one fixture folder per case and runs the script with -SkipNugetCheck: the file edits, the changelog entry and
-    the earlier baseline entries it replaces, the baseline suppressions it removes from CompatibilitySuppressions.xml at a
-    new major version, the cases that change nothing, a custom changelog file named by AGENTS.md,
-    CRLF and byte order mark preservation, and a prerelease version. Prints PASS or FAIL per check and exits 1 on any
-    failure.
+    the earlier baseline entries it replaces, the baseline suppressions it removes from CompatibilitySuppressions.xml at
+    a new major version, the cases that change nothing, a custom changelog file named by AGENTS.md, CRLF and byte order
+    mark preservation, and a prerelease version. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-baseline-test-<process ID> in the
