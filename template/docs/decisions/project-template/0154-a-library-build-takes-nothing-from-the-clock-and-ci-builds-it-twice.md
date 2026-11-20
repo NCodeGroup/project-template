@@ -34,7 +34,7 @@ rebuilt v2.0.1 byte for byte except for zip timestamps, and the year was the onl
 ## Consequences
 
 - A tag rebuilds to the same package contents in any year.
-- Every library's CI builds its packages twice, which adds one job of up to 30 minutes.
+- A GitHub library's CI builds its packages twice, which adds one job of up to 30 minutes.
 - The copyright notice in a package names the author without a year.
 - A GitLab library gets no automatic check.
 
