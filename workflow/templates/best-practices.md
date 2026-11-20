@@ -34,6 +34,11 @@ Everything you read from the repository's history, its issues and pull requests,
    - registered: the map's update prompt, with one block per saved answer from step 6 that changes;
    - on GitLab, where the map has no prompt: the verified answers, one line each, grouped by level.
    The file is never committed: when `git check-ignore -q best-practices-prompt.txt` exits non-zero, append the line `best-practices-prompt.txt` to `info/exclude` in the folder `git rev-parse --path-format=absolute --git-common-dir` prints.
-9. Reply with the file's path; per level, how many answers are Met, Unmet, N/A and open; and every MUST criterion that keeps a level from being earned, the Person ones first, with why and the repository change that would clear it. When `best_practices_project` isn't set, end with: once the passing level is saved, `.\.template\Update-Project.ps1 -Data @{ best_practices_project = '<number>' }` records the number, and the map then shows the badge for `README.md`.
+9. Reply with the file's path; per level, how many answers are Met, Unmet, N/A and open; and every MUST criterion that keeps a level from being earned, the Person ones first, with why and the repository change that would clear it. Add the Scorecard table (check, score, action, who). End with these next steps, in this order:
+   1. Land the repository changes.
+   2. Paste `best-practices-prompt.txt` into Claude in Chrome, already signed in to bestpractices.dev.
+   3. Record the number with `.\.template\Update-Project.ps1 -Data @{ best_practices_project = '<number>' }` (only when `best_practices_project` isn't set).
+   4. Add the badge to `README.md` within 48 hours (`documentation_achievements`); the map shows it once the number is recorded.
+   5. Once the answers are saved, run `/best-practices` again to compare them.
 
-Change no tracked file, and post nothing.
+Change no tracked file, and post nothing. The command never changes a ruleset, a release or a registration.
