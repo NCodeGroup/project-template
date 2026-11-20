@@ -66,6 +66,38 @@ $unpackable = New-Fixture 'unpackable' '<IsPackable>false</IsPackable>'
 $result = Invoke-Check $unpackable
 Check 'a project that packs nothing has no packages to compare' ($result.Exit -eq 0 -and $result.Output.Contains('No packages to compare.')) "exit=$($result.Exit) $($result.Output)"
 
+function New-MarkerFixture([string]$Name, [bool]$StartPresent, [string]$Content) {
+    $folder = New-Fixture $Name ''
+    Write-Text (Join-Path $folder 'extra.txt') 'extra'
+    $marker = Join-Path $folder 'marker.txt'
+    if ($StartPresent) { Write-Text $marker 'present' }
+    # Each pack flips the marker, which the next pack's evaluation reads, so the first and second pack differ.
+    $flip = if ($StartPresent) { '<Delete Files="$(Marker)" />' } else { '<WriteLinesToFile File="$(Marker)" Lines="present" Overwrite="true" />' }
+    Write-Text (Join-Path $folder 'Directory.Build.targets') @"
+<Project>
+  <PropertyGroup><Marker>`$(MSBuildThisFileDirectory)marker.txt</Marker></PropertyGroup>
+$Content
+  <Target Name="FlipMarker" BeforeTargets="CoreCompile">
+    $flip
+  </Target>
+</Project>
+"@
+    $folder
+}
+
+$extraItem = '  <ItemGroup Condition="Exists(''$(Marker)'')"><None Include="$(MSBuildThisFileDirectory)extra.txt" Pack="true" PackagePath="extra/" /></ItemGroup>'
+$folder = New-MarkerFixture 'entry-missing-second' $true $extraItem
+$result = Invoke-Check $folder
+Check 'an entry only the first build packs is reported missing from the second build' ($result.Exit -eq 1 -and $result.Output.Contains('extra/extra.txt is missing from the second build')) "exit=$($result.Exit) $($result.Output)"
+
+$folder = New-MarkerFixture 'entry-missing-first' $false $extraItem
+$result = Invoke-Check $folder
+Check 'an entry only the second build packs is reported missing from the first build' ($result.Exit -eq 1 -and $result.Output.Contains('extra/extra.txt is missing from the first build')) "exit=$($result.Exit) $($result.Output)"
+
+$folder = New-MarkerFixture 'package-missing-second' $true '  <PropertyGroup Condition="Exists(''$(Marker)'')"><IsPackable>true</IsPackable></PropertyGroup><PropertyGroup Condition="!Exists(''$(Marker)'')"><IsPackable>false</IsPackable></PropertyGroup>'
+$result = Invoke-Check $folder
+Check 'a package only the first build produces is reported missing from the second build' ($result.Exit -eq 1 -and $result.Output.Contains('the package is missing from the second build')) "exit=$($result.Exit) $($result.Output)"
+
 if ($failures.Count) { "Kept the work folder: $Work"; "Reproducible build tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Reproducible build tests: PASSED'
