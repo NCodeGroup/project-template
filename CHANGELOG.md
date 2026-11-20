@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.105.0] - 2026-11-19
+
+### Added
+
+- `/plan-docs` and `/plan-refactor` give a plan that changes how pages present their text, not what they say, a Done-when for each step that proves its pages keep every word of the plan's base commit, with component tags compared as sorted lists; `/review-plan-diff` builds a documentation site whose build command `AGENTS.md` names and looks at the changed pages at the layout check's widths, or names them for you to look at when the session has no browser tool. ([#442](https://github.com/NCodeGroup/project-template/issues/442))
+
+### Changed
+
+- A plan gets a `Release:` line only when it changes something a release ships: the product's code, a file its package carries, such as the readme nuget.org shows, or its build output. A plan that changes only documentation-site pages, CI, decision records, tests or repository docs gets none: `/ship-plan` lands it with no tag and no release, `.template/Get-PlanState.ps1` sends it to `/finish-plan` once it has landed, `tag-release.yml` tags and publishes nothing for it, and its changelog entries wait under `## [Unreleased]` for the next release. ([#439](https://github.com/NCodeGroup/project-template/issues/439), [ADR-0032](template/docs/decisions/project-template/0032-a-plan-is-released-only-when-it-changes-what-a-release-ships.md))
+- A command that reaches a sibling repository finds it from the folder that holds the main checkout, `Split-Path -Parent (Split-Path -Parent (git rev-parse --path-format=absolute --git-common-dir))`, never through `..`, which from a plan's worktree is `.claude/worktrees/`: the template's rules say so, and planning commands write Done-when commands that way. ([#441](https://github.com/NCodeGroup/project-template/issues/441))
+
+### Fixed
+
+- A Copilot session passes no relative path to a .NET method, such as `[IO.File]::WriteAllText`, which resolves it against the process's folder, the main checkout, and not the plan's worktree that `Set-Location` moved to: the Copilot plan-folder rules, `/finish-plan`, `/run-issues` and `/address-feedback` in Copilot, and the template's rules say so, and a plan whose steps run a script repeats the rule under Context for the executor. ([#440](https://github.com/NCodeGroup/project-template/issues/440))
+
 ## [0.104.0] - 2026-11-18
 
 ### Added
@@ -1697,7 +1712,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.104.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.105.0...HEAD
+[0.105.0]: https://github.com/NCodeGroup/project-template/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/NCodeGroup/project-template/compare/v0.103.1...v0.104.0
 [0.103.1]: https://github.com/NCodeGroup/project-template/compare/v0.103.0...v0.103.1
 [0.103.0]: https://github.com/NCodeGroup/project-template/compare/v0.102.2...v0.103.0
