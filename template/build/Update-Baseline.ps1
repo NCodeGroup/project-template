@@ -61,14 +61,15 @@ $candidates = @(
 )
 
 $pattern = '(<PackageValidationBaselineVersion>\s*)([^<]*?)(\s*</PackageValidationBaselineVersion>)'
-$setters = 0
+$setterFiles = [Collections.Generic.List[IO.FileInfo]]::new()
 $changed = [ordered]@{}
 foreach ($candidate in $candidates) {
     $path = $candidate.File.FullName
     $relative = $candidate.Relative
     $text = [IO.File]::ReadAllText($path)
     if ($text -notmatch $pattern) { continue }
-    $setters++
+    $setterFiles.Add($candidate.File)
+    $raise = @{ NewMajor = $false }
     $newText = [regex]::Replace($text, $pattern, {
             param($m)
             $value = $m.Groups[2].Value
@@ -78,15 +79,16 @@ foreach ($candidate in $candidates) {
                 return $m.Value
             }
             if ($parsed -ge $targetVersion) { return $m.Value }
+            if ($parsed.Major -lt $targetVersion.Major) { $raise.NewMajor = $true }
             return $m.Groups[1].Value + $target + $m.Groups[3].Value
         })
     if ($newText -ceq $text) { continue }
     $bytes = [IO.File]::ReadAllBytes($path)
     $hadBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
-    $changed[$path] = @{ Text = $newText; HadBom = $hadBom }
+    $changed[$path] = @{ Text = $newText; HadBom = $hadBom; NewMajor = $raise.NewMajor }
 }
 
-if ($setters -eq 0) {
+if ($setterFiles.Count -eq 0) {
     Write-Host 'No Directory.Build.props or project file sets PackageValidationBaselineVersion: set it once by hand, as the template''s ADR-0147 says, and this script raises it from then on.'
     return
 }
