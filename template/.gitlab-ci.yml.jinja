@@ -152,9 +152,11 @@ dependency-audit:
 {%- if stack == 'dotnet' and nuget_package %}
 
 # Runs when a stable version tag is pushed, after the project's own publish job when it has one. It needs a project
-# access token (role Developer, scopes api and write_repository) in the masked CI/CD variable BASELINE_TOKEN, which
-# tag pipelines can read; without it the job is skipped. It pushes baseline-<version> from the default branch's tip
-# and opens a draft merge request that a person marks ready (ADR-0150). The .NET SDK image has git and PowerShell.
+# access token (role Developer, scopes api and write_repository) in the protected, masked CI/CD variable
+# BASELINE_TOKEN; a protected variable reaches only pipelines of protected branches and tags, so the v* tags must be
+# protected for tag pipelines to read it; without the variable the job is skipped. It pushes baseline-<version> from
+# the default branch's tip and opens a draft merge request that a person marks ready (ADR-0150). The .NET SDK image
+# has git and PowerShell.
 raise-baseline:
   image: mcr.microsoft.com/dotnet/sdk:10.0
   needs:
@@ -168,7 +170,9 @@ raise-baseline:
     - export VERSION="${CI_COMMIT_TAG#v}"
     - export BRANCH="baseline-$VERSION"
     - export URL="https://baseline:${BASELINE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-    - if git ls-remote --exit-code --heads "$URL" "$BRANCH"; then echo "$BRANCH exists already"; exit 0; fi
+    - git ls-remote --exit-code --heads "$URL" "$BRANCH" > /dev/null && STATUS=0 || STATUS=$?
+    - if [ "$STATUS" -eq 0 ]; then echo "$BRANCH exists already"; exit 0; fi
+    - if [ "$STATUS" -ne 2 ]; then echo "git ls-remote failed with exit code $STATUS"; exit 1; fi
     - git config user.name "GitLab CI"
     - git config user.email "gitlab-ci@${CI_SERVER_HOST}"
     - git fetch "$URL" "$CI_DEFAULT_BRANCH"

@@ -31,9 +31,10 @@ succeeds, so the raise cannot run in the release itself.
 {%- if git_host == 'gitlab' %}
 - On GitLab, the `raise-baseline` job of `.gitlab-ci.yml` runs the script when a stable version tag is pushed, after the
   project's own `publish` job when it has one, pushes `baseline-<version>` from the default branch's tip and opens a
-  draft merge request; it needs the masked CI/CD variable `BASELINE_TOKEN`, a project access token with the Developer
-  role and the `api` and `write_repository` scopes, and is skipped without it;
-  the project template's `tools/Set-GitLabBaseline.ps1 -BaselineToken` creates them.
+  draft merge request; it needs a protected, masked CI/CD variable `BASELINE_TOKEN`, a project access token with the
+  Developer role and the `api` and `write_repository` scopes, and protected `v*` tags (a protected variable reaches
+  only pipelines of protected branches and tags, and only a Maintainer can create a protected `v*` tag), and is skipped
+  without the variable; the project template's `tools/Set-GitLabBaseline.ps1 -BaselineToken` creates them.
 {%- endif %}
 - The workflow needs "Allow GitHub Actions to create and approve pull requests", which
   `tools/Set-RepositoryBaseline.ps1` in the project template turns on only where this workflow is on the default branch;

@@ -41,10 +41,13 @@
     GitLab, and a token that can edit the project. New-Project.ps1 runs it for a GitLab project it creates;
     Adopt-Project.ps1 prints the command to run.
 
-    With -BaselineToken it also makes one more setting, the masked CI/CD variable BASELINE_TOKEN that the template's
+    With -BaselineToken it also makes two more settings. First it protects the tags v* (protected tag v*), with the
+    Maintainer role allowed to create them, so only a Maintainer can create a version tag; a tag a Developer pushes
+    starts no baseline job. Then it makes the masked and protected CI/CD variable BASELINE_TOKEN that the template's
     raise-baseline job (.gitlab-ci.yml) needs to push baseline-<version> and open its merge request: when the variable
     isn't there, it creates a project access token named raise-baseline (role Developer, scopes api and
-    write_repository, expiring in a year) and stores it in the variable, masked and not protected. The token is only
+    write_repository, expiring in a year) and stores it in the variable, masked and protected, so only pipelines of
+    protected branches and tags, such as the raise-baseline tag pipeline, can read it. The token is only
     passed from one call to the other and is never printed. The token expires after a year, and a run after that
     replaces nothing: delete the variable first. A project without raise-baseline in its .gitlab-ci.yml has no use
     for it. Without the switch, as in New-Project.ps1's run, nothing about tokens or variables is read or written.
@@ -63,7 +66,7 @@ param(
     [string]$Hostname,
     # A clone of the project, whose origin remote names the project and the host. Not with -Project.
     [string]$Path = '.',
-    # Also creates the project access token and the masked CI/CD variable BASELINE_TOKEN that raise-baseline needs.
+    # Also protects the tags v* and creates the project access token and the masked, protected CI/CD variable BASELINE_TOKEN that raise-baseline needs.
     [switch]$BaselineToken
 )
 $ErrorActionPreference = 'Stop'
@@ -211,7 +214,23 @@ function Set-WeeklyPipeline {
     else { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
 }
 
-# With -BaselineToken: the masked CI/CD variable BASELINE_TOKEN that the template's raise-baseline job needs, holding a
+# With -BaselineToken: protects the tag pattern v*, so that only a Maintainer can create a version tag and the protected
+# variable BASELINE_TOKEN, which only pipelines of protected branches and tags can read, reaches the raise-baseline tag
+# pipeline. A protected tag that exists is left as it is, whatever its access level.
+function Set-ProtectedTag {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+    $label = 'protected tag v*'
+    $read = Invoke-Glab GET "$endpoint/protected_tags/v%2A"
+    if ($read.Status -eq 200) { Write-Host "${Project}: ${label}: already set"; return }
+    if ($read.Status -ne 404) { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $read))"; return }
+    if (-not $PSCmdlet.ShouldProcess($Project, "protect the tags v*")) { Write-Host "${Project}: ${label}: would set"; return }
+    $result = Invoke-Glab POST "$endpoint/protected_tags" @('name=v*', 'create_access_level=40')
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Project}: ${label}: set" }
+    else { Write-Host "${Project}: ${label}: not available ($(Get-FailureReason $result))" }
+}
+
+# With -BaselineToken: the masked and protected CI/CD variable BASELINE_TOKEN that the template's raise-baseline job needs, holding a
 # new project access token. The token is read from the first answer and only ever passed to the second call: it is never
 # printed, logged or put in a message.
 function Set-BaselineToken {
@@ -228,7 +247,7 @@ function Set-BaselineToken {
     $token = try { "$(($created.Body | ConvertFrom-Json -ErrorAction Stop).token)" } catch { '' }
     $tokenId = try { "$(($created.Body | ConvertFrom-Json -ErrorAction Stop).id)" } catch { '' }
     if (-not $token) { Write-Host "${Project}: ${label}: not available (the access token's answer has no token)"; return }
-    $body = @{ key = 'BASELINE_TOKEN'; value = $token; masked = $true; protected = $false } | ConvertTo-Json -Compress
+    $body = @{ key = 'BASELINE_TOKEN'; value = $token; masked = $true; protected = $true } | ConvertTo-Json -Compress
     $result = Invoke-Glab POST "$endpoint/variables" -Body $body
     $body = $null
     $token = $null
@@ -248,4 +267,4 @@ Set-ProjectSetting 'Pipelines must succeed' 'only_allow_merge_if_pipeline_succee
 Set-ProjectSetting 'Do not allow squash commits' 'squash_option' $info 'never'
 Set-DefaultBranchPush $info
 Set-WeeklyPipeline $info
-if ($BaselineToken) { Set-BaselineToken }
+if ($BaselineToken) { Set-ProtectedTag; Set-BaselineToken }

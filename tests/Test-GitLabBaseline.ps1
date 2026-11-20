@@ -102,6 +102,15 @@ if ($rest -like '/pipeline_schedules*') {
     }
     Out-Answer 200 (ConvertTo-Json -Compress -Depth 5 -InputObject @(if ($project.schedules) { $project.schedules }))
 }
+if ($rest -like '/protected_tags*') {
+    if ($method -eq 'POST') {
+        if ($project.tagFails) { Out-Answer ([int]$project.tagFails) '{"message":"Stand-in refused tag"}' }
+        Out-Answer 201 '{}'
+    }
+    if ($project.tagReadFails) { Out-Answer ([int]$project.tagReadFails) '{"message":"Stand-in refused tag read"}' }
+    if ($project.tagExists) { Out-Answer 200 '{"name":"v*"}' }
+    Out-Answer 404 '{"message":"404 Not found"}'
+}
 if ($rest -like '/variables*' -or $rest -like '/access_tokens*') {
     if ($rest -eq '/access_tokens/1' -and $method -eq 'DELETE') {
         if ($project.revokeFails) { Out-Answer ([int]$project.revokeFails) '{"message":"Stand-in refused revoke"}' }
@@ -180,6 +189,8 @@ Write-Text (Join-Path $bin 'projects.json') (ConvertTo-Json -Depth 6 -InputObjec
     'gitlab.com/grp/tokenrefused' = $madeProject + @{ tokenFails = 403 }
     'gitlab.com/grp/variablerefused' = $madeProject + @{ variableFails = 400 }
     'gitlab.com/grp/revokerefused' = $madeProject + @{ variableFails = 400; revokeFails = 403 }
+    'gitlab.com/grp/tagexists' = $madeProject + @{ tagExists = $true }
+    'gitlab.com/grp/tagrefused' = $madeProject + @{ tagFails = 403 }
     'gitlab.com/grp/old' = @{ info = @{ archived = $true; $threads = $false; $pipelines = $false } }
     'gitlab.com/grp/empty' = @{ raw = '' }
     'gitlab.com/grp/text' = @{ raw = 'not json' }
@@ -321,7 +332,7 @@ try {
     $tokenPosts = @($r.Tokens | Where-Object { $_ -like '*--method POST*' })
     $variablePosts = @($r.Variables | Where-Object { $_ -like '*--method POST*' })
     $sentBody = try { $r.Bodies | Select-Object -First 1 | ConvertFrom-Json -ErrorAction Stop } catch { $null }
-    Check 'token: one token request with both scopes, the Developer level and an expiry, then one masked variable request' ($r.ExitCode -eq 0 -and $tokenPosts.Count -eq 1 -and $tokenPosts[0] -like '*-F name=raise-baseline*' -and $tokenPosts[0].Contains('-F scopes[]=api') -and $tokenPosts[0].Contains('-F scopes[]=write_repository') -and $tokenPosts[0] -like '*-F access_level=30*' -and $tokenPosts[0] -match '-F expires_at=\d{4}-\d{2}-\d{2}' -and $variablePosts.Count -eq 1 -and $variablePosts[0] -like '*--input -*' -and $variablePosts[0] -notlike '* -F *' -and $r.Bodies.Count -eq 1 -and $sentBody.key -eq 'BASELINE_TOKEN' -and $sentBody.masked -eq $true -and $sentBody.protected -eq $false -and $r.Output -match [regex]::Escape('grp/tokenless: BASELINE_TOKEN variable: set')) "tokens=$($tokenPosts -join '|') variables=$($variablePosts -join '|') bodies=$($r.Bodies.Count) output=$($r.Output)"
+    Check 'token: one token request with both scopes, the Developer level and an expiry, then one masked variable request' ($r.ExitCode -eq 0 -and $tokenPosts.Count -eq 1 -and $tokenPosts[0] -like '*-F name=raise-baseline*' -and $tokenPosts[0].Contains('-F scopes[]=api') -and $tokenPosts[0].Contains('-F scopes[]=write_repository') -and $tokenPosts[0] -like '*-F access_level=30*' -and $tokenPosts[0] -match '-F expires_at=\d{4}-\d{2}-\d{2}' -and $variablePosts.Count -eq 1 -and $variablePosts[0] -like '*--input -*' -and $variablePosts[0] -notlike '* -F *' -and $r.Bodies.Count -eq 1 -and $sentBody.key -eq 'BASELINE_TOKEN' -and $sentBody.masked -eq $true -and $sentBody.protected -eq $true -and $r.Output -match [regex]::Escape('grp/tokenless: BASELINE_TOKEN variable: set')) "tokens=$($tokenPosts -join '|') variables=$($variablePosts -join '|') bodies=$($r.Bodies.Count) output=$($r.Output)"
     Check 'token secret: the token appears in no printed output' (-not $r.Output.Contains($secret) -and -not $r.Output.Contains('STANDIN-SECRET')) $r.Output
     Check 'token: a successful run makes no DELETE' (@($r.Log | Where-Object { $_ -like '*--method DELETE*' }).Count -eq 0) "log=$($r.Log -join '|')"
     Check 'token secret: the token appears in no argument line of any call, only in the body on standard input' (@($r.Log | Where-Object { $_.Contains('STANDIN-SECRET') }).Count -eq 0 -and $sentBody.value -eq $secret) "log=$($r.Log -join '|')"
@@ -336,6 +347,17 @@ try {
     Check 'variable refused: exactly one DELETE of that token follows the refused variable call' (@($r.Tokens | Where-Object { $_ -like '*--method DELETE*' }).Count -eq 1 -and @($r.Tokens | Where-Object { $_ -like '*--method DELETE*projects/grp%2Fvariablerefused/access_tokens/1' }).Count -eq 1) "tokens=$($r.Tokens -join '|')"
     $r = Invoke-GitLabBaseline @('-Project', 'grp/revokerefused', '-BaselineToken')
     Check 'revoke refused: the report names the token to revoke by hand and the run succeeds' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape('grp/revokerefused: BASELINE_TOKEN variable: not available (HTTP 400: Stand-in refused variable; the access token 1 is still there, revoke it by hand)') -and -not $r.Output.Contains('STANDIN-SECRET')) "output=$($r.Output)"
+
+    # 9d. The protected tags v*.
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/tokenless', '-BaselineToken')
+    $tagPosts = @($r.Log | Where-Object { $_ -like '*--method POST*protected_tags*' })
+    Check 'tag: a missing v* protection is created once with the Maintainer level, before the token' ($tagPosts.Count -eq 1 -and $tagPosts[0] -like '*projects/grp%2Ftokenless/protected_tags -F name=v* -F create_access_level=40' -and $r.Output -match [regex]::Escape('grp/tokenless: protected tag v*: set') -and $r.Output.IndexOf('protected tag v*') -lt $r.Output.IndexOf('BASELINE_TOKEN variable')) "tags=$($tagPosts -join '|') output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/tagexists', '-BaselineToken')
+    Check 'tag already: an existing v* protection is left and the variable is still created' ($r.ExitCode -eq 0 -and @($r.Log | Where-Object { $_ -like '*--method POST*protected_tags*' }).Count -eq 0 -and $r.Output -match [regex]::Escape('grp/tagexists: protected tag v*: already set') -and $r.Output -match [regex]::Escape('grp/tagexists: BASELINE_TOKEN variable: set')) "output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/tokenless', '-BaselineToken', '-WhatIf')
+    Check 'tag whatif: the v* protection is shown as would set and nothing is written' ($r.ExitCode -eq 0 -and @($r.Log | Where-Object { $_ -like '*--method POST*protected_tags*' }).Count -eq 0 -and $r.Output -match [regex]::Escape('grp/tokenless: protected tag v*: would set')) "output=$($r.Output)"
+    $r = Invoke-GitLabBaseline @('-Project', 'grp/tagrefused', '-BaselineToken')
+    Check 'tag refused: a refused v* protection is reported and the variable is still created' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape('grp/tagrefused: protected tag v*: not available (HTTP 403: Stand-in refused tag)') -and $r.Output -match [regex]::Escape('grp/tagrefused: BASELINE_TOKEN variable: set')) "output=$($r.Output)"
 
     # 10. A project named by a clone's origin remote.
     $httpsClone = Join-Path $Work 'clone-https'
