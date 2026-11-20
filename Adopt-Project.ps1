@@ -7,7 +7,7 @@
     Works out the template's answers from what the repository already has (stack, project name, git host, workflow tools, authors,
     build and test commands), applies -Data over them, and runs `copier copy --overwrite --defaults` into the
     repository (Copier from PATH, or through uvx). The answers are recorded in .copier-answers.yml, so the project
-    can update itself with .\.template\Update-Project.ps1 afterwards. The answers include pre_release = tracked, so an AGENTS.md the template writes, for a repository that has none, says pre-release: tracked, since the repository has a history (ADR-0015); Copier records that answer nowhere. A repository that uses Node.js without being a Node.js project answers uses_node, and a .nvmrc without a .node-version gives .node-version its version (ADR-0200). A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
+    can update itself with .\.template\Update-Project.ps1 afterwards. The answers include pre_release = tracked, so an AGENTS.md the template writes, for a repository that has none, says pre-release: tracked, since the repository has a history (ADR-0015); Copier records that answer nowhere. A repository whose own AGENTS.md the adoption keeps gets the release_policy answer from that file's Landing section, none without a release line, so SECURITY.md describes signed release tags only when something makes them; Copier records that answer nowhere either. A repository that uses Node.js without being a Node.js project answers uses_node, and a .nvmrc without a .node-version gives .node-version its version (ADR-0200). A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
 
     The repository must be the root of a Git repository with no uncommitted changes and no .copier-answers.yml.
     The result is one commit, "Adopt project-template <version>"; -NoCommit stages it instead. Before committing, the
@@ -28,6 +28,8 @@
     gets the provenance or the baseline pull request the missing one makes.
 
     When tag-release.yml calls a ci.yml the repository kept, it prints the notes .\.template\Update-Project.ps1 prints when that ci.yml has no workflow_call trigger, or when its top-level permissions or a job's ask for more than contents: read, which tag-release.yml grants it: until then, no release is tagged (ADR-0026).
+
+    When the repository has version.json, it prints the note .\.template\Update-Project.ps1 prints for each job of the repository's own workflows, other than publish.yml, that builds with an actions/checkout step without fetch-depth: 0 or a -p:Version argument, which Nerdbank.GitVersioning fails on or ignores (ADR-0138).
 
     When the SECURITY.md the adoption leaves says releases are immutable and a workflow in .github/workflows runs on a
     release event or uploads release assets, it prints the note .\.template\Update-Project.ps1 prints: delete that
@@ -168,6 +170,16 @@ try {
     foreach ($k in $Data.Keys) { $answers[$k] = $Data[$k] }
     # Never copier.yml's Apache-2.0 default for existing code (ADR-0024): without a license worked out or given, the answer is blank, and the warning below says how to add one.
     if (-not $answers.Contains('license')) { $answers['license'] = '' }
+    # The nuget_publisher answer keeps the template's publish.yml, release-provenance.yml and raise-baseline.yml out of a library whose own workflow pushes its packages, and has the documents name that workflow.
+    if ("$($answers['nuget_package'])" -eq 'true' -and -not $answers.Contains('nuget_publisher')) {
+        $publisherAnswer = Get-NuGetPublisherAnswer
+        if ($publisherAnswer) { $answers['nuget_publisher'] = $publisherAnswer }
+    }
+    # The release_policy answer follows the release line of the AGENTS.md the adoption keeps, none without one, as the release workflow reads it, so SECURITY.md describes signed release tags only when something makes them.
+    if (-not $answers.Contains('release_policy')) {
+        $releasePolicy = Get-ReleasePolicyAnswer
+        if ($releasePolicy) { $answers['release_policy'] = $releasePolicy }
+    }
     # Files the repository owns, merged or template-owned (its project_owned_files answer): Copier leaves them as they are, and updates show the template's changes to them.
     $ownedFiles = @()
     if ($answers.Contains('project_owned_files')) { $ownedFiles = Get-OwnedFile $answers['project_owned_files'] $ownable; $answers['project_owned_files'] = $ownedFiles }
@@ -241,11 +253,9 @@ try {
                 }
             }
         }
-        # A repository whose own workflow already pushes NuGet packages keeps it alone, without the template's publish.yml beside it.
-        $publishers = @(Get-NuGetPublisher)
-        if ($publishers.Count -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and '.github/workflows/publish.yml' -notin @(git ls-tree -r --name-only $head -- .github/workflows)) {
-            Remove-Item -LiteralPath .github/workflows/publish.yml
-            $report.Add("  Skipped .github/workflows/publish.yml $([char]0x2014) $($publishers -join ', ') already push NuGet packages")
+        # A repository whose own workflow already pushes NuGet packages keeps it alone: its nuget_publisher answer kept the template's publish.yml and the release follow-ups it calls out.
+        if ($answers.Contains('nuget_publisher') -and $answers['nuget_publisher']) {
+            $report.Add("  Skipped .github/workflows/publish.yml, release-provenance.yml and raise-baseline.yml $([char]0x2014) $($answers['nuget_publisher']) already push NuGet packages")
         }
         # A version.json this adoption brought in starts at the patch after the newest release tag, with the AssemblyVersion its current major shipped.
         if ($versionFileNew -and (Test-Path -LiteralPath version.json -PathType Leaf)) {
@@ -364,6 +374,9 @@ try {
     # .template/Update-Project.ps1's, word for word; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
     Get-CiCallNote
     Get-CiPermissionNote
+    # Nerdbank.GitVersioning, once version.json exists (ADR-0138): the note is .template/Update-Project.ps1's, word for word;
+    # tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+    Get-GitVersioningWorkflowNote
     # SECURITY.md's "Releases are immutable" paragraph, where a workflow needs mutable releases (ADR-0028). The note is
     # .template/Update-Project.ps1's, word for word.
     Get-ImmutableReleaseNote $false

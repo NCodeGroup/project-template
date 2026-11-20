@@ -1,5 +1,6 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
-{%- set ghlib = git_host == 'github' and library %}
+{%- set publisher = nuget_publisher | default('') %}
+{%- set ghlib = git_host == 'github' and library and not publisher %}
 {%- set review = git_host == 'github' and code_review is defined and code_review %}
 {%- set pr = 'merge request' if git_host == 'gitlab' else 'pull request' %}
 {%- set owner = author_name if ((stack == 'dotnet' or license) and author_name | default('')) else "the repository's owners" -%}
@@ -41,14 +42,14 @@ records.{% else %}Releases are tagged when `AGENTS.md`'s Landing section sets `r
 [ADR-0016](docs/decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md)
 records.{% endif %}
 {%- if ghlib %} Packages reach nuget.org only after a maintainer approves the `nuget` environment.
-[SECURITY.md](SECURITY.md) says how to verify a package.{% endif %}
+[SECURITY.md](SECURITY.md) says how to verify a package.{% elif library and publisher %} The project's own workflow, `{{ publisher }}`, publishes the packages to nuget.org. [SECURITY.md](SECURITY.md) says how to verify a package.{% endif %}
 
 ## Continuity
 
 The repository, its issues, decision records, build, release automation and documentation are all in the
 {{ 'GitHub organization' if git_host == 'github' else 'GitLab group' }} that owns it, so anyone given access can carry
 on with no knowledge held elsewhere.
-{%- if ghlib %} nuget.org publishing uses trusted publishing, with no stored API key to hand over.{% endif %}
+{%- if ghlib %} nuget.org publishing uses trusted publishing, with no stored API key to hand over.{% elif library and publisher %} nuget.org publishing runs in `{{ publisher }}`: hand over whatever credential it uses with the repository.{% endif %}
 
 [//]: # "Maintainers: name the owners, and keep the list current."
 

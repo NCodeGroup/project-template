@@ -1,5 +1,6 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
-{%- set ghlib = git_host == 'github' and library %}
+{%- set publisher = nuget_publisher | default('') %}
+{%- set ghlib = git_host == 'github' and library and not publisher %}
 {%- set review = git_host == 'github' and code_review is defined and code_review %}
 {%- set pr = 'merge request' if git_host == 'gitlab' else 'pull request' -%}
 # Assurance Case
@@ -79,6 +80,7 @@ Not written yet.
   [ADR-0137](decisions/project-template/0137-the-release-workflow-starts-package-publishing.md)), and each release
   carries signed provenance and an SBOM ([ADR-0139](decisions/project-template/0139-releases-carry-build-provenance.md),
   [ADR-0151](decisions/project-template/0151-release-follow-ups-are-jobs-publish-calls.md)).
+{%- elif publisher %} The project's own workflow, `{{ publisher }}`, publishes them to nuget.org.
 {%- endif %} [SECURITY.md](../SECURITY.md#verify-a-package) says how to verify a package.
 {%- endif %}
 - **Response:** [SECURITY.md](../SECURITY.md) defines private reporting, coordinated disclosure and credit.

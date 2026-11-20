@@ -1,5 +1,6 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
-{%- set ghlib = git_host == 'github' and library %}
+{%- set publisher = nuget_publisher | default('') %}
+{%- set ghlib = git_host == 'github' and library and not publisher %}
 {%- set pr = 'merge request' if git_host == 'gitlab' else 'pull request' -%}
 # Architecture
 
@@ -42,4 +43,4 @@ records.{% endif %}
 {%- if ghlib %} `publish.yml` tests and packs the tagged commit, pushes to nuget.org through trusted publishing once a
 maintainer approves the `nuget` environment, and calls `release-provenance.yml` and `raise-baseline.yml`
 ([ADR-0137](decisions/project-template/0137-the-release-workflow-starts-package-publishing.md),
-[ADR-0151](decisions/project-template/0151-release-follow-ups-are-jobs-publish-calls.md)).{% endif %}
+[ADR-0151](decisions/project-template/0151-release-follow-ups-are-jobs-publish-calls.md)).{% elif library and publisher %} The project's own workflow, `{{ publisher }}`, publishes the packages to nuget.org.{% endif %}

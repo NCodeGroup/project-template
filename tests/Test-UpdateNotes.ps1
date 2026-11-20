@@ -15,8 +15,23 @@
       ci-perms  Get-CiPermissionNote names each job of ci.yml, or its top-level permissions, that asks for more than
                 contents: read when tag-release.yml calls it, and says nothing for contents: read, none or no tag-release.yml;
                 tools\adopt\Adoption.psm1's copy prints the same.
+      gitversioning Get-GitVersioningWorkflowNote names each job of a workflow other than publish.yml that builds,
+                packs, tests without --no-build or pushes packages with an actions/checkout step without
+                fetch-depth: 0 or with a -p:Version argument when version.json exists, and says nothing for full
+                history, a flow mapping, --no-build, a job that doesn't build, publish.yml or a project without
+                version.json.
+                tools\adopt\Adoption.psm1's copy prints the same.
+      publisher Get-NuGetPublisherAnswer names the workflows other than publish.yml that run nuget push, joined with
+                ", ", when the library has no publish.yml, and is blank beside a publish.yml, without such a workflow or
+                without .github/workflows.
+      release-policy Get-ReleasePolicyAnswer reads the release line of AGENTS.md's Landing section, with or without
+                double quotes, none without the line or outside that section, and nothing for a value
+                .template\Publish-Release.ps1 refuses or without AGENTS.md. tools\adopt\Adoption.psm1's copy answers the same.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
+      code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.4.0 or passes
+                no approve: true, and an AGENTS.md Landing section that doesn't say draft: yes, and says nothing for a
+                current setup or a project without code-review.yml.
       immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
                 for an upload named only in a comment line.
@@ -156,6 +171,106 @@ $ciPermissionNote = & {
 }
 $ciPermissionNote
 
+# gitversioning: Get-GitVersioningWorkflowNote, run from inside each fixture folder, which is also the project.
+$gitVersioningNote = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-GitVersioningWorkflowNote' }, $true)
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $head = "on: push`njobs:`n  build:`n    runs-on: ubuntu-latest`n    steps:`n"
+    $shallow = $head + "      - uses: actions/checkout@v4`n      - run: dotnet build --configuration Release /p:Version=`"`${BUILD_VERSION}`"`n      - run: dotnet nuget push out/*.nupkg`n"
+    $versionCases = [ordered]@{
+        'shallow and version'    = @{ Text = $shallow; Want = @('.github/workflows/main.yml, job build: actions/checkout without fetch-depth: 0', '.github/workflows/main.yml, job build: /p:Version="${BUILD_VERSION}"', 'Shallow clone lacks the objects') }
+        'full history'           = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          fetch-depth: 0`n      - run: dotnet pack -c Release`n"; Want = @() }
+        'flow mapping'           = @{ Text = $head + "      - uses: actions/checkout@v4`n        with: { fetch-depth: 0 }`n      - run: dotnet build`n"; Want = @() }
+        'named step'             = @{ Text = $head + "      - name: Check out`n        uses: actions/checkout@v4`n        with:`n          persist-credentials: false`n      - run: dotnet test`n"; Want = @('job build: actions/checkout without fetch-depth: 0') }
+        'tests without a build'  = @{ Text = $head + "      - uses: actions/checkout@v4`n      - run: dotnet test --no-build`n"; Want = @() }
+        'other job'              = @{ Text = "on: push`njobs:`n  lint:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n      - run: npm run lint`n  pack:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n        with:`n          fetch-depth: 0`n      - run: dotnet pack`n"; Want = @() }
+        'publish.yml'            = @{ Text = $shallow; File = 'publish.yml'; Want = @() }
+        'no version.json'        = @{ Text = $shallow; VersionJson = $false; Want = @() }
+    }
+    foreach ($name in $versionCases.Keys) {
+        $case = $versionCases[$name]
+        $folder = Join-Path $Work "gitversioning-$($name -replace '\W+', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        if ($case.VersionJson -ne $false) { [IO.File]::WriteAllText((Join-Path $folder 'version.json'), '{}') }
+        [IO.File]::WriteAllText((Join-Path $workflows $(if ($case.File) { $case.File } else { 'main.yml' })), $case.Text)
+        Push-Location $folder
+        try { $note = (Get-GitVersioningWorkflowNote) -join "`n"; $adoptNote = (Adoption\Get-GitVersioningWorkflowNote) -join "`n" }
+        finally { Pop-Location }
+        if ($case.Want.Count) {
+            $missing = @($case.Want | Where-Object { -not $note.Contains($_) })
+            Check "gitversioning: $name" (-not $missing.Count) "missing [$($missing -join '], [')] in [$note]"
+        }
+        else { Check "gitversioning: $name" (-not $note.Trim()) "got [$note]" }
+        Check "gitversioning: ${name}: the adoption prints the same note" ($adoptNote -eq $note) "update [$note], adopt [$adoptNote]"
+    }
+}
+$gitVersioningNote
+
+# publisher: Get-NuGetPublisherAnswer, run from inside each fixture folder, which is also the project.
+$publisherAnswer = & {
+    Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'Get-NuGetPublisher', 'Get-NuGetPublisherAnswer') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $push = "jobs:`n  push:`n    steps:`n      - run: dotnet nuget push out/*.nupkg`n"
+    $publisherCases = [ordered]@{
+        'own workflow'      = @{ Files = @{ 'release.yml' = $push }; Want = '.github/workflows/release.yml' }
+        'two workflows'     = @{ Files = @{ 'a.yml' = "      - run: nuget push x.nupkg`n"; 'b.yaml' = $push }; Want = '.github/workflows/a.yml, .github/workflows/b.yaml' }
+        'beside publish.yml' = @{ Files = @{ 'publish.yml' = "on: release`n"; 'release.yml' = $push }; Want = '' }
+        'no publisher'      = @{ Files = @{ 'ci.yml' = "      - run: dotnet build`n" }; Want = '' }
+        'no workflows'      = @{ Files = $null; Want = '' }
+    }
+    foreach ($name in $publisherCases.Keys) {
+        $case = $publisherCases[$name]
+        $folder = Join-Path $Work "publisher-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path $folder -Force
+        if ($case.Files) {
+            $workflows = Join-Path $folder '.github/workflows'
+            $null = New-Item -ItemType Directory -Path $workflows -Force
+            foreach ($file in $case.Files.Keys) { [IO.File]::WriteAllText((Join-Path $workflows $file), $case.Files[$file]) }
+        }
+        Push-Location $folder
+        try { $got = "$(Get-NuGetPublisherAnswer)"; $adoptGot = "$(Adoption\Get-NuGetPublisherAnswer)" }
+        finally { Pop-Location }
+        Check "publisher: $name" ($got -eq $case.Want) "got [$got], want [$($case.Want)]"
+        Check "publisher: ${name}: the adoption answers the same" ($adoptGot -eq $got) "update [$got], adopt [$adoptGot]"
+    }
+}
+$publisherAnswer
+
+# release-policy: Get-ReleasePolicyAnswer, run from inside each fixture folder, which is also the project.
+$releasePolicyAnswer = & {
+    Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-ReleasePolicyAnswer' }, $true)
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $policyCases = [ordered]@{
+        'tag+release'     = @{ Agents = "## Landing`n`n- release: tag+release`n"; Want = 'tag+release' }
+        'none'            = @{ Agents = "## Landing`n`n- release: none`n"; Want = 'none' }
+        'quoted'          = @{ Agents = "## Landing`n`n- release: `"tag`"`n"; Want = 'tag' }
+        'no line'         = @{ Agents = "## Landing`n`n- draft: no`n"; Want = 'none' }
+        'outside landing' = @{ Agents = "## Other`n`n- release: tag`n`n## Landing`n`n- draft: no`n"; Want = 'none' }
+        'unknown value'   = @{ Agents = "## Landing`n`n- release: sometimes`n"; Want = '' }
+        'no AGENTS.md'    = @{ Agents = $null; Want = '' }
+    }
+    foreach ($name in $policyCases.Keys) {
+        $case = $policyCases[$name]
+        $folder = Join-Path $Work "release-policy-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path $folder -Force
+        if ($null -ne $case.Agents) { [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), $case.Agents) }
+        Push-Location $folder
+        try { $got = "$(Get-ReleasePolicyAnswer)"; $adoptGot = "$(Adoption\Get-ReleasePolicyAnswer)" }
+        finally { Pop-Location }
+        Check "release-policy: $name" ($got -eq $case.Want) "got [$got], want [$($case.Want)]"
+        Check "release-policy: ${name}: the adoption answers the same" ($adoptGot -eq $got) "update [$got], adopt [$adoptGot]"
+    }
+}
+$releasePolicyAnswer
+
 # badge: Get-BadgeReminder, run from inside each fixture folder, which is also the project.
 $badgeReminder = & {
     $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
@@ -184,6 +299,41 @@ $badgeReminder = & {
     }
 }
 $badgeReminder
+
+# code-review: Get-CodeReviewNote, run from inside each fixture folder, which is also the project.
+$codeReviewNote = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-CodeReviewNote' }, $true)
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $pin = 'NCodeGroup/code-review@0123456789abcdef0123456789abcdef01234567'
+    $review = { param([string]$Tag, [bool]$Approve) "jobs:`n  review:`n    steps:`n      - uses: $pin # $Tag`n        with:`n$(if ($Approve) { "          approve: true`n" })" }
+    $reviewCases = [ordered]@{
+        'old pin, no approve, draft no' = @{ Workflow = (& $review 'v1.3.0' $false); Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @('pins NCodeGroup/code-review v1.3.0', 'passes no approve: true', 'says draft: no', 'Set-RepositoryBaseline.ps1 again'); Not = @() }
+        'current'                       = @{ Workflow = (& $review 'v1.4.0' $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
+        'newer, two jobs'               = @{ Workflow = (& $review 'v1.10.0' $true) + "      - uses: $pin # v1.12.1`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
+        'no draft line'                 = @{ Workflow = (& $review 'v1.4.0' $true); Agents = "# P`n`n## Landing`n`n- integrate: pull-request`n"; Want = @('has no draft line'); Not = @('pins', 'passes no approve') }
+        'tag pin, no comment'           = @{ Workflow = "jobs:`n  review:`n    steps:`n      - uses: NCodeGroup/code-review@v1.3.0`n        with:`n          approve: true`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @('pins NCodeGroup/code-review v1.3.0'); Not = @('passes no approve', 'says draft', 'has no draft line') }
+        'no code-review.yml'            = @{ Workflow = $null; Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @(); Not = @() }
+    }
+    foreach ($name in $reviewCases.Keys) {
+        $case = $reviewCases[$name]
+        $folder = Join-Path $Work "code-review-$($name -replace '\W+', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), $case.Agents)
+        if ($case.Workflow) { [IO.File]::WriteAllText((Join-Path $workflows 'code-review.yml'), $case.Workflow) }
+        Push-Location $folder
+        try { $note = (Get-CodeReviewNote) -join "`n" }
+        finally { Pop-Location }
+        if ($case.Want.Count) {
+            $missing = @($case.Want | Where-Object { -not $note.Contains($_) })
+            $unwanted = @($case.Not | Where-Object { $note.Contains($_) })
+            Check "code-review: $name" (-not $missing.Count -and -not $unwanted.Count) "missing [$($missing -join '], [')], unwanted [$($unwanted -join '], [')] in [$note]"
+        }
+        else { Check "code-review: $name" (-not $note.Trim()) "got [$note]" }
+    }
+}
+$codeReviewNote
 
 # immutable: Get-ImmutableReleaseNote, run from inside each fixture folder, which is also the project.
 $immutableNote = & {

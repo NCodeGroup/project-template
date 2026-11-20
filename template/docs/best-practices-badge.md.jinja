@@ -1,5 +1,6 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
-{%- set ghlib = git_host == 'github' and library %}
+{%- set publisher = nuget_publisher | default('') %}
+{%- set ghlib = git_host == 'github' and library and not publisher %}
 {%- set host = 'GitHub organization' if git_host == 'github' else 'GitLab group' %}
 {%- set project = best_practices_project | default('') | string %}
 {%- set number = project if project else 'PROJECT_ID' -%}

@@ -497,6 +497,30 @@ function Get-NuGetPublisher {
     @($found) | Sort-Object
 }
 
+# The nuget_publisher answer: the workflows other than publish.yml that run nuget push, joined with ", ", when the library has no publish.yml,
+# else blank. template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-NuGetPublisherAnswer {
+    if (Test-Path -LiteralPath .github/workflows/publish.yml) { return '' }
+    @(Get-NuGetPublisher) -join ', '
+}
+
+# The release_policy answer, which Copier never records (copier.yml says when: false): the value of the "- release:" line of
+# AGENTS.md's Landing section, none without the line, as .template/Publish-Release.ps1 reads it. Nothing for a value that
+# script refuses or without AGENTS.md, so the answer's default applies. Runs in the project folder.
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-ReleasePolicyAnswer {
+    $agents = 'AGENTS.md'
+    if (-not (Test-Path -LiteralPath $agents -PathType Leaf)) { return }
+    $value = 'none'
+    $inLanding = $false
+    foreach ($line in Get-Content -LiteralPath $agents) {
+        if ($line -match '^## Landing\s*$') { $inLanding = $true; continue }
+        if ($inLanding -and $line -match '^## ') { break }
+        if ($inLanding -and $line -match '^- release:\s*(.*?)\s*$') { $value = $Matches[1] -replace '^"(.*)"$', '$1'; break }
+    }
+    if ($value -in 'none', 'tag', 'tag+release') { $value }
+}
+
 # For a library whose build/ProjectTemplate.props pins the assembly version and whose Directory.Build.props sets none:
 # the highest assembly version a version tag of the newest major shipped, when it exceeds <major>.0.0.0, as Tag,
 # AssemblyVersion and Major. A tag shipped its Directory.Build.props's AssemblyVersion, else <major>.0.0.0 when its
@@ -816,4 +840,60 @@ function Get-CiPermissionNote {
     ".github/workflows/ci.yml asks for more than contents: read: $($findings -join '; '). .github/workflows/tag-release.yml runs ci.yml as a reusable workflow before it tags a release and grants it only contents: read, and GitHub fails that run as it starts when a job of ci.yml asks for more, whatever the job's if: says, so no release is tagged or published. Move each such job into a workflow of its own, such as .github/workflows/coverage.yml, and keep ci.yml's top-level permissions at contents: read (the template's ADR-0026, in docs/decisions/project-template/)."
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote
+# Nerdbank.GitVersioning, which version.json turns on (the template's ADR-0138), fails a build on a shallow clone and ignores -p:Version: name each job of the project's own workflows, other than publish.yml, which has its own check, that builds, packs, tests without --no-build or pushes packages with a shallow actions/checkout or a -p:Version argument.
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-GitVersioningWorkflowNote {
+    if (-not (Test-Path -LiteralPath version.json) -or -not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
+    $findings = [Collections.Generic.List[string]]::new()
+    foreach ($file in @(Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Name -match '\.ya?ml$' -and $_.Name -ne 'publish.yml' } | Sort-Object Name)) {
+        # The lines of each job under the top-level jobs: key, by job name.
+        $jobs = [ordered]@{}
+        $inJobs = $false
+        $jobIndent = -1
+        $current = $null
+        foreach ($line in Get-Content -LiteralPath $file.FullName) {
+            if ($line -match '^\s*(#.*)?$') { continue }
+            $indent = $line.Length - $line.TrimStart().Length
+            if ($indent -eq 0) { $inJobs = $line -match '^jobs:\s*(#.*)?$'; $jobIndent = -1; $current = $null; continue }
+            if (-not $inJobs) { continue }
+            if ($jobIndent -lt 0) { $jobIndent = $indent }
+            if ($indent -eq $jobIndent -and $line -match '^\s*([\w-]+):') {
+                $current = $Matches[1]
+                $jobs[$current] = [Collections.Generic.List[string]]::new()
+                continue
+            }
+            if ($current) { $jobs[$current].Add($line) }
+        }
+        foreach ($name in $jobs.Keys) {
+            $lines = @($jobs[$name])
+            $builds = @($lines | Where-Object { $_ -match '(?i)\bdotnet\s+(?:build|pack)\b' -or ($_ -match '(?i)\bdotnet\s+test\b' -and $_ -notmatch '--no-build') -or $_ -match '(?i)\bnuget(?:\.exe)?\s+push\b' })
+            if (-not $builds.Count) { continue }
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -notmatch '\buses:\s*[''"]?actions/checkout@') { continue }
+                # The step starts at the nearest line at or above that starts a list item, and ends before the next one no deeper.
+                $start = $i
+                while ($start -ge 0 -and $lines[$start] -notmatch '^\s*-\s') { $start-- }
+                if ($start -lt 0) { $start = $i }
+                $startIndent = $lines[$start].Length - $lines[$start].TrimStart().Length
+                $end = $lines.Count
+                for ($j = $start + 1; $j -lt $lines.Count; $j++) {
+                    if ($lines[$j] -match '^\s*-\s' -and ($lines[$j].Length - $lines[$j].TrimStart().Length) -le $startIndent) { $end = $j; break }
+                }
+                $step = @($lines[$start..($end - 1)])
+                if (-not @($step | Where-Object { $_ -match '(?<![\w-])fetch-depth:\s*[''"]?0[''"]?(?![\w.])' }).Count) {
+                    $findings.Add(".github/workflows/$($file.Name), job ${name}: actions/checkout without fetch-depth: 0")
+                }
+            }
+            foreach ($m in [regex]::Matches(($lines -join "`n"), '(?i)(?<![\w-])[-/]p(?:roperty)?:Version=\S+')) {
+                $findings.Add(".github/workflows/$($file.Name), job ${name}: $($m.Value)")
+            }
+        }
+    }
+    if (-not $findings.Count) { return }
+    ''
+    'These workflows build with Nerdbank.GitVersioning, which version.json turns on (the template''s ADR-0138, in docs/decisions/project-template/):'
+    foreach ($finding in $findings) { "  - $finding" }
+    'Nerdbank.GitVersioning fails the build on a shallow clone ("Shallow clone lacks the objects required to calculate version height"), which actions/checkout makes unless fetch-depth is 0, and it ignores -p:Version, so a release would carry version.json''s version, not the tag''s. Set fetch-depth: 0 on each actions/checkout step named, drop each -p:Version, and build a release with -p:PublicRelease=true, as the publish.yml the project template gives a .NET library on GitHub does.'
+}
+
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote, Get-ReleasePolicyAnswer

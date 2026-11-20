@@ -171,6 +171,7 @@ $cases = @(
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
     @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'Apache-2.0' } }
     @{ Name = 'dotnet-library-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT' } }
+    @{ Name = 'dotnet-library-own-publisher'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; nuget_publisher = '.github/workflows/main.yml'; release_policy = 'none' } }
     @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = '' }; Refused = 'Required for a NuGet package' }
     @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
     @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT'; conduct_contact = 'conduct@example.test'; best_practices_project = '16752' } }
@@ -287,7 +288,7 @@ foreach ($case in $cases) {
     Check "${name}: GOVERNANCE.md and docs/architecture.md describe how releases are turned on without naming the project's setting" (-not $governance.Contains('release: none') -and -not $architecture.Contains('release: none')) ($governance + $architecture)
     $assurance = [IO.File]::ReadAllText((Join-Path $dest 'docs\assurance-case.md'))
     $assuranceHeadings = '## Security Requirements', '## Threat Model', '## Secure Design Principles Applied', '## Common Weaknesses Countered', '## Evidence'
-    $assuranceWantsPublishing = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package -and $case.Host -eq 'github'
+    $assuranceWantsPublishing = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package -and $case.Host -eq 'github' -and -not $case.Data.nuget_publisher
     Check "${name}: docs/assurance-case.md has its sections" (-not ($assuranceHeadings | Where-Object { -not $assurance.Contains($_) }) -and $assurance.Contains('trusted publishing') -eq $assuranceWantsPublishing) $assurance
     $badge = [IO.File]::ReadAllText((Join-Path $dest 'docs\best-practices-badge.md'))
     Check "${name}: docs/best-practices-badge.md maps the silver criteria" ($badge.Contains('## Toward Silver') -and $badge.Contains('access_continuity') -and $badge.Contains('PROJECT_ID') -ne [bool]$case.Data.best_practices_project -and $badge.Contains('signed_releases') -eq $assuranceWantsPublishing) $badge
@@ -305,6 +306,22 @@ foreach ($case in $cases) {
     $contributingText = [IO.File]::ReadAllText((Join-Path $dest 'CONTRIBUTING.md'))
     $securityText = [IO.File]::ReadAllText((Join-Path $dest 'SECURITY.md'))
     Check "${name}: CONTRIBUTING.md has Review Requirements and names good first issue, SECURITY.md acknowledges within 14 days, and docs/assurance-case.md records security reviews" ($contributingText.Contains('## Review Requirements') -and $contributingText.Contains('`good first issue`') -and $securityText.Contains('within 14 days') -and $assurance.Contains('## Security Reviews'))
+    $releasePolicy = if ($case.Data.release_policy) { $case.Data.release_policy } elseif ($case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true' -and $case.Host -eq 'github') { 'tag+release' } else { 'none' }
+    $agentsReleaseText = [IO.File]::ReadAllText((Join-Path $dest 'AGENTS.md'))
+    Check "${name}: AGENTS.md's release line is the release_policy answer, and SECURITY.md says how to verify a release tag exactly when a GitHub project's releases are tagged" ($agentsReleaseText -match "(?m)^- release: $([regex]::Escape($releasePolicy))\r?$" -and ($securityText.Contains('gitsign verify-tag') -eq ($case.Host -eq 'github' -and $releasePolicy -ne 'none')) -and $securityText -notmatch '(?m)^## Verify a Release\r?\n(\r?\n)*(## |\z)') $securityText
+    Check "${name}: .copier-answers.yml records nuget_publisher only when it is answered, and never release_policy" ($answersText -notmatch '(?m)^release_policy:' -and (($answersText -match '(?m)^nuget_publisher: \.github/workflows/main\.yml\r?$') -eq [bool]$case.Data.nuget_publisher)) $answersText
+    if ($case.Data.nuget_publisher) {
+        $ownPublisher = $case.Data.nuget_publisher
+        $stalePhrases = 'publish.yml', 'trusted publishing', '`nuget` environment', 'provenance', 'raise-baseline.yml', 'intoto'
+        foreach ($doc in 'SECURITY.md', 'GOVERNANCE.md', 'docs/architecture.md', 'docs/assurance-case.md', 'docs/best-practices-badge.md', 'docs/api-compatibility.md') {
+            $docText = [IO.File]::ReadAllText((Join-Path $dest $doc))
+            $stale = @($stalePhrases | Where-Object { $docText.Contains($_) })
+            $namesOwn = $doc -eq 'docs/best-practices-badge.md' -or $docText.Contains($ownPublisher)
+            Check "${name}: $doc names the project's own publishing workflow and describes no publish.yml, trusted publishing, nuget environment or provenance" ($stale.Count -eq 0 -and $namesOwn) "stale: $($stale -join ', '); names $ownPublisher`: $namesOwn"
+        }
+        $signedRow = [regex]::Match($criteriaText, '(?m)^\| `signed_releases` \|.*$').Value
+        Check "${name}: docs/best-practices-criteria.md's signed_releases row names the project's own publishing workflow and isn't Met" ($signedRow.Contains($ownPublisher) -and -not $signedRow.Contains('**Met**')) $signedRow
+    }
     # Every template decision record a rendered Markdown file cites by number is one the project has.
     $recordNumbers = @(Get-ChildItem -LiteralPath (Join-Path $dest 'docs\decisions'), (Join-Path $dest 'docs\decisions\project-template') -File -Filter '*.md' | ForEach-Object { if ($_.Name -match '^(\d{4})-') { $Matches[1] } })
     $unknownCitations = @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force -Filter '*.md' | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } | ForEach-Object {
@@ -419,14 +436,14 @@ foreach ($case in $cases) {
         $extensionsText = Get-Content -LiteralPath (Join-Path $dest '.vscode\extensions.json') -Raw
         Check "${name}: .editorconfig indents project files and VS Code recommends CSharpier exactly when csharp_format is not false" ($editorconfig.Contains('[*.{csproj,slnx}]') -eq $wantFormatHere -and $extensionsText.Contains('csharpier.csharpier-vscode') -eq $wantFormatHere) $extensionsText
         $publish = Join-Path $dest '.github\workflows\publish.yml'
-        $wantsPublish = $library -and $case.Host -eq 'github'
+        $wantsPublish = $library -and $case.Host -eq 'github' -and -not $case.Data.nuget_publisher
         Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)
         $provenance = Join-Path $dest '.github\workflows\release-provenance.yml'
         Check "${name}: the release provenance workflow only for a library on GitHub" ((Test-Path -LiteralPath $provenance) -eq $wantsPublish)
         Check "${name}: build/Update-Baseline.ps1 only for a library" ((Test-Path -LiteralPath (Join-Path $dest 'build\Update-Baseline.ps1')) -eq $library)
         $raise = Join-Path $dest '.github\workflows\raise-baseline.yml'
         Check "${name}: the raise-baseline workflow only for a library on GitHub" ((Test-Path -LiteralPath $raise) -eq $wantsPublish)
-        Check "${name}: ADR-0151 only for a library on GitHub" ([bool](Get-ChildItem -Path (Join-Path $dest 'docs\decisions\project-template\0151-*.md') -ErrorAction SilentlyContinue) -eq $wantsPublish)
+        Check "${name}: ADR-0151 only for a library on GitHub" ([bool](Get-ChildItem -Path (Join-Path $dest 'docs\decisions\project-template\0151-*.md') -ErrorAction SilentlyContinue) -eq ($library -and $case.Host -eq 'github'))
         if ($wantsPublish) {
             $provenanceText = Get-Content -LiteralPath $provenance -Raw
             $provenanceUses = [regex]::Matches($provenanceText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')

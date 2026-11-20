@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.106.0] - 2026-11-19
+
+### Added
+
+- Once `version.json` exists, `.template/Update-Project.ps1` and `Adopt-Project.ps1` name each job of the project's own workflows, other than `publish.yml`, that builds, packs, tests or pushes packages with an `actions/checkout` step without `fetch-depth: 0`, on which Nerdbank.GitVersioning fails the build, or with a `-p:Version` argument, which it ignores. ([#443](https://github.com/NCodeGroup/project-template/issues/443), [ADR-0138](template/docs/decisions/project-template/0138-package-versions-come-from-version-json-through-nerdbank-gitversioning.md))
+- With NCode Review, `.template/Update-Project.ps1` says what `code-review.yml` and `AGENTS.md` still lack for its approval, also when the project is already up to date: a pin before v1.4.0, no `approve: true` or no `draft: yes`, and to run `tools/Set-RepositoryBaseline.ps1` again afterwards. ([#438](https://github.com/NCodeGroup/project-template/issues/438), [ADR-0022](template/docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md.jinja))
+
+### Changed
+
+- A .NET library whose own workflow pushes its NuGet packages, which already got no `publish.yml`, gets no `release-provenance.yml` or `raise-baseline.yml` either, since only `publish.yml` calls them, and an update deletes the ones an earlier update added. `SECURITY.md`, `GOVERNANCE.md`, `docs/architecture.md`, `docs/assurance-case.md`, `docs/best-practices-badge.md`, `docs/api-compatibility.md` and `docs/best-practices-criteria.md` name that workflow instead of describing `publish.yml`, trusted publishing, the `nuget` environment and provenance. The new `nuget_publisher` answer, which the update and the adoption work out from the workflows that run `nuget push`, records it. ([#444](https://github.com/NCodeGroup/project-template/issues/444), [ADR-0151](template/docs/decisions/project-template/0151-release-follow-ups-are-jobs-publish-calls.md))
+- `SECURITY.md` says how to verify a release tag's gitsign signature only when `AGENTS.md`'s Landing section tags releases (`release: tag` or `tag+release`), and the update shows its change that way: the new `release_policy` answer, never recorded, which the update and the adoption read from that line, writes the line in a new project's `AGENTS.md`. `docs/best-practices-criteria.md`'s `version_tags_signed` row names the same condition. ([#444](https://github.com/NCodeGroup/project-template/issues/444), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md))
+
 ## [0.105.0] - 2026-11-19
 
 ### Added
@@ -1712,7 +1724,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.105.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.106.0...HEAD
+[0.106.0]: https://github.com/NCodeGroup/project-template/compare/v0.105.0...v0.106.0
 [0.105.0]: https://github.com/NCodeGroup/project-template/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/NCodeGroup/project-template/compare/v0.103.1...v0.104.0
 [0.103.1]: https://github.com/NCodeGroup/project-template/compare/v0.103.0...v0.103.1
