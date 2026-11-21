@@ -6,9 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.111.2] - 2026-11-21
+
 ### Added
 
 - `docs/adopt.md`, a runbook that takes a maintainer from nothing to a fully adopted repository, new or existing, on GitHub or GitLab: the organization's one-time setup, protecting the default branch and tags, releases, a .NET library's nuget.org publishing, NCode Review, the other one-time settings and staying current, each step saying who does it, where, how to check it and what usually goes wrong, and a checklist that audits an adopted repository; the README's table of contents links it ([#468](https://github.com/NCodeGroup/project-template/issues/468)).
+
+### Fixed
+
+- `AGENTS.md`'s `draft` key, `CONTRIBUTING.md`'s Make a Change item 6, `GOVERNANCE.md`'s Automation row, the message after a project is made and `/best-practices`' Branch-Protection row say that where NCode Review's approver is set up, the NCode Review Approver's approval meets the ruleset's required approval, of the last push, with one writer too, as ADR-0036 decided in v0.111.0; they still said that GitHub counts no approval from NCode Review. `AGENTS.md`, `CONTRIBUTING.md` and `GOVERNANCE.md` are the project's, so the update shows their changes for the project to take ([#466](https://github.com/NCodeGroup/project-template/issues/466), [ADR-0036](template/docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)).
+
+- `tools/Dismiss-ScorecardAlerts.ps1`'s Branch-Protection comment says that with one writer the ruleset can require only the one approval, of the last push, that NCode Review's approver gives where it is set up, and none elsewhere, citing ADR-0036; it said the ruleset requires no approval, which is false where the approver is set up.
 
 ## [0.111.1] - 2026-11-21
 
@@ -1809,7 +1817,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.111.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.111.2...HEAD
+[0.111.2]: https://github.com/NCodeGroup/project-template/compare/v0.111.1...v0.111.2
 [0.111.1]: https://github.com/NCodeGroup/project-template/compare/v0.111.0...v0.111.1
 [0.111.0]: https://github.com/NCodeGroup/project-template/compare/v0.110.0...v0.111.0
 [0.110.0]: https://github.com/NCodeGroup/project-template/compare/v0.109.0...v0.110.0
