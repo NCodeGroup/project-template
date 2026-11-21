@@ -369,7 +369,7 @@ See [Update a Project](../README.md#update-a-project) and [Stay Current](../READ
 - **Who:** a maintainer.
 - **Where:** the project.
 - **Do:** On GitHub, `template-update.yml` keeps one open issue labeled `template-update`, "Update to project-template <version>", every Monday at 07:00 UTC. Run `/plan-issue <number>` on it, or `/plan-template-update`, or `.\.template\Update-Project.ps1` on a branch of its own. The update also says what a `code-review.yml` lacks (a pin before v1.5.0, `approve: true`, `approver-private-key`) and a missing `draft: yes`. On GitLab there is no notice: `copier check-update` in the project tells.
-- **Check:** `gh issue list --label template-update --state open --repo <owner>/<name>` lists nothing once the project is current.
+- **Check:** `gh issue list --label template-update --state open --repo <owner>/<name>` lists nothing once the project is current. On GitLab, `copier check-update` in the project tells no newer version exists.
 - **Goes wrong:** an update that conflicts stops with the files to fix (see [Resolve a Conflict](../README.md#resolve-a-conflict)).
 
 ### 7.2 Dependabot
@@ -412,7 +412,7 @@ Audit an adopted repository by running each check; a script checks an item only 
 | [1.1](#11-a-new-project) | every project | `Get-Content .template-version` prints the version; the repository exists on the host | No |
 | [1.2](#12-an-existing-repository) | every project | `.copier-answers.yml` exists; the last commit is `Adopt project-template <version>` | No |
 | [1.3](#13-nodejs-nvs-and-the-prelude) | Node.js | `./.template/Use-Node.ps1; node --version` prints the `.node-version` major | No |
-| [1.4](#14-first-push-and-first-pull-request) | every project | `gh pr checks <number>` shows every check passed | No |
+| [1.4](#14-first-push-and-first-pull-request) | every project | `gh pr checks <number>` shows every check passed; on GitLab, `glab ci status` shows the merge request's pipeline passed | No |
 | [2.1](#21-run-the-baseline) | GitHub | `-WhatIf` prints no `would set` line | `Set-RepositoryBaseline.ps1 -WhatIf` |
 | [2.2](#22-when-an-approval-is-required) | GitHub | the branch rule's `required_approving_review_count` is `1` where an approval is required and `0` elsewhere | `Set-RepositoryBaseline.ps1 -WhatIf` |
 | [2.3](#23-codeqls-languages) | GitHub | `gh api repos/<owner>/<name>/code-scanning/default-setup` shows `configured` and a language | `Set-RepositoryBaseline.ps1 -WhatIf` |
@@ -437,7 +437,7 @@ Audit an adopted repository by running each check; a script checks an item only 
 | [6.3](#63-the-documentation-site-and-github-pages) | where the project has one | `gh api repos/<owner>/<name>/pages` prints `workflow <domain> true` | No |
 | [6.4](#64-the-copilot-cloud-agents-environment) | GitHub, with Copilot | `gh run list --workflow copilot-setup-steps.yml --limit 1` shows it passed | No |
 | [6.5](#65-labels) | GitHub | `gh label list --repo <owner>/<name>` lists the labels | No |
-| [7.1](#71-template-updates) | every project | `gh issue list --label template-update --state open` lists nothing once current | `template-update.yml` |
+| [7.1](#71-template-updates) | every project | `gh issue list --label template-update --state open` lists nothing once current; on GitLab, `copier check-update` tells no newer version exists | `template-update.yml` |
 | [7.2](#72-dependabot) | GitHub | Insights > Dependency graph > Dependabot shows recent checks | No |
 | [7.3](#73-rotate-a-key) | GitHub, with NCode Review | the app's page lists only the new key; 5.3's check passes | No |
 
