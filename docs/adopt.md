@@ -64,3 +64,43 @@ Do these once per organization, and once per maintainer's PC for 0.1.
 - **Do:** Create and install the two apps, NCode Review and NCode Review Approver, set up Anthropic, and store the organization secrets `NCODE_REVIEW_APP_PRIVATE_KEY` and `AWS_BEARER_TOKEN_BEDROCK` with its `tools/Enable-CodeReview.ps1`, as `https://github.com/NCodeGroup/code-review#using-it` says. Its end-to-end runbook is NCodeGroup/code-review#237. This page doesn't repeat it.
 - **Check:** `gh secret list --org <org>` lists both secrets.
 - **Goes wrong:** see code-review's runbook (NCodeGroup/code-review#237) for its own troubleshooting.
+
+## 1. Create or Adopt
+
+Do 1.1 or 1.2, then 1.3 for Node.js and 1.4.
+
+### 1.1 A New Project
+
+- **Applies to:** every project
+- **Who:** a maintainer who may create repositories in the owner.
+- **Where:** a clone of NCodeGroup/project-template.
+- **Do:** Run `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote`. Add `-Owner <org>`, `-Visibility private` and `-Data @{ ... }` as needed. Copier asks the questions [Questions](../README.md#questions) lists and records the answers in `.copier-answers.yml`. Answer `code_review` yes for NCode Review (GitHub only) and `nuget_package` yes for a .NET library. The script runs `git init -b main`, makes the first commit `Create project from project-template <version>`, creates the repository (public by default) and pushes `main`. On GitHub it then runs `tools/Set-RepositoryBaseline.ps1 -RequireChecks 'build-and-test'`, and on GitLab `tools/Set-GitLabBaseline.ps1`, unless you pass `-NoBaseline`. See [Create a Project](../README.md#create-a-project).
+- **Check:** `Get-Content .template-version` in the project prints the version; `git log -1 --format=%s` shows the first commit; the repository exists on the host.
+- **Goes wrong:** a missing Git `user.name` or `user.email`, or a signed-out `gh` or `glab`; a failed baseline leaves the repository created and prints the command to run again (see [2.1](#21-run-the-baseline)).
+
+### 1.2 An Existing Repository
+
+- **Applies to:** every project
+- **Who:** a maintainer with write access.
+- **Where:** a clone of NCodeGroup/project-template, pointing at the repository's clean clone, on a branch of its own (run `git switch -c adopt-project-template` in the repository first).
+- **Do:** Run `.\Adopt-Project.ps1 -Path C:\src\<name>`. It asks nothing and works out the answers. Pass `-Data @{ code_review = $true }` for NCode Review and `-Data @{ project_owned_files = '.github/workflows/ci.yml' }` to keep a CI workflow of its own. It leaves alone a `ci.yml` the repository has and every workflow beside it, a library's own workflow that runs `nuget push` (recorded as `nuget_publisher`, with no template `publish.yml`, `release-provenance.yml` or `raise-baseline.yml`), and the changelog's format. It runs the build and test commands and commits `Adopt project-template <version>`, then prints the baseline command and a `/plan-migration ...` request. Run that request in the repository with Claude Code or Copilot. It folds `.github/copilot-instructions.md` into `AGENTS.md`, reconciles workflows and, where tags lack changelog sections, backfills them. See [Adopt an Existing Repository](../README.md#adopt-an-existing-repository).
+- **Check:** `.copier-answers.yml` exists; `git log -1 --format=%s` shows `Adopt project-template <version>`.
+- **Goes wrong:** it refuses a dirty tree, a repository with no commits, or one that already has `.copier-answers.yml` (use `.template\Update-Project.ps1`); a failing build stages everything, commits nothing and exits 1; a kept `ci.yml` without a `workflow_call` trigger, or one that asks for more than `contents: read`, means no release is tagged until it is fixed (the script prints the note); a blank `license` answer warns.
+
+### 1.3 Node.js: nvs and the Prelude
+
+- **Applies to:** Node.js
+- **Who:** every maintainer.
+- **Where:** the project's folder.
+- **Do:** Once per PC, run `./.template/Initialize-Nvs.ps1`, which installs and links the `.node-version` release. The project's `AGENTS.md` Landing names `prelude: ./.template/Use-Node.ps1`, which every plan step dot-sources.
+- **Check:** `./.template/Use-Node.ps1; node --version` prints the `.node-version` major.
+- **Goes wrong:** `Use-Node.ps1` fails naming `Initialize-Nvs.ps1` when nvs is missing, so run it.
+
+### 1.4 First Push and First Pull Request
+
+- **Applies to:** every project
+- **Who:** the maintainer.
+- **Where:** the project's folder.
+- **Do:** A new project is already pushed (see [1.1](#11-a-new-project)), so open its first change as a pull request. For an adopted repository, run `git push -u origin adopt-project-template`, then `gh pr create --fill`. Wait for CI, then merge it with a merge commit or by rebasing. The checks that pass here are the ones [2.1](#21-run-the-baseline) requires: the template's CI job is `build-and-test`.
+- **Check:** `gh pr checks <number>` shows every check passed.
+- **Goes wrong:** a job that runs only on a schedule, a release or with `paths` filters never reports on every pull request, so requiring it blocks merges; `-RequireChecks auto` needs a merged pull request, so merge this one before 2.1.
