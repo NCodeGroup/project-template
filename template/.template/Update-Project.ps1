@@ -353,7 +353,7 @@ function Get-CodeReviewNote {
     "NCode Review approves a clean pull request only with approve: true, and from NCodeGroup/code-review v1.5.0 on, given approver-private-key, submits the approval as the NCode Review Approver, an app that can write, so the approval meets a required approval (the template's ADR-0022, ADR-0034 and ADR-0036, in docs/decisions/project-template/): $($findings -join '; '). Pin v1.5.0 or later (published on 2026-11-21: the three-day cooldown of the template's ADR-0009 adopts it from 2026-11-24, and sooner only by that record's commented exception) and pass approve: true and approver-private-key: `${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }} in the review job of .github/workflows/code-review.yml, as the template's code-review.yml does, store the approver's key in the code-review environment with tools/Enable-CodeReview.ps1 -ApproverPrivateKeyPath from NCodeGroup/code-review, set - draft: yes in AGENTS.md's Landing section, so a pull request opens as a draft and marking it ready is the maintainer's review, then run the template's tools/Set-RepositoryBaseline.ps1 again, so the default branch dismisses stale approvals and requires one approval, of the last push, where the approver is set up or a second person has write access."
 }
 
-# Nerdbank.GitVersioning, which version.json turns on (the template's ADR-0138), fails a build on a shallow clone and ignores -p:Version: name each job of the project's own workflows, other than publish.yml, which has its own check, that builds, packs, tests without --no-build or pushes packages with a shallow actions/checkout or a -p:Version argument.
+# Nerdbank.GitVersioning, which version.json turns on (the template's ADR-0138), fails a build on a shallow clone and ignores -p:Version: name each job of the project's own workflows, other than publish.yml, which has its own check, that builds, packs, tests without --no-build or pushes packages in a shallow actions/checkout's folder, by the step's working-directory: or the job's or workflow's defaults:, or with a -p:Version argument.
 # tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
 function Get-GitVersioningWorkflowNote {
     if (-not (Test-Path -LiteralPath version.json) -or -not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
@@ -409,11 +409,37 @@ function Get-GitVersioningWorkflowNote {
                 }
                 $lines[$start..($end - 1)]
             }
-            for ($i = 0; $i -lt $lines.Count; $i++) {
+            # The job's own defaults: working-directory, else the workflow's.
+            $keyIndent = $lines[0].Length - $lines[0].TrimStart().Length
+            $jobDefaults = [Collections.Generic.List[string]]::new()
+            $inJobDefaults = $false
+            foreach ($l in $lines) {
+                $lineIndent = $l.Length - $l.TrimStart().Length
+                if ($lineIndent -le $keyIndent) { $inJobDefaults = $l -match '^\s*defaults:\s*(#.*)?$'; continue }
+                if ($inJobDefaults) { $jobDefaults.Add($l) }
+            }
+            $jobDefault = & $valueIn $jobDefaults '^\s*working-directory:\s*(.*)$'
+            if ($null -eq $jobDefault) { $jobDefault = $workflowDefault }
+            $checkouts = @(for ($i = 0; $i -lt $lines.Count; $i++) {
                 if ($lines[$i] -notmatch '\buses:\s*[''"]?actions/checkout@') { continue }
                 $step = @(& $stepAt $i)
-                if (-not @($step | Where-Object { $_ -match '(?<![\w-])fetch-depth:\s*[''"]?0[''"]?(?![\w.])' }).Count) {
-                    $findings.Add(".github/workflows/$($file.Name), job ${name}: actions/checkout without fetch-depth: 0")
+                [pscustomobject]@{ Step = $step; Folder = (& $folderOf "$(& $valueIn $step '(?:^\s*(?:-\s+)?|[{,]\s*)path:\s*([^,}]+)')"); Used = $false }
+            })
+            # Each build step uses the checkout whose folder holds its working directory most closely. When a folder can't be placed, or no checkout holds a build's working directory, every checkout of the job counts as used.
+            $everyCheckout = @($checkouts | Where-Object { $null -eq $_.Folder }).Count -gt 0
+            for ($i = 0; $i -lt $lines.Count -and -not $everyCheckout; $i++) {
+                if (-not (& $isBuild $lines[$i])) { continue }
+                $value = & $valueIn @(& $stepAt $i) '^\s*(?:-\s+)?working-directory:\s*(.*)$'
+                if ($null -eq $value) { $value = $jobDefault }
+                $folder = & $folderOf "$value"
+                if ($null -eq $folder) { $everyCheckout = $true; break }
+                $holder = @($checkouts | Where-Object { $_.Folder -eq '' -or $folder -eq $_.Folder -or $folder.StartsWith("$($_.Folder)/") } | Sort-Object { $_.Folder.Length } -Descending)
+                if ($holder.Count) { $holder[0].Used = $true } else { $everyCheckout = $true }
+            }
+            foreach ($checkout in $checkouts) {
+                if (-not ($everyCheckout -or $checkout.Used)) { continue }
+                if (-not @($checkout.Step | Where-Object { $_ -match '(?<![\w-])fetch-depth:\s*[''"]?0[''"]?(?![\w.])' }).Count) {
+                    $findings.Add(".github/workflows/$($file.Name), job ${name}: actions/checkout$(if ($checkout.Folder) { " (path: $($checkout.Folder))" }) without fetch-depth: 0")
                 }
             }
             foreach ($m in [regex]::Matches(($lines -join "`n"), '(?i)(?<![\w-])[-/]p(?:roperty)?:Version=\S+')) {
