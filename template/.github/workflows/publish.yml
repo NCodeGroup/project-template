@@ -170,17 +170,16 @@ jobs:
     with:
       tag: v${{ needs.pack.outputs.version }}
 
-  # Opens the draft pull request that raises the package validation baseline to this version (the template's ADR-0150),
-  # for a stable version only: a pre-release is never a baseline. A job of this run for the same reason as provenance
-  # (the template's ADR-0151).
+  # Pushes the branch that raises the package validation baseline to this version and opens an issue whose link opens
+  # its pull request (the template's ADR-0150 and ADR-0036), for a stable version only: a pre-release is never a
+  # baseline. A job of this run for the same reason as provenance (the template's ADR-0151).
   baseline:
     name: Raise the package validation baseline
     needs: [pack, publish]
     if: ${{ !contains(needs.pack.outputs.version, '-') }}
     permissions:
-      actions: write
       contents: write
-      pull-requests: write
+      issues: write
     uses: ./.github/workflows/raise-baseline.yml
     with:
       tag: v${{ needs.pack.outputs.version }}
