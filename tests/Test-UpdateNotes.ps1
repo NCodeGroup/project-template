@@ -17,9 +17,10 @@
                 tools\adopt\Adoption.psm1's copy prints the same.
       gitversioning Get-GitVersioningWorkflowNote names each job of a workflow other than publish.yml that builds,
                 packs, tests without --no-build or pushes packages with an actions/checkout step without
-                fetch-depth: 0 or with a -p:Version argument when version.json exists, and says nothing for full
-                history, a flow mapping, --no-build, a job that doesn't build, publish.yml or a project without
-                version.json.
+                fetch-depth: 0 or with a -p:Version argument when version.json exists, and says nothing for a checkout
+                whose folder holds no build step's working directory (its working-directory:, or the job's or
+                workflow's defaults:), for full history, a flow mapping, --no-build, a job that doesn't build,
+                publish.yml or a project without version.json.
                 tools\adopt\Adoption.psm1's copy prints the same.
       publisher Get-NuGetPublisherAnswer names the workflows other than publish.yml that run nuget push, joined with
                 ", ", when the library has no publish.yml, and is blank beside a publish.yml, without such a workflow or
@@ -186,6 +187,13 @@ $gitVersioningNote = & {
         'named step'             = @{ Text = $head + "      - name: Check out`n        uses: actions/checkout@v4`n        with:`n          persist-credentials: false`n      - run: dotnet test`n"; Want = @('job build: actions/checkout without fetch-depth: 0') }
         'tests without a build'  = @{ Text = $head + "      - uses: actions/checkout@v4`n      - run: dotnet test --no-build`n"; Want = @() }
         'other job'              = @{ Text = "on: push`njobs:`n  lint:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n      - run: npm run lint`n  pack:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n        with:`n          fetch-depth: 0`n      - run: dotnet pack`n"; Want = @() }
+        'checkout no build runs in'            = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          path: current`n          persist-credentials: false`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - name: Rebuild`n        working-directory: rebuild`n        run: dotnet pack --configuration Release`n      - run: ./current/build/Compare-Packages.ps1`n"; Want = @() }
+        'build in a nested checkout'           = @{ Text = $head + "      - uses: actions/checkout@v4`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - working-directory: rebuild`n        run: dotnet build`n"; Want = @() }
+        'job default working directory'        = @{ Text = "on: push`njobs:`n  build:`n    runs-on: ubuntu-latest`n    defaults:`n      run:`n        working-directory: ./rebuild/`n    steps:`n      - uses: actions/checkout@v4`n        with: { path: current }`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - run: dotnet pack`n"; Want = @() }
+        'workflow default working directory'   = @{ Text = "on: push`ndefaults:`n  run:`n    working-directory: rebuild`njobs:`n  build:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n        with:`n          path: current`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - run: dotnet pack`n"; Want = @() }
+        'shallow checkout a build runs in'     = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          path: current`n          fetch-depth: 0`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n      - working-directory: rebuild/src`n        run: dotnet build`n"; Want = @('.github/workflows/main.yml, job build: actions/checkout (path: rebuild) without fetch-depth: 0'); Not = @('(path: current)') }
+        'build outside every checkout'         = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          path: current`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - run: dotnet build rebuild/x.sln`n"; Want = @('job build: actions/checkout (path: current) without fetch-depth: 0') }
+        'working directory from an expression' = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          path: current`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - working-directory: `${{ inputs.folder }}`n        run: dotnet build`n"; Want = @('job build: actions/checkout (path: current) without fetch-depth: 0') }
         'publish.yml'            = @{ Text = $shallow; File = 'publish.yml'; Want = @() }
         'no version.json'        = @{ Text = $shallow; VersionJson = $false; Want = @() }
     }
@@ -201,7 +209,8 @@ $gitVersioningNote = & {
         finally { Pop-Location }
         if ($case.Want.Count) {
             $missing = @($case.Want | Where-Object { -not $note.Contains($_) })
-            Check "gitversioning: $name" (-not $missing.Count) "missing [$($missing -join '], [')] in [$note]"
+            $unwanted = @($case.Not | Where-Object { $_ -and $note.Contains($_) })
+            Check "gitversioning: $name" (-not $missing.Count -and -not $unwanted.Count) "missing [$($missing -join '], [')], unwanted [$($unwanted -join '], [')] in [$note]"
         }
         else { Check "gitversioning: $name" (-not $note.Trim()) "got [$note]" }
         Check "gitversioning: ${name}: the adoption prints the same note" ($adoptNote -eq $note) "update [$note], adopt [$adoptNote]"
