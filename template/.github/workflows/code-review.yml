@@ -12,14 +12,17 @@ name: Code review
 # records each posted finding's outcome, with no model call. It needs no environment: the app's key is an organization
 # secret, and the code-review environment holds none; it only lets Anthropic's federation rule trust the review job.
 #
-# approve: true (v1.4.0 on) approves a pull request whose review leaves no blocker or should-fix finding open, which
-# Scorecard's Code-Review check counts, but it meets no required approval: GitHub counts toward one only a review from
-# someone with write access, and NCode Review's app has none. tools/Set-RepositoryBaseline.ps1 in the project template
-# requires one approval, of the last push, only once a second person has write access, and someone with write access
-# other than the author gives it; with one writer it requires none. A push dismisses NCode Review's approval, so
+# approve: true approves a pull request whose review leaves no blocker or should-fix finding open, which Scorecard's
+# Code-Review check counts. GitHub counts an approval toward a ruleset's required approval only from a reviewer that can
+# write, so the approval is submitted by the NCode Review Approver (v1.5.0 on), an app with Contents: write whose token,
+# minted after the review, can only write pull requests. tools/Enable-CodeReview.ps1 -ApproverPrivateKeyPath in
+# NCodeGroup/code-review stores its key in the code-review environment. With it, tools/Set-RepositoryBaseline.ps1 in the
+# project template requires one approval, of the last push; without it, NCode Review's own app approves, which meets no
+# required approval, and the baseline requires none where one person can write. A push dismisses the approval, so
 # comment /review after one; a maintainer approves a bot's pull request, which NCode Review skips.
-# docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md and
-# 0034-with-one-writer-the-baseline-requires-no-approval.md say why.
+# docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md,
+# 0034-with-one-writer-the-baseline-requires-no-approval.md and
+# 0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md say why.
 #
 # pull_request_target and issue_comment both run this file from the default branch, so a pull request can't change its
 # own review. The engine fetches its code only to read it: nothing from it is built, run or installed.
@@ -31,7 +34,7 @@ name: Code review
 # updates the SHA and the tag.
 # Run tools/Enable-CodeReview.ps1 from a clone of NCodeGroup/code-review once for this repository: it creates the
 # code-review environment, which only the default branch can deploy to, and gives the repository access to the
-# organization's two secrets.
+# organization's two secrets; -ApproverPrivateKeyPath stores the approver's key in that environment.
 
 on:
   pull_request_target:
@@ -89,6 +92,8 @@ jobs:
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           # A review that leaves no blocker or should-fix finding open approves the pull request.
           approve: true
+          # The NCode Review Approver submits the approval, so it meets the ruleset's required approval; the key is a secret of the code-review environment, which only the default branch can deploy to.
+          approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}
 
   outcomes:
     # A closed pull request, merged or not, whoever closed it (a merge queue merges as a bot) and whatever its labels:
