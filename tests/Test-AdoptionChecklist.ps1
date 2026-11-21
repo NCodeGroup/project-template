@@ -201,6 +201,13 @@ $calls = @{
     'copier --version' = Answer 'copier 9.4.1'
     'node --version' = Answer 'v26.1.0'
     'glab api --hostname gitlab.com projects/group%2Fsub%2Fsample' = Answer '{}'
+    'Set-RepositoryBaseline -Repo sample -Owner NCodeGroup -WhatIf' = Answer @(
+        'sample: allow auto-merge: already set'
+        'sample: immutable releases: already set'
+        'sample: organization two-factor requirement: required')
+    'Set-RepositoryBaseline -OrganizationPolicy -Owner NCodeGroup -WhatIf' = Answer 'NCodeGroup: default workflow token read-only, and Actions not approving pull requests: already set'
+    'Dismiss-ScorecardAlerts -Repo NCodeGroup/sample -WhatIf' = Answer 'NCodeGroup/sample: no open Scorecard alert'
+    'Set-RepositoryBaseline -Repo private-sample -Owner someone -WhatIf' = Answer 'private-sample: allow auto-merge: would set'
 }
 
 $savedPath = $env:PATH
@@ -244,6 +251,28 @@ try {
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
     Check 'row 6.1 not done: private exits 1' ($pr.ExitCode -eq 1) "exit=$($pr.ExitCode) output=$($pr.Output)"
+
+    # Rows the baseline and Scorecard runs show: 0.2, 2.1, 2.4, 3.3
+    $bad = Invoke-Override (Join-Path $Work 'github') @{
+        'Set-RepositoryBaseline -Repo sample -Owner NCodeGroup -WhatIf' = Answer @(
+            'sample: immutable releases: would set'
+            'sample: organization two-factor requirement: not required')
+        'Dismiss-ScorecardAlerts -Repo NCodeGroup/sample -WhatIf' = Answer '#8 (Branch-Protection): would dismiss'
+    }
+    $broken = Invoke-Override (Join-Path $Work 'github') @{
+        'Set-RepositoryBaseline -Repo sample -Owner NCodeGroup -WhatIf' = Answer $null 1 'gh: Not Found (HTTP 404)'
+        'Set-RepositoryBaseline -OrganizationPolicy -Owner NCodeGroup -WhatIf' = Answer $null 1 'gh: Not Found (HTTP 404)'
+    }
+    foreach ($row in @(
+            @('0.2', 'done', 'github', $gh), @('2.1', 'done', 'github', $gh), @('2.4', 'done', 'github', $gh),
+            @('3.3', 'done', 'github', $gh), @('2.1', 'not done', 'private', $pr),
+            @('2.1', 'not done', 'bad', $bad), @('3.3', 'not done', 'bad', $bad), @('0.2', 'not done', 'bad', $bad),
+            @('2.4', 'not done', 'bad', $bad),
+            @('2.1', 'unreadable', 'broken', $broken), @('3.3', 'unreadable', 'broken', $broken),
+            @('0.2', 'unreadable', 'broken', $broken))) {
+        $step, $want, $label, $run = $row
+        Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
+    }
 }
 finally {
     $env:PATH = $savedPath

@@ -228,6 +228,24 @@ function ConvertTo-TemplateVersion([string]$Text) {
     [version]($parts -join '.')
 }
 
+# The baseline script's -WhatIf run, which several rows read.
+function Get-Baseline {
+    Get-Cached 'baseline' { Invoke-Sibling 'Set-RepositoryBaseline.ps1' @('-Repo', $name, '-Owner', $owner, '-WhatIf') }
+}
+
+# The last non-empty line of a sibling run, for the reason a run that exited non-zero gives.
+function Get-LastLine([object]$Run) {
+    $last = @($Run.Lines | Where-Object { "$_".Trim() }) | Select-Object -Last 1
+    if ($last) { "$last".Trim() } else { 'no output' }
+}
+
+# The baseline's output lines; throws, so the row is unreadable, when its -WhatIf run exited non-zero.
+function Get-BaselineLines {
+    $run = Get-Baseline
+    if ($run.ExitCode) { throw "the baseline's -WhatIf run exited $($run.ExitCode): $(Get-LastLine $run)" }
+    @($run.Lines)
+}
+
 # Row checks
 $checks = @{}
 
@@ -280,6 +298,63 @@ $checks['1.3'] = {
     $seen = if ($r.ExitCode -or -not $node) { "$($r.Error)".Trim() } else { $node }
     if (-not $seen) { $seen = "exit $($r.ExitCode)" }
     New-Result 'not done' "node $seen doesn't match .node-version $major"
+}
+
+$checks['2.1'] = {
+    $set = @(Get-BaselineLines | Where-Object { $_ -match ': would set' -or $_.StartsWith('would: ') })
+    if ($set.Count) { New-Result 'not done' "$($set.Count) to set: $($set -join '; ')" }
+    else { New-Result 'done' }
+}
+
+$checks['3.3'] = {
+    $line = Get-BaselineLines | Where-Object { $_ -match ': immutable releases: (.+)$' } | Select-Object -First 1
+    if (-not $line) { return New-Result 'unreadable' 'the baseline printed no immutable releases line' }
+    $null = "$line" -match ': immutable releases: (.+)$'
+    $state = $Matches[1].Trim()
+    if ($state -eq 'already set') { New-Result 'done' 'on' }
+    elseif ($state -eq 'would set') { New-Result 'not done' 'immutable releases are off' }
+    elseif ($state.StartsWith('not available')) { New-Result 'done' $state }
+    else { New-Result 'unreadable' "unknown immutable releases state: $state" }
+}
+
+$checks['0.2'] = {
+    $parts = @()
+    $org = Invoke-Sibling 'Set-RepositoryBaseline.ps1' @('-OrganizationPolicy', '-Owner', $owner, '-WhatIf')
+    if ($org.ExitCode) {
+        $parts += New-Result 'unreadable' "the -OrganizationPolicy -WhatIf run exited $($org.ExitCode): $(Get-LastLine $org)"
+    }
+    else {
+        $set = @($org.Lines | Where-Object { $_ -match 'would set' })
+        $parts += if ($set.Count) { New-Result 'not done' "$($set.Count) organization setting(s) to set" }
+        else { New-Result 'done' }
+    }
+    $baseline = Get-Baseline
+    if ($baseline.ExitCode) {
+        $parts += New-Result 'unreadable' "the baseline's -WhatIf run exited $($baseline.ExitCode): $(Get-LastLine $baseline)"
+    }
+    else {
+        $line = $baseline.Lines | Where-Object { $_ -match 'organization two-factor requirement: (.+)$' } |
+            Select-Object -First 1
+        if (-not $line) { $parts += New-Result 'unreadable' 'no two-factor line' }
+        else {
+            $null = "$line" -match 'organization two-factor requirement: (.+)$'
+            $state = $Matches[1].Trim()
+            $parts += if ($state -eq 'required') { New-Result 'done' }
+            elseif ($state -eq 'not required') {
+                New-Result 'not done' "the organization doesn't require two-factor authentication"
+            }
+            else { New-Result 'unreadable' $state }
+        }
+    }
+    Join-Result $parts
+}
+
+$checks['2.4'] = {
+    $run = Invoke-Sibling 'Dismiss-ScorecardAlerts.ps1' @('-Repo', $slug, '-WhatIf')
+    if ($run.ExitCode) { return New-Result 'unreadable' (Get-LastLine $run) }
+    $would = @($run.Lines | Where-Object { $_ -like '*would dismiss*' })
+    if ($would.Count) { New-Result 'not done' "would dismiss $($would.Count) alert(s)" }
+    else { New-Result 'done' }
 }
 
 $checks['4.3'] = {
