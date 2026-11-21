@@ -25,8 +25,9 @@
     that parses and is written to nothing;
     that with one writer, as the collaborators list says, the ruleset requires no approval and no last-push approval, even
     with approve: true, an earlier one has both turned off (plain run, -RequireChecks, -WhatIf, a refusal), an owner's is
-    not written but gets a notice with the command (with one writer only), a refusal gets the same notice, and a list it
-    can't read is named, and a public one gets a notice naming tools/Dismiss-ScorecardAlerts.ps1;
+    not written but gets a notice with the command (with one writer only), a refusal gets the same notice, a list it
+    can't read or that is not JSON is named, an empty list or one with a bot counts as one writer, and a public one gets
+    a notice naming tools/Dismiss-ScorecardAlerts.ps1;
     that -RequireChecks auto requires the GitHub Actions checks that passed on the
     latest merged pull request, found on any page of closed pull requests, reading every page of its check runs and
     workflow runs, Commit attribution among them, leaves out the review bot's Code review and its job, CodeQL and its
@@ -208,11 +209,12 @@ if ($path -match '^repos/[^/]+/([^/]+)/code-scanning/default-setup$') {
     if ($status -ne 200) { exit 1 }
     exit 0
 }
-# Who can write: writers lists the logins with push access or more (a lone login may arrive as a string), or fail:<code> refuses the read.
+# Who can write: writers lists the logins with push access or more (a lone login may arrive as a string; bot:<login> is a Bot), fail:<code> refuses the read, and notjson answers text that is not JSON.
 if ($path -match '^repos/[^/]+/([^/]+)/collaborators\?') {
     $writers = $data.repos[$Matches[1]].writers
     if ($writers -is [string] -and $writers.StartsWith('fail:')) { Out-Answer ([int]$writers.Substring(5)) '{"message":"Stand-in refused to read them"}' }
-    Out-Answer 200 (ConvertTo-Json -Compress -InputObject @(@($writers | Where-Object { $_ }) | ForEach-Object { @{ login = $_; type = 'User'; role_name = 'write' } }))
+    if ($writers -is [string] -and $writers -eq 'notjson') { Out-Answer 200 'not json' }
+    Out-Answer 200 (ConvertTo-Json -Compress -InputObject @(@($writers | Where-Object { $_ }) | ForEach-Object { if ($_.StartsWith('bot:')) { @{ login = $_.Substring(4); type = 'Bot'; role_name = 'write' } } else { @{ login = $_; type = 'User'; role_name = 'write' } } }))
 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets/(\d+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].full["$($Matches[2])"] -Depth 10; exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets$') { ConvertTo-Json -InputObject @($data.repos[$Matches[1]].rulesets) -Depth 5; exit 0 }
@@ -404,6 +406,9 @@ $repos = @{
     writersUnreadableOurs = New-Repo -Writers 'fail:403' -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 1))
     solePrivate = New-Repo -Writers @('maintainer') -Visibility 'private'
     twoOwnedApproval = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Approvals 1))
+    writersNone = New-Repo -Writers @() -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
+    soleWithBot = New-Repo -Writers @('maintainer', 'bot:release-app') -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
+    writersNotJson = New-Repo -Writers 'notjson' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
     looseRefused = New-Repo -Rulesets @((New-Ruleset 'main' -Threads $false)) -WriteFails @{ 'rulesets/101' = 403 }
     ownedBare = New-Repo -Rulesets @($bareRuleset)
     twoOwnedLoose = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Threads $false), (New-Ruleset 'team rules' -Threads $false))
@@ -799,6 +804,15 @@ try {
     Check 'writers: a ruleset of the owner''s that requires an approval is not written, and gets a notice with the command' (-not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/101' }).Count -and $r.Output.Contains("soleOwned: notice: 'owner rules' requires an approval while one person has write access") -and $r.Output.Contains('$p.required_approving_review_count = 0') -and $r.Output.Contains('gh api -X PUT repos/NCodeGroup/soleOwned/rulesets/101 --input -')) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'twoOwnedApproval')
     Check 'writers: with two writers a ruleset of the owner''s that requires an approval gets no notice' ($r.Output -notmatch 'requires an approval while one person') $r.Output
+    $r = Invoke-Baseline @('-Repo', 'writersNone')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'writers: an empty collaborators list counts as one writer: no approval, even with approve: true' ($r.Body -and $ap.required_approving_review_count -eq 0 -and $ap.require_last_push_approval -eq $false -and $r.Output.Contains('writersNone: code-review.yml passes approve: true, but one person has write access')) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'soleWithBot')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'writers: a bot with write access is not counted, so one person and a bot are one writer' ($r.Body -and $ap.required_approving_review_count -eq 0 -and $ap.require_last_push_approval -eq $false -and $r.Output.Contains('soleWithBot: code-review.yml passes approve: true, but one person has write access')) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'writersNotJson')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'writers: an answer that is not JSON is named, and the ruleset gets no approval' ($r.Body -and $ap.required_approving_review_count -eq 0 -and $r.Output.Contains("writersNotJson: couldn't read who has write access (an answer that is not JSON)")) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'writersUnreadable')
     $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
     $unreadableNew = $r.Body -and $ap.required_approving_review_count -eq 0 -and $r.Output.Contains("writersUnreadable: couldn't read who has write access (HTTP 403")
