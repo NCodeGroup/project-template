@@ -166,3 +166,34 @@ GitHub runs 2.1 to 2.4; GitLab runs only 2.5.
 - **Do:** Run `.\tools\Set-GitLabBaseline.ps1 -Project <group/name> -WhatIf`, then run it without `-WhatIf`. Add `-Hostname` for a GitLab other than gitlab.com, or `-Path` to point at a clone. It turns on "All threads must be resolved" and "Pipelines must succeed", sets "Squash commits when merging" to "Do not allow", lets no one push to the default branch, and schedules the "Weekly dependency audit" pipeline. A .NET library adds `-BaselineToken`, which protects `v*` tags and creates the `raise-baseline` project access token (valid for a year) in the masked, protected `BASELINE_TOKEN` variable. On GitLab the other steps that apply are 0.1 (with `glab`), [section 1](#1-create-or-adopt), [4.3](#43-the-first-package-validation-baseline) and [7.1](#71-template-updates); the rest are GitHub only. See [Protect the Default Branch](../README.md#protect-the-default-branch).
 - **Check:** the `-WhatIf` run prints `already set` for every setting.
 - **Goes wrong:** a project whose CI runs no pipeline on a merge request can't merge; a protection that names users or groups (GitLab Premium) is left for Settings > Repository > Protected branches; after a year the token expires, so delete `BASELINE_TOKEN` and run the script with `-BaselineToken` again.
+
+## 3. Releases
+
+This section applies to a project whose `AGENTS.md` Landing section says `release: tag+release`, the default for a .NET library on GitHub, and not to one that says `none`.
+
+### 3.1 How a Release Happens
+
+- **Applies to:** GitHub
+- **Who:** the maintainer who merges.
+- **Where:** the plan, the pull request, the Actions tab.
+- **Do:** A plan that changes what a release ships has a `Release:` line, and its last step writes that version's `CHANGELOG.md` section (and `version.json` in a library). A plan that ships nothing has none and tags nothing ([ADR-0032](../template/docs/decisions/project-template/0032-a-plan-is-released-only-when-it-changes-what-a-release-ships.md)). On merge, `tag-release.yml` reads `release`, runs `ci.yml` on the merged commit, then tags it with the newest changelog section's version, publishes the GitHub release from that section and, for a .NET library, starts `publish.yml` ([ADR-0016](../template/docs/decisions/project-template/0016-releases-are-tagged-and-published-when-their-pull-request-merges.md.jinja)).
+- **Check:** the Actions tab's "Tag and publish release" run passed; `gh release view <tag> --repo <owner>/<name>` shows the release.
+- **Goes wrong:** a `ci.yml` without `workflow_call`, or one that asks for more than `contents: read`, stops the run; a `version.json` holding another version is refused; after a failed run, choose Re-run failed jobs on it, which tags the same commit.
+
+### 3.2 Signed Tags
+
+- **Applies to:** GitHub, public repository
+- **Who:** nobody sets it up.
+- **Where:** `tag-release.yml`.
+- **Do:** Nothing. In a public repository the tag is signed with gitsign through the job's OIDC token, with no key to keep. A private repository's tags stay unsigned ([ADR-0028](../template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md)).
+- **Check:** with gitsign installed (`https://github.com/sigstore/gitsign`), run `gitsign verify-tag --certificate-identity https://github.com/<owner>/<name>/.github/workflows/tag-release.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com <tag>`.
+- **Goes wrong:** GitHub shows the signature as Unverified, since its certificate authority isn't GitHub's; `gitsign verify-tag` is the check that counts.
+
+### 3.3 Immutable Releases
+
+- **Applies to:** GitHub
+- **Who:** the baseline (see [2.1](#21-run-the-baseline)).
+- **Where:** [2.1](#21-run-the-baseline)'s run, and `https://github.com/<owner>/<name>/releases`.
+- **Do:** The baseline turns immutable releases on, except where a default-branch workflow runs on a `release` event or uploads release assets, and with `-SkipImmutableReleases`. A .NET library's `publish.yml` and `release-provenance.yml` do, so its releases stay mutable. The baseline never turns them off, and prints the `gh api -X DELETE repos/<owner>/<name>/immutable-releases` command where they are on beside such a workflow.
+- **Check:** `gh api repos/<owner>/<name>/immutable-releases` shows `"enabled":true` where they apply; `gh release verify <tag> --repo <owner>/<name>`.
+- **Goes wrong:** an immutable release refuses a file attached after it is published; `.template/Update-Project.ps1` says to delete `SECURITY.md`'s "Releases are immutable" paragraph where they stay off.
