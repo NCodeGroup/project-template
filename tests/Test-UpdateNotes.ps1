@@ -17,9 +17,11 @@
                 tools\adopt\Adoption.psm1's copy prints the same.
       gitversioning Get-GitVersioningWorkflowNote names each job of a workflow other than publish.yml that builds,
                 packs, tests without --no-build or pushes packages with an actions/checkout step without
-                fetch-depth: 0 or with a -p:Version argument when version.json exists, and says nothing for full
-                history, a flow mapping, --no-build, a job that doesn't build, publish.yml or a project without
-                version.json.
+                fetch-depth: 0 or with a -p:Version argument when version.json exists, and says nothing for a checkout
+                whose folder holds no build step's working directory (its working-directory:, else the job's
+                defaults:, else the workflow's; a path: or working-directory: may be quoted or start with ./ or
+                ${{ github.workspace }}/), for full history, a flow mapping, --no-build, a job that doesn't build,
+                publish.yml or a project without version.json.
                 tools\adopt\Adoption.psm1's copy prints the same.
       publisher Get-NuGetPublisherAnswer names the workflows other than publish.yml that run nuget push, joined with
                 ", ", when the library has no publish.yml, and is blank beside a publish.yml, without such a workflow or
@@ -31,7 +33,8 @@
                 the badge, and nothing when README.md has it or the answer is unset.
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.5.0, passes
                 no approve: true or passes it without approver-private-key, and an AGENTS.md Landing section that
-                doesn't say draft: yes, and says nothing for a current setup or a project without code-review.yml.
+                doesn't say draft: yes, says when ADR-0009's cooldown lets a project adopt v1.5.0, and says nothing
+                for a current setup or a project without code-review.yml.
       immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
                 for an upload named only in a comment line.
@@ -185,6 +188,17 @@ $gitVersioningNote = & {
         'named step'             = @{ Text = $head + "      - name: Check out`n        uses: actions/checkout@v4`n        with:`n          persist-credentials: false`n      - run: dotnet test`n"; Want = @('job build: actions/checkout without fetch-depth: 0') }
         'tests without a build'  = @{ Text = $head + "      - uses: actions/checkout@v4`n      - run: dotnet test --no-build`n"; Want = @() }
         'other job'              = @{ Text = "on: push`njobs:`n  lint:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n      - run: npm run lint`n  pack:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n        with:`n          fetch-depth: 0`n      - run: dotnet pack`n"; Want = @() }
+        'checkout no build runs in'            = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          path: current`n          persist-credentials: false`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - name: Rebuild`n        working-directory: rebuild`n        run: dotnet pack --configuration Release`n      - run: ./current/build/Compare-Packages.ps1`n"; Want = @() }
+        'build in a nested checkout'           = @{ Text = $head + "      - uses: actions/checkout@v4`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - working-directory: rebuild`n        run: dotnet build`n"; Want = @() }
+        'job default working directory'        = @{ Text = "on: push`njobs:`n  build:`n    runs-on: ubuntu-latest`n    defaults:`n      run:`n        working-directory: ./rebuild/`n    steps:`n      - uses: actions/checkout@v4`n        with: { path: current }`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - run: dotnet pack`n"; Want = @() }
+        'workflow default working directory'   = @{ Text = "on: push`ndefaults:`n  run:`n    working-directory: rebuild`njobs:`n  build:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n        with:`n          path: current`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - run: dotnet pack`n"; Want = @() }
+        'shallow checkout a build runs in'     = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          path: current`n          fetch-depth: 0`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n      - working-directory: rebuild/src`n        run: dotnet build`n"; Want = @('.github/workflows/main.yml, job build: actions/checkout (path: rebuild) without fetch-depth: 0'); Not = @('(path: current)') }
+        'build outside every checkout'         = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          path: current`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - run: dotnet build rebuild/x.sln`n"; Want = @('job build: actions/checkout (path: current) without fetch-depth: 0') }
+        'working directory from an expression' = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          path: current`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n          fetch-depth: 0`n      - working-directory: `${{ inputs.folder }}`n        run: dotnet build`n"; Want = @('job build: actions/checkout (path: current) without fetch-depth: 0') }
+        'job default over workflow default'    = @{ Text = "on: push`ndefaults:`n  run:`n    working-directory: current`njobs:`n  build:`n    runs-on: ubuntu-latest`n    defaults:`n      run:`n        working-directory: rebuild`n    steps:`n      - uses: actions/checkout@v4`n        with:`n          path: current`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n      - run: dotnet pack`n"; Want = @('.github/workflows/main.yml, job build: actions/checkout (path: rebuild) without fetch-depth: 0'); Not = @('(path: current)') }
+        'step directory over job default'      = @{ Text = "on: push`njobs:`n  build:`n    runs-on: ubuntu-latest`n    defaults:`n      run:`n        working-directory: current`n    steps:`n      - uses: actions/checkout@v4`n        with:`n          path: current`n      - uses: actions/checkout@v4`n        with:`n          path: rebuild`n      - working-directory: rebuild`n        run: dotnet build`n"; Want = @('.github/workflows/main.yml, job build: actions/checkout (path: rebuild) without fetch-depth: 0'); Not = @('(path: current)') }
+        'quoted ./ checkout path'              = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          path: current`n      - uses: actions/checkout@v4`n        with:`n          path: './rebuild/'`n      - working-directory: rebuild`n        run: dotnet build`n"; Want = @('.github/workflows/main.yml, job build: actions/checkout (path: rebuild) without fetch-depth: 0'); Not = @('(path: current)') }
+        'directory under github.workspace'     = @{ Text = $head + "      - uses: actions/checkout@v4`n        with:`n          path: current`n      - uses: actions/checkout@v4`n        with:`n          path: `"rebuild`"`n      - working-directory: '`${{ github.workspace }}/rebuild/src'`n        run: dotnet build`n"; Want = @('.github/workflows/main.yml, job build: actions/checkout (path: rebuild) without fetch-depth: 0'); Not = @('(path: current)') }
         'publish.yml'            = @{ Text = $shallow; File = 'publish.yml'; Want = @() }
         'no version.json'        = @{ Text = $shallow; VersionJson = $false; Want = @() }
     }
@@ -200,7 +214,8 @@ $gitVersioningNote = & {
         finally { Pop-Location }
         if ($case.Want.Count) {
             $missing = @($case.Want | Where-Object { -not $note.Contains($_) })
-            Check "gitversioning: $name" (-not $missing.Count) "missing [$($missing -join '], [')] in [$note]"
+            $unwanted = @($case.Not | Where-Object { $_ -and $note.Contains($_) })
+            Check "gitversioning: $name" (-not $missing.Count -and -not $unwanted.Count) "missing [$($missing -join '], [')], unwanted [$($unwanted -join '], [')] in [$note]"
         }
         else { Check "gitversioning: $name" (-not $note.Trim()) "got [$note]" }
         Check "gitversioning: ${name}: the adoption prints the same note" ($adoptNote -eq $note) "update [$note], adopt [$adoptNote]"
@@ -308,7 +323,7 @@ $codeReviewNote = & {
     $pin = 'NCodeGroup/code-review@0123456789abcdef0123456789abcdef01234567'
     $review = { param([string]$Tag, [bool]$Approve) "jobs:`n  review:`n    steps:`n      - uses: $pin # $Tag`n        with:`n$(if ($Approve) { "          approve: true`n          approver-private-key: `${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}`n" })" }
     $reviewCases = [ordered]@{
-        'old pin, no approve, draft no' = @{ Workflow = (& $review 'v1.3.0' $false); Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @('pins NCodeGroup/code-review v1.3.0', 'passes no approve: true', 'says draft: no', 'Set-RepositoryBaseline.ps1 again'); Not = @() }
+        'old pin, no approve, draft no' = @{ Workflow = (& $review 'v1.3.0' $false); Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @('pins NCodeGroup/code-review v1.3.0', 'passes no approve: true', 'says draft: no', 'Set-RepositoryBaseline.ps1 again', 'adopts it from 2026-11-24', 'commented exception'); Not = @() }
         'current'                       = @{ Workflow = (& $review 'v1.5.0' $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
         'newer, two jobs'               = @{ Workflow = (& $review 'v1.10.0' $true) + "      - uses: $pin # v1.12.1`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
         'no draft line'                 = @{ Workflow = (& $review 'v1.5.0' $true); Agents = "# P`n`n## Landing`n`n- integrate: pull-request`n"; Want = @('has no draft line'); Not = @('pins', 'passes no approve') }

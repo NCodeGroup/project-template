@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.111.3] - 2026-11-21
+
+### Fixed
+
+- The template's `code-review.yml` pins NCode Review v1.5.0, released on 2026-11-21, by ADR-0009's commented exception until its three-day cooldown ends on 2026-11-24, and the NCode Review note `.template/Update-Project.ps1` prints says a project adopts v1.5.0 from that day, or sooner only by such an exception ([#464](https://github.com/NCodeGroup/project-template/issues/464), [ADR-0009](template/docs/decisions/project-template/0009-new-dependency-versions-wait-a-cooldown.md)).
+- `.template/Update-Project.ps1` and `Adopt-Project.ps1` name a shallow `actions/checkout` of a job that builds with Nerdbank.GitVersioning only when a build step runs in its folder, by the step's `working-directory:` or the job's or workflow's `defaults:`, and give a named checkout's `path:`, so a checkout such as `path: current` beside a build with `working-directory: rebuild` is no longer flagged ([#465](https://github.com/NCodeGroup/project-template/issues/465), [ADR-0138](template/docs/decisions/project-template/0138-package-versions-come-from-version-json-through-nerdbank-gitversioning.md)).
+
 ## [0.111.2] - 2026-11-21
 
 ### Added
@@ -1817,7 +1824,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.111.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.111.3...HEAD
+[0.111.3]: https://github.com/NCodeGroup/project-template/compare/v0.111.2...v0.111.3
 [0.111.2]: https://github.com/NCodeGroup/project-template/compare/v0.111.1...v0.111.2
 [0.111.1]: https://github.com/NCodeGroup/project-template/compare/v0.111.0...v0.111.1
 [0.111.0]: https://github.com/NCodeGroup/project-template/compare/v0.110.0...v0.111.0
