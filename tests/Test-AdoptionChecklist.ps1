@@ -196,6 +196,11 @@ New-Fixture (Join-Path $Work 'bare') @{ 'README.md' = '# Bare' } @('Initial comm
 $calls = @{
     'gh api repos/NCodeGroup/sample' = Answer (Json @{ visibility = 'public'; default_branch = 'main'; owner = @{ type = 'Organization' } })
     'gh api repos/someone/private-sample' = Answer (Json @{ visibility = 'private'; default_branch = 'main'; owner = @{ type = 'User' } })
+    'gh auth status' = Answer $null
+    'glab auth status --hostname gitlab.com' = Answer $null
+    'copier --version' = Answer 'copier 9.4.1'
+    'node --version' = Answer 'v26.1.0'
+    'glab api --hostname gitlab.com projects/group%2Fsub%2Fsample' = Answer '{}'
 }
 
 $savedPath = $env:PATH
@@ -227,6 +232,18 @@ try {
 
     $bare = Invoke-Checklist (Join-Path $Work 'bare') $calls
     Check 'frame: a folder without .copier-answers.yml fails' ($bare.ExitCode -eq 1 -and $bare.Output -match [regex]::Escape('.copier-answers.yml')) "exit=$($bare.ExitCode) output=$($bare.Output)"
+
+    # Rows a clone shows: 0.1, 1.1, 1.2, 1.3, 4.3, 6.1, 7.1
+    foreach ($row in @(
+            @('0.1', 'done', 'github', $gh), @('1.1', 'done', 'github', $gh), @('1.3', 'done', 'github', $gh),
+            @('4.3', 'done', 'github', $gh), @('6.1', 'done', 'github', $gh), @('7.1', 'done', 'github', $gh),
+            @('1.2', 'done', 'private', $pr), @('6.1', 'not done', 'private', $pr), @('7.1', 'not done', 'private', $pr),
+            @('0.1', 'done', 'gitlab', $gl), @('1.1', 'done', 'gitlab', $gl), @('1.3', 'not done', 'gitlab', $gl),
+            @('4.3', 'not done', 'gitlab', $gl))) {
+        $step, $want, $label, $run = $row
+        Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
+    }
+    Check 'row 6.1 not done: private exits 1' ($pr.ExitCode -eq 1) "exit=$($pr.ExitCode) output=$($pr.Output)"
 }
 finally {
     $env:PATH = $savedPath

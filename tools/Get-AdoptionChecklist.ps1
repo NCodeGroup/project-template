@@ -220,8 +220,118 @@ function Get-NotApplying([string]$Step) {
     $null
 }
 
+# Reads a template version, v<major>.<minor>.<patch> or shorter, as Get-TemplateUpdate.ps1 does; $null when it isn't one.
+function ConvertTo-TemplateVersion([string]$Text) {
+    if ($Text -notmatch '^v?(\d+(?:\.\d+){0,3})$') { return $null }
+    $parts = @($Matches[1] -split '\.')
+    while ($parts.Count -lt 3) { $parts += '0' }
+    [version]($parts -join '.')
+}
+
 # Row checks
 $checks = @{}
+
+$checks['0.1'] = {
+    $parts = @()
+    $auth = if ($gitHost -eq 'gitlab') { Invoke-Tool 'glab' @('auth', 'status', '--hostname', $hostName) }
+    else { Invoke-Tool 'gh' @('auth', 'status') }
+    if ($auth.ExitCode) {
+        $tool = if ($gitHost -eq 'gitlab') { 'glab' } else { 'gh' }
+        $why = if ($auth.ExitCode -eq -1) { $auth.Error } else { "$tool isn't signed in" }
+        $parts += New-Result 'not done' $why
+    }
+    $copier = Invoke-Tool 'copier' @('--version')
+    if ($copier.ExitCode) { $parts += New-Result 'not done' "copier: $($copier.Error)" }
+    if (-not ($PSVersionTable.PSVersion -ge [version]'7.4')) {
+        $parts += New-Result 'not done' "PowerShell $($PSVersionTable.PSVersion) is older than 7.4"
+    }
+    $email = Invoke-Tool 'git' @('-C', $Path, 'config', 'user.email')
+    if (-not $email.Out.Trim()) { $parts += New-Result 'not done' 'git has no user.email' }
+    Join-Result (@($parts) + (New-Result 'done'))
+}
+
+$checks['1.1'] = {
+    $version = "$(Get-FileText '.template-version')".Trim()
+    if (-not $version) { return New-Result 'not done' 'no .template-version' }
+    if ($gitHost -eq 'gitlab') {
+        $r = Invoke-Tool 'glab' @('api', '--hostname', $hostName, "projects/$encoded")
+        if ($r.ExitCode) { throw "couldn't read ${project}: $($r.Error)" }
+    }
+    else { $null = Get-Repo }
+    New-Result 'done' "template $version"
+}
+
+$checks['1.2'] = {
+    $subject = @(git -C $Path log --format=%s) | Where-Object { "$_".StartsWith('Adopt project-template ') } |
+        Select-Object -First 1
+    if ($subject) { New-Result 'done' "$subject" }
+    else { New-Result 'not done' "no 'Adopt project-template' commit" }
+}
+
+$checks['1.3'] = {
+    $text = Get-FileText '.node-version'
+    if (-not $text) { return New-Result 'not done' 'no .node-version' }
+    $major = (("$text".Trim() -split '\r?\n')[0] -replace '^v') -replace '\..*$'
+    $r = Invoke-Tool $pwsh @('-NoProfile', '-Command', '. ./.template/Use-Node.ps1; node --version') -WorkingDirectory $Path
+    $node = if ($r.Out) { @($r.Out -split "`n")[-1].Trim() } else { '' }
+    if (-not $r.ExitCode -and $node -and (($node -replace '^v') -replace '\..*$') -eq $major) {
+        return New-Result 'done' "node $node"
+    }
+    $seen = if ($r.ExitCode -or -not $node) { "$($r.Error)".Trim() } else { $node }
+    if (-not $seen) { $seen = "exit $($r.ExitCode)" }
+    New-Result 'not done' "node $seen doesn't match .node-version $major"
+}
+
+$checks['4.3'] = {
+    $tag = Get-StableTag
+    if (-not $tag) { return New-Result 'done' 'no stable release yet, so no baseline is due' }
+    $r = Invoke-Tool 'git' @('-C', $Path, 'grep', '-l', 'PackageValidationBaselineVersion')
+    if ($r.ExitCode -gt 1 -or $r.ExitCode -lt 0) { throw "git grep failed: $($r.Error)" }
+    $files = @($r.Out -split "`n" | Where-Object { $_.Trim() })
+    if (-not $r.ExitCode -and $files) { return New-Result 'done' "set in $($files -join ', ')" }
+    New-Result 'not done' "$tag is released and nothing sets PackageValidationBaselineVersion"
+}
+
+$checks['6.1'] = {
+    $id = Get-Answer 'best_practices_project'
+    if (-not $id) { return New-Result 'not done' 'not registered: no best_practices_project answer' }
+    $badge = "https://www.bestpractices.dev/projects/$id/badge"
+    if (-not "$(Get-FileText 'README.md')".Contains($badge)) {
+        return New-Result 'not done' "README.md doesn't show the badge"
+    }
+    New-Result 'done' "project $id"
+}
+
+$checks['7.1'] = {
+    $versionFile = Get-FileText '.template-version'
+    $currentText = if ($null -ne $versionFile) { "$(@($versionFile -split '\r?\n')[0])".Trim() } else { Get-Answer '_commit' }
+    # A version between tags, such as v0.12.0-3-gabc1234, is the tag before the first dash.
+    $currentTag = "$currentText" -replace '-.*$'
+    $current = ConvertTo-TemplateVersion $currentTag
+    if (-not $current) { throw "can't read the project's template version from .template-version ('$currentText')" }
+    $src = Get-Answer '_src_path'
+    if (-not $src) { throw '.copier-answers.yml has no _src_path' }
+    # Copier's shorthands, and the template's old address, which GitHub only redirects, as Get-TemplateUpdate.ps1 reads them.
+    if ($src -match '^gh:(.+)$') { $src = "https://github.com/$($Matches[1])" }
+    elseif ($src -match '^gl:(.+)$') { $src = "https://gitlab.com/$($Matches[1])" }
+    if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?$') {
+        $src = 'https://github.com/NCodeGroup/project-template.git'
+    }
+    $r = Invoke-Tool 'git' @('ls-remote', '--tags', '--refs', '--', $src)
+    if ($r.ExitCode) { return New-Result 'unreadable' "couldn't read the template's tags at ${src}: $($r.Error)" }
+    $newest = $null
+    foreach ($ref in $r.Out -split "`n") {
+        if ($ref -match 'refs/tags/(.+)$') {
+            $version = ConvertTo-TemplateVersion $Matches[1]
+            if ($version -and (-not $newest -or $version -gt $newest.Version)) {
+                $newest = [pscustomobject]@{ Tag = $Matches[1]; Version = $version }
+            }
+        }
+    }
+    if (-not $newest) { return New-Result 'unreadable' "the template at $src has no version tags" }
+    if ($newest.Version -le $current) { return New-Result 'done' "on $currentTag" }
+    New-Result 'not done' "$($newest.Tag) is out; the project is on $currentTag"
+}
 
 $counts = @{ 'done' = 0; 'not done' = 0; 'unreadable' = 0; 'does not apply' = 0 }
 foreach ($row in $rows) {
