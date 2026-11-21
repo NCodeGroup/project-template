@@ -246,6 +246,40 @@ function Get-BaselineLines {
     @($run.Lines)
 }
 
+# The names of the secrets of the code-review environment; none when the environment doesn't exist (a 404).
+function Get-EnvSecretNames {
+    Get-Cached 'envSecrets' {
+        $list = Read-Gh @('secret', 'list', '--env', 'code-review', '--repo', $slug, '--json', 'name') -Missing
+        @($list | ForEach-Object { $_.name })
+    }
+}
+
+# The workflow that runs NCode Review, and whether it passes approve: true and the approver's private key.
+$reviewFile = Get-FileText '.github/workflows/code-review.yml'
+$approve = "$reviewFile" -match 'approve:\s*true'
+$approverKey = "$reviewFile" -match 'approver-private-key:\s*\S'
+
+# The approvals the default branch's pull request rule requires; $null when no rule requires a pull request.
+function Get-RequiredApprovals {
+    Get-Cached 'requiredApprovals' {
+        $rules = Read-Gh @('api', "repos/$slug/rules/branches/$((Get-Repo).default_branch)")
+        $rule = @($rules) | Where-Object { $_.type -eq 'pull_request' } | Select-Object -First 1
+        if ($rule) { [int]$rule.parameters.required_approving_review_count }
+    }
+}
+
+# The approvals the baseline requires (ADR-0034, ADR-0036): 1 when NCode Review approves with the approver's key, or
+# when approve: true and a second person can push; else 0.
+function Get-ExpectedApprovals {
+    if ($approve -and $approverKey -and ('NCODE_REVIEW_APPROVER_PRIVATE_KEY' -in @(Get-EnvSecretNames))) { return 1 }
+    if ($approve) {
+        $people = @(Read-Gh @('api', "repos/$slug/collaborators?affiliation=all&permission=push&per_page=100") |
+                Where-Object { $_.type -eq 'User' })
+        if ($people.Count -ge 2) { return 1 }
+    }
+    0
+}
+
 # Row checks
 $checks = @{}
 
@@ -354,6 +388,48 @@ $checks['2.4'] = {
     if ($run.ExitCode) { return New-Result 'unreadable' (Get-LastLine $run) }
     $would = @($run.Lines | Where-Object { $_ -like '*would dismiss*' })
     if ($would.Count) { New-Result 'not done' "would dismiss $($would.Count) alert(s)" }
+    else { New-Result 'done' }
+}
+
+$checks['2.2'] = {
+    $count = Get-RequiredApprovals
+    if ($null -eq $count) { return New-Result 'not done' "no rule requires a pull request on $((Get-Repo).default_branch)" }
+    $expected = Get-ExpectedApprovals
+    if ($count -eq $expected) { New-Result 'done' "requires $count approval(s)" }
+    else { New-Result 'not done' "requires $count approval(s), expected $expected" }
+}
+
+$checks['5.2'] = {
+    $count = Get-RequiredApprovals
+    if ($null -eq $count) { return New-Result 'not done' "no rule requires a pull request on $((Get-Repo).default_branch)" }
+    if ($count -eq 1) { New-Result 'done' }
+    else { New-Result 'not done' "requires $count approval(s), expected 1" }
+}
+
+$checks['2.3'] = {
+    $setup = Read-Gh @('api', "repos/$slug/code-scanning/default-setup")
+    $languages = @($setup.languages | Where-Object { $_ })
+    if ($setup.state -eq 'configured' -and $languages.Count) { return New-Result 'done' "configured: $($languages -join ', ')" }
+    $analyzing = if ($languages.Count) { $languages -join ', ' } else { 'no language' }
+    New-Result 'not done' "$($setup.state), analyzing $analyzing"
+}
+
+$checks['5.1'] = {
+    $parts = @()
+    if ('NCODE_REVIEW_APPROVER_PRIVATE_KEY' -notin @(Get-EnvSecretNames)) {
+        $parts += New-Result 'not done' 'the code-review environment has no NCODE_REVIEW_APPROVER_PRIVATE_KEY'
+    }
+    if (-not ($approve -and $approverKey)) {
+        $parts += New-Result 'not done' ".github/workflows/code-review.yml doesn't pass approve: true and approver-private-key"
+    }
+    Join-Result (@($parts) + (New-Result 'done'))
+}
+
+$checks['0.3'] = {
+    $list = Read-Gh @('secret', 'list', '--org', $owner, '--json', 'name')
+    $names = @($list | ForEach-Object { $_.name })
+    $missing = @('NCODE_REVIEW_APP_PRIVATE_KEY', 'AWS_BEARER_TOKEN_BEDROCK' | Where-Object { $_ -notin $names })
+    if ($missing.Count) { New-Result 'not done' "missing $($missing -join ', ')" }
     else { New-Result 'done' }
 }
 

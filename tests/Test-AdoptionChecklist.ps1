@@ -208,6 +208,12 @@ $calls = @{
     'Set-RepositoryBaseline -OrganizationPolicy -Owner NCodeGroup -WhatIf' = Answer 'NCodeGroup: default workflow token read-only, and Actions not approving pull requests: already set'
     'Dismiss-ScorecardAlerts -Repo NCodeGroup/sample -WhatIf' = Answer 'NCodeGroup/sample: no open Scorecard alert'
     'Set-RepositoryBaseline -Repo private-sample -Owner someone -WhatIf' = Answer 'private-sample: allow auto-merge: would set'
+    'gh api repos/NCodeGroup/sample/rules/branches/main' = Answer (Json @(@{ type = 'pull_request'; parameters = @{ required_approving_review_count = 1 } }))
+    'gh secret list --env code-review --repo NCodeGroup/sample --json name' = Answer (Json @(@{ name = 'NCODE_REVIEW_APPROVER_PRIVATE_KEY' }))
+    'gh api repos/NCodeGroup/sample/code-scanning/default-setup' = Answer (Json @{ state = 'configured'; languages = @('csharp', 'actions') })
+    'gh secret list --org NCodeGroup --json name' = Answer (Json @(@{ name = 'NCODE_REVIEW_APP_PRIVATE_KEY' }, @{ name = 'AWS_BEARER_TOKEN_BEDROCK' }))
+    'gh api repos/someone/private-sample/rules/branches/main' = Answer (Json @(@{ type = 'pull_request'; parameters = @{ required_approving_review_count = 1 } }))
+    'gh api repos/someone/private-sample/code-scanning/default-setup' = Answer (Json @{ state = 'not-configured'; languages = @() })
 }
 
 $savedPath = $env:PATH
@@ -270,6 +276,22 @@ try {
             @('2.4', 'not done', 'bad', $bad),
             @('2.1', 'unreadable', 'broken', $broken), @('3.3', 'unreadable', 'broken', $broken),
             @('0.2', 'unreadable', 'broken', $broken))) {
+        $step, $want, $label, $run = $row
+        Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
+    }
+
+    # Rows the approval, CodeQL and NCode Review secrets show: 2.2, 5.2, 2.3, 5.1, 0.3
+    $nokey = Invoke-Override (Join-Path $Work 'github') @{
+        'gh secret list --env code-review --repo NCodeGroup/sample --json name' = Answer $null 1 'gh: Not Found (HTTP 404)'
+        'gh api repos/NCodeGroup/sample/collaborators?affiliation=all&permission=push&per_page=100' = Answer (Json @(@{ login = 'a'; type = 'User' }, @{ login = 'b'; type = 'Bot' }))
+        'gh secret list --org NCodeGroup --json name' = Answer $null 1 'gh: Forbidden (HTTP 403)'
+    }
+    foreach ($row in @(
+            @('2.2', 'done', 'github', $gh), @('5.2', 'done', 'github', $gh), @('2.3', 'done', 'github', $gh),
+            @('5.1', 'done', 'github', $gh), @('0.3', 'done', 'github', $gh),
+            @('2.2', 'not done', 'private', $pr), @('2.3', 'not done', 'private', $pr),
+            @('5.1', 'not done', 'nokey', $nokey), @('2.2', 'not done', 'nokey', $nokey),
+            @('0.3', 'unreadable', 'nokey', $nokey))) {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
