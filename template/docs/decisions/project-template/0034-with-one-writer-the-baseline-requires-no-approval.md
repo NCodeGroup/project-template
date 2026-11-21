@@ -32,7 +32,8 @@ NCodeGroup/PropertyBag scored 10 for Code-Review and 4 for Branch-Protection.
    an earlier "Protect main" that requires an approval turns both settings off and says so (`require no approval and no
    approval of the last push, which block every merge while one person has write access`): a plain run changes only
    those settings and conversation resolution, `-RequireChecks` writes them off in the whole ruleset, and `-WhatIf`
-   says it would. Where GitHub refuses the change on a plain run, the run reports it with the same command and goes on.
+   says it would. Where GitHub refuses the change on a plain run, the run reports it, prints the command that turns
+   both settings off in it, as decision 5 does for a ruleset of the owner's, and goes on.
 3. With two such users or more, ADR-0022 holds as written: one approval, of the last push, where `approve: true`.
    The approval that meets it is another writer's: NCode Review's approval never counts toward it, and counts for
    Scorecard's Code-Review.
