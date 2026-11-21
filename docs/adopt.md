@@ -203,7 +203,7 @@ This section applies to a project whose `AGENTS.md` Landing section says `releas
 
 ## 4. .NET Libraries on nuget.org
 
-This section is for a .NET library on GitHub with the template's `publish.yml`, whose header ([publish.yml](../template/.github/workflows/publish.yml)) describes the setup. A library whose own workflow runs `nuget push` keeps its own setup.
+This section is for a .NET library on GitHub with the template's `publish.yml`, whose header ([publish.yml](../template/.github/workflows/publish.yml)) describes the setup. A library whose own workflow runs `nuget push` keeps its own setup. On GitLab, only [4.3](#43-the-first-package-validation-baseline) applies, as [2.5](#25-on-gitlab) says.
 
 ### 4.1 Trusted Publishing on nuget.org
 
