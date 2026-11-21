@@ -31,7 +31,8 @@
                 the badge, and nothing when README.md has it or the answer is unset.
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.5.0, passes
                 no approve: true or passes it without approver-private-key, and an AGENTS.md Landing section that
-                doesn't say draft: yes, and says nothing for a current setup or a project without code-review.yml.
+                doesn't say draft: yes, says when ADR-0009's cooldown lets a project adopt v1.5.0, and says nothing
+                for a current setup or a project without code-review.yml.
       immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
                 for an upload named only in a comment line.
@@ -308,7 +309,7 @@ $codeReviewNote = & {
     $pin = 'NCodeGroup/code-review@0123456789abcdef0123456789abcdef01234567'
     $review = { param([string]$Tag, [bool]$Approve) "jobs:`n  review:`n    steps:`n      - uses: $pin # $Tag`n        with:`n$(if ($Approve) { "          approve: true`n          approver-private-key: `${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}`n" })" }
     $reviewCases = [ordered]@{
-        'old pin, no approve, draft no' = @{ Workflow = (& $review 'v1.3.0' $false); Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @('pins NCodeGroup/code-review v1.3.0', 'passes no approve: true', 'says draft: no', 'Set-RepositoryBaseline.ps1 again'); Not = @() }
+        'old pin, no approve, draft no' = @{ Workflow = (& $review 'v1.3.0' $false); Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @('pins NCodeGroup/code-review v1.3.0', 'passes no approve: true', 'says draft: no', 'Set-RepositoryBaseline.ps1 again', 'adopts it from 2026-11-24', 'commented exception'); Not = @() }
         'current'                       = @{ Workflow = (& $review 'v1.5.0' $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
         'newer, two jobs'               = @{ Workflow = (& $review 'v1.10.0' $true) + "      - uses: $pin # v1.12.1`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
         'no draft line'                 = @{ Workflow = (& $review 'v1.5.0' $true); Agents = "# P`n`n## Landing`n`n- integrate: pull-request`n"; Want = @('has no draft line'); Not = @('pins', 'passes no approve') }
