@@ -357,3 +357,44 @@ This section is for a GitHub project with NCode Review, after [0.3](#03-ncode-re
 - **Do:** `/ship-plan` makes `follow-up` the first time it files a follow-up. The template-update workflow makes `template-update` with its first notice. `documentation` is one of GitHub's default labels, which `/plan-issue` reads as a docs plan. A repository whose default labels were deleted makes it with `gh label create documentation --repo <owner>/<name>`.
 - **Check:** `gh label list --repo <owner>/<name>`.
 - **Goes wrong:** nothing beyond the deleted label.
+
+## 7. Stay Current
+
+See [Update a Project](../README.md#update-a-project) and [Stay Current](../README.md#stay-current) in the README for the reference.
+
+### 7.1 Template Updates
+
+- **Applies to:** every project
+- **Who:** a maintainer.
+- **Where:** the project.
+- **Do:** On GitHub, `template-update.yml` keeps one open issue labeled `template-update`, "Update to project-template <version>", every Monday at 07:00 UTC. Run `/plan-issue <number>` on it, or `/plan-template-update`, or `.\.template\Update-Project.ps1` on a branch of its own. The update also says what a `code-review.yml` lacks (a pin before v1.5.0, `approve: true`, `approver-private-key`) and a missing `draft: yes`. On GitLab there is no notice: `copier check-update` in the project tells.
+- **Check:** `gh issue list --label template-update --state open --repo <owner>/<name>` lists nothing once the project is current.
+- **Goes wrong:** an update that conflicts stops with the files to fix (see [Resolve a Conflict](../README.md#resolve-a-conflict)).
+
+### 7.2 Dependabot
+
+- **Applies to:** GitHub
+- **Who:** a maintainer merges.
+- **Where:** the repository's pull requests; `.github/dependabot.yml`.
+- **Do:**
+  - `.github/dependabot.yml` opens a weekly grouped pull request per ecosystem for versions at least three days old, its cooldown, and security updates in their own.
+  - A minor or patch bump of the NCode Review pin comes alone and merges itself through `code-review-auto-merge.yml` once the required checks pass, which needs "Allow auto-merge" (see [2.1](#21-run-the-baseline)).
+  - Where an approval is required, a maintainer approves it, since NCode Review skips bots.
+  - A major release and every other update wait for a person.
+  - No new .NET SDK major is offered.
+- **Check:** the repository's Insights > Dependency graph > Dependabot shows recent checks.
+- **Goes wrong:** a CI pin moved in both the template and the project conflicts on update, so keep the newer version.
+
+### 7.3 Rotate a Key
+
+- **Applies to:** GitHub, with NCode Review
+- **Who:** an organization owner.
+- **Where:** the app's settings page, `https://github.com/organizations/<org>/settings/apps/<app>`, and NCodeGroup/code-review's clone.
+- **Do:**
+  - Generate a new private key.
+  - Store it: the NCode Review app's with `.\tools\Enable-CodeReview.ps1 -AppPrivateKeyPath <pem>`, the approver's with `-Repo <every repository that uses it> -ApproverPrivateKeyPath <pem>`.
+  - Delete the `.pem` from disk.
+  - Only after every repository has the new key, delete the old key on the app's page.
+  - Never keep a `.pem` on disk: GitHub keeps the secret, a new key can be generated at any time, and a leaked approver key can mint a Contents: write token for every repository the approver is installed on ([ADR-0036](../template/docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)).
+- **Check:** the app's page lists only the new key; the check in [5.3](#53-check-the-approval) passes on the next review.
+- **Goes wrong:** deleting the old key before every repository has the new one stops their reviews from approving.
