@@ -584,6 +584,66 @@ $checks['5.4'] = {
 
 $checks['6.4'] = { Get-LatestRun 'copilot-setup-steps.yml' }
 
+$checks['4.1'] = {
+    New-Result 'unreadable' 'only https://www.nuget.org/account/trustedpublishing lists the policy'
+}
+
+$checks['4.2'] = {
+    $parts = @()
+    $policies = Read-Gh @('api', "repos/$slug/environments/nuget/deployment-branch-policies") -Missing
+    if ($null -eq $policies) {
+        $parts += New-Result 'not done' 'no nuget environment with selected branches and tags'
+    }
+    else {
+        $entries = @(@($policies.branch_policies) | Where-Object { $_ } | ForEach-Object {
+                $type = if ($_.type) { $_.type } else { 'branch' }
+                "$type $($_.name)"
+            })
+        $wanted = @("branch $((Get-Repo).default_branch)", 'tag v*')
+        $missing = @($wanted | Where-Object { $_ -notin $entries })
+        if ($missing.Count) { $parts += New-Result 'not done' "missing $($missing -join ', ')" }
+    }
+    $variables = @(Read-Gh @('variable', 'list', '--repo', $slug, '--json', 'name') | ForEach-Object { $_.name })
+    if ('NUGET_USER' -notin $variables) { $parts += New-Result 'not done' 'no NUGET_USER variable' }
+    Join-Result (@($parts) + (New-Result 'done'))
+}
+
+$checks['4.4'] = { Get-LatestRun 'publish.yml' }
+
+$checks['4.5'] = {
+    $r = Get-LatestRun 'publish.yml'
+    New-Result $r.Status "as 4.4: $($r.Detail)"
+}
+
+$checks['4.6'] = {
+    $tag = Get-StableTag
+    if (-not $tag) { return New-Result 'done' 'no stable release yet' }
+    $version = "$tag" -replace '^v'
+    $pulls = @(Read-Gh @('pr', 'list', '--repo', $slug, '--head', "baseline-$version", '--state', 'merged', '--json', 'number'))
+    if ($pulls.Count) { New-Result 'done' "#$($pulls[0].number) merged" }
+    else { New-Result 'not done' "no merged pull request from baseline-$version" }
+}
+
+$checks['4.7'] = {
+    $view = Get-ReleaseView
+    if ($view.ExitCode) {
+        if ($view.Error -match 'not found') { return New-Result 'not done' 'no release yet' }
+        $why = if ($view.Error) { $view.Error } else { "gh exited $($view.ExitCode)" }
+        return New-Result 'unreadable' "gh release view failed: $why"
+    }
+    $release = $view.Out | ConvertFrom-Json
+    $tag = "$($release.tagName)"
+    $assets = @(@($release.assets) | ForEach-Object { "$($_.name)" })
+    $missing = @()
+    if (-not @($assets | Where-Object { $_.EndsWith('.nupkg') })) { $missing += 'a .nupkg' }
+    if (-not @($assets | Where-Object { $_.EndsWith('.snupkg') })) { $missing += 'a .snupkg' }
+    foreach ($suffix in 'intoto.jsonl', 'spdx.json') {
+        if ("$tag.$suffix" -notin $assets) { $missing += "$tag.$suffix" }
+    }
+    if ($missing.Count) { return New-Result 'not done' "$tag lacks $($missing -join ', ')" }
+    New-Result 'done' "$tag has its packages, provenance and SBOM"
+}
+
 $counts = @{ 'done' = 0; 'not done' = 0; 'unreadable' = 0; 'does not apply' = 0 }
 foreach ($row in $rows) {
     try {

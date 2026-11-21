@@ -232,6 +232,13 @@ $calls = @{
     'gh pr list --repo someone/private-sample --state merged --limit 20 --json number,author' = Answer '[]'
     'glab api --hostname gitlab.com projects/group%2Fsub%2Fsample/merge_requests?state=merged&order_by=updated_at&per_page=1' = Answer (Json @(@{ iid = 4 }))
     'glab api --hostname gitlab.com projects/group%2Fsub%2Fsample/merge_requests/4' = Answer (Json @{ head_pipeline = @{ status = 'failed' } })
+    'gh api repos/NCodeGroup/sample/environments/nuget/deployment-branch-policies' = Answer (Json @{
+            total_count = 2
+            branch_policies = @(@{ name = 'main'; type = 'branch' }, @{ name = 'v*'; type = 'tag' })
+        })
+    'gh variable list --repo NCodeGroup/sample --json name' = Answer (Json @(@{ name = 'NUGET_USER' }))
+    'gh run list --repo NCodeGroup/sample --workflow publish.yml --limit 1 --json conclusion,status' = Answer (Json @(@{ conclusion = 'success'; status = 'completed' }))
+    'gh pr list --repo NCodeGroup/sample --head baseline-1.0.0 --state merged --json number' = Answer (Json @(@{ number = 14 }))
 }
 
 $savedPath = $env:PATH
@@ -333,6 +340,27 @@ try {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
+
+    # Rows the NuGet setup shows: 4.1, 4.2, 4.4, 4.5, 4.6, 4.7
+    $unpublished = Invoke-Override (Join-Path $Work 'github') @{
+        'gh api repos/NCodeGroup/sample/environments/nuget/deployment-branch-policies' = Answer $null 1 'gh: Not Found (HTTP 404)'
+        'gh run list --repo NCodeGroup/sample --workflow publish.yml --limit 1 --json conclusion,status' = Answer (Json @(@{ conclusion = 'startup_failure'; status = 'completed' }))
+        'gh pr list --repo NCodeGroup/sample --head baseline-1.0.0 --state merged --json number' = Answer '[]'
+        'gh release view --repo NCodeGroup/sample --json tagName,assets' = Answer (Json @{
+                tagName = 'v1.0.0'
+                assets = @(@{ name = 'Sample.1.0.0.nupkg' }, @{ name = 'Sample.1.0.0.snupkg' }, @{ name = 'v1.0.0.intoto.jsonl' })
+            })
+    }
+    foreach ($row in @(
+            @('4.1', 'unreadable', 'github', $gh), @('4.2', 'done', 'github', $gh), @('4.4', 'done', 'github', $gh),
+            @('4.5', 'done', 'github', $gh), @('4.6', 'done', 'github', $gh), @('4.7', 'done', 'github', $gh),
+            @('4.2', 'not done', 'unpublished', $unpublished), @('4.4', 'not done', 'unpublished', $unpublished),
+            @('4.5', 'not done', 'unpublished', $unpublished), @('4.6', 'not done', 'unpublished', $unpublished),
+            @('4.7', 'not done', 'unpublished', $unpublished))) {
+        $step, $want, $label, $run = $row
+        Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
+    }
+    Check 'row 4.1 unreadable: github names the trusted publishing page' ($gh.Output -match '(?m)^4\.1 .+nuget\.org/account/trustedpublishing') "output=$($gh.Output)"
 }
 finally {
     $env:PATH = $savedPath
