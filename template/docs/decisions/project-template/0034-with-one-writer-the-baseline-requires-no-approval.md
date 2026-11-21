@@ -1,6 +1,6 @@
 # 0034. With one writer, the baseline requires no approval
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0036)
 - **Date:** 2026-11-20
 - **Amends:** 0005, 0006, 0019, 0020, 0022, 0031 and, where a project has it, 0150
 
