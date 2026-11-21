@@ -358,16 +358,31 @@ function Get-CodeReviewNote {
 function Get-GitVersioningWorkflowNote {
     if (-not (Test-Path -LiteralPath version.json) -or -not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
     $findings = [Collections.Generic.List[string]]::new()
+    # A folder as the workspace-relative path actions/checkout's path: or a working-directory: names it: '' for the workspace, $null for one this check can't place.
+    $folderOf = {
+        param([string]$Value)
+        $v = ($Value -replace '\s+#.*$', '').Trim().Trim('''', '"').Trim()
+        $v = $v -replace '^\$\{\{\s*github\.workspace\s*\}\}/?', '' -replace '^(?:\./)+', '' -replace '/+$', ''
+        if ($v -eq '.') { $v = '' }
+        if ($v -match '\$\{\{|^/|^[A-Za-z]:|(?:^|/)\.\.(?:/|$)') { return $null }
+        $v
+    }
+    # The first capture of Pattern in Lines, or $null when no line matches.
+    $valueIn = { param([string[]]$Lines, [string]$Pattern) foreach ($l in $Lines) { if ($l -match $Pattern) { return $Matches[1] } } }
+    $isBuild = { param([string]$Line) $Line -match '(?i)\bdotnet\s+(?:build|pack)\b' -or ($Line -match '(?i)\bdotnet\s+test\b' -and $Line -notmatch '--no-build') -or $Line -match '(?i)\bnuget(?:\.exe)?\s+push\b' }
     foreach ($file in @(Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Name -match '\.ya?ml$' -and $_.Name -ne 'publish.yml' } | Sort-Object Name)) {
-        # The lines of each job under the top-level jobs: key, by job name.
+        # The lines of each job under the top-level jobs: key, by job name, and the lines of the top-level defaults: key.
         $jobs = [ordered]@{}
+        $defaults = [Collections.Generic.List[string]]::new()
         $inJobs = $false
+        $inDefaults = $false
         $jobIndent = -1
         $current = $null
         foreach ($line in Get-Content -LiteralPath $file.FullName) {
             if ($line -match '^\s*(#.*)?$') { continue }
             $indent = $line.Length - $line.TrimStart().Length
-            if ($indent -eq 0) { $inJobs = $line -match '^jobs:\s*(#.*)?$'; $jobIndent = -1; $current = $null; continue }
+            if ($indent -eq 0) { $inJobs = $line -match '^jobs:\s*(#.*)?$'; $inDefaults = $line -match '^defaults:\s*(#.*)?$'; $jobIndent = -1; $current = $null; continue }
+            if ($inDefaults) { $defaults.Add($line); continue }
             if (-not $inJobs) { continue }
             if ($jobIndent -lt 0) { $jobIndent = $indent }
             if ($indent -eq $jobIndent -and $line -match '^\s*([\w-]+):') {
@@ -377,22 +392,26 @@ function Get-GitVersioningWorkflowNote {
             }
             if ($current) { $jobs[$current].Add($line) }
         }
+        $workflowDefault = & $valueIn $defaults '^\s*working-directory:\s*(.*)$'
         foreach ($name in $jobs.Keys) {
             $lines = @($jobs[$name])
-            $builds = @($lines | Where-Object { $_ -match '(?i)\bdotnet\s+(?:build|pack)\b' -or ($_ -match '(?i)\bdotnet\s+test\b' -and $_ -notmatch '--no-build') -or $_ -match '(?i)\bnuget(?:\.exe)?\s+push\b' })
-            if (-not $builds.Count) { continue }
-            for ($i = 0; $i -lt $lines.Count; $i++) {
-                if ($lines[$i] -notmatch '\buses:\s*[''"]?actions/checkout@') { continue }
+            if (-not @($lines | Where-Object { & $isBuild $_ }).Count) { continue }
+            $stepAt = {
+                param([int]$At)
                 # The step starts at the nearest line at or above that starts a list item, and ends before the next one no deeper.
-                $start = $i
+                $start = $At
                 while ($start -ge 0 -and $lines[$start] -notmatch '^\s*-\s') { $start-- }
-                if ($start -lt 0) { $start = $i }
+                if ($start -lt 0) { $start = $At }
                 $startIndent = $lines[$start].Length - $lines[$start].TrimStart().Length
                 $end = $lines.Count
                 for ($j = $start + 1; $j -lt $lines.Count; $j++) {
                     if ($lines[$j] -match '^\s*-\s' -and ($lines[$j].Length - $lines[$j].TrimStart().Length) -le $startIndent) { $end = $j; break }
                 }
-                $step = @($lines[$start..($end - 1)])
+                $lines[$start..($end - 1)]
+            }
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -notmatch '\buses:\s*[''"]?actions/checkout@') { continue }
+                $step = @(& $stepAt $i)
                 if (-not @($step | Where-Object { $_ -match '(?<![\w-])fetch-depth:\s*[''"]?0[''"]?(?![\w.])' }).Count) {
                     $findings.Add(".github/workflows/$($file.Name), job ${name}: actions/checkout without fetch-depth: 0")
                 }
