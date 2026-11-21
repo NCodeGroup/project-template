@@ -90,9 +90,9 @@ Write-Text (Join-Path $bin 'data.json') (ConvertTo-Json -Depth 6 -InputObject @{
 
 # The comments the script gives each check, from the decision records (each under GitHub's 280 characters).
 $comments = @{
-    'Branch-Protection' = 'One person has write access. GitHub counts no approval from the author or from NCode ' +
-        'Review, so a required approval or last-push approval would block every merge, and the ruleset requires ' +
-        'neither (project-template ADR-0034).'
+    'Branch-Protection' = 'One person has write access, and GitHub counts no approval from the author, so the ruleset ' +
+        'can require only the one approval, of the last push, that NCode Review''s approver gives where it is set up, ' +
+        'and none elsewhere (project-template ADR-0034 and ADR-0036).'
     'CII-Best-Practices' = 'One person maintains the project. Silver needs a second owner, and gold needs two-person ' +
         'review and a bus factor of 2, so one person reaches passing at most and the check stays below 10 ' +
         '(project-template ADR-0035).'

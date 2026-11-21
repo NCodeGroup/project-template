@@ -5,12 +5,13 @@
 
 .DESCRIPTION
     Scorecard's Branch-Protection, CII-Best-Practices and Contributors checks score below 10 for a project one person
-    maintains: a required approval or last-push approval blocks every merge where one person has write access, silver
-    and gold Best Practices badges need a second person, and Contributors needs recent contributors from at least 3
-    companies. The script reads the repository's open Scorecard alerts (repos/<owner>/<name>/code-scanning/alerts) and
-    dismisses the alerts of those three checks as won't fix, each with the standard comment that says why and names the
-    template's decision record (ADR-0034 for Branch-Protection, ADR-0035 for the other two). An alert of any other
-    check is left open, since the project can clear it: Code-Review and Maintained reach 10 with one person.
+    maintains: where one person has write access, the ruleset can require no approval but the one NCode Review's
+    approver gives, of the last push, where it is set up, while tier 4 of Branch-Protection needs two, silver and gold
+    Best Practices badges need a second person, and Contributors needs recent contributors from at least 3 companies.
+    The script reads the repository's open Scorecard alerts (repos/<owner>/<name>/code-scanning/alerts) and dismisses
+    the alerts of those three checks as won't fix, each with the standard comment that says why and names the
+    template's decision records (ADR-0034 and ADR-0036 for Branch-Protection, ADR-0035 for the other two). An alert
+    of any other check is left open, as the project can clear it: Code-Review and Maintained reach 10 with one person.
 
     It counts who has write access first, as the users the collaborators list
     (repos/<owner>/<name>/collaborators?affiliation=all&permission=push) gives. With two or more it dismisses nothing,
@@ -38,7 +39,7 @@ if ($Repo -notmatch '^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$') {
 }
 
 $reasons = [ordered]@{
-    'Branch-Protection'  = "One person has write access. GitHub counts no approval from the author or from NCode Review, so a required approval or last-push approval would block every merge, and the ruleset requires neither (project-template ADR-0034)."
+    'Branch-Protection'  = "One person has write access, and GitHub counts no approval from the author, so the ruleset can require only the one approval, of the last push, that NCode Review's approver gives where it is set up, and none elsewhere (project-template ADR-0034 and ADR-0036)."
     'CII-Best-Practices' = "One person maintains the project. Silver needs a second owner, and gold needs two-person review and a bus factor of 2, so one person reaches passing at most and the check stays below 10 (project-template ADR-0035)."
     'Contributors'       = "One person maintains the project. The check scores 10 only with recent contributors from at least 3 companies, each with 5 of the last 30 commits, which one person can't meet (project-template ADR-0035)."
 }
