@@ -310,3 +310,50 @@ This section is for a GitHub project with NCode Review, after [0.3](#03-ncode-re
   - Nothing requires the "Code review" check, so the person who merges waits for it ([ADR-0019](../template/docs/decisions/project-template/0019-nothing-requires-the-code-review-check-the-person-who-merges-waits-for-it.md.jinja)).
 - **Check:** the pull request shows the review and the approval.
 - **Goes wrong:** an NCode Review outage blocks merges where the approval is required, until it is fixed or the ruleset changes.
+
+## 6. Other One-Time Settings
+
+### 6.1 The OpenSSF Best Practices Badge
+
+- **Applies to:** every project
+- **Who:** a maintainer.
+- **Where:** `https://www.bestpractices.dev` and the project.
+- **Do:** The project's `docs/best-practices-criteria.md` maps every criterion to its evidence. On GitHub, `/best-practices` in the project writes the prompt that registers the project or updates its answers. Once the project is registered, run `.\.template\Update-Project.ps1 -Data @{ best_practices_project = '<number>' }` and add the badge line the update prints near the top of `README.md`.
+- **Check:** the update prints no badge reminder.
+- **Goes wrong:** `require_2FA` and `secure_2FA` stay Unmet until an owner confirms the organization's two-factor requirement (see [0.2](#02-the-organizations-actions-policy)).
+
+### 6.2 Codecov
+
+- **Applies to:** where the project has one
+- **Who:** an organization owner installs the app; a maintainer adds the workflow.
+- **Where:** `https://github.com/apps/codecov`.
+- **Do:** The template publishes no coverage: CI's coverage gate is the verdict ([ADR-0026](../template/docs/decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)). A project that shows a Codecov badge adds a workflow of its own, as NCodeGroup/Buffers' `.github/workflows/coverage.yml` does on each push to the default branch. It uploads with the job's OIDC token instead of a stored `CODECOV_TOKEN`, so its one setup is the Codecov GitHub App installed for the organization. Keep it out of `ci.yml`, which `tag-release.yml` calls with only `contents: read`.
+- **Check:** the project's page on codecov.io shows the default branch's latest commit.
+- **Goes wrong:** a job asking for `id-token: write` inside `ci.yml` stops every release run.
+
+### 6.3 The Documentation Site and GitHub Pages
+
+- **Applies to:** where the project has one
+- **Who:** an admin of the repository.
+- **Where:** `https://github.com/<owner>/<name>/settings/pages`.
+- **Do:** Do as NCodeGroup/Buffers' `docs.yml` does, which builds `docs/site/` with the NCodeGroup/docs toolchain. Set Pages' source to GitHub Actions. The `github-pages` environment deploys from the default branch only. Set the custom domain, such as `buffers.ncode.io`, with its DNS record, and Enforce HTTPS. Set the repository's website with `gh repo edit <owner>/<name> --homepage https://<domain>/`. `docs/site/site.config.json`'s `site.url` also becomes a library package's project page.
+- **Check:** `gh api repos/<owner>/<name>/pages --jq '.build_type + " " + .cname + " " + (.https_enforced | tostring)'` prints `workflow <domain> true`.
+- **Goes wrong:** HTTPS can't be enforced until the DNS record resolves.
+
+### 6.4 The Copilot Cloud Agent's Environment
+
+- **Applies to:** GitHub, with Copilot
+- **Who:** a maintainer.
+- **Where:** the Actions tab; `https://github.com/<owner>/<name>/settings/environments`.
+- **Do:** `.github/workflows/copilot-setup-steps.yml` prepares the agent's runner, and GitHub runs it only from the default branch. Run it once with `gh workflow run copilot-setup-steps.yml --repo <owner>/<name>`. A secret or variable the agent's session needs goes in the repository's `copilot` environment, never in the workflow.
+- **Check:** `gh run list --workflow copilot-setup-steps.yml --limit 1 --repo <owner>/<name>` shows it passed.
+- **Goes wrong:** a failing step is skipped past and the session starts without that tool.
+
+### 6.5 Labels
+
+- **Applies to:** GitHub
+- **Who:** nobody, usually.
+- **Where:** `https://github.com/<owner>/<name>/labels`.
+- **Do:** `/ship-plan` makes `follow-up` the first time it files a follow-up. The template-update workflow makes `template-update` with its first notice. `documentation` is one of GitHub's default labels, which `/plan-issue` reads as a docs plan. A repository whose default labels were deleted makes it with `gh label create documentation --repo <owner>/<name>`.
+- **Check:** `gh label list --repo <owner>/<name>`.
+- **Goes wrong:** nothing beyond the deleted label.
