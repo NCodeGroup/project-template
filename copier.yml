@@ -194,6 +194,8 @@ _exclude:
     .github/workflows/template-update.yml
     docs/decisions/project-template/0020-github-projects-are-scored-by-openssf-scorecard.md
     docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md
+    docs/decisions/project-template/0034-with-one-writer-the-baseline-requires-no-approval.md
+    docs/decisions/project-template/0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md
     {% endif %}
   - |-
     {% if git_host is defined and not (git_host == 'github' and (workflow_tools is not defined or 'copilot' in workflow_tools)) %}
@@ -419,5 +421,5 @@ _message_after_copy: |
   Created {{ project_name }}. Next: open it through the shack PC's VS Code tunnel, review AGENTS.md, and plan the first change with /plan-feature in the Claude Code panel.
   {%- if code_review is defined and code_review %}
 
-  Code review: .github/workflows/code-review.yml reviews each pull request with the NCode Review bot once the repository has the organization's secrets. From a clone of NCodeGroup/code-review, run tools/Enable-CodeReview.ps1 -Repo <the repository's name>. Until then the review job fails, and once tools/Set-RepositoryBaseline.ps1 protects the default branch, nothing merges without NCode Review's approval, and a pull request it skips, a bot's or a fork's, merges once a maintainer approves it.
+  Code review: .github/workflows/code-review.yml reviews each pull request with the NCode Review bot once the repository has the organization's secrets. From a clone of NCodeGroup/code-review, run tools/Enable-CodeReview.ps1 -Repo <the repository's name>. Until then the review job fails, and once tools/Set-RepositoryBaseline.ps1 protects the default branch and a second person has write access, nothing merges without an approval from someone with write access other than its author, since GitHub counts none from NCode Review, whose approval counts for Scorecard's Code-Review; with one writer the ruleset requires no approval (docs/decisions/project-template/0034-with-one-writer-the-baseline-requires-no-approval.md).
   {%- endif -%}

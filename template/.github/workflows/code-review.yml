@@ -12,10 +12,14 @@ name: Code review
 # records each posted finding's outcome, with no model call. It needs no environment: the app's key is an organization
 # secret, and the code-review environment holds none; it only lets Anthropic's federation rule trust the review job.
 #
-# approve: true (v1.4.0 on) approves a pull request whose review leaves no blocker or should-fix finding open;
-# tools/Set-RepositoryBaseline.ps1 in the project template then requires one approval. A push dismisses it, so comment
-# /review after one; a maintainer approves a bot's pull request, which NCode Review skips.
-# docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md says why.
+# approve: true (v1.4.0 on) approves a pull request whose review leaves no blocker or should-fix finding open, which
+# Scorecard's Code-Review check counts, but it meets no required approval: GitHub counts toward one only a review from
+# someone with write access, and NCode Review's app has none. tools/Set-RepositoryBaseline.ps1 in the project template
+# requires one approval, of the last push, only once a second person has write access, and someone with write access
+# other than the author gives it; with one writer it requires none. A push dismisses NCode Review's approval, so
+# comment /review after one; a maintainer approves a bot's pull request, which NCode Review skips.
+# docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md and
+# 0034-with-one-writer-the-baseline-requires-no-approval.md say why.
 #
 # pull_request_target and issue_comment both run this file from the default branch, so a pull request can't change its
 # own review. The engine fetches its code only to read it: nothing from it is built, run or installed.

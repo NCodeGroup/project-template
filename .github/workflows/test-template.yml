@@ -133,6 +133,8 @@ jobs:
             run: ./tests/Test-PublishRelease.ps1
           - name: Test the GitLab baseline script
             run: ./tests/Test-GitLabBaseline.ps1
+          - name: Test the Scorecard alert helper
+            run: ./tests/Test-ScorecardAlerts.ps1
           - name: Test New-Project.ps1 -CreateRemote's baseline calls
             run: ./tests/Test-NewProjectRemote.ps1
           - name: Test the end-to-end tests' model runner

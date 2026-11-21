@@ -7,16 +7,17 @@
     For each repository it:
       - adds a "Protect main" ruleset on the default branch, the same shape as project-template's: no deletion, no force
         push, a pull request required (no approvals, since the organization has one maintainer, except where
-        code-review.yml passes approve: true, as below) with every conversation resolved, with stale reviews dismissed
-        on push, so a review finding from the bot, CodeQL or a person can't be merged past, merge-commit or rebase
-        merges only, never squash, so each commit of a plan stays on the branch, when CodeQL's default setup is
-        configured for the repository and analyzes at least one language a code-scanning rule that blocks a pull request
-        whose CodeQL results add an alert at warning level or above or a security alert of any severity, and, when
-        -RequireChecks names them, those CI jobs as required status checks, which must pass on a branch that is up to
-        date with the default branch. A setup that GitHub reports as configured with no language, as an organization's
-        security configuration can leave a new repository, runs CodeQL on no pull request, so the rule would block every
-        merge: it counts as not configured, and the script says why and that a later run with -RequireChecks adds the
-        rule once the repository's settings give CodeQL a language (the template's ADR-0030);
+        code-review.yml passes approve: true and a second person has write access, as below) with every conversation
+        resolved, with stale reviews dismissed on push, so a review finding from the bot, CodeQL or a person can't be
+        merged past, merge-commit or rebase merges only, never squash, so each commit of a plan stays on the branch,
+        when CodeQL's default setup is configured for the repository and analyzes at least one language a code-scanning
+        rule that blocks a pull request whose CodeQL results add an alert at warning level or above or a security alert
+        of any severity, and, when -RequireChecks names them, those CI jobs as required status checks, which must pass
+        on a branch that is up to date with the default branch. A setup that GitHub reports as configured with no
+        language, as an organization's security configuration can leave a new repository, runs CodeQL on no pull
+        request, so the rule would block every merge: it counts as not configured, and the script says why and that a
+        later run with -RequireChecks adds the rule once the repository's settings give CodeQL a language (the
+        template's ADR-0030);
       - switches CodeQL's default setup, when it read it as configured with a language to analyze, to the extended query
         suite, before it writes the ruleset, so a switch that fails leaves the repository for the next run to retry. The
         switch sends the query suite alone and names no language, so it never runs on a setup that analyzes none;
@@ -53,6 +54,19 @@
     "Protect main" ruleset that has it on with no approval required, as one made by hand or by an older version of this
     script can, gets it turned off, and the run says so. A file it can't read is named, and the ruleset then requires no
     approval.
+
+    Where one person has write access, counted as the users the collaborators list
+    (repos/<owner>/<name>/collaborators?affiliation=all&permission=push) gives, it requires no approval and no approval
+    of the last push, also where code-review.yml passes approve: true, and a "Protect main" ruleset that requires an
+    approval gets both turned off, and the run says so, also with -WhatIf: GitHub counts toward a required approval only
+    a review from someone with write access, never the author's, and NCode Review's app has none, so either setting
+    blocks every merge (the template's ADR-0034). Stale reviews are still dismissed on push. A collaborators list it
+    can't read is named; the ruleset then gets no approval it doesn't have, and keeps the ones it has. A ruleset of the
+    owner's that requires an approval there keeps its shape, and the run prints a notice with the command that requires
+    no approval and no approval of the last push in it; where GitHub refuses the change to "Protect main", the notice
+    says so and gives the same command. For a public repository with one writer, the run ends with a notice naming
+    tools/Dismiss-ScorecardAlerts.ps1, which dismisses the Scorecard alerts one person can't clear (the template's
+    ADR-0035).
 
     A repository that already has an active ruleset requiring pull requests on its default branch keeps it, because its
     owner shaped that ruleset. It still turns on "require conversation resolution" in each such ruleset, and in a "Protect
@@ -159,6 +173,8 @@ $rulesetName = 'Protect main'
 $tagRulesetName = 'Protect release tags'
 # Why the script turns off approval of the last push where no approval is required (ADR-0031).
 $lastPushWhy = 'which blocks every merge while no approval is required'
+# Why the script requires no approval where one person can write (ADR-0034).
+$soleWhy = 'which block every merge while one person has write access'
 # GitHub Actions' app id: required checks are matched to the app that reports them.
 $actionsAppId = 15368
 # -RequireChecks auto never requires these checks, whatever app reported them or event ran them: each name pattern
@@ -301,6 +317,21 @@ function Read-ReviewApproval([string]$Name, [string]$Branch) {
     [pscustomobject]@{ Approver = $text -match '(?m)^\s+approve:\s*["'']?true["'']?\s*(#.*)?$'; Why = $null }
 }
 
+# Counts the users the collaborators list gives with push access or more. GitHub counts toward a required approval only
+# a review from someone with write access, never the author's (ADR-0034). Count is $null and Why the reason when the
+# list can't be read.
+function Read-Writers([string]$Name) {
+    $read = Invoke-HostApi gh "repos/$Owner/$Name/collaborators?affiliation=all&permission=push&per_page=100"
+    $answer = $null
+    if ($read.Status -eq 200) {
+        try { $answer = @($read.Body | ConvertFrom-Json -ErrorAction Stop) } catch { $answer = $null }
+    }
+    if ($null -eq $answer) {
+        [pscustomobject]@{ Count = $null; Why = if ($read.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $read } }
+    }
+    else { [pscustomobject]@{ Count = @($answer | Where-Object { $_.type -eq 'User' }).Count; Why = $null } }
+}
+
 function Set-Baseline([string]$Name) {
     $info = Invoke-GhJson @('api', "repos/$Owner/$Name")
     if ($info.archived -or $info.fork) { Write-Host "${Name}: skipped (archived or fork)"; return }
@@ -309,13 +340,21 @@ function Set-Baseline([string]$Name) {
     })
     $review = Read-ReviewApproval $Name $info.default_branch
     if ($review.Why) { Write-Host "${Name}: couldn't read .github/workflows/code-review.yml to see whether NCode Review approves ($($review.Why)); the ruleset requires no approval" }
+    $writers = Read-Writers $Name
+    if ($writers.Why) { Write-Host "${Name}: couldn't read who has write access ($($writers.Why)); the ruleset gets no approval it doesn't have, and keeps the approvals it has" }
+    $soleWriter = $null -ne $writers.Count -and $writers.Count -le 1
+    $approver = [bool]($review.Approver -and $null -ne $writers.Count -and $writers.Count -ge 2)
+    if ($review.Approver -and $soleWriter) {
+        Write-Host "${Name}: code-review.yml passes approve: true, but one person has write access, and GitHub counts toward a required approval neither the author's approval nor NCode Review's, whose app has no write access: the ruleset requires no approval and no approval of the last push (the template's ADR-0034)"
+    }
     # A repository skipped for its default branch gets nothing else either: the reason printed says what to fix first.
-    if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets -Approver $review.Approver)) { return }
+    if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets -Approver $approver -SoleWriter $soleWriter)) { return }
     Set-TagRuleset $Name $rulesets
     Set-SecuritySettings $Name $info
     Set-AutoMerge $Name $info
     Set-EventPolicy $Name $info
     Write-OrganizationTwoFactor $Name $info
+    if ($soleWriter) { Write-ScorecardNotice $Name $info }
 }
 
 # Reports whether the organization that owns the repository requires two-factor authentication of its members. It only
@@ -331,6 +370,14 @@ function Write-OrganizationTwoFactor([string]$Name, $Info) {
     if ($null -eq $answer) { Write-Host "${Name}: ${label}: not available (an answer that is not JSON)"; return }
     if ($null -eq $answer.two_factor_requirement_enabled) { Write-Host "${Name}: ${label}: not available (the answer doesn't include it; GitHub shows it to an owner only)"; return }
     Write-Host "${Name}: ${label}: $(if ($answer.two_factor_requirement_enabled) { 'required' } else { 'not required' })"
+}
+
+# With one writer, Scorecard's Branch-Protection, CII-Best-Practices and Contributors checks stay below 10 and their
+# code scanning alerts stay open (ADR-0035). A private repository publishes no Scorecard result, so it gets no notice.
+function Write-ScorecardNotice([string]$Name, $Info) {
+    if ($Info.private) { return }
+    $helper = Join-Path $PSScriptRoot 'Dismiss-ScorecardAlerts.ps1'
+    Write-Host "${Name}: notice: one person has write access, so Scorecard's Branch-Protection, CII-Best-Practices and Contributors checks stay below 10 and their code scanning alerts stay open (the template's ADR-0035). To dismiss them as won't fix with the standard reason, run: & '$helper' -Repo '$Owner/$Name' -WhatIf, then again without -WhatIf"
 }
 
 # Reads CodeQL's default setup. Status is the HTTP status, or $null for no response; Answer the parsed answer, or $null;
@@ -389,7 +436,7 @@ function Write-CodeScanningNotice([string]$Name, $Ruleset) {
 # repository, which then changes nothing, and $true otherwise: done, shown by -WhatIf, or left alone.
 function Set-BranchRuleset {
     [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Name, [string]$Branch, [object[]]$Rulesets, [bool]$Approver = $false)
+    param([string]$Name, [string]$Branch, [object[]]$Rulesets, [bool]$Approver = $false, [bool]$SoleWriter = $false)
     $own = $null
     $others = @()
     foreach ($full in $Rulesets) {
@@ -400,9 +447,9 @@ function Set-BranchRuleset {
         if ($full.rules.type -contains 'pull_request') { $others += $full }
     }
     if ($others.Count) {
-        foreach ($full in $others) { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full }
+        foreach ($full in $others) { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full; if ($SoleWriter) { Write-SoleWriterNotice $Name $full } }
         if ($own) {
-            Enable-ThreadResolution $Name $own -Strict -Approver:$Approver
+            Enable-ThreadResolution $Name $own -Strict -Approver:$Approver -SoleWriter:$SoleWriter
             if ($own.rules.type -contains 'code_scanning') { Write-CodeScanningNotice $Name $own }
         }
         return $true
@@ -411,7 +458,7 @@ function Set-BranchRuleset {
     # A ruleset of this name that exists already is changed only when -RequireChecks asks for new checks.
     if ($own -and -not $RequireChecks.Count) {
         Write-Host "${Name}: left alone (already has '$rulesetName')"
-        Enable-ThreadResolution $Name $own -Strict -Approver:$Approver
+        Enable-ThreadResolution $Name $own -Strict -Approver:$Approver -SoleWriter:$SoleWriter
         if ($own.rules.type -contains 'code_scanning') { Write-CodeScanningNotice $Name $own }
         return $true
     }
@@ -459,10 +506,12 @@ function Set-BranchRuleset {
     # so every merge is blocked where one maintainer authors every pull request (#385; ADR-0031, which amends ADR-0022).
     # An update keeps the approval count and code-owner review of the ruleset it made, and the last-push approval of one
     # that requires approvals. Where code-review.yml passes approve: true, one approval is required, and then approval of
-    # the last push too (ADR-0022).
+    # the last push too (ADR-0022). With one writer no approval is required (ADR-0034).
     $ownPull = if ($own) { @($own.rules | Where-Object type -eq 'pull_request')[0].parameters } else { $null }
     $approvals = if ($ownPull) { [int]$ownPull.required_approving_review_count } else { 0 }
     $approvals = [Math]::Max($approvals, [int]$Approver)
+    $lowered = $SoleWriter -and $null -ne $ownPull -and [int]$ownPull.required_approving_review_count -ge 1
+    if ($SoleWriter) { $approvals = 0 }
     $lastPush = $approvals -ge 1 -and ($ownPull.require_last_push_approval -eq $true -or $Approver)
     $lastPushOff = $ownPull.require_last_push_approval -eq $true -and -not $lastPush
     $rules = @(
@@ -506,7 +555,7 @@ function Set-BranchRuleset {
     elseif ($codeql) { ", and a code-scanning rule (CodeQL's default setup analyzes $($languages -join ', '))" }
     elseif ($languageless) { ", and no code-scanning rule (CodeQL's default setup analyzes no language)" }
     else { ", and no code-scanning rule (CodeQL's default setup is not configured)" }
-    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$scanning$(if ($Approver) { ', at least one required approval, as code-review.yml passes approve: true' })$(if ($lastPushOff) { ", and turns off approval of the last push, $lastPushWhy" })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
+    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$scanning$(if ($Approver) { ', at least one required approval, as code-review.yml passes approve: true' })$(if ($lowered) { ", and requires no approval and no approval of the last push, $soleWhy" } elseif ($lastPushOff) { ", and turns off approval of the last push, $lastPushWhy" })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) {
         Write-Host "would: $summary"
         if ($autoChecks) {
@@ -563,6 +612,20 @@ function Write-LastPushNotice([string]$Name, $Ruleset, [switch]$Refused) {
     Write-Host "${Name}: notice: '$($Ruleset.name)' requires approval of the last push but no approving review, which blocks every merge where nobody but the author can approve. ${why}: $command"
 }
 
+# Prints the command that sets no approval and no approval of the last push in a ruleset of the owner's that requires
+# an approval where one person has write access: GitHub counts no approval from the author or from NCode Review, so it
+# blocks every merge (ADR-0034). This script changes no ruleset but its own "Protect main". -Refused is for the script's
+# own ruleset when GitHub refused the write that sets both: it still requires an approval, so the notice says so.
+function Write-SoleWriterNotice([string]$Name, $Ruleset, [switch]$Refused) {
+    $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
+    if (-not $Refused -and (-not $rule -or [int]$rule.parameters.required_approving_review_count -lt 1)) { return }
+    $path = "repos/$Owner/$Name/rulesets/$($Ruleset.id)"
+    $command = "`$rs = gh api $path | ConvertFrom-Json; `$p = (`$rs.rules | Where-Object type -eq 'pull_request').parameters; `$p.required_approving_review_count = 0; `$p.require_last_push_approval = `$false; @{ rules = `$rs.rules } | ConvertTo-Json -Depth 20 | gh api -X PUT $path --input -"
+    $why = if ($Refused) { "GitHub refused the change, so it still requires one; set both in the ruleset's settings, or run" }
+    else { "This script changes no ruleset but its own '$rulesetName'; to require no approval and no approval of the last push in it, run" }
+    Write-Host "${Name}: notice: '$($Ruleset.name)' requires an approval while one person has write access, and GitHub counts no approval from the author or from NCode Review, so it blocks every merge (the template's ADR-0034). ${why}: $command"
+}
+
 # Turns on "require conversations resolved" in a ruleset that already requires pull requests, and changes nothing else in
 # it: its other rules and their parameters are sent back as they were read. A ruleset without a pull request rule, or
 # with the setting on already, is left as it is. A refusal is reported, not thrown, like a security setting's. A pull
@@ -570,10 +633,11 @@ function Write-LastPushNotice([string]$Name, $Ruleset, [switch]$Refused) {
 # parameters. For the script's own ruleset (-Strict) it also turns on dismissing stale reviews on push, and turns off
 # approval of the last push where no approval is required, which blocks every merge (#385, ADR-0031). With -Approver
 # too (the project's review passes approve: true) it requires at least one approval, of the last push, as a new ruleset
-# does, keeping a larger count; it never turns on approval of the last push without an approval.
+# does, keeping a larger count; it never turns on approval of the last push without an approval. With -SoleWriter too
+# (one person can write) it requires no approval and no approval of the last push, which block every merge (ADR-0034).
 function Enable-ThreadResolution {
     [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Name, $Ruleset, [switch]$Strict, [switch]$Approver)
+    param([string]$Name, $Ruleset, [switch]$Strict, [switch]$Approver, [switch]$SoleWriter)
     $rule = @($Ruleset.rules | Where-Object type -eq 'pull_request')[0]
     if (-not $rule) { return }
     $raise = $Strict -and $Approver
@@ -581,12 +645,17 @@ function Enable-ThreadResolution {
     $needStale = $Strict -and $rule.parameters.dismiss_stale_reviews_on_push -ne $true
     $needApproval = $raise -and ([int]$rule.parameters.required_approving_review_count -lt 1 -or $rule.parameters.require_last_push_approval -ne $true)
     $needLastPushOff = $Strict -and -not $Approver -and $rule.parameters.require_last_push_approval -eq $true -and [int]$rule.parameters.required_approving_review_count -lt 1
-    if (-not $needThreads -and -not $needStale -and -not $needApproval -and -not $needLastPushOff) { Write-LastPushNotice $Name $Ruleset; return }
-    $label = "'$($Ruleset.name)': " + (@(if ($needThreads) { 'require every conversation resolved' }; if ($needStale) { 'dismiss stale reviews on push' }; if ($needApproval) { 'require at least one approval, of the last push' }; if ($needLastPushOff) { "turn off approval of the last push, $lastPushWhy" }) -join ', and ')
+    $needLower = $Strict -and $SoleWriter -and [int]$rule.parameters.required_approving_review_count -ge 1
+    if (-not $needThreads -and -not $needStale -and -not $needApproval -and -not $needLastPushOff -and -not $needLower) { Write-LastPushNotice $Name $Ruleset; return }
+    $label = "'$($Ruleset.name)': " + (@(if ($needThreads) { 'require every conversation resolved' }; if ($needStale) { 'dismiss stale reviews on push' }; if ($needApproval) { 'require at least one approval, of the last push' }; if ($needLastPushOff) { "turn off approval of the last push, $lastPushWhy" }; if ($needLower) { "require no approval and no approval of the last push, $soleWhy" }) -join ', and ')
     if ($null -eq $rule.parameters) { Write-Host "${Name}: ${label}: not set (its pull request rule came without parameters; turn it on in the ruleset's settings on GitHub)"; return }
     if ($needThreads) { $rule.parameters | Add-Member -NotePropertyName required_review_thread_resolution -NotePropertyValue $true -Force }
     if ($Strict) { $rule.parameters | Add-Member -NotePropertyName dismiss_stale_reviews_on_push -NotePropertyValue $true -Force }
     if ($needLastPushOff) { $rule.parameters | Add-Member -NotePropertyName require_last_push_approval -NotePropertyValue $false -Force }
+    if ($needLower) {
+        $rule.parameters | Add-Member -NotePropertyName required_approving_review_count -NotePropertyValue 0 -Force
+        $rule.parameters | Add-Member -NotePropertyName require_last_push_approval -NotePropertyValue $false -Force
+    }
     if ($raise) {
         $rule.parameters | Add-Member -NotePropertyName required_approving_review_count -NotePropertyValue ([Math]::Max([int]$rule.parameters.required_approving_review_count, 1)) -Force
         $rule.parameters | Add-Member -NotePropertyName require_last_push_approval -NotePropertyValue $true -Force
@@ -598,6 +667,7 @@ function Enable-ThreadResolution {
     else {
         Write-Host "${Name}: ${label}: not available ($(Get-FailureReason $result))"
         if ($needLastPushOff) { Write-LastPushNotice $Name $Ruleset -Refused }
+        if ($needLower) { Write-SoleWriterNotice $Name $Ruleset -Refused }
     }
 }
 
