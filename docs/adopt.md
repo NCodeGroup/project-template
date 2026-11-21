@@ -104,3 +104,47 @@ Do 1.1 or 1.2, then 1.3 for Node.js and 1.4.
 - **Do:** A new project is already pushed (see [1.1](#11-a-new-project)), so open its first change as a pull request. For an adopted repository, run `git push -u origin adopt-project-template`, then `gh pr create --fill`. Wait for CI, then merge it with a merge commit or by rebasing. The checks that pass here are the ones [2.1](#21-run-the-baseline) requires: the template's CI job is `build-and-test`.
 - **Check:** `gh pr checks <number>` shows every check passed.
 - **Goes wrong:** a job that runs only on a schedule, a release or with `paths` filters never reports on every pull request, so requiring it blocks merges; `-RequireChecks auto` needs a merged pull request, so merge this one before 2.1.
+
+## 2. Protect the Default Branch and Tags
+
+GitHub runs 2.1 to 2.4; GitLab runs only 2.5.
+
+### 2.1 Run the Baseline
+
+- **Applies to:** GitHub
+- **Who:** an admin of the repository (`repo` scope).
+- **Where:** a clone of NCodeGroup/project-template.
+- **Do:** Run `.\tools\Set-RepositoryBaseline.ps1 -Repo <name> -Owner <owner> -RequireChecks 'build-and-test' -WhatIf`, then run it without `-WhatIf`. `-Owner` defaults to NCodeGroup. A repository with its own CI uses `-RequireChecks auto -WhatIf`, which lists the checks that passed on its latest merged pull request and prints the command to trim and run. The script sets:
+  - the "Protect main" ruleset: no deletion, no force push, a pull request with every conversation resolved, stale approvals dismissed on push, merge commit or rebase only, the required checks on an up-to-date branch, the code-scanning rule where CodeQL analyzes a language (see [2.3](#23-codeqls-languages)), and the approval that [2.2](#22-when-an-approval-is-required) describes
+  - the "Protect release tags" ruleset on `v*`: no deletion, no update
+  - delete branch on merge
+  - a read-only workflow token, with Actions unable to approve pull requests
+  - secret scanning and push protection (public repositories)
+  - Dependabot alerts and security updates
+  - private vulnerability reporting
+  - immutable releases (see [3.3](#33-immutable-releases))
+  - allow auto-merge
+  - for a public repository with the code-review workflows, the `pull_request_target` event policy
+  - a report of the organization's two-factor requirement
+
+  Run it again after every change 2.2 lists. See [Protect the Default Branch](../README.md#protect-the-default-branch).
+- **Check:** the same command with `-WhatIf` prints no `would set` line.
+- **Goes wrong:** requiring a check that doesn't run on every pull request blocks every merge; a ruleset of the owner's is kept and only gets notices; a setting the organization decides prints `not available`.
+
+### 2.2 When an Approval Is Required
+
+- **Applies to:** GitHub
+- **Who:** as in [2.1](#21-run-the-baseline)
+- **Where:** as in [2.1](#21-run-the-baseline)
+- **Do:** The baseline requires one approval, of the last push, only where NCode Review's approver is set up (see [section 5](#5-ncode-review)) or where `code-review.yml` passes `approve: true` and two or more people can write. Otherwise it requires none, since GitHub counts no approval from someone without write access ([ADR-0034](../template/docs/decisions/project-template/0034-with-one-writer-the-baseline-requires-no-approval.md), [ADR-0036](../template/docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)). Run [2.1](#21-run-the-baseline) again after setting up the approver, and after adding or removing a writer.
+- **Check:** `gh api repos/<owner>/<name>/rules/branches/main --jq '.[] | select(.type == "pull_request") | .parameters.required_approving_review_count'` prints `1` where the approval is required and `0` elsewhere.
+- **Goes wrong:** requiring the approval before the approver is live blocks every merge, so the script checks the input and the secret first and requires nothing without both; a ruleset made before v0.96.0 can require last-push approval with no approval (#436), and the run prints the `gh api` command that turns it off.
+
+### 2.3 CodeQL's Languages
+
+- **Applies to:** GitHub
+- **Who:** an admin of the repository.
+- **Where:** the repository's Settings > Advanced Security > CodeQL analysis.
+- **Do:** Set up default setup with the repository's languages. Then run [2.1](#21-run-the-baseline) again with the same `-RequireChecks`, which adds the code-scanning rule and switches the setup to the extended query suite.
+- **Check:** `gh api repos/<owner>/<name>/code-scanning/default-setup --jq '.state + " " + (.languages | join(","))'` prints `configured` and at least one language.
+- **Goes wrong:** an organization's security configuration can turn default setup on with no language, as on NCodeGroup/docs and NCodeGroup/brand; the baseline then leaves the rule out and says why, and a rule kept from an older run blocks every pull request until a language is set up ([ADR-0030](../template/docs/decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md)).
