@@ -264,3 +264,49 @@ This section is for a .NET library on GitHub with the template's `publish.yml`, 
 - **Do:** On nuget.org, check the version is listed and its README tab shows the readme. On the release, `gh release view <tag> --repo <owner>/<name> --json assets --jq '.assets[].name'` lists each `.nupkg` and `.snupkg` (the symbol packages also went to nuget.org's symbol server), `<tag>.intoto.jsonl` (the provenance) and `<tag>.spdx.json` (the SBOM). `gh attestation verify <package>.nupkg --repo <owner>/<name>` passes.
 - **Check:** those commands.
 - **Goes wrong:** provenance still missing within 14 days of the run; `gh workflow run release-provenance.yml -f tag=<tag> -f run-id=<run id> --repo <owner>/<name>` backfills it.
+
+## 5. NCode Review
+
+This section is for a GitHub project with NCode Review, after [0.3](#03-ncode-reviews-organization-setup). `https://github.com/NCodeGroup/code-review#opting-a-repository-in` and NCodeGroup/code-review#237 give the per-repository steps in full.
+
+### 5.1 Set Up the Repository
+
+- **Applies to:** GitHub, with NCode Review
+- **Who:** an organization owner (`admin:org`).
+- **Where:** each app's installation settings (Organization settings > GitHub Apps > Configure > Repository access), and an up-to-date clone of NCodeGroup/code-review (run `git pull` first).
+- **Do:** Add the repository to both apps' installations, NCode Review and NCode Review Approver. Run `.\tools\Enable-CodeReview.ps1 -Repo <name> -ApproverPrivateKeyPath <path to the approver's .pem>`. It creates the `code-review` environment (default branch only), gives the repository the organization secrets, and stores `NCODE_REVIEW_APPROVER_PRIVATE_KEY` in that environment. Then delete the `.pem` (see 7.3). Make sure the default branch has `.github/workflows/code-review.yml`, from the `code_review` answer (see [1.1](#11-a-new-project) and [1.2](#12-an-existing-repository)) or from `.\.template\Update-Project.ps1 -Data @{ code_review = $true }` in the project. It pins NCodeGroup/code-review v1.5.0 or later by full commit SHA, and its review job passes `approve: true` and `approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}`. `.template\Update-Project.ps1` says what an older file lacks.
+- **Check:** `gh secret list --env code-review --repo <owner>/<name>` lists `NCODE_REVIEW_APPROVER_PRIVATE_KEY`.
+- **Goes wrong:** a stale clone's script doesn't know `-ApproverPrivateKeyPath`; `gh`'s token can't list an installation's repositories, so the script warns and goes on, and you add the repository on the app's page; a public repository needs the event policy (see [0.2](#02-the-organizations-actions-policy) or [2.1](#21-run-the-baseline)) or GitHub blocks the review.
+
+### 5.2 Require the Approval
+
+- **Applies to:** GitHub, with NCode Review
+- **Who:** as in [2.1](#21-run-the-baseline)
+- **Where:** as in [2.1](#21-run-the-baseline)
+- **Do:** Only once [5.1](#51-set-up-the-repository) is on the default branch, run [2.1](#21-run-the-baseline)'s command again. It checks the input and the secret, then requires one approval, of the last push ([ADR-0036](../template/docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)).
+- **Check:** [2.2](#22-when-an-approval-is-required)'s check prints `1`.
+- **Goes wrong:** run before 5.1, it requires nothing and names the missing piece.
+
+### 5.3 Check the Approval
+
+- **Applies to:** GitHub, with NCode Review
+- **Who:** a maintainer.
+- **Where:** the next pull request.
+- **Do:** Mark it ready and let the review finish.
+- **Check:** after a clean review, `gh api repos/<owner>/<name>/pulls/<number>/reviews --jq '.[] | .user.login + " " + .state'` shows `ncode-review-approver[bot] APPROVED`, and `gh pr view <number> --json reviewDecision` shows `APPROVED`.
+- **Goes wrong:** an approval from `ncode-review[bot]` instead means no approver key reached the review, so recheck [5.1](#51-set-up-the-repository); a later review that doesn't approve dismissed it.
+
+### 5.4 Day to Day
+
+- **Applies to:** GitHub, with NCode Review
+- **Who:** the maintainers.
+- **Where:** each pull request.
+- **Do:**
+  - A draft pull request is reviewed when it is marked ready.
+  - A push to a ready pull request is reviewed after a comment with `/review` on its first line.
+  - A review that doesn't approve dismisses the earlier approval.
+  - NCode Review skips bots' pull requests, so a maintainer approves Dependabot's.
+  - The `AGENTS.md` Landing line `draft: yes` has `/ship-plan` open drafts, because marking a pull request ready is the person's review ([ADR-0022](../template/docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md.jinja)).
+  - Nothing requires the "Code review" check, so the person who merges waits for it ([ADR-0019](../template/docs/decisions/project-template/0019-nothing-requires-the-code-review-check-the-person-who-merges-waits-for-it.md.jinja)).
+- **Check:** the pull request shows the review and the approval.
+- **Goes wrong:** an NCode Review outage blocks merges where the approval is required, until it is fixed or the ruleset changes.
