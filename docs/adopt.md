@@ -228,3 +228,39 @@ This section is for a .NET library on GitHub with the template's `publish.yml`, 
 - **Do:** Before the first release there is no baseline, so package validation still compares target frameworks. After the first stable release reaches nuget.org, set `<PackageValidationBaselineVersion>` once, by hand, to the last version on nuget.org. `.template\Update-Project.ps1` and `Adopt-Project.ps1` name the version to set ([ADR-0147](../template/docs/decisions/project-template/0147-packages-are-validated-against-the-last-published-package.md)). From then on [4.6](#46-raise-the-baseline-after-a-stable-release) raises it.
 - **Check:** `git grep PackageValidationBaselineVersion` shows it; `./build/dod.ps1` passes (`-Fast` doesn't pack, so it doesn't validate).
 - **Goes wrong:** a version not on nuget.org fails the pack; `CP0002` means a public member was removed or changed, and the template's [api-compatibility page](../template/docs/api-compatibility.md.jinja) says how to record an intended break.
+
+### 4.4 Publish a Release
+
+- **Applies to:** .NET library
+- **Who:** a required reviewer of `nuget`.
+- **Where:** the Publish packages run in the Actions tab.
+- **Do:** [3.1](#31-how-a-release-happens)'s run starts Publish packages on the tag. Its pack job checks the tag is on the default branch, then tests and packs. The publish job waits for approval: open the run, choose Review deployments, tick `nuget`, and choose Approve and deploy.
+- **Check:** the run's summary says `Published <n> of <n> packages at <version> to nuget.org`.
+- **Goes wrong:** a run that ends in `startup_failure` at once, as NCodeGroup/Buffers' v5.5.0 did when a called workflow asked for more than `publish.yml` granted (#467, fixed in v0.111.1); update the template, then follow [4.5](#45-re-publish-a-release-that-failed). `Every package is already on nuget.org` means publish a new version.
+
+### 4.5 Re-publish a Release That Failed
+
+- **Applies to:** .NET library
+- **Who:** a maintainer, then a `nuget` reviewer.
+- **Where:** Actions > Publish packages > Run workflow, with "Use workflow from" set to the default branch, or `gh workflow run publish.yml --ref main -f tag=<tag> --repo <owner>/<name>`.
+- **Do:** Start a **new** run from the default branch with the tag. It still checks out and packs the tag, and skips packages already pushed. Never choose Re-run on the failed run: a re-run replays the tag's own workflow files, so a fix on the default branch doesn't reach it.
+- **Check:** as in [4.4](#44-publish-a-release).
+- **Goes wrong:** the `nuget` environment refuses a run from `main` unless [4.2](#42-the-nuget-environment-and-nuget_user) allows the branch.
+
+### 4.6 Raise the Baseline After a Stable Release
+
+- **Applies to:** .NET library
+- **Who:** a maintainer.
+- **Where:** the issue the run opens.
+- **Do:** After a stable release, the publish run's `baseline` job (`raise-baseline.yml`) waits for nuget.org to list the version, pushes `baseline-<version>` and opens an issue whose link opens the pull request with its title, description and `Closes #<issue>` filled in. Follow the link, create the pull request, let CI and NCode Review run, and merge it ([ADR-0150](../template/docs/decisions/project-template/0150-a-workflow-raises-the-package-validation-baseline-after-each-release.md.jinja), [ADR-0151](../template/docs/decisions/project-template/0151-release-follow-ups-are-jobs-publish-calls.md), [ADR-0036](../template/docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)). It does nothing until [4.3](#43-the-first-package-validation-baseline)'s first baseline is set.
+- **Check:** the pull request from `baseline-<version>` is merged and the issue is closed.
+- **Goes wrong:** no workflow opens the pull request itself, since Actions may not create pull requests (see [0.2](#02-the-organizations-actions-policy)); after a run that failed after its push, `gh workflow run raise-baseline.yml -f tag=<tag> --repo <owner>/<name>` finds the branch and issue and writes the link again; pre-releases raise nothing.
+
+### 4.7 Check the Package
+
+- **Applies to:** .NET library
+- **Who:** a maintainer.
+- **Where:** `https://www.nuget.org/packages/<package id>` and the GitHub release.
+- **Do:** On nuget.org, check the version is listed and its README tab shows the readme. On the release, `gh release view <tag> --repo <owner>/<name> --json assets --jq '.assets[].name'` lists each `.nupkg` and `.snupkg` (the symbol packages also went to nuget.org's symbol server), `<tag>.intoto.jsonl` (the provenance) and `<tag>.spdx.json` (the SBOM). `gh attestation verify <package>.nupkg --repo <owner>/<name>` passes.
+- **Check:** those commands.
+- **Goes wrong:** provenance still missing within 14 days of the run; `gh workflow run release-provenance.yml -f tag=<tag> -f run-id=<run id> --repo <owner>/<name>` backfills it.
