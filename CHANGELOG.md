@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `AGENTS.md`'s `draft` key, `CONTRIBUTING.md`'s Make a Change item 6, `GOVERNANCE.md`'s Automation row, the message after a project is made and `/best-practices`' Branch-Protection row say that where NCode Review's approver is set up, the NCode Review Approver's approval meets the ruleset's required approval, of the last push, with one writer too, as ADR-0036 decided in v0.111.0; they still said that GitHub counts no approval from NCode Review. `AGENTS.md`, `CONTRIBUTING.md` and `GOVERNANCE.md` are the project's, so the update shows their changes for the project to take ([#466](https://github.com/NCodeGroup/project-template/issues/466), [ADR-0036](template/docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)).
 
+- `tools/Dismiss-ScorecardAlerts.ps1`'s Branch-Protection comment says that with one writer the ruleset can require only the one approval, of the last push, that NCode Review's approver gives where it is set up, and none elsewhere, citing ADR-0036; it said the ruleset requires no approval, which is false where the approver is set up.
+
 ## [0.111.1] - 2026-11-21
 
 ### Fixed
