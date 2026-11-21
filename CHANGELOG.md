@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- `docs/adopt.md`'s NCode Review steps, 0.3 and section 5 with 5.1, link NCode Review's own runbook, [Set Up NCode Review, End to End](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md), at its once-per-organization, once-per-repository and troubleshooting sections, instead of NCodeGroup/code-review's README sections "Using it" and "Opting a repository in", so NCode Review's setup has one procedure ([#472](https://github.com/NCodeGroup/project-template/issues/472)).
+
 ## [0.111.3] - 2026-11-21
 
 ### Fixed
