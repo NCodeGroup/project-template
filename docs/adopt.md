@@ -18,6 +18,8 @@ The `Applies to` values are:
 - `with Copilot`
 - `where the project has one`
 
+A step with several values applies where every one of them holds, except that `GitHub, GitLab` means either host.
+
 On GitLab, follow [2.5](#25-on-gitlab) for which steps apply.
 
 Commands run in PowerShell 7 from the folder the step's Where names.
