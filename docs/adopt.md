@@ -104,7 +104,7 @@ Do 1.1 or 1.2, then 1.3 for Node.js and 1.4.
 - **Where:** the project's folder.
 - **Do:** A new project is already pushed (see [1.1](#11-a-new-project)), so open its first change as a pull request. For an adopted repository, run `git push -u origin adopt-project-template`, then `gh pr create --fill`. Wait for CI, then merge it with a merge commit or by rebasing. The checks that pass here are the ones [2.1](#21-run-the-baseline) requires: the template's CI job is `build-and-test`. On GitLab, open a merge request with `glab mr create --fill` instead.
 - **Check:** `gh pr checks <number>` shows every check passed. On GitLab, `glab ci status` shows the merge request's pipeline passed.
-- **Goes wrong:** a job that runs only on a schedule, a release or with `paths` filters never reports on every pull request, so requiring it blocks merges; `-RequireChecks auto` needs a merged pull request, so merge this one before 2.1.
+- **Goes wrong:** a job that runs only on a schedule, a release or with `paths` filters never reports on every pull request, so requiring it blocks merges; `-RequireChecks auto` needs a merged pull request, so merge this one before 2.1. On GitLab, `-RequireChecks` and [2.1](#21-run-the-baseline) don't apply; [2.5](#25-on-gitlab) says what its "Pipelines must succeed" setting needs.
 
 ## 2. Protect the Default Branch and Tags
 
