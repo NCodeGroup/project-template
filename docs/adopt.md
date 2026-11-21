@@ -398,3 +398,46 @@ See [Update a Project](../README.md#update-a-project) and [Stay Current](../READ
   - Never keep a `.pem` on disk: GitHub keeps the secret, a new key can be generated at any time, and a leaked approver key can mint a Contents: write token for every repository the approver is installed on ([ADR-0036](../template/docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)).
 - **Check:** the app's page lists only the new key; the check in [5.3](#53-check-the-approval) passes on the next review.
 - **Goes wrong:** deleting the old key before every repository has the new one stops their reviews from approving.
+
+## 8. Checklist
+
+Audit an adopted repository by running each check; a script checks an item only where the last column names one.
+
+| Step | Applies to | Shows it is done | Checked by a script |
+| --- | --- | --- | --- |
+| [0.1](#01-accounts-and-tools) | every project | `gh auth status` shows the account and its scopes; `copier --version`, `pwsh --version`, `git config user.email` print values | No |
+| [0.2](#02-the-organizations-actions-policy) | GitHub | `-WhatIf` prints `already set` on both lines; `gh api orgs/<org>/actions/permissions/workflow` shows read-only and `can_approve_pull_request_reviews` false | `Set-RepositoryBaseline.ps1 -OrganizationPolicy -WhatIf`; the repository run's `organization two-factor requirement` line for two-factor authentication |
+| [0.3](#03-ncode-reviews-organization-setup) | GitHub, with NCode Review | `gh secret list --org <org>` lists both secrets | No |
+| [1.1](#11-a-new-project) | every project | `Get-Content .template-version` prints the version; the repository exists on the host | No |
+| [1.2](#12-an-existing-repository) | every project | `.copier-answers.yml` exists; the last commit is `Adopt project-template <version>` | No |
+| [1.3](#13-nodejs-nvs-and-the-prelude) | Node.js | `./.template/Use-Node.ps1; node --version` prints the `.node-version` major | No |
+| [1.4](#14-first-push-and-first-pull-request) | every project | `gh pr checks <number>` shows every check passed | No |
+| [2.1](#21-run-the-baseline) | GitHub | `-WhatIf` prints no `would set` line | `Set-RepositoryBaseline.ps1 -WhatIf` |
+| [2.2](#22-when-an-approval-is-required) | GitHub | the branch rule's `required_approving_review_count` is `1` where an approval is required and `0` elsewhere | `Set-RepositoryBaseline.ps1 -WhatIf` |
+| [2.3](#23-codeqls-languages) | GitHub | `gh api repos/<owner>/<name>/code-scanning/default-setup` shows `configured` and a language | `Set-RepositoryBaseline.ps1 -WhatIf` |
+| [2.4](#24-scorecard) | GitHub, public repository | the `-WhatIf` run lists nothing to dismiss; the Scorecard viewer shows the score | `Dismiss-ScorecardAlerts.ps1 -WhatIf` |
+| [2.5](#25-on-gitlab) | GitLab | the `-WhatIf` run prints `already set` for every setting | `Set-GitLabBaseline.ps1 -WhatIf` |
+| [3.1](#31-how-a-release-happens) | GitHub | the "Tag and publish release" run passed; `gh release view <tag>` shows the release | No |
+| [3.2](#32-signed-tags) | GitHub, public repository | `gitsign verify-tag` accepts the tag | No |
+| [3.3](#33-immutable-releases) | GitHub | `gh api repos/<owner>/<name>/immutable-releases` shows `"enabled":true` where they apply; `gh release verify <tag>` | `Set-RepositoryBaseline.ps1 -WhatIf` |
+| [4.1](#41-trusted-publishing-on-nugetorg) | .NET library | nuget.org's Trusted Publishing page lists the policy | No |
+| [4.2](#42-the-nuget-environment-and-nuget_user) | .NET library | the `nuget` environment allows `branch main` and `tag v*`; `gh variable list` lists `NUGET_USER` | No |
+| [4.3](#43-the-first-package-validation-baseline) | .NET library, GitHub, GitLab | `git grep PackageValidationBaselineVersion` shows it; `./build/dod.ps1` passes | `.template/Update-Project.ps1`'s notes |
+| [4.4](#44-publish-a-release) | .NET library | the run's summary says `Published <n> of <n> packages at <version> to nuget.org` | No |
+| [4.5](#45-re-publish-a-release-that-failed) | .NET library | as 4.4 | No |
+| [4.6](#46-raise-the-baseline-after-a-stable-release) | .NET library | the `baseline-<version>` pull request is merged and the issue is closed | No |
+| [4.7](#47-check-the-package) | .NET library | the commands in 4.7 succeed | No |
+| [5.1](#51-set-up-the-repository) | GitHub, with NCode Review | `gh secret list --env code-review --repo <owner>/<name>` lists `NCODE_REVIEW_APPROVER_PRIVATE_KEY` | `.template/Update-Project.ps1`'s notes |
+| [5.2](#52-require-the-approval) | GitHub, with NCode Review | 2.2's check prints `1` | No |
+| [5.3](#53-check-the-approval) | GitHub, with NCode Review | after a clean review the reviews list shows `ncode-review-approver[bot] APPROVED` and `reviewDecision` is `APPROVED` | No |
+| [5.4](#54-day-to-day) | GitHub, with NCode Review | the pull request shows the review and the approval | No |
+| [6.1](#61-the-openssf-best-practices-badge) | every project | the update prints no badge reminder | `.template/Update-Project.ps1`'s notes |
+| [6.2](#62-codecov) | where the project has one | codecov.io shows the default branch's latest commit | No |
+| [6.3](#63-the-documentation-site-and-github-pages) | where the project has one | `gh api repos/<owner>/<name>/pages` prints `workflow <domain> true` | No |
+| [6.4](#64-the-copilot-cloud-agents-environment) | GitHub, with Copilot | `gh run list --workflow copilot-setup-steps.yml --limit 1` shows it passed | No |
+| [6.5](#65-labels) | GitHub | `gh label list --repo <owner>/<name>` lists the labels | No |
+| [7.1](#71-template-updates) | every project | `gh issue list --label template-update --state open` lists nothing once current | `template-update.yml` |
+| [7.2](#72-dependabot) | GitHub | Insights > Dependency graph > Dependabot shows recent checks | No |
+| [7.3](#73-rotate-a-key) | GitHub, with NCode Review | the app's page lists only the new key; 5.3's check passes | No |
+
+No script yet checks the rows marked No; a read-only checker that runs this table is a planned follow-up.
