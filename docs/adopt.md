@@ -428,7 +428,7 @@ Audit an adopted repository by running each check; a script checks an item only 
 | [4.5](#45-re-publish-a-release-that-failed) | .NET library | as 4.4 | No |
 | [4.6](#46-raise-the-baseline-after-a-stable-release) | .NET library | the `baseline-<version>` pull request is merged and the issue is closed | No |
 | [4.7](#47-check-the-package) | .NET library | the commands in 4.7 succeed | No |
-| [5.1](#51-set-up-the-repository) | GitHub, with NCode Review | `gh secret list --env code-review --repo <owner>/<name>` lists `NCODE_REVIEW_APPROVER_PRIVATE_KEY` | `.template/Update-Project.ps1`'s notes |
+| [5.1](#51-set-up-the-repository) | GitHub, with NCode Review | `gh secret list --env code-review --repo <owner>/<name>` lists `NCODE_REVIEW_APPROVER_PRIVATE_KEY` | `Set-RepositoryBaseline.ps1 -WhatIf` for the secret; `.template/Update-Project.ps1`'s notes for `code-review.yml` |
 | [5.2](#52-require-the-approval) | GitHub, with NCode Review | 2.2's check prints `1` | No |
 | [5.3](#53-check-the-approval) | GitHub, with NCode Review | after a clean review the reviews list shows `ncode-review-approver[bot] APPROVED` and `reviewDecision` is `APPROVED` | No |
 | [5.4](#54-day-to-day) | GitHub, with NCode Review | the pull request shows the review and the approval | No |
