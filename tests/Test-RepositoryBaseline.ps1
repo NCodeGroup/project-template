@@ -430,6 +430,7 @@ $repos = @{
     solePrivate = New-Repo -Writers @('maintainer') -Visibility 'private'
     twoOwnedApproval = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Approvals 1))
     # NCode Review's approver app is set up (ADR-0036): one writer, the input, and the secret, missing or unreadable.
+    approverWritersUnreadable = New-Repo -Writers 'fail:403' -ApproverSecret 'present' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml }
     approverSole = New-Repo -Writers @('maintainer') -ApproverSecret 'present' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml }
     approverSoleOurs = New-Repo -Writers @('maintainer') -ApproverSecret 'present' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml } -Rulesets @((New-Ruleset 'Protect main'))
     approverNoSecret = New-Repo -Writers @('maintainer') -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml }
@@ -840,6 +841,9 @@ try {
     $r = Invoke-Baseline @('-Repo', 'approverSole')
     $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
     Check 'approver: one writer, the input and the secret create the ruleset with one approval, of the last push' ($r.Body -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $ap.dismiss_stale_reviews_on_push -eq $true -and $r.Output.Contains('approverSole: NCode Review approves as the NCode Review Approver') -and $r.Output -notmatch 'but one person has write access') "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'approverWritersUnreadable')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'approver: a collaborators list it can''t read still gets one approval, of the last push, where the approver is set up' ($r.Body -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $r.Output.Contains("approverWritersUnreadable: couldn't read who has write access (HTTP 403")) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'approverSoleOurs')
     $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/approverSoleOurs/rulesets/101' })
     $ap = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }

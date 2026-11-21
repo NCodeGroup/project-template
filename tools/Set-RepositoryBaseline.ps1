@@ -129,9 +129,9 @@
     event or uploads release assets, it prints a notice with the command that turns them off.
 
     -OrganizationPolicy, with -Owner alone, first sets the organization's default workflow token to read-only with
-    GitHub Actions not allowed to approve pull requests, where either is off (#461, the template's ADR-0036), then
-    creates the same policy once for the organization, on every repository (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
-    auth refresh -h github.com -s admin:org). It reads the organization's policies first and updates one of that
+    GitHub Actions not allowed to approve pull requests, where either is off (the template's ADR-0036), then creates
+    the same policy once for the organization, on every repository (~ALL), and touches no repository: run it as an
+    organization owner, with a token that has the admin:org scope (gh auth refresh -h github.com -s admin:org). It reads the organization's policies first and updates one of that
     name in place, keeping the other events it allows, when it isn't active, misses one of those events or doesn't cover both files on every repository, and leaves alone one that does, or an active one that already allows pull_request_target and issue_comment for both files on every repository; -WhatIf prints the body it
     would post. It exits 1 when it can't read the policies or the API refuses the policy or the default token setting.
     It needs GitHub Team or above, the plans GitHub offers organization event policies on: when GitHub refuses them for
@@ -1029,7 +1029,7 @@ function Get-PlanRefusalHint([string]$Reason) {
 }
 
 # The organization's default workflow token, read-only and not allowed to approve pull requests, which every repository
-# without a setting of its own takes (the template's ADR-0036, #461). Returns $true unless the read or the write failed.
+# without a setting of its own takes (the template's ADR-0036). Returns $true unless the read or the write failed.
 function Set-OrganizationWorkflowPermissions {
     [CmdletBinding(SupportsShouldProcess)]
     param()

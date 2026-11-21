@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Where NCode Review's approver app is set up (`code-review.yml` passes `approver-private-key` and the repository's `code-review` environment holds `NCODE_REVIEW_APPROVER_PRIVATE_KEY`), `tools/Set-RepositoryBaseline.ps1` requires one approval, of the last push, with one writer too, since GitHub counts an approval from a reviewer that can write; the template's `code-review.yml` passes the approver's key ([#460](https://github.com/NCodeGroup/project-template/issues/460), ADR-0036).
+- Where NCode Review's approver app is set up (`code-review.yml` passes `approver-private-key` and the repository's `code-review` environment holds `NCODE_REVIEW_APPROVER_PRIVATE_KEY`), `tools/Set-RepositoryBaseline.ps1` requires one approval, of the last push, with one writer too, since GitHub counts an approval from a reviewer that can write; the template's `code-review.yml` passes the approver's key, and `.template/Update-Project.ps1` says when a project's `code-review.yml` pins NCode Review before v1.5.0 or passes `approve: true` without `approver-private-key` ([#460](https://github.com/NCodeGroup/project-template/issues/460), ADR-0036).
 
 ### Changed
 

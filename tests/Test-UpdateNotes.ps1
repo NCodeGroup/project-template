@@ -29,9 +29,9 @@
                 .template\Publish-Release.ps1 refuses or without AGENTS.md. tools\adopt\Adoption.psm1's copy answers the same.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
-      code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.4.0 or passes
-                no approve: true, and an AGENTS.md Landing section that doesn't say draft: yes, and says nothing for a
-                current setup or a project without code-review.yml.
+      code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.5.0, passes
+                no approve: true or passes it without approver-private-key, and an AGENTS.md Landing section that
+                doesn't say draft: yes, and says nothing for a current setup or a project without code-review.yml.
       immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
                 for an upload named only in a comment line.
@@ -306,13 +306,15 @@ $codeReviewNote = & {
     $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-CodeReviewNote' }, $true)
     . ([scriptblock]::Create($fn.Extent.Text))
     $pin = 'NCodeGroup/code-review@0123456789abcdef0123456789abcdef01234567'
-    $review = { param([string]$Tag, [bool]$Approve) "jobs:`n  review:`n    steps:`n      - uses: $pin # $Tag`n        with:`n$(if ($Approve) { "          approve: true`n" })" }
+    $review = { param([string]$Tag, [bool]$Approve) "jobs:`n  review:`n    steps:`n      - uses: $pin # $Tag`n        with:`n$(if ($Approve) { "          approve: true`n          approver-private-key: `${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}`n" })" }
     $reviewCases = [ordered]@{
         'old pin, no approve, draft no' = @{ Workflow = (& $review 'v1.3.0' $false); Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @('pins NCodeGroup/code-review v1.3.0', 'passes no approve: true', 'says draft: no', 'Set-RepositoryBaseline.ps1 again'); Not = @() }
-        'current'                       = @{ Workflow = (& $review 'v1.4.0' $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
+        'current'                       = @{ Workflow = (& $review 'v1.5.0' $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
         'newer, two jobs'               = @{ Workflow = (& $review 'v1.10.0' $true) + "      - uses: $pin # v1.12.1`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
-        'no draft line'                 = @{ Workflow = (& $review 'v1.4.0' $true); Agents = "# P`n`n## Landing`n`n- integrate: pull-request`n"; Want = @('has no draft line'); Not = @('pins', 'passes no approve') }
+        'no draft line'                 = @{ Workflow = (& $review 'v1.5.0' $true); Agents = "# P`n`n## Landing`n`n- integrate: pull-request`n"; Want = @('has no draft line'); Not = @('pins', 'passes no approve') }
         'tag pin, no comment'           = @{ Workflow = "jobs:`n  review:`n    steps:`n      - uses: NCodeGroup/code-review@v1.3.0`n        with:`n          approve: true`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @('pins NCodeGroup/code-review v1.3.0'); Not = @('passes no approve', 'says draft', 'has no draft line') }
+        'approve without approver key'  = @{ Workflow = "jobs:`n  review:`n    steps:`n      - uses: $pin # v1.5.0`n        with:`n          approve: true`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @('has no approver-private-key input', 'Enable-CodeReview.ps1 -ApproverPrivateKeyPath'); Not = @('pins', 'passes no approve: true') }
+        'pin before the approver'       = @{ Workflow = (& $review 'v1.4.0' $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @('pins NCodeGroup/code-review v1.4.0'); Not = @('has no approver-private-key input') }
         'no code-review.yml'            = @{ Workflow = $null; Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @(); Not = @() }
     }
     foreach ($name in $reviewCases.Keys) {
