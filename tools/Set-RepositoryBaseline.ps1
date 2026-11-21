@@ -26,8 +26,8 @@
       - adds a "Protect release tags" ruleset on the tags matching v* (refs/tags/v*): no deletion and no update, so a
         tag is never moved, with no bypass. A release tag names one published package set, so it never changes;
       - turns on the security settings a public project should have, each where it is off: the workflow token
-        (GITHUB_TOKEN) read-only by default, with GitHub Actions not allowed to create and approve pull requests, except
-        where the default branch has .github/workflows/raise-baseline.yml, which opens a pull request; secret scanning
+        (GITHUB_TOKEN) read-only by default, with GitHub Actions never allowed to create and approve pull requests, in every
+        repository (the template's ADR-0036); secret scanning
         and its push protection; Dependabot alerts and Dependabot security updates, which need the alerts; private
         vulnerability reporting; and immutable releases, except where a .yml or .yaml file in the default branch's
         .github/workflows runs on a release event or uploads release assets (gh release upload,
@@ -128,11 +128,12 @@
     stays on, since the script never loosens a setting. Where they are already on and a workflow runs on a release
     event or uploads release assets, it prints a notice with the command that turns them off.
 
-    -OrganizationPolicy, with -Owner alone, creates the same policy once for the organization, on every repository
-    (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
+    -OrganizationPolicy, with -Owner alone, first sets the organization's default workflow token to read-only with
+    GitHub Actions not allowed to approve pull requests, where either is off (#461, the template's ADR-0036), then
+    creates the same policy once for the organization, on every repository (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
     auth refresh -h github.com -s admin:org). It reads the organization's policies first and updates one of that
     name in place, keeping the other events it allows, when it isn't active, misses one of those events or doesn't cover both files on every repository, and leaves alone one that does, or an active one that already allows pull_request_target and issue_comment for both files on every repository; -WhatIf prints the body it
-    would post. It exits 1 when it can't read the policies or the API refuses the policy.
+    would post. It exits 1 when it can't read the policies or the API refuses the policy or the default token setting.
     It needs GitHub Team or above, the plans GitHub offers organization event policies on: when GitHub refuses them for
     the organization's plan, with an answer that asks to upgrade, such as "Upgrade to GitHub Team to enable this
     feature.", it says so and to run it for each repository instead, with -Repo <name> or -All.
@@ -159,8 +160,8 @@ param(
     # one value for a parameter, so a list has to arrive as one string). Only with -Repo. Or auto, alone, which reads them
     # from each repository's latest merged pull request, and works with -All too.
     [string[]]$RequireChecks = @(),
-    # Creates the organization's Actions event policy for the code-review workflows of every repository, instead of each
-    # repository's own. Only with -Owner; an organization owner runs it, with the admin:org scope, on GitHub Team or above.
+    # Sets the organization's default workflow token and creates its Actions event policy for the code-review workflows of
+    # every repository, instead of each repository's own. Only with -Owner; an organization owner runs it, with the admin:org scope, on GitHub Team or above.
     [switch]$OrganizationPolicy,
     # Leaves immutable releases off in each repository, for one whose releases get files after they are published.
     [switch]$SkipImmutableReleases,
@@ -903,12 +904,12 @@ function Set-SecuritySetting {
 # organization fixes (HTTP 409).
 function Set-SecuritySettings([string]$Name, $Info) {
     $base = "repos/$Owner/$Name"
-    # GitHub's "Allow GitHub Actions to create and approve pull requests" is one setting: it is on only where
-    # raise-baseline.yml must open its pull request (the template's ADR-0150), and a read that fails leaves it off.
-    $raiser = (Invoke-HostApi gh "$base/contents/.github/workflows/raise-baseline.yml?ref=$($Info.default_branch)").Status -eq 200
-    $label = if ($raiser) { 'read-only workflow token, and Actions opening the baseline pull request' } else { 'read-only workflow token, and Actions not approving pull requests' }
-    $state = Get-SettingState (Invoke-HostApi gh "$base/actions/permissions/workflow") { param($answer) $answer.default_workflow_permissions -eq 'read' -and [bool]$answer.can_approve_pull_request_reviews -eq $raiser }
-    Set-SecuritySetting $Name $label $state PUT "$base/actions/permissions/workflow" @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $raiser }
+    # GitHub's "Allow GitHub Actions to create and approve pull requests" is off everywhere: a workflow that can approve
+    # lets any writer's workflow approve its own pull request, which a required approval would then count (the
+    # template's ADR-0036).
+    $label = 'read-only workflow token, and Actions not approving pull requests'
+    $state = Get-SettingState (Invoke-HostApi gh "$base/actions/permissions/workflow") { param($answer) $answer.default_workflow_permissions -eq 'read' -and -not [bool]$answer.can_approve_pull_request_reviews }
+    Set-SecuritySetting $Name $label $state PUT "$base/actions/permissions/workflow" @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false }
 
     $features = [ordered]@{ secret_scanning = 'secret scanning'; secret_scanning_push_protection = 'secret scanning push protection' }
     foreach ($feature in $features.Keys) {
@@ -1027,6 +1028,24 @@ function Get-PlanRefusalHint([string]$Reason) {
     'organization event policies need GitHub Team or above: run it for each repository instead, with -Repo <name>, or with -All once its -WhatIf looks right'
 }
 
+# The organization's default workflow token, read-only and not allowed to approve pull requests, which every repository
+# without a setting of its own takes (the template's ADR-0036, #461). Returns $true unless the read or the write failed.
+function Set-OrganizationWorkflowPermissions {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+    $path = "orgs/$Owner/actions/permissions/workflow"
+    $label = 'default workflow token read-only, and Actions not approving pull requests'
+    $state = Get-SettingState (Invoke-HostApi gh $path) { param($answer) $answer.default_workflow_permissions -eq 'read' -and -not [bool]$answer.can_approve_pull_request_reviews }
+    $name = "organization ${Owner}"
+    if ($state -is [string]) { Write-Host "${name}: ${label}: not available ($state)"; return $false }
+    if ($state) { Write-Host "${name}: ${label}: already set"; return $true }
+    if (-not $PSCmdlet.ShouldProcess($Owner, "turn on $label")) { Write-Host "${name}: ${label}: would set"; return $true }
+    $result = Invoke-HostWrite PUT $path @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false }
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${name}: ${label}: set"; return $true }
+    Write-Host "${name}: ${label}: not available ($(Get-FailureReason $result))"
+    return $false
+}
+
 # The same policy once for the organization, on every repository (~ALL). Its own policy, by name, is updated in place
 # when it isn't active, misses an event or doesn't cover both files on every repository. Returns $true unless it can't
 # read the policies or the API refuses the policy. It writes only its report lines (and, with -WhatIf, the body) to the host.
@@ -1079,7 +1098,7 @@ function Set-OrganizationEventPolicy {
     return $false
 }
 
-if ($OrganizationPolicy) { if (Set-OrganizationEventPolicy) { exit 0 } else { exit 1 } }
+if ($OrganizationPolicy) { $workflow = Set-OrganizationWorkflowPermissions; $policy = Set-OrganizationEventPolicy; if ($workflow -and $policy) { exit 0 } else { exit 1 } }
 foreach ($name in Get-Targets) {
     try { Set-Baseline $name } catch { Write-Host "${name}: FAILED: $($_.Exception.Message)" -ForegroundColor Red }
 }

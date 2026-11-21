@@ -40,8 +40,8 @@
     repository it doesn't skip, one whose default branch it leaves alone too, gets a "Protect release tags" ruleset on
     v* tags with no deletion, no update and no bypass, which -WhatIf shows, unless it has one of that name, whatever its
     state, or an active tag ruleset that refuses both already; that it turns on, in order, the read-only workflow token
-    with Actions not approving pull requests (or opening the baseline pull request, where the default branch has
-    raise-baseline.yml), secret scanning, its push protection, Dependabot alerts, Dependabot
+    with Actions not approving pull requests, whether or not the default branch has raise-baseline.yml (ADR-0036),
+    secret scanning, its push protection, Dependabot alerts, Dependabot
     security updates and private vulnerability reporting, each with the call and body the API takes, and only where it
     is off, reports each as set, already set, would set or not available, leaves secret scanning out of a repository
     that isn't public, and reports a setting the API won't read or refuses without failing the run; that it allows
@@ -55,7 +55,9 @@
     both files, says why, also with -WhatIf and when refused, and is left alone when it does its job; that a file or
     policy it can't read, or a refusal, is reported without failing the run, and an organization read that fails
     other than with HTTP 403 or 404 is named in the policy's line; that
-    -OrganizationPolicy posts the same policy, on every repository, to the organization alone, prints its body with
+    -OrganizationPolicy also sets the organization's default workflow token to read-only with Actions not approving pull
+    requests where it is off, leaves it where it is set, shows it with -WhatIf and exits 1 when that is refused while
+    still creating the policy; it posts the same policy, on every repository, to the organization alone, prints its body with
     -WhatIf, updates one of that name in place, keeping its other events, when it isn't active, misses an event or
     doesn't cover both files on every repository, says why, also with -WhatIf and when refused, and leaves alone one
     that does or one that already allows both events on every repository, exits 1 when it can't read the
@@ -141,7 +143,7 @@ if ($method -ne 'GET') {
     }
     if ($key -eq 'code-scanning/default-setup' -and $repo.switchFails) { exit 1 }
     $org = if ($path -match '^orgs/([^/]+)/') { $data.orgs[$Matches[1]] }
-    $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] } elseif ($org) { $org.writeFail }
+    $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] } elseif ($org -and $path -like '*/actions/permissions/workflow') { $org.workflowWriteFail } elseif ($org) { $org.writeFail }
     $message = if ($org.message) { $org.message } else { "Stand-in refused $key" }
     if ($refused) { Out-Answer ([int]$refused) (ConvertTo-Json -Compress -InputObject @{ message = $message }) }
     if ($rest -contains '--input') { Out-Answer 200 '{}' } else { Out-Answer 204 '' }
@@ -159,6 +161,15 @@ if ($path -match '^repos/[^/]+/([^/]+)/(actions/permissions/workflow|vulnerabili
         'automated-security-fixes' { if ($on) { Out-Answer 200 '{"enabled":true,"paused":false}' } else { Out-Answer 404 '{"message":"Not Found"}' } }
         default { Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ enabled = $on }) }
     }
+}
+# An organization's default workflow token: workflow is on (read-only, Actions not approving; the default), write (a
+# write token), readApproves (read-only, but Actions may approve pull requests) or fail:<code>; one not in orgs is 404.
+if ($path -match '^orgs/([^/]+)/actions/permissions/workflow$') {
+    $org = $data.orgs[$Matches[1]]
+    if (-not $org) { Out-Answer 404 '{"message":"Not Found"}' }
+    $state = if ($org.workflow) { "$($org.workflow)" } else { 'on' }
+    if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
+    Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ default_workflow_permissions = if ($state -eq 'write') { 'write' } else { 'read' }; can_approve_pull_request_reviews = $state -ne 'on' })
 }
 # A file on the default branch: 200 when the repository's workflows list names it, 404 when it doesn't, or, for a
 # list of fail:<code>, that status for every file. A file with text in workflowText comes as base64 with line breaks, as
@@ -459,7 +470,7 @@ $repos = @{
     refused = New-Repo -WriteFails @{ 'actions/permissions/workflow' = 409; 'secret_scanning_push_protection' = 422; 'automated-security-fixes' = 422; 'allow_auto_merge' = 403 }
     workflowUnreadable = New-Repo -Security @{ 'actions/permissions/workflow' = 'fail:403' }
     baselineRaiser = New-Repo -Workflows @('.github/workflows/raise-baseline.yml')
-    baselineRaiserSet = New-Repo -Workflows @('.github/workflows/raise-baseline.yml') -Security @{ 'actions/permissions/workflow' = 'readApproves' }
+    baselineRaiserSet = New-Repo -Workflows @('.github/workflows/raise-baseline.yml') -Security @{ 'actions/permissions/workflow' = 'on' }
     provenance = New-Repo -Workflows @('.github/workflows/release-provenance.yml')
     # Workflows that run on a release event or upload release assets, one that only has a job named release, and one the
     # contents API sends without text.
@@ -516,6 +527,10 @@ $orgs = @{
     orgBroken = @{ policies = 'fail:500' }
     orgRefuses = @{ policies = @(); writeFail = 403 }
     orgPullOnly = @{ policies = @((New-EventPolicy 'pull only everywhere' -Paths @('.github/workflows/*') -Repos @('~ALL') -Events @('pull_request_target'))) }
+    orgTokenWrite = @{ policies = @(); workflow = 'write' }
+    orgTokenApproves = @{ policies = @(); workflow = 'readApproves' }
+    orgTokenRefused = @{ policies = @(); workflow = 'write'; workflowWriteFail = 403 }
+    orgTokenUnreadable = @{ policies = @(); workflow = 'fail:403' }
     orgFreeRead = @{ policies = 'fail:403'; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgFreeWrite = @{ policies = @(); writeFail = 403; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgTfaOn = @{ twoFactor = 'true' }
@@ -1059,10 +1074,10 @@ try {
 
     $r = Invoke-Baseline @('-Repo', 'baselineRaiser')
     $workflow = @($r.Bodies | Where-Object { $_.path -eq 'repos/NCodeGroup/baselineRaiser/actions/permissions/workflow' })
-    Check 'security: a repository with raise-baseline.yml lets Actions open pull requests, with a read-only token' ($workflow.Count -eq 1 -and $workflow[0].method -eq 'PUT' -and $workflow[0].body.default_workflow_permissions -eq 'read' -and $workflow[0].body.can_approve_pull_request_reviews -eq $true -and $r.Output -match [regex]::Escape('baselineRaiser: read-only workflow token, and Actions opening the baseline pull request: set')) "$($workflow | ConvertTo-Json -Depth 6 -Compress) $($r.Output)"
+    Check 'security: a repository with raise-baseline.yml keeps Actions from approving pull requests, with a read-only token' ($workflow.Count -eq 1 -and $workflow[0].method -eq 'PUT' -and $workflow[0].body.default_workflow_permissions -eq 'read' -and $workflow[0].body.can_approve_pull_request_reviews -eq $false -and $r.Output -match [regex]::Escape('baselineRaiser: read-only workflow token, and Actions not approving pull requests: set')) "$($workflow | ConvertTo-Json -Depth 6 -Compress) $($r.Output)"
 
     $r = Invoke-Baseline @('-Repo', 'baselineRaiserSet')
-    Check 'security: a repository with raise-baseline.yml whose Actions may open pull requests already changes nothing there' (@($r.Bodies | Where-Object { $_.path -match 'actions/permissions/workflow' }).Count -eq 0 -and $r.Output -match [regex]::Escape('baselineRaiserSet: read-only workflow token, and Actions opening the baseline pull request: already set')) "$($r.Changes -join '|') $($r.Output)"
+    Check 'security: a repository with raise-baseline.yml whose Actions may not approve pull requests already changes nothing there' (@($r.Bodies | Where-Object { $_.path -match 'actions/permissions/workflow' }).Count -eq 0 -and $r.Output -match [regex]::Escape('baselineRaiserSet: read-only workflow token, and Actions not approving pull requests: already set')) "$($r.Changes -join '|') $($r.Output)"
 
     $r = Invoke-Baseline @('-Repo', 'provenance')
     Check 'security: a repository with release-provenance.yml keeps mutable releases, and says why' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape('provenance: immutable releases: not available (release-provenance.yml attaches packages')) "$($r.Changes -join '|') $($r.Output)"
@@ -1278,6 +1293,20 @@ try {
     Check 'org: a refusal is reported and fails the run' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("orgRefuses (organization): ${label}: not available (HTTP 403") -and $r.Output -notmatch 'GitHub Team') $r.Output
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgUnreadable')
     Check 'org: another refused read still names the owner role and the admin:org scope' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape('HTTP 403: Stand-in refused to read them); run it as an owner of the organization, with a token that has the admin:org scope') -and $r.Output -notmatch 'GitHub Team') $r.Output
+    $wfLabel = 'default workflow token read-only, and Actions not approving pull requests'
+    foreach ($owner in 'orgTokenWrite', 'orgTokenApproves') {
+        $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', $owner)
+        $put = @($r.Bodies | Where-Object { $_.path -eq "orgs/$owner/actions/permissions/workflow" })
+        Check "org: $owner gets its default workflow token PUT read-only, without approvals" ($r.ExitCode -eq 0 -and $put.Count -eq 1 -and $put[0].method -eq 'PUT' -and $put[0].body.default_workflow_permissions -eq 'read' -and $put[0].body.can_approve_pull_request_reviews -eq $false -and @($put[0].body.PSObject.Properties).Count -eq 2 -and $r.Output -match [regex]::Escape("organization ${owner}: ${wfLabel}: set")) "$($r.Changes -join '|') $($r.Output)"
+    }
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgEmpty')
+    Check 'org: a default workflow token that is already set is left alone' ($r.ExitCode -eq 0 -and -not @($r.Changes | Where-Object { $_ -like '*actions/permissions/workflow*' }).Count -and $r.Output -match [regex]::Escape("organization orgEmpty: ${wfLabel}: already set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgTokenWrite', '-WhatIf')
+    Check 'org: -WhatIf shows the default workflow token it would set and writes nothing for it' ($r.ExitCode -eq 0 -and -not @($r.Changes | Where-Object { $_ -like '*actions/permissions/workflow*' }).Count -and $r.Output -match [regex]::Escape("organization orgTokenWrite: ${wfLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgTokenRefused')
+    Check 'org: a refused default workflow token fails the run, and the event policy is still created' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("organization orgTokenRefused: ${wfLabel}: not available (HTTP 403") -and ($r.Changes -join '|') -eq 'BODY PUT orgs/orgTokenRefused/actions/permissions/workflow|BODY POST orgs/orgTokenRefused/actions/policies') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgTokenUnreadable')
+    Check 'org: an unreadable default workflow token fails the run, and the event policy is still created' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("organization orgTokenUnreadable: ${wfLabel}: not available (couldn't read it: HTTP 403") -and ($r.Changes -join '|') -eq 'BODY POST orgs/orgTokenUnreadable/actions/policies') "$($r.Changes -join '|') $($r.Output)"
     $planHint = 'organization event policies need GitHub Team or above: run it for each repository instead, with -Repo <name>, or with -All once its -WhatIf looks right'
     $cases = @(
         @{ Owner = 'orgFreeRead'; Changes = ''; Says = "orgFreeRead (organization): ${label}: not available (couldn't read its Actions policies: HTTP 403: Upgrade to GitHub Team to enable this feature.); $planHint" }
