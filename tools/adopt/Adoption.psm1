@@ -840,21 +840,36 @@ function Get-CiPermissionNote {
     ".github/workflows/ci.yml asks for more than contents: read: $($findings -join '; '). .github/workflows/tag-release.yml runs ci.yml as a reusable workflow before it tags a release and grants it only contents: read, and GitHub fails that run as it starts when a job of ci.yml asks for more, whatever the job's if: says, so no release is tagged or published. Move each such job into a workflow of its own, such as .github/workflows/coverage.yml, and keep ci.yml's top-level permissions at contents: read (the template's ADR-0026, in docs/decisions/project-template/)."
 }
 
-# Nerdbank.GitVersioning, which version.json turns on (the template's ADR-0138), fails a build on a shallow clone and ignores -p:Version: name each job of the project's own workflows, other than publish.yml, which has its own check, that builds, packs, tests without --no-build or pushes packages with a shallow actions/checkout or a -p:Version argument.
+# Nerdbank.GitVersioning, which version.json turns on (the template's ADR-0138), fails a build on a shallow clone and ignores -p:Version: name each job of the project's own workflows, other than publish.yml, which has its own check, that builds, packs, tests without --no-build or pushes packages in a shallow actions/checkout's folder, by the step's working-directory: or the job's or workflow's defaults:, or with a -p:Version argument.
 # template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
 function Get-GitVersioningWorkflowNote {
     if (-not (Test-Path -LiteralPath version.json) -or -not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
     $findings = [Collections.Generic.List[string]]::new()
+    # A folder as the workspace-relative path actions/checkout's path: or a working-directory: names it: '' for the workspace, $null for one this check can't place.
+    $folderOf = {
+        param([string]$Value)
+        $v = ($Value -replace '\s+#.*$', '').Trim().Trim('''', '"').Trim()
+        $v = $v -replace '^\$\{\{\s*github\.workspace\s*\}\}/?', '' -replace '^(?:\./)+', '' -replace '/+$', ''
+        if ($v -eq '.') { $v = '' }
+        if ($v -match '\$\{\{|^/|^[A-Za-z]:|(?:^|/)\.\.(?:/|$)') { return $null }
+        $v
+    }
+    # The first capture of Pattern in Lines, or $null when no line matches.
+    $valueIn = { param([string[]]$Lines, [string]$Pattern) foreach ($l in $Lines) { if ($l -match $Pattern) { return $Matches[1] } } }
+    $isBuild = { param([string]$Line) $Line -match '(?i)\bdotnet\s+(?:build|pack)\b' -or ($Line -match '(?i)\bdotnet\s+test\b' -and $Line -notmatch '--no-build') -or $Line -match '(?i)\bnuget(?:\.exe)?\s+push\b' }
     foreach ($file in @(Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Name -match '\.ya?ml$' -and $_.Name -ne 'publish.yml' } | Sort-Object Name)) {
-        # The lines of each job under the top-level jobs: key, by job name.
+        # The lines of each job under the top-level jobs: key, by job name, and the lines of the top-level defaults: key.
         $jobs = [ordered]@{}
+        $defaults = [Collections.Generic.List[string]]::new()
         $inJobs = $false
+        $inDefaults = $false
         $jobIndent = -1
         $current = $null
         foreach ($line in Get-Content -LiteralPath $file.FullName) {
             if ($line -match '^\s*(#.*)?$') { continue }
             $indent = $line.Length - $line.TrimStart().Length
-            if ($indent -eq 0) { $inJobs = $line -match '^jobs:\s*(#.*)?$'; $jobIndent = -1; $current = $null; continue }
+            if ($indent -eq 0) { $inJobs = $line -match '^jobs:\s*(#.*)?$'; $inDefaults = $line -match '^defaults:\s*(#.*)?$'; $jobIndent = -1; $current = $null; continue }
+            if ($inDefaults) { $defaults.Add($line); continue }
             if (-not $inJobs) { continue }
             if ($jobIndent -lt 0) { $jobIndent = $indent }
             if ($indent -eq $jobIndent -and $line -match '^\s*([\w-]+):') {
@@ -864,24 +879,54 @@ function Get-GitVersioningWorkflowNote {
             }
             if ($current) { $jobs[$current].Add($line) }
         }
+        $workflowDefault = & $valueIn $defaults '^\s*working-directory:\s*(.*)$'
         foreach ($name in $jobs.Keys) {
             $lines = @($jobs[$name])
-            $builds = @($lines | Where-Object { $_ -match '(?i)\bdotnet\s+(?:build|pack)\b' -or ($_ -match '(?i)\bdotnet\s+test\b' -and $_ -notmatch '--no-build') -or $_ -match '(?i)\bnuget(?:\.exe)?\s+push\b' })
-            if (-not $builds.Count) { continue }
-            for ($i = 0; $i -lt $lines.Count; $i++) {
-                if ($lines[$i] -notmatch '\buses:\s*[''"]?actions/checkout@') { continue }
+            if (-not @($lines | Where-Object { & $isBuild $_ }).Count) { continue }
+            $stepAt = {
+                param([int]$At)
                 # The step starts at the nearest line at or above that starts a list item, and ends before the next one no deeper.
-                $start = $i
+                $start = $At
                 while ($start -ge 0 -and $lines[$start] -notmatch '^\s*-\s') { $start-- }
-                if ($start -lt 0) { $start = $i }
+                if ($start -lt 0) { $start = $At }
                 $startIndent = $lines[$start].Length - $lines[$start].TrimStart().Length
                 $end = $lines.Count
                 for ($j = $start + 1; $j -lt $lines.Count; $j++) {
                     if ($lines[$j] -match '^\s*-\s' -and ($lines[$j].Length - $lines[$j].TrimStart().Length) -le $startIndent) { $end = $j; break }
                 }
-                $step = @($lines[$start..($end - 1)])
-                if (-not @($step | Where-Object { $_ -match '(?<![\w-])fetch-depth:\s*[''"]?0[''"]?(?![\w.])' }).Count) {
-                    $findings.Add(".github/workflows/$($file.Name), job ${name}: actions/checkout without fetch-depth: 0")
+                $lines[$start..($end - 1)]
+            }
+            # The job's own defaults: working-directory, else the workflow's.
+            $keyIndent = $lines[0].Length - $lines[0].TrimStart().Length
+            $jobDefaults = [Collections.Generic.List[string]]::new()
+            $inJobDefaults = $false
+            foreach ($l in $lines) {
+                $lineIndent = $l.Length - $l.TrimStart().Length
+                if ($lineIndent -le $keyIndent) { $inJobDefaults = $l -match '^\s*defaults:\s*(#.*)?$'; continue }
+                if ($inJobDefaults) { $jobDefaults.Add($l) }
+            }
+            $jobDefault = & $valueIn $jobDefaults '^\s*working-directory:\s*(.*)$'
+            if ($null -eq $jobDefault) { $jobDefault = $workflowDefault }
+            $checkouts = @(for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -notmatch '\buses:\s*[''"]?actions/checkout@') { continue }
+                $step = @(& $stepAt $i)
+                [pscustomobject]@{ Step = $step; Folder = (& $folderOf "$(& $valueIn $step '(?:^\s*(?:-\s+)?|[{,]\s*)path:\s*([^,}]+)')"); Used = $false }
+            })
+            # Each build step uses the checkout whose folder holds its working directory most closely. When a folder can't be placed, or no checkout holds a build's working directory, every checkout of the job counts as used.
+            $everyCheckout = @($checkouts | Where-Object { $null -eq $_.Folder }).Count -gt 0
+            for ($i = 0; $i -lt $lines.Count -and -not $everyCheckout; $i++) {
+                if (-not (& $isBuild $lines[$i])) { continue }
+                $value = & $valueIn @(& $stepAt $i) '^\s*(?:-\s+)?working-directory:\s*(.*)$'
+                if ($null -eq $value) { $value = $jobDefault }
+                $folder = & $folderOf "$value"
+                if ($null -eq $folder) { $everyCheckout = $true; break }
+                $holder = @($checkouts | Where-Object { $_.Folder -eq '' -or $folder -eq $_.Folder -or $folder.StartsWith("$($_.Folder)/") } | Sort-Object { $_.Folder.Length } -Descending)
+                if ($holder.Count) { $holder[0].Used = $true } else { $everyCheckout = $true }
+            }
+            foreach ($checkout in $checkouts) {
+                if (-not ($everyCheckout -or $checkout.Used)) { continue }
+                if (-not @($checkout.Step | Where-Object { $_ -match '(?<![\w-])fetch-depth:\s*[''"]?0[''"]?(?![\w.])' }).Count) {
+                    $findings.Add(".github/workflows/$($file.Name), job ${name}: actions/checkout$(if ($checkout.Folder) { " (path: $($checkout.Folder))" }) without fetch-depth: 0")
                 }
             }
             foreach ($m in [regex]::Matches(($lines -join "`n"), '(?i)(?<![\w-])[-/]p(?:roperty)?:Version=\S+')) {
