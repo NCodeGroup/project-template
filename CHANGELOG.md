@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.111.0] - 2026-11-21
+
+### Added
+
+- Where NCode Review's approver app is set up (`code-review.yml` passes `approver-private-key` and the repository's `code-review` environment holds `NCODE_REVIEW_APPROVER_PRIVATE_KEY`), `tools/Set-RepositoryBaseline.ps1` requires one approval, of the last push, with one writer too, since GitHub counts an approval from a reviewer that can write; the template's `code-review.yml` pins NCode Review v1.5.0 and passes the approver's key, and `.template/Update-Project.ps1` says when a project's `code-review.yml` pins NCode Review before v1.5.0 or passes `approve: true` without `approver-private-key` ([#460](https://github.com/NCodeGroup/project-template/issues/460), ADR-0036).
+
+### Changed
+
+- Every repository's workflow token is read-only and GitHub Actions can't approve pull requests, also where `raise-baseline.yml` is, and `tools/Set-RepositoryBaseline.ps1 -OrganizationPolicy` sets the organization's defaults the same way ([#461](https://github.com/NCodeGroup/project-template/issues/461), ADR-0036).
+- `raise-baseline.yml` pushes `baseline-<version>` and opens an issue whose link opens the pull request, which starts CI and NCode Review's review, instead of opening a draft pull request and starting CI itself ([#460](https://github.com/NCodeGroup/project-template/issues/460), ADR-0036).
+
 ## [0.110.0] - 2026-11-20
 
 ### Added
@@ -1788,7 +1799,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.110.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.111.0...HEAD
+[0.111.0]: https://github.com/NCodeGroup/project-template/compare/v0.110.0...v0.111.0
 [0.110.0]: https://github.com/NCodeGroup/project-template/compare/v0.109.0...v0.110.0
 [0.109.0]: https://github.com/NCodeGroup/project-template/compare/v0.108.0...v0.109.0
 [0.108.0]: https://github.com/NCodeGroup/project-template/compare/v0.107.0...v0.108.0

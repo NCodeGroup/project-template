@@ -28,6 +28,9 @@
     not written but gets a notice with the command (with one writer only), a refusal gets the same notice, a list it
     can't read or that is not JSON is named, an empty list or one with a bot counts as one writer, and a public one gets
     a notice naming tools/Dismiss-ScorecardAlerts.ps1;
+    that where NCode Review's approver is set up (the input and the code-review environment's secret), the ruleset requires one
+    approval, of the last push, with one writer too, an earlier one is raised, and a missing or unreadable secret is named and
+    requires none;
     that -RequireChecks auto requires the GitHub Actions checks that passed on the
     latest merged pull request, found on any page of closed pull requests, reading every page of its check runs and
     workflow runs, Commit attribution among them, leaves out the review bot's Code review and its job, CodeQL and its
@@ -37,8 +40,8 @@
     repository it doesn't skip, one whose default branch it leaves alone too, gets a "Protect release tags" ruleset on
     v* tags with no deletion, no update and no bypass, which -WhatIf shows, unless it has one of that name, whatever its
     state, or an active tag ruleset that refuses both already; that it turns on, in order, the read-only workflow token
-    with Actions not approving pull requests (or opening the baseline pull request, where the default branch has
-    raise-baseline.yml), secret scanning, its push protection, Dependabot alerts, Dependabot
+    with Actions not approving pull requests, whether or not the default branch has raise-baseline.yml (ADR-0036),
+    secret scanning, its push protection, Dependabot alerts, Dependabot
     security updates and private vulnerability reporting, each with the call and body the API takes, and only where it
     is off, reports each as set, already set, would set or not available, leaves secret scanning out of a repository
     that isn't public, and reports a setting the API won't read or refuses without failing the run; that it allows
@@ -52,7 +55,9 @@
     both files, says why, also with -WhatIf and when refused, and is left alone when it does its job; that a file or
     policy it can't read, or a refusal, is reported without failing the run, and an organization read that fails
     other than with HTTP 403 or 404 is named in the policy's line; that
-    -OrganizationPolicy posts the same policy, on every repository, to the organization alone, prints its body with
+    -OrganizationPolicy also sets the organization's default workflow token to read-only with Actions not approving pull
+    requests where it is off, leaves it where it is set, shows it with -WhatIf and exits 1 when that is refused while
+    still creating the policy; it posts the same policy, on every repository, to the organization alone, prints its body with
     -WhatIf, updates one of that name in place, keeping its other events, when it isn't active, misses an event or
     doesn't cover both files on every repository, says why, also with -WhatIf and when refused, and leaves alone one
     that does or one that already allows both events on every repository, exits 1 when it can't read the
@@ -138,7 +143,7 @@ if ($method -ne 'GET') {
     }
     if ($key -eq 'code-scanning/default-setup' -and $repo.switchFails) { exit 1 }
     $org = if ($path -match '^orgs/([^/]+)/') { $data.orgs[$Matches[1]] }
-    $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] } elseif ($org) { $org.writeFail }
+    $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] } elseif ($org -and $path -like '*/actions/permissions/workflow') { $org.workflowWriteFail } elseif ($org) { $org.writeFail }
     $message = if ($org.message) { $org.message } else { "Stand-in refused $key" }
     if ($refused) { Out-Answer ([int]$refused) (ConvertTo-Json -Compress -InputObject @{ message = $message }) }
     if ($rest -contains '--input') { Out-Answer 200 '{}' } else { Out-Answer 204 '' }
@@ -156,6 +161,15 @@ if ($path -match '^repos/[^/]+/([^/]+)/(actions/permissions/workflow|vulnerabili
         'automated-security-fixes' { if ($on) { Out-Answer 200 '{"enabled":true,"paused":false}' } else { Out-Answer 404 '{"message":"Not Found"}' } }
         default { Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ enabled = $on }) }
     }
+}
+# An organization's default workflow token: workflow is on (read-only, Actions not approving; the default), write (a
+# write token), readApproves (read-only, but Actions may approve pull requests) or fail:<code>; one not in orgs is 404.
+if ($path -match '^orgs/([^/]+)/actions/permissions/workflow$') {
+    $org = $data.orgs[$Matches[1]]
+    if (-not $org) { Out-Answer 404 '{"message":"Not Found"}' }
+    $state = if ($org.workflow) { "$($org.workflow)" } else { 'on' }
+    if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
+    Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ default_workflow_permissions = if ($state -eq 'write') { 'write' } else { 'read' }; can_approve_pull_request_reviews = $state -ne 'on' })
 }
 # A file on the default branch: 200 when the repository's workflows list names it, 404 when it doesn't, or, for a
 # list of fail:<code>, that status for every file. A file with text in workflowText comes as base64 with line breaks, as
@@ -216,6 +230,13 @@ if ($path -match '^repos/[^/]+/([^/]+)/collaborators\?') {
     if ($writers -is [string] -and $writers -eq 'notjson') { Out-Answer 200 'not json' }
     Out-Answer 200 (ConvertTo-Json -Compress -InputObject @(@($writers | Where-Object { $_ }) | ForEach-Object { if ($_.StartsWith('bot:')) { @{ login = $_.Substring(4); type = 'Bot'; role_name = 'write' } } else { @{ login = $_; type = 'User'; role_name = 'write' } } }))
 }
+# The approver's secret in the code-review environment: approverSecret is present (200), missing (404) or fail:<code>.
+if ($path -match '^repos/[^/]+/([^/]+)/environments/code-review/secrets/NCODE_REVIEW_APPROVER_PRIVATE_KEY$') {
+    $state = "$($data.repos[$Matches[1]].approverSecret)"
+    if ($state -eq 'present') { Out-Answer 200 '{"name":"NCODE_REVIEW_APPROVER_PRIVATE_KEY"}' }
+    if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
+    Out-Answer 404 '{"message":"Not Found"}'
+}
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets/(\d+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].full["$($Matches[2])"] -Depth 10; exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets$') { ConvertTo-Json -InputObject @($data.repos[$Matches[1]].rulesets) -Depth 5; exit 0 }
 # Pull requests, and the check runs and workflow runs of a commit, for -RequireChecks auto.
@@ -272,9 +293,10 @@ function New-EventPolicy([string]$Name, [string[]]$Events = @('pull_request_targ
 # (New-EventPolicy), or fail:<code>. $WorkflowText maps a workflow file to its text, which the contents API answers as base64.
 # $Languages lists the languages CodeQL's default setup analyzes, those of NCodeGroup/Buffers unless it says otherwise:
 # @() for none, and $null leaves languages out of the answer.
-# $Writers lists the logins with write access, two unless it says otherwise, or fail:<code>.
+# $Writers lists the logins with write access, two unless it says otherwise, or fail:<code>. $ApproverSecret is the state of
+# the code-review environment's NCODE_REVIEW_APPROVER_PRIVATE_KEY: present, missing or fail:<code>.
 function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', $Languages = @('actions', 'csharp'), [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
-    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), [hashtable]$WorkflowText = @{}, $Policies = @(), [string]$OwnerType = '', $Writers = @('maintainer', 'collaborator')) {
+    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), [hashtable]$WorkflowText = @{}, $Policies = @(), [string]$OwnerType = '', $Writers = @('maintainer', 'collaborator'), [string]$ApproverSecret = 'missing') {
     $full = @{}
     $summaries = @()
     $id = 100
@@ -290,7 +312,7 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
         rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; languages = $Languages; switchFails = $SwitchFails
         pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails
         workflows = @($Workflows); workflowText = $WorkflowText; policies = if ($Policies -is [string]) { $Policies } else { @($Policies) }
-        writers = if ($Writers -is [string]) { $Writers } else { @($Writers) } }
+        writers = if ($Writers -is [string]) { $Writers } else { @($Writers) }; approverSecret = $ApproverSecret }
 }
 $allSecurityOn = @{ 'actions/permissions/workflow' = 'on'; 'vulnerability-alerts' = 'on'; 'automated-security-fixes' = 'on'; 'private-vulnerability-reporting' = 'on'; 'immutable-releases' = 'on' }
 function New-Pull([int]$Number, [string]$Sha, [string]$MergedAt) { @{ number = $Number; head = @{ sha = $Sha }; merged_at = if ($MergedAt) { $MergedAt } else { $null } } }
@@ -338,6 +360,7 @@ $bareRuleset.rules[2].Remove('parameters')
 $reviewWorkflows = @('.github/workflows/code-review.yml', '.github/workflows/code-review-auto-merge.yml')
 $dispatchYaml = "name: Code review`n`non:`n  pull_request_target:`n    types: [opened, reopened, ready_for_review, closed]`n  issue_comment:`n    types: [created]`n  workflow_dispatch:`n`npermissions: {}`n`njobs:`n  review:`n    runs-on: ubuntu-latest`n"
 $approveYaml = "on:`n  pull_request_target:`njobs:`n  review:`n    steps:`n      - uses: NCodeGroup/code-review@x`n        with:`n          approve: true`n"
+$approverYaml = $approveYaml + "          approver-private-key: `${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}`n"
 $repos = @{
     fresh = New-Repo
     freshApprover = New-Repo -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
@@ -406,6 +429,12 @@ $repos = @{
     writersUnreadableOurs = New-Repo -Writers 'fail:403' -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 1))
     solePrivate = New-Repo -Writers @('maintainer') -Visibility 'private'
     twoOwnedApproval = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Approvals 1))
+    # NCode Review's approver app is set up (ADR-0036): one writer, the input, and the secret, missing or unreadable.
+    approverWritersUnreadable = New-Repo -Writers 'fail:403' -ApproverSecret 'present' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml }
+    approverSole = New-Repo -Writers @('maintainer') -ApproverSecret 'present' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml }
+    approverSoleOurs = New-Repo -Writers @('maintainer') -ApproverSecret 'present' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml } -Rulesets @((New-Ruleset 'Protect main'))
+    approverNoSecret = New-Repo -Writers @('maintainer') -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml }
+    approverSecretFails = New-Repo -Writers @('maintainer') -ApproverSecret 'fail:500' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml }
     writersNone = New-Repo -Writers @() -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
     soleWithBot = New-Repo -Writers @('maintainer', 'bot:release-app') -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
     writersNotJson = New-Repo -Writers 'notjson' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
@@ -442,7 +471,7 @@ $repos = @{
     refused = New-Repo -WriteFails @{ 'actions/permissions/workflow' = 409; 'secret_scanning_push_protection' = 422; 'automated-security-fixes' = 422; 'allow_auto_merge' = 403 }
     workflowUnreadable = New-Repo -Security @{ 'actions/permissions/workflow' = 'fail:403' }
     baselineRaiser = New-Repo -Workflows @('.github/workflows/raise-baseline.yml')
-    baselineRaiserSet = New-Repo -Workflows @('.github/workflows/raise-baseline.yml') -Security @{ 'actions/permissions/workflow' = 'readApproves' }
+    baselineRaiserSet = New-Repo -Workflows @('.github/workflows/raise-baseline.yml') -Security @{ 'actions/permissions/workflow' = 'on' }
     provenance = New-Repo -Workflows @('.github/workflows/release-provenance.yml')
     # Workflows that run on a release event or upload release assets, one that only has a job named release, and one the
     # contents API sends without text.
@@ -499,6 +528,10 @@ $orgs = @{
     orgBroken = @{ policies = 'fail:500' }
     orgRefuses = @{ policies = @(); writeFail = 403 }
     orgPullOnly = @{ policies = @((New-EventPolicy 'pull only everywhere' -Paths @('.github/workflows/*') -Repos @('~ALL') -Events @('pull_request_target'))) }
+    orgTokenWrite = @{ policies = @(); workflow = 'write' }
+    orgTokenApproves = @{ policies = @(); workflow = 'readApproves' }
+    orgTokenRefused = @{ policies = @(); workflow = 'write'; workflowWriteFail = 403 }
+    orgTokenUnreadable = @{ policies = @(); workflow = 'fail:403' }
     orgFreeRead = @{ policies = 'fail:403'; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgFreeWrite = @{ policies = @(); writeFail = 403; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgTfaOn = @{ twoFactor = 'true' }
@@ -804,6 +837,25 @@ try {
     Check 'writers: a ruleset of the owner''s that requires an approval is not written, and gets a notice with the command' (-not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/101' }).Count -and $r.Output.Contains("soleOwned: notice: 'owner rules' requires an approval while one person has write access") -and $r.Output.Contains('$p.required_approving_review_count = 0') -and $r.Output.Contains('gh api -X PUT repos/NCodeGroup/soleOwned/rulesets/101 --input -')) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'twoOwnedApproval')
     Check 'writers: with two writers a ruleset of the owner''s that requires an approval gets no notice' ($r.Output -notmatch 'requires an approval while one person') $r.Output
+    # 6e. NCode Review's approver app is set up: one approval, of the last push, with one writer too (ADR-0036).
+    $r = Invoke-Baseline @('-Repo', 'approverSole')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'approver: one writer, the input and the secret create the ruleset with one approval, of the last push' ($r.Body -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $ap.dismiss_stale_reviews_on_push -eq $true -and $r.Output.Contains('approverSole: NCode Review approves as the NCode Review Approver') -and $r.Output -notmatch 'but one person has write access') "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'approverWritersUnreadable')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'approver: a collaborators list it can''t read still gets one approval, of the last push, where the approver is set up' ($r.Body -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $r.Output.Contains("approverWritersUnreadable: couldn't read who has write access (HTTP 403")) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'approverSoleOurs')
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/approverSoleOurs/rulesets/101' })
+    $ap = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'approver: an earlier Protect main that requires none is raised to one approval, of the last push' ($puts.Count -eq 1 -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $r.Output -notmatch 'no approval and no approval') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'approverNoSecret')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'approver: the input without the secret requires no approval, and names Enable-CodeReview.ps1' ($r.Body -and $ap.required_approving_review_count -eq 0 -and $ap.require_last_push_approval -eq $false -and $r.Output.Contains('approverNoSecret: code-review.yml passes approver-private-key, but its code-review environment has no NCODE_REVIEW_APPROVER_PRIVATE_KEY') -and $r.Output.Contains('Enable-CodeReview.ps1 -ApproverPrivateKeyPath')) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'approverSecretFails')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'approver: a secret read that fails is named, and the ruleset requires no approval' ($r.Body -and $ap.required_approving_review_count -eq 0 -and $r.Output.Contains('approverSecretFails: code-review.yml passes approver-private-key, but HTTP 500')) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'soleApprover')
+    Check 'approver: approve: true without the input keeps the one-writer behavior' ($r.Output.Contains('(the template''s ADR-0034 and ADR-0036)') -and $r.Output -notmatch 'NCode Review Approver') $r.Output
     $r = Invoke-Baseline @('-Repo', 'writersNone')
     $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
     Check 'writers: an empty collaborators list counts as one writer: no approval, even with approve: true' ($r.Body -and $ap.required_approving_review_count -eq 0 -and $ap.require_last_push_approval -eq $false -and $r.Output.Contains('writersNone: code-review.yml passes approve: true, but one person has write access')) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
@@ -1026,10 +1078,10 @@ try {
 
     $r = Invoke-Baseline @('-Repo', 'baselineRaiser')
     $workflow = @($r.Bodies | Where-Object { $_.path -eq 'repos/NCodeGroup/baselineRaiser/actions/permissions/workflow' })
-    Check 'security: a repository with raise-baseline.yml lets Actions open pull requests, with a read-only token' ($workflow.Count -eq 1 -and $workflow[0].method -eq 'PUT' -and $workflow[0].body.default_workflow_permissions -eq 'read' -and $workflow[0].body.can_approve_pull_request_reviews -eq $true -and $r.Output -match [regex]::Escape('baselineRaiser: read-only workflow token, and Actions opening the baseline pull request: set')) "$($workflow | ConvertTo-Json -Depth 6 -Compress) $($r.Output)"
+    Check 'security: a repository with raise-baseline.yml keeps Actions from approving pull requests, with a read-only token' ($workflow.Count -eq 1 -and $workflow[0].method -eq 'PUT' -and $workflow[0].body.default_workflow_permissions -eq 'read' -and $workflow[0].body.can_approve_pull_request_reviews -eq $false -and $r.Output -match [regex]::Escape('baselineRaiser: read-only workflow token, and Actions not approving pull requests: set')) "$($workflow | ConvertTo-Json -Depth 6 -Compress) $($r.Output)"
 
     $r = Invoke-Baseline @('-Repo', 'baselineRaiserSet')
-    Check 'security: a repository with raise-baseline.yml whose Actions may open pull requests already changes nothing there' (@($r.Bodies | Where-Object { $_.path -match 'actions/permissions/workflow' }).Count -eq 0 -and $r.Output -match [regex]::Escape('baselineRaiserSet: read-only workflow token, and Actions opening the baseline pull request: already set')) "$($r.Changes -join '|') $($r.Output)"
+    Check 'security: a repository with raise-baseline.yml whose Actions may not approve pull requests already changes nothing there' (@($r.Bodies | Where-Object { $_.path -match 'actions/permissions/workflow' }).Count -eq 0 -and $r.Output -match [regex]::Escape('baselineRaiserSet: read-only workflow token, and Actions not approving pull requests: already set')) "$($r.Changes -join '|') $($r.Output)"
 
     $r = Invoke-Baseline @('-Repo', 'provenance')
     Check 'security: a repository with release-provenance.yml keeps mutable releases, and says why' (($r.Changes -join '|') -notmatch 'immutable-releases' -and $r.Output -match [regex]::Escape('provenance: immutable releases: not available (release-provenance.yml attaches packages')) "$($r.Changes -join '|') $($r.Output)"
@@ -1245,6 +1297,20 @@ try {
     Check 'org: a refusal is reported and fails the run' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("orgRefuses (organization): ${label}: not available (HTTP 403") -and $r.Output -notmatch 'GitHub Team') $r.Output
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgUnreadable')
     Check 'org: another refused read still names the owner role and the admin:org scope' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape('HTTP 403: Stand-in refused to read them); run it as an owner of the organization, with a token that has the admin:org scope') -and $r.Output -notmatch 'GitHub Team') $r.Output
+    $wfLabel = 'default workflow token read-only, and Actions not approving pull requests'
+    foreach ($owner in 'orgTokenWrite', 'orgTokenApproves') {
+        $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', $owner)
+        $put = @($r.Bodies | Where-Object { $_.path -eq "orgs/$owner/actions/permissions/workflow" })
+        Check "org: $owner gets its default workflow token PUT read-only, without approvals" ($r.ExitCode -eq 0 -and $put.Count -eq 1 -and $put[0].method -eq 'PUT' -and $put[0].body.default_workflow_permissions -eq 'read' -and $put[0].body.can_approve_pull_request_reviews -eq $false -and @($put[0].body.PSObject.Properties).Count -eq 2 -and $r.Output -match [regex]::Escape("organization ${owner}: ${wfLabel}: set")) "$($r.Changes -join '|') $($r.Output)"
+    }
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgEmpty')
+    Check 'org: a default workflow token that is already set is left alone' ($r.ExitCode -eq 0 -and -not @($r.Changes | Where-Object { $_ -like '*actions/permissions/workflow*' }).Count -and $r.Output -match [regex]::Escape("organization orgEmpty: ${wfLabel}: already set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgTokenWrite', '-WhatIf')
+    Check 'org: -WhatIf shows the default workflow token it would set and writes nothing for it' ($r.ExitCode -eq 0 -and -not @($r.Changes | Where-Object { $_ -like '*actions/permissions/workflow*' }).Count -and $r.Output -match [regex]::Escape("organization orgTokenWrite: ${wfLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgTokenRefused')
+    Check 'org: a refused default workflow token fails the run, and the event policy is still created' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("organization orgTokenRefused: ${wfLabel}: not available (HTTP 403") -and ($r.Changes -join '|') -eq 'BODY PUT orgs/orgTokenRefused/actions/permissions/workflow|BODY POST orgs/orgTokenRefused/actions/policies') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgTokenUnreadable')
+    Check 'org: an unreadable default workflow token fails the run, and the event policy is still created' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("organization orgTokenUnreadable: ${wfLabel}: not available (couldn't read it: HTTP 403") -and ($r.Changes -join '|') -eq 'BODY POST orgs/orgTokenUnreadable/actions/policies') "$($r.Changes -join '|') $($r.Output)"
     $planHint = 'organization event policies need GitHub Team or above: run it for each repository instead, with -Repo <name>, or with -All once its -WhatIf looks right'
     $cases = @(
         @{ Owner = 'orgFreeRead'; Changes = ''; Says = "orgFreeRead (organization): ${label}: not available (couldn't read its Actions policies: HTTP 403: Upgrade to GitHub Team to enable this feature.); $planHint" }

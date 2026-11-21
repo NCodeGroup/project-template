@@ -9,8 +9,9 @@
 #   - publish runs in the protected `nuget` environment, exchanges the job's OIDC token for a short-lived nuget.org API
 #     key through nuget.org trusted publishing, and pushes them. A rerun skips the packages already pushed;
 #   - provenance calls release-provenance.yml, which attests the packages and attaches them, the provenance and an SBOM
-#     to the release, and baseline calls raise-baseline.yml, which opens the pull request that raises the package
-#     validation baseline, for a stable version only (the template's ADR-0151).
+#     to the release, and baseline calls raise-baseline.yml, which pushes the branch that raises the package validation
+#     baseline and opens an issue whose link opens its pull request, for a stable version only (the template's ADR-0151
+#     and ADR-0036).
 #
 # A release made with a workflow's GITHUB_TOKEN, as tag-release.yml makes it, starts no workflow, so tag-release.yml
 # starts this one through workflow_dispatch, on the tag and with the tag as input. To publish a release by hand:
