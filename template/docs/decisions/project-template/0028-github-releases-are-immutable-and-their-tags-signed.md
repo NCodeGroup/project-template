@@ -59,7 +59,10 @@ A GitHub repository's releases are immutable, and a public repository's release 
 - A workflow that runs on a `release` event only to publish elsewhere, such as to a package registry, also keeps
   releases mutable; its owner can turn them on with `gh api -X PUT repos/OWNER/REPO/immutable-releases`, which the
   script never undoes.
-- Scorecard's Signed-Releases check doesn't count an attestation that isn't an asset, so its score doesn't change.
+- Scorecard v5.6.0's Signed-Releases check doesn't count an attestation that isn't an asset. Scorecard v5.7.0, which
+  `ossf/scorecard-action` v2.6.0 runs, adds the `releasesAreImmutable` probe and scores an immutable release 10, as it
+  scores a release with a `*.intoto.jsonl` provenance file, so a library that keeps mutable releases and attaches its
+  provenance scores as high as a project whose releases are immutable.
 - GitHub shows a gitsign signature as unverified, since its certificate authority isn't GitHub's; `gitsign verify-tag`
   is the check that counts.
 
@@ -69,3 +72,5 @@ A GitHub repository's releases are immutable, and a public repository's release 
   `.template/Publish-Release.ps1`, `SECURITY.md`
 - [ADR-0016](0016-releases-are-tagged-and-published-when-their-pull-request-merges.md): releases are tagged and published
   when their pull request merges.
+- Scorecard's `releasesAreImmutable` probe:
+  [probes/releasesAreImmutable/def.yml](https://github.com/ossf/scorecard/blob/v5.7.0/probes/releasesAreImmutable/def.yml)
