@@ -197,3 +197,34 @@ This section applies to a project whose `AGENTS.md` Landing section says `releas
 - **Do:** The baseline turns immutable releases on, except where a default-branch workflow runs on a `release` event or uploads release assets, and with `-SkipImmutableReleases`. A .NET library's `publish.yml` and `release-provenance.yml` do, so its releases stay mutable. The baseline never turns them off, and prints the `gh api -X DELETE repos/<owner>/<name>/immutable-releases` command where they are on beside such a workflow.
 - **Check:** `gh api repos/<owner>/<name>/immutable-releases` shows `"enabled":true` where they apply; `gh release verify <tag> --repo <owner>/<name>`.
 - **Goes wrong:** an immutable release refuses a file attached after it is published; `.template/Update-Project.ps1` says to delete `SECURITY.md`'s "Releases are immutable" paragraph where they stay off.
+
+## 4. .NET Libraries on nuget.org
+
+This section is for a .NET library on GitHub with the template's `publish.yml`, whose header ([publish.yml](../template/.github/workflows/publish.yml)) describes the setup. A library whose own workflow runs `nuget push` keeps its own setup.
+
+### 4.1 Trusted Publishing on nuget.org
+
+- **Applies to:** .NET library
+- **Who:** the nuget.org account that owns the packages.
+- **Where:** `https://www.nuget.org/account/trustedpublishing`.
+- **Do:** Add a trusted publishing policy for GitHub Actions with the package owner, repository owner `<owner>`, repository `<name>`, workflow file `publish.yml` and environment `nuget`. No API key is stored anywhere: `publish.yml` exchanges the job's OIDC token for a short-lived key.
+- **Check:** the page lists the policy.
+- **Goes wrong:** `NUGET_USER` (see [4.2](#42-the-nuget-environment-and-nuget_user)) must name the account that owns the policy, or the login step fails; a renamed workflow file needs a new policy.
+
+### 4.2 The nuget Environment and NUGET_USER
+
+- **Applies to:** .NET library
+- **Who:** an admin of the repository.
+- **Where:** `https://github.com/<owner>/<name>/settings/environments` and `gh`.
+- **Do:** Create the environment `nuget`. Add yourself, or the maintainers, as required reviewers, and leave "Prevent self-review" off with one maintainer. Set Deployment branches and tags to selected ones: the branch `main` (the default branch, for [4.5](#45-re-publish-a-release-that-failed)) and the tag pattern `v*` (for the run `tag-release.yml` starts on the tag). Then run `gh variable set NUGET_USER --body <nuget.org account> --repo <owner>/<name>`, using the account's profile name, not its email.
+- **Check:** `gh api repos/<owner>/<name>/environments/nuget/deployment-branch-policies --jq '.branch_policies[] | .type + " " + .name'` prints `branch main` and `tag v*`; `gh variable list --repo <owner>/<name>` lists `NUGET_USER`.
+- **Goes wrong:** a tags-only rule refuses 4.5's run from the default branch; without reviewers nothing waits for approval.
+
+### 4.3 The First Package Validation Baseline
+
+- **Applies to:** .NET library, GitHub, GitLab
+- **Who:** the maintainer, in a plan or pull request.
+- **Where:** the project's `Directory.Build.props`, after its import, or a packable project's `.csproj`.
+- **Do:** Before the first release there is no baseline, so package validation still compares target frameworks. After the first stable release reaches nuget.org, set `<PackageValidationBaselineVersion>` once, by hand, to the last version on nuget.org. `.template\Update-Project.ps1` and `Adopt-Project.ps1` name the version to set ([ADR-0147](../template/docs/decisions/project-template/0147-packages-are-validated-against-the-last-published-package.md)). From then on [4.6](#46-raise-the-baseline-after-a-stable-release) raises it.
+- **Check:** `git grep PackageValidationBaselineVersion` shows it; `./build/dod.ps1` passes (`-Fast` doesn't pack, so it doesn't validate).
+- **Goes wrong:** a version not on nuget.org fails the pack; `CP0002` means a public member was removed or changed, and the template's [api-compatibility page](../template/docs/api-compatibility.md.jinja) says how to record an intended break.
