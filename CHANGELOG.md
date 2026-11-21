@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.111.1] - 2026-11-21
+
+### Fixed
+
+- `publish.yml` grants the baseline job `contents: write` and `issues: write`, the permissions `raise-baseline.yml` declares, so a library's publishing run starts. A called workflow that asks for more than its caller grants fails the whole run at startup, and in v0.111.0 the grant still named the pull request and Actions permissions, which stopped NCodeGroup/Buffers v5.5.0 from publishing. The template's tests compare each called workflow's grant with what it declares ([#460](https://github.com/NCodeGroup/project-template/issues/460)).
+
 ## [0.111.0] - 2026-11-21
 
 ### Added
@@ -1799,7 +1805,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.111.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.111.1...HEAD
+[0.111.1]: https://github.com/NCodeGroup/project-template/compare/v0.111.0...v0.111.1
 [0.111.0]: https://github.com/NCodeGroup/project-template/compare/v0.110.0...v0.111.0
 [0.110.0]: https://github.com/NCodeGroup/project-template/compare/v0.109.0...v0.110.0
 [0.109.0]: https://github.com/NCodeGroup/project-template/compare/v0.108.0...v0.109.0

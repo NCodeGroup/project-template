@@ -178,9 +178,8 @@ jobs:
     needs: [pack, publish]
     if: ${{ !contains(needs.pack.outputs.version, '-') }}
     permissions:
-      actions: write
       contents: write
-      pull-requests: write
+      issues: write
     uses: ./.github/workflows/raise-baseline.yml
     with:
       tag: v${{ needs.pack.outputs.version }}
