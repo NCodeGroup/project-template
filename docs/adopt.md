@@ -15,6 +15,7 @@ The `Applies to` values are:
 - `Node.js`
 - `public repository`
 - `with NCode Review`
+- `with Copilot`
 - `where the project has one`
 
 On GitLab, follow [2.5](#25-on-gitlab) for which steps apply.
