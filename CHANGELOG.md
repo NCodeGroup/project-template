@@ -6,10 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.112.0] - 2026-11-21
+
+### Added
+
+- `tools/Get-AdoptionChecklist.ps1 -Path <clone>` audits an adopted repository in one command: it runs every row of `docs/adopt.md`'s Checklist through the clone, `gh` or `glab`, and the `-WhatIf` runs of `Set-RepositoryBaseline.ps1`, `Dismiss-ScorecardAlerts.ps1` and `Set-GitLabBaseline.ps1`, prints each row as done, not done, unreadable, naming the page that shows a row no command reads, or does not apply, changes nothing, and exits 1 when a row is not done ([#471](https://github.com/NCodeGroup/project-template/issues/471)).
+
 ### Changed
 
 - `docs/adopt.md`'s NCode Review steps, 0.3 and section 5 with 5.1, link NCode Review's own runbook, [Set Up NCode Review, End to End](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md), at its once-per-organization, once-per-repository and troubleshooting sections, instead of NCodeGroup/code-review's README sections "Using it" and "Opting a repository in", so NCode Review's setup has one procedure ([#472](https://github.com/NCodeGroup/project-template/issues/472)).
 - `USAGE.md`'s NCode Review paragraph sends an existing project to `.\.template\Update-Project.ps1 -Data @{ code_review = $true }`, `docs/adopt.md` section 5 and NCode Review's runbook, and names the NCode Review Approver's installation and `Enable-CodeReview.ps1`'s `-ApproverPrivateKeyPath`, which it left out, so a maintainer who follows it sets up the approval too ([#472](https://github.com/NCodeGroup/project-template/issues/472)).
+- `docs/adopt.md`'s Checklist says how to run it with `tools/Get-AdoptionChecklist.ps1`, and what the checker reads for a row no script checked before, instead of naming the checker as a planned follow-up ([#471](https://github.com/NCodeGroup/project-template/issues/471)).
 
 ## [0.111.3] - 2026-11-21
 
@@ -1829,7 +1836,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.111.3...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.112.0...HEAD
+[0.112.0]: https://github.com/NCodeGroup/project-template/compare/v0.111.3...v0.112.0
 [0.111.3]: https://github.com/NCodeGroup/project-template/compare/v0.111.2...v0.111.3
 [0.111.2]: https://github.com/NCodeGroup/project-template/compare/v0.111.1...v0.111.2
 [0.111.1]: https://github.com/NCodeGroup/project-template/compare/v0.111.0...v0.111.1
