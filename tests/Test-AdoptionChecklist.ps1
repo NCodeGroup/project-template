@@ -1,0 +1,240 @@
+<#
+.SYNOPSIS
+    Test that tools\Get-AdoptionChecklist.ps1 reports every row of docs/adopt.md's Checklist, and changes nothing.
+
+.DESCRIPTION
+    Runs the script against small git repositories, one adopted on GitHub, one private on GitHub and one on GitLab,
+    with stand-ins for gh, glab, copier, gitsign, node and the three sibling scripts it runs with -WhatIf. A stand-in
+    answers by the exact command line (its base name, then its arguments joined by single spaces) from a JSON file the
+    suite writes per run, and records every command line in a log. Checks the frame: that the rows match the
+    Checklist table of docs/adopt.md, which rows apply to each repository, the summary line and the exit code, and that
+    a folder that isn't adopted fails. Each row's check has its own checks below the frame.
+    Prints PASS or FAIL per check and exits 1 on any failure.
+
+.PARAMETER Work
+    The scratch folder, deleted and recreated. Defaults to project-template-adoption-checklist-test-<process ID> in the
+    temp folder, the run's own: deleted when every check passes, kept when one fails.
+
+.EXAMPLE
+    .\tests\Test-AdoptionChecklist.ps1
+#>
+[CmdletBinding()]
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-adoption-checklist-test-$PID"))
+$ErrorActionPreference = 'Stop'
+$ownWork = -not $PSBoundParameters.ContainsKey('Work')
+$Work = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Work)
+trap { "Kept the work folder: $Work"; break }
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$failures = [Collections.Generic.List[string]]::new()
+
+function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
+    if ($Ok) { "PASS  $Name" } else { "FAIL  $Name  $Detail"; $failures.Add($Name) }
+}
+function Write-Text([string]$Path, [string]$Text) {
+    $folder = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $folder)) { New-Item -ItemType Directory -Force $folder | Out-Null }
+    [IO.File]::WriteAllText($Path, $Text.Replace("`r`n", "`n"))
+}
+
+if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
+$bin = Join-Path $Work 'bin'
+$tools = Join-Path $Work 'tools'
+New-Item -ItemType Directory -Force $bin, $tools | Out-Null
+Copy-Item -LiteralPath (Join-Path $repoRoot 'tools/Get-AdoptionChecklist.ps1') -Destination $tools
+
+# The stand-in for gh, glab, copier, gitsign, node and the three sibling scripts. It answers by its command line (its
+# base name, then its arguments joined by single spaces) from the JSON at ADOPTION_CHECKLIST_DATA (each key: out, the
+# lines it prints; err, what it writes to the error stream; exit, its exit code), and appends the line to the log at
+# ADOPTION_CHECKLIST_LOG.
+$standIn = @'
+# The script runs this in its own session, so a -WhatIf run would reach it as $WhatIfPreference, and its log would stay
+# empty: it has to record the calls of a -WhatIf run too, to show that they change nothing.
+$WhatIfPreference = $false
+$key = (@([IO.Path]::GetFileNameWithoutExtension($PSCommandPath)) + @($args | ForEach-Object { "$_" })) -join ' '
+Add-Content -LiteralPath $env:ADOPTION_CHECKLIST_LOG -Value $key
+$data = Get-Content -Raw -LiteralPath $env:ADOPTION_CHECKLIST_DATA | ConvertFrom-Json -AsHashtable
+if (-not $data.ContainsKey($key)) {
+    Write-Error -Message "stand-in: no answer for $key" -ErrorAction Continue
+    exit 99
+}
+$answer = $data[$key]
+foreach ($line in @($answer.out)) { $line }
+if ($answer.err) { Write-Error -Message $answer.err -ErrorAction Continue }
+exit ([int]$answer.exit)
+'@
+foreach ($name in 'gh', 'glab', 'copier', 'gitsign', 'node') { Write-Text (Join-Path $bin "$name.ps1") $standIn }
+foreach ($name in 'Set-RepositoryBaseline', 'Dismiss-ScorecardAlerts', 'Set-GitLabBaseline') {
+    Write-Text (Join-Path $tools "$name.ps1") $standIn
+}
+
+# A stand-in's answer: the lines it prints, its exit code and what it writes to the error stream.
+function Answer($Out, [int]$Exit = 0, [string]$Err = '') {
+    @{ out = $(if ($null -eq $Out) { @() } else { @($Out) }); exit = $Exit; err = $Err }
+}
+function Json($Object) { ConvertTo-Json -Compress -Depth 10 -InputObject $Object }
+
+function Invoke-Git([string]$Folder, [string[]]$Arguments) {
+    $ErrorActionPreference = 'Continue'
+    & git -C $Folder @Arguments 2>&1 | Out-Null
+    if ($LASTEXITCODE) { throw "git $($Arguments -join ' ') failed in $Folder" }
+}
+
+# A git repository on main with the files, one commit per subject (the first holds the files, the later ones are
+# empty), the tags on the last commit and the origin remote.
+function New-Fixture([string]$Folder, [hashtable]$Files, [string[]]$Subjects, [string]$Origin = '', [string[]]$Tags = @()) {
+    New-Item -ItemType Directory -Force $Folder | Out-Null
+    Invoke-Git $Folder @('init', '-q', '-b', 'main')
+    Invoke-Git $Folder @('config', 'user.name', 'Test')
+    Invoke-Git $Folder @('config', 'user.email', 'test@example.com')
+    Invoke-Git $Folder @('config', 'commit.gpgsign', 'false')
+    Invoke-Git $Folder @('config', 'tag.gpgsign', 'false')
+    foreach ($relative in $Files.Keys) { Write-Text (Join-Path $Folder $relative) $Files[$relative] }
+    Invoke-Git $Folder @('add', '-A')
+    foreach ($subject in $Subjects) { Invoke-Git $Folder @('commit', '-q', '--allow-empty', '-m', $subject) }
+    foreach ($tag in $Tags) { Invoke-Git $Folder @('tag', $tag) }
+    if ($Origin) { Invoke-Git $Folder @('remote', 'add', 'origin', $Origin) }
+}
+
+$dataFile = Join-Path $Work 'data.json'
+$logFile = Join-Path $Work 'calls.log'
+# A run: the script's output and exit code, and every command line the stand-ins got.
+function Invoke-Checklist([string]$Fixture, [hashtable]$Calls) {
+    Write-Text $dataFile (Json $Calls)
+    if (Test-Path -LiteralPath $logFile) { Remove-Item -LiteralPath $logFile -Force }
+    $env:ADOPTION_CHECKLIST_DATA = $dataFile
+    $env:ADOPTION_CHECKLIST_LOG = $logFile
+    $output = & pwsh -NoProfile -File (Join-Path $tools 'Get-AdoptionChecklist.ps1') -Path $Fixture 2>&1 | Out-String
+    $exitCode = $LASTEXITCODE
+    $log = if (Test-Path -LiteralPath $logFile) { @(Get-Content -LiteralPath $logFile) } else { @() }
+    [pscustomobject]@{ Output = $output; ExitCode = $exitCode; Log = $log }
+}
+# A run with the answers of $calls changed: a key set to another answer.
+function Invoke-Override([string]$Fixture, [hashtable]$Changes) {
+    $changed = $calls.Clone()
+    foreach ($key in $Changes.Keys) { $changed[$key] = $Changes[$key] }
+    Invoke-Checklist $Fixture $changed
+}
+# A row's status in a run's output; $null when the row has no line.
+function Get-Status($Run, [string]$Step) {
+    $m = [regex]::Match($Run.Output, "(?m)^$([regex]::Escape($Step)) .+?: (done|not done|unreadable|does not apply)(?: \(|\r?$)")
+    if ($m.Success) { $m.Groups[1].Value }
+}
+# The steps of a run's row lines, in order.
+function Get-Steps($Run) {
+    @([regex]::Matches($Run.Output, '(?m)^(\d\.\d) ') | ForEach-Object { $_.Groups[1].Value })
+}
+# The steps of a run whose rows apply.
+function Get-Applying($Run) {
+    @(Get-Steps $Run | Where-Object { (Get-Status $Run $_) -ne 'does not apply' })
+}
+
+# Fixtures
+$template = Join-Path $Work 'template'
+New-Fixture $template @{ 'README.md' = 'template' } @('Template') '' @('v0.111.2', 'v0.111.3')
+
+New-Fixture (Join-Path $Work 'github') @{
+    '.copier-answers.yml' = @"
+_commit: v0.111.3
+_src_path: $template
+git_host: github
+code_review: true
+nuget_package: true
+uses_node: true
+best_practices_project: '16752'
+"@
+    '.template-version' = 'v0.111.3'
+    'AGENTS.md' = "# Agents`n`n## Landing`n`n- release: tag+release`n"
+    '.github/workflows/copilot-setup-steps.yml' = "name: Copilot Setup Steps`non: workflow_dispatch`n"
+    '.github/workflows/coverage.yml' = "name: Coverage`njobs:`n  upload:`n    steps:`n      - uses: codecov/codecov-action@v5`n"
+    '.github/workflows/docs.yml' = "name: Docs`njobs:`n  deploy:`n    steps:`n      - uses: actions/deploy-pages@v4`n"
+    '.github/workflows/code-review.yml' = @'
+name: Code Review
+jobs:
+  review:
+    steps:
+      - with:
+          approve: true
+          approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}
+'@
+    '.github/dependabot.yml' = "version: 2`n"
+    '.node-version' = '26'
+    '.template/Use-Node.ps1' = '# Selects the Node.js version.'
+    'README.md' = "# Sample`n`n[![Best Practices](https://www.bestpractices.dev/projects/16752/badge)](https://www.bestpractices.dev/projects/16752)`n"
+    'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion>`n  </PropertyGroup>`n</Project>`n"
+} @('Create project from project-template v0.111.3') 'https://github.com/NCodeGroup/sample.git' @('v1.0.0')
+
+New-Fixture (Join-Path $Work 'private') @{
+    '.copier-answers.yml' = @"
+_commit: v0.111.2
+_src_path: $template
+git_host: github
+code_review: false
+nuget_package: false
+uses_node: false
+"@
+    '.template-version' = 'v0.111.2'
+    'AGENTS.md' = "# Agents`n`n## Landing`n`n- release: none`n"
+} @('Initial commit', 'Adopt project-template v0.111.2') 'https://github.com/someone/private-sample.git'
+
+New-Fixture (Join-Path $Work 'gitlab') @{
+    '.copier-answers.yml' = @"
+_commit: v0.111.3
+_src_path: $template
+git_host: gitlab
+nuget_package: true
+uses_node: true
+"@
+    '.template-version' = 'v0.111.3'
+    'AGENTS.md' = "# Agents`n`n## Landing`n`n- release: none`n"
+    '.node-version' = '24'
+    '.template/Use-Node.ps1' = '# Selects the Node.js version.'
+} @('Create project from project-template v0.111.3') 'https://gitlab.com/group/sub/sample.git' @('v1.2.0')
+
+New-Fixture (Join-Path $Work 'bare') @{ 'README.md' = '# Bare' } @('Initial commit')
+
+# Answers
+$calls = @{
+    'gh api repos/NCodeGroup/sample' = Answer (Json @{ visibility = 'public'; default_branch = 'main'; owner = @{ type = 'Organization' } })
+    'gh api repos/someone/private-sample' = Answer (Json @{ visibility = 'private'; default_branch = 'main'; owner = @{ type = 'User' } })
+}
+
+$savedPath = $env:PATH
+$env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+try {
+    # Runs
+    $gh = Invoke-Checklist (Join-Path $Work 'github') $calls
+    $pr = Invoke-Checklist (Join-Path $Work 'private') $calls
+    $gl = Invoke-Checklist (Join-Path $Work 'gitlab') $calls
+
+    # Checks
+    $adopt = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/adopt.md') -Raw
+    $section = ($adopt -split '(?m)^## 8\. Checklist\s*$', 2)[1]
+    $section = ($section -split '(?m)^## ', 2)[0]
+    $documented = @([regex]::Matches($section, '(?m)^\| \[(\d\.\d)\]\(') | ForEach-Object { $_.Groups[1].Value })
+    $listed = Get-Steps $gh
+    Check 'frame: the rows match docs/adopt.md''s checklist' ($documented.Count -eq 34 -and ($listed -join ',') -eq ($documented -join ',')) "documented=$($documented -join ',') listed=$($listed -join ',')"
+
+    $expected = @($documented | Where-Object { $_ -notin '1.2', '2.5' })
+    Check 'frame: github applies every row but 1.2 and 2.5' ((Get-Applying $gh) -join ',' -eq ($expected -join ',')) "applies=$((Get-Applying $gh) -join ',') output=$($gh.Output)"
+
+    $expected = '0.1', '1.2', '1.4', '2.1', '2.2', '2.3', '6.1', '6.5', '7.1', '7.2'
+    Check 'frame: private applies only 0.1, 1.2, 1.4, 2.1, 2.2, 2.3, 6.1, 6.5, 7.1 and 7.2' ((Get-Applying $pr) -join ',' -eq ($expected -join ',')) "applies=$((Get-Applying $pr) -join ',') output=$($pr.Output)"
+
+    $expected = '0.1', '1.1', '1.3', '1.4', '2.5', '4.3', '7.1'
+    Check 'frame: gitlab applies only 0.1, 1.1, 1.3, 1.4, 2.5, 4.3 and 7.1' ((Get-Applying $gl) -join ',' -eq ($expected -join ',')) "applies=$((Get-Applying $gl) -join ',') output=$($gl.Output)"
+
+    Check 'frame: github ends with its count and exits 0' ($gh.ExitCode -eq 0 -and $gh.Output -match '(?m)^NCodeGroup/sample: \d+ done, 0 not done, \d+ unreadable, 2 do not apply\r?$') "exit=$($gh.ExitCode) output=$($gh.Output)"
+
+    $bare = Invoke-Checklist (Join-Path $Work 'bare') $calls
+    Check 'frame: a folder without .copier-answers.yml fails' ($bare.ExitCode -eq 1 -and $bare.Output -match [regex]::Escape('.copier-answers.yml')) "exit=$($bare.ExitCode) output=$($bare.Output)"
+}
+finally {
+    $env:PATH = $savedPath
+    Remove-Item Env:ADOPTION_CHECKLIST_DATA, Env:ADOPTION_CHECKLIST_LOG -ErrorAction SilentlyContinue
+}
+
+''
+if ($failures.Count) { "Kept the work folder: $Work"; "Adoption checklist tests: FAILED ($($failures.Count))"; exit 1 }
+if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
+'Adoption checklist tests: PASSED'
+exit 0
