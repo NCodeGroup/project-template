@@ -7,7 +7,8 @@
     For each repository it:
       - adds a "Protect main" ruleset on the default branch, the same shape as project-template's: no deletion, no force
         push, a pull request required (no approvals, since the organization has one maintainer, except where
-        code-review.yml passes approve: true and a second person has write access, as below) with every conversation
+        code-review.yml passes approve: true and a second person has write access, or NCode Review's approver is set up,
+        as below) with every conversation
         resolved, with stale reviews dismissed on push, so a review finding from the bot, CodeQL or a person can't be
         merged past, merge-commit or rebase merges only, never squash, so each commit of a plan stays on the branch,
         when CodeQL's default setup is configured for the repository and analyzes at least one language a code-scanning
@@ -55,7 +56,13 @@
     script can, gets it turned off, and the run says so. A file it can't read is named, and the ruleset then requires no
     approval.
 
-    Where one person has write access, counted as the users the collaborators list
+    Where NCode Review's approver is set up, meaning code-review.yml passes approve: true and a non-empty
+    approver-private-key and the repository's code-review environment holds the secret
+    NCODE_REVIEW_APPROVER_PRIVATE_KEY, the NCode Review Approver, an app that can write, submits the approval, so the
+    ruleset requires one approval, of the last push, with one writer too (the template's ADR-0036). With the input but
+    no secret the run says so and names the fix, and the ruleset gets no approval for it.
+
+    Where one person has write access and the approver isn't set up, counted as the users the collaborators list
     (repos/<owner>/<name>/collaborators?affiliation=all&permission=push) gives, it requires no approval and no approval
     of the last push, also where code-review.yml passes approve: true, and a "Protect main" ruleset that requires an
     approval gets both turned off, and the run says so, also with -WhatIf: GitHub counts toward a required approval only
@@ -307,14 +314,26 @@ function Get-PassingChecks([string]$Name, [string]$Branch) {
 
 # Reads the default branch's .github/workflows/code-review.yml to see whether NCode Review approves: its job passes
 # approve: true (ADR-0022). Approver is $true then; Why says why the file couldn't be read, and is $null when it was
-# read or isn't there (404), so a repository without the workflow just gets no approval requirement.
+# read or isn't there (404), so a repository without the workflow just gets no approval requirement. ApproverApp is
+# $true when the file also passes approver-private-key and the repository's code-review environment holds the
+# NCODE_REVIEW_APPROVER_PRIVATE_KEY secret, so the NCode Review Approver, which can write, submits the approval and
+# GitHub counts it (ADR-0036); ApproverWhy says why it isn't, and is $null otherwise.
 function Read-ReviewApproval([string]$Name, [string]$Branch) {
     $read = Invoke-HostApi gh "repos/$Owner/$Name/contents/.github/workflows/code-review.yml?ref=$Branch"
-    if ($read.Status -eq 404) { return [pscustomobject]@{ Approver = $false; Why = $null } }
-    if ($read.Status -ne 200) { return [pscustomobject]@{ Approver = $false; Why = Get-FailureReason $read } }
+    if ($read.Status -eq 404) { return [pscustomobject]@{ Approver = $false; Why = $null; ApproverApp = $false; ApproverWhy = $null } }
+    if ($read.Status -ne 200) { return [pscustomobject]@{ Approver = $false; Why = Get-FailureReason $read; ApproverApp = $false; ApproverWhy = $null } }
     $text = Get-ContentText $read.Body
-    if ($null -eq $text) { return [pscustomobject]@{ Approver = $false; Why = 'the contents API sent no base64 UTF-8 text' } }
-    [pscustomobject]@{ Approver = $text -match '(?m)^\s+approve:\s*["'']?true["'']?\s*(#.*)?$'; Why = $null }
+    if ($null -eq $text) { return [pscustomobject]@{ Approver = $false; Why = 'the contents API sent no base64 UTF-8 text'; ApproverApp = $false; ApproverWhy = $null } }
+    $approver = $text -match '(?m)^\s+approve:\s*["'']?true["'']?\s*(#.*)?$'
+    $app = $false
+    $appWhy = $null
+    if ($approver -and $text -match '(?m)^\s+approver-private-key:\s*\S') {
+        $secret = Invoke-HostApi gh "repos/$Owner/$Name/environments/code-review/secrets/NCODE_REVIEW_APPROVER_PRIVATE_KEY"
+        if ($secret.Status -eq 200) { $app = $true }
+        elseif ($secret.Status -eq 404) { $appWhy = 'its code-review environment has no NCODE_REVIEW_APPROVER_PRIVATE_KEY: run tools/Enable-CodeReview.ps1 -ApproverPrivateKeyPath from NCodeGroup/code-review' }
+        else { $appWhy = Get-FailureReason $secret }
+    }
+    [pscustomobject]@{ Approver = $approver; Why = $null; ApproverApp = $app; ApproverWhy = $appWhy }
 }
 
 # Counts the users the collaborators list gives with push access or more. GitHub counts toward a required approval only
@@ -343,12 +362,18 @@ function Set-Baseline([string]$Name) {
     $writers = Read-Writers $Name
     if ($writers.Why) { Write-Host "${Name}: couldn't read who has write access ($($writers.Why)); the ruleset gets no approval it doesn't have, and keeps the approvals it has" }
     $soleWriter = $null -ne $writers.Count -and $writers.Count -le 1
-    $approver = [bool]($review.Approver -and $null -ne $writers.Count -and $writers.Count -ge 2)
-    if ($review.Approver -and $soleWriter) {
-        Write-Host "${Name}: code-review.yml passes approve: true, but one person has write access, and GitHub counts toward a required approval neither the author's approval nor NCode Review's, whose app has no write access: the ruleset requires no approval and no approval of the last push (the template's ADR-0034)"
+    $approver = [bool]($review.Approver -and ($review.ApproverApp -or ($null -ne $writers.Count -and $writers.Count -ge 2)))
+    if ($review.ApproverWhy) {
+        Write-Host "${Name}: code-review.yml passes approver-private-key, but $($review.ApproverWhy); the approver can't approve, so the ruleset gets no approval for it"
+    }
+    if ($review.ApproverApp) {
+        Write-Host "${Name}: NCode Review approves as the NCode Review Approver, which can write, so the ruleset requires one approval, of the last push (the template's ADR-0036)"
+    }
+    if ($review.Approver -and $soleWriter -and -not $review.ApproverApp) {
+        Write-Host "${Name}: code-review.yml passes approve: true, but one person has write access, and GitHub counts toward a required approval neither the author's approval nor NCode Review's, whose app has no write access: the ruleset requires no approval and no approval of the last push (the template's ADR-0034 and ADR-0036)"
     }
     # A repository skipped for its default branch gets nothing else either: the reason printed says what to fix first.
-    if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets -Approver $approver -SoleWriter $soleWriter)) { return }
+    if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets -Approver $approver -SoleWriter ($soleWriter -and -not $review.ApproverApp))) { return }
     Set-TagRuleset $Name $rulesets
     Set-SecuritySettings $Name $info
     Set-AutoMerge $Name $info
@@ -555,7 +580,7 @@ function Set-BranchRuleset {
     elseif ($codeql) { ", and a code-scanning rule (CodeQL's default setup analyzes $($languages -join ', '))" }
     elseif ($languageless) { ", and no code-scanning rule (CodeQL's default setup analyzes no language)" }
     else { ", and no code-scanning rule (CodeQL's default setup is not configured)" }
-    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$scanning$(if ($Approver) { ', at least one required approval, as code-review.yml passes approve: true' })$(if ($lowered) { ", and requires no approval and no approval of the last push, $soleWhy" } elseif ($lastPushOff) { ", and turns off approval of the last push, $lastPushWhy" })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
+    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$scanning$(if ($Approver) { ', at least one required approval, as NCode Review approves' })$(if ($lowered) { ", and requires no approval and no approval of the last push, $soleWhy" } elseif ($lastPushOff) { ", and turns off approval of the last push, $lastPushWhy" })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) {
         Write-Host "would: $summary"
         if ($autoChecks) {

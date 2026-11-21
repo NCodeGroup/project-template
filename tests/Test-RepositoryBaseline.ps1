@@ -28,6 +28,9 @@
     not written but gets a notice with the command (with one writer only), a refusal gets the same notice, a list it
     can't read or that is not JSON is named, an empty list or one with a bot counts as one writer, and a public one gets
     a notice naming tools/Dismiss-ScorecardAlerts.ps1;
+    that where NCode Review's approver is set up (the input and the code-review environment's secret), the ruleset requires one
+    approval, of the last push, with one writer too, an earlier one is raised, and a missing or unreadable secret is named and
+    requires none;
     that -RequireChecks auto requires the GitHub Actions checks that passed on the
     latest merged pull request, found on any page of closed pull requests, reading every page of its check runs and
     workflow runs, Commit attribution among them, leaves out the review bot's Code review and its job, CodeQL and its
@@ -216,6 +219,13 @@ if ($path -match '^repos/[^/]+/([^/]+)/collaborators\?') {
     if ($writers -is [string] -and $writers -eq 'notjson') { Out-Answer 200 'not json' }
     Out-Answer 200 (ConvertTo-Json -Compress -InputObject @(@($writers | Where-Object { $_ }) | ForEach-Object { if ($_.StartsWith('bot:')) { @{ login = $_.Substring(4); type = 'Bot'; role_name = 'write' } } else { @{ login = $_; type = 'User'; role_name = 'write' } } }))
 }
+# The approver's secret in the code-review environment: approverSecret is present (200), missing (404) or fail:<code>.
+if ($path -match '^repos/[^/]+/([^/]+)/environments/code-review/secrets/NCODE_REVIEW_APPROVER_PRIVATE_KEY$') {
+    $state = "$($data.repos[$Matches[1]].approverSecret)"
+    if ($state -eq 'present') { Out-Answer 200 '{"name":"NCODE_REVIEW_APPROVER_PRIVATE_KEY"}' }
+    if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
+    Out-Answer 404 '{"message":"Not Found"}'
+}
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets/(\d+)$') { ConvertTo-Json -InputObject $data.repos[$Matches[1]].full["$($Matches[2])"] -Depth 10; exit 0 }
 if ($path -match '^repos/[^/]+/([^/]+)/rulesets$') { ConvertTo-Json -InputObject @($data.repos[$Matches[1]].rulesets) -Depth 5; exit 0 }
 # Pull requests, and the check runs and workflow runs of a commit, for -RequireChecks auto.
@@ -272,9 +282,10 @@ function New-EventPolicy([string]$Name, [string[]]$Events = @('pull_request_targ
 # (New-EventPolicy), or fail:<code>. $WorkflowText maps a workflow file to its text, which the contents API answers as base64.
 # $Languages lists the languages CodeQL's default setup analyzes, those of NCodeGroup/Buffers unless it says otherwise:
 # @() for none, and $null leaves languages out of the answer.
-# $Writers lists the logins with write access, two unless it says otherwise, or fail:<code>.
+# $Writers lists the logins with write access, two unless it says otherwise, or fail:<code>. $ApproverSecret is the state of
+# the code-review environment's NCODE_REVIEW_APPROVER_PRIVATE_KEY: present, missing or fail:<code>.
 function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$Fork = $false, $Rulesets = @(), [string]$CodeQL = 'configured', [string]$Suite = 'default', $Languages = @('actions', 'csharp'), [bool]$SwitchFails = $false, $Pulls = @(), [hashtable]$CheckRuns = @{}, [hashtable]$WorkflowRuns = @{},
-    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), [hashtable]$WorkflowText = @{}, $Policies = @(), [string]$OwnerType = '', $Writers = @('maintainer', 'collaborator')) {
+    [string]$Visibility = 'public', [string]$SecretScanning = 'disabled', [string]$PushProtection = 'disabled', [hashtable]$Security = @{}, [hashtable]$WriteFails = @{}, $AutoMerge = $false, [string[]]$Workflows = @(), [hashtable]$WorkflowText = @{}, $Policies = @(), [string]$OwnerType = '', $Writers = @('maintainer', 'collaborator'), [string]$ApproverSecret = 'missing') {
     $full = @{}
     $summaries = @()
     $id = 100
@@ -290,7 +301,7 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
         rulesets = $summaries; full = $full; codeql = $CodeQL; suite = $Suite; languages = $Languages; switchFails = $SwitchFails
         pulls = @($Pulls); checkRuns = $CheckRuns; workflowRuns = $WorkflowRuns; security = $settings; writeFails = $WriteFails
         workflows = @($Workflows); workflowText = $WorkflowText; policies = if ($Policies -is [string]) { $Policies } else { @($Policies) }
-        writers = if ($Writers -is [string]) { $Writers } else { @($Writers) } }
+        writers = if ($Writers -is [string]) { $Writers } else { @($Writers) }; approverSecret = $ApproverSecret }
 }
 $allSecurityOn = @{ 'actions/permissions/workflow' = 'on'; 'vulnerability-alerts' = 'on'; 'automated-security-fixes' = 'on'; 'private-vulnerability-reporting' = 'on'; 'immutable-releases' = 'on' }
 function New-Pull([int]$Number, [string]$Sha, [string]$MergedAt) { @{ number = $Number; head = @{ sha = $Sha }; merged_at = if ($MergedAt) { $MergedAt } else { $null } } }
@@ -338,6 +349,7 @@ $bareRuleset.rules[2].Remove('parameters')
 $reviewWorkflows = @('.github/workflows/code-review.yml', '.github/workflows/code-review-auto-merge.yml')
 $dispatchYaml = "name: Code review`n`non:`n  pull_request_target:`n    types: [opened, reopened, ready_for_review, closed]`n  issue_comment:`n    types: [created]`n  workflow_dispatch:`n`npermissions: {}`n`njobs:`n  review:`n    runs-on: ubuntu-latest`n"
 $approveYaml = "on:`n  pull_request_target:`njobs:`n  review:`n    steps:`n      - uses: NCodeGroup/code-review@x`n        with:`n          approve: true`n"
+$approverYaml = $approveYaml + "          approver-private-key: `${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}`n"
 $repos = @{
     fresh = New-Repo
     freshApprover = New-Repo -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
@@ -406,6 +418,11 @@ $repos = @{
     writersUnreadableOurs = New-Repo -Writers 'fail:403' -Rulesets @((New-Ruleset 'Protect main' -LastPush $true -Approvals 1))
     solePrivate = New-Repo -Writers @('maintainer') -Visibility 'private'
     twoOwnedApproval = New-Repo -Rulesets @((New-Ruleset 'owner rules' -Approvals 1))
+    # NCode Review's approver app is set up (ADR-0036): one writer, the input, and the secret, missing or unreadable.
+    approverSole = New-Repo -Writers @('maintainer') -ApproverSecret 'present' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml }
+    approverSoleOurs = New-Repo -Writers @('maintainer') -ApproverSecret 'present' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml } -Rulesets @((New-Ruleset 'Protect main'))
+    approverNoSecret = New-Repo -Writers @('maintainer') -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml }
+    approverSecretFails = New-Repo -Writers @('maintainer') -ApproverSecret 'fail:500' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approverYaml }
     writersNone = New-Repo -Writers @() -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
     soleWithBot = New-Repo -Writers @('maintainer', 'bot:release-app') -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
     writersNotJson = New-Repo -Writers 'notjson' -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
@@ -804,6 +821,22 @@ try {
     Check 'writers: a ruleset of the owner''s that requires an approval is not written, and gets a notice with the command' (-not @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -like '*/rulesets/101' }).Count -and $r.Output.Contains("soleOwned: notice: 'owner rules' requires an approval while one person has write access") -and $r.Output.Contains('$p.required_approving_review_count = 0') -and $r.Output.Contains('gh api -X PUT repos/NCodeGroup/soleOwned/rulesets/101 --input -')) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'twoOwnedApproval')
     Check 'writers: with two writers a ruleset of the owner''s that requires an approval gets no notice' ($r.Output -notmatch 'requires an approval while one person') $r.Output
+    # 6e. NCode Review's approver app is set up: one approval, of the last push, with one writer too (ADR-0036).
+    $r = Invoke-Baseline @('-Repo', 'approverSole')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'approver: one writer, the input and the secret create the ruleset with one approval, of the last push' ($r.Body -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $ap.dismiss_stale_reviews_on_push -eq $true -and $r.Output.Contains('approverSole: NCode Review approves as the NCode Review Approver') -and $r.Output -notmatch 'but one person has write access') "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'approverSoleOurs')
+    $puts = @($r.Bodies | Where-Object { $_.method -eq 'PUT' -and $_.path -eq 'repos/NCodeGroup/approverSoleOurs/rulesets/101' })
+    $ap = if ($puts.Count) { ($puts[-1].body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'approver: an earlier Protect main that requires none is raised to one approval, of the last push' ($puts.Count -eq 1 -and $ap.required_approving_review_count -eq 1 -and $ap.require_last_push_approval -eq $true -and $r.Output -notmatch 'no approval and no approval') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'approverNoSecret')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'approver: the input without the secret requires no approval, and names Enable-CodeReview.ps1' ($r.Body -and $ap.required_approving_review_count -eq 0 -and $ap.require_last_push_approval -eq $false -and $r.Output.Contains('approverNoSecret: code-review.yml passes approver-private-key, but its code-review environment has no NCODE_REVIEW_APPROVER_PRIVATE_KEY') -and $r.Output.Contains('Enable-CodeReview.ps1 -ApproverPrivateKeyPath')) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'approverSecretFails')
+    $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
+    Check 'approver: a secret read that fails is named, and the ruleset requires no approval' ($r.Body -and $ap.required_approving_review_count -eq 0 -and $r.Output.Contains('approverSecretFails: code-review.yml passes approver-private-key, but HTTP 500')) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'soleApprover')
+    Check 'approver: approve: true without the input keeps the one-writer behavior' ($r.Output.Contains('(the template''s ADR-0034 and ADR-0036)') -and $r.Output -notmatch 'NCode Review Approver') $r.Output
     $r = Invoke-Baseline @('-Repo', 'writersNone')
     $ap = if ($r.Body) { ($r.Body.rules | Where-Object type -eq 'pull_request').parameters } else { $null }
     Check 'writers: an empty collaborators list counts as one writer: no approval, even with approve: true' ($r.Body -and $ap.required_approving_review_count -eq 0 -and $ap.require_last_push_approval -eq $false -and $r.Output.Contains('writersNone: code-review.yml passes approve: true, but one person has write access')) "$($ap | ConvertTo-Json -Compress) $($r.Output)"
