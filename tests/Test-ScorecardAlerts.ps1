@@ -4,14 +4,14 @@
 
 .DESCRIPTION
     Runs the script against a stand-in for gh that serves canned repositories (who has write access, and their open
-    Scorecard alerts) and records every call. Checks that, for a repository with one person with write access, -WhatIf
-    makes no PATCH, lists every alert, and says would dismiss for the Branch-Protection, CII-Best-Practices and
-    Contributors alerts only; that a run makes exactly three PATCH calls, for those alerts in order, each with the
-    state, the won't fix reason and its check's comment of at most 280 characters, after listing every alert; that a
-    repository with two people with write access is left alone; that a list of writers or of alerts that can't be read
-    exits 1 without a PATCH; that a repository with no open alert says so; that an alert gh refuses to dismiss is
-    named and counted while the others are still dismissed; and that a -Repo that isn't <owner>/<repository> fails
-    without a call.
+    Scorecard alerts) and records every call. Checks that, for a repository with one person with write access (and a
+    bot, which isn't counted), -WhatIf makes no PATCH, lists every alert, and says would dismiss for the
+    Branch-Protection, CII-Best-Practices and Contributors alerts only; that a run makes exactly three PATCH calls, for
+    those alerts in order, each with the state, the won't fix reason and its check's comment of at most 280
+    characters, after listing every alert; that a repository with two people with write access is left alone; that a
+    list of writers or of alerts that can't be read exits 1 without a PATCH, giving gh's reason; that a repository with
+    no open alert says so; that an alert gh refuses to dismiss is named and counted while the others are still
+    dismissed; and that a -Repo that isn't <owner>/<repository> fails without a call.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -38,7 +38,8 @@ if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -For
 $bin = Join-Path $Work 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 
-# The stand-in for gh. It serves data.json (repos.<name>.writers: the logins with write access, or fail:<status>;
+# The stand-in for gh. It serves data.json (repos.<name>.writers: the logins with write access, bot:<login> for a Bot,
+# or fail:<status>;
 # .alerts: the open alerts, or fail:<status>; .patchFails: the alert numbers whose dismissal it refuses) and records
 # every call in calls.log.
 Write-Text (Join-Path $bin 'gh.ps1') @'
@@ -60,8 +61,8 @@ if ($args -contains '--paginate' -and $path -match '^repos/[^/]+/(?<name>[^/]+)/
     $repo = $data.repos[$Matches.name]
     if (-not $repo) { exit 1 }
     $items = if ($Matches.what -eq 'collaborators') { $repo.writers } else { $repo.alerts }
-    if ($items -is [string] -and $items.StartsWith('fail:')) { exit 1 }
-    if ($Matches.what -eq 'collaborators') { $items = @($items | ForEach-Object { @{ login = $_; type = 'User' } }) }
+    if ($items -is [string] -and $items.StartsWith('fail:')) { Write-Error -Message "gh: Stand-in refused (HTTP $($items.Substring(5)))" -ErrorAction Continue; exit 1 }
+    if ($Matches.what -eq 'collaborators') { $items = @($items | ForEach-Object { if ($_.StartsWith('bot:')) { @{ login = $_.Substring(4); type = 'Bot' } } else { @{ login = $_; type = 'User' } } }) }
     ConvertTo-Json -Compress -Depth 6 -InputObject @(, @($items))
     exit 0
 }
@@ -78,7 +79,7 @@ $alerts = @(
 )
 Write-Text (Join-Path $bin 'data.json') (ConvertTo-Json -Depth 6 -InputObject @{
     repos = @{
-        sole = @{ writers = @('maintainer'); alerts = $alerts }
+        sole = @{ writers = @('maintainer', 'bot:release-app'); alerts = $alerts }
         two = @{ writers = @('maintainer', 'colleague'); alerts = $alerts }
         writersUnreadable = @{ writers = 'fail:403'; alerts = $alerts }
         alertsUnreadable = @{ writers = @('maintainer'); alerts = 'fail:404' }
@@ -151,6 +152,7 @@ try {
         if ($firstDismissed -lt 0 -and $r.Lines[$i] -match '\): dismissed\s*$') { $firstDismissed = $i }
     }
     Check 'dismiss: every alert is listed before the first is dismissed' ($lastListing -ge 0 -and $firstDismissed -gt $lastListing -and @($r.Lines | Where-Object { $_ -match '\): dismissed\s*$' }).Count -eq 3) $r.Output
+    Check 'dismiss: a bot with write access is not counted, so one person and a bot are one writer' ($r.Patches.Count -eq 3 -and -not (Test-Line $r 'people have write access')) $r.Output
 
     # 3. Two writers.
     $r = Invoke-Dismiss @('-Repo', 'NCodeGroup/two')
@@ -158,9 +160,9 @@ try {
 
     # 4. A list that can't be read.
     $r = Invoke-Dismiss @('-Repo', 'NCodeGroup/writersUnreadable')
-    Check 'writers unreadable: exits 1 without a PATCH' ($r.ExitCode -eq 1 -and $r.Patches.Count -eq 0) "exit=$($r.ExitCode) output=$($r.Output)"
+    Check 'writers unreadable: exits 1 without a PATCH, and says why' ($r.ExitCode -eq 1 -and $r.Patches.Count -eq 0 -and (Test-Line $r ([regex]::Escape('(gh: Stand-in refused (HTTP 403))')))) "exit=$($r.ExitCode) output=$($r.Output)"
     $r = Invoke-Dismiss @('-Repo', 'NCodeGroup/alertsUnreadable')
-    Check 'alerts unreadable: exits 1 without a PATCH' ($r.ExitCode -eq 1 -and $r.Patches.Count -eq 0) "exit=$($r.ExitCode) output=$($r.Output)"
+    Check 'alerts unreadable: exits 1 without a PATCH, and says why' ($r.ExitCode -eq 1 -and $r.Patches.Count -eq 0 -and (Test-Line $r ([regex]::Escape('(gh: Stand-in refused (HTTP 404))')))) "exit=$($r.ExitCode) output=$($r.Output)"
 
     # 5. No open alert.
     $r = Invoke-Dismiss @('-Repo', 'NCodeGroup/none')

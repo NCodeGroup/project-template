@@ -15,9 +15,9 @@
     It counts who has write access first, as the users the collaborators list
     (repos/<owner>/<name>/collaborators?affiliation=all&permission=push) gives. With two or more it dismisses nothing,
     since a second person can clear these checks, and exits 0. A list it can't read, or open alerts it can't read, make
-    it say so and exit 1 with nothing dismissed. It lists every alert and what it would do before it dismisses any, and
-    -WhatIf stops there. A dismissal that gh refuses is named and counted, the others still go ahead, and the exit code
-    is 1.
+    it say so, with gh's reason, and exit 1 with nothing dismissed. It lists every alert and what it would do before it
+    dismisses any, and -WhatIf stops there. A dismissal that gh refuses is named and counted, the others still go
+    ahead, and the exit code is 1.
 
     A dismissed alert is an accepted one, not a fixed one: /best-practices reports it as accepted. The script needs an
     account with the security_events scope and write access to the repository. Run it from a project-template clone,
@@ -43,19 +43,28 @@ $reasons = [ordered]@{
     'Contributors'       = "One person maintains the project. The check scores 10 only with recent contributors from at least 3 companies, each with 5 of the last 30 commits, which one person can't meet (project-template ADR-0035)."
 }
 
+# Reads every page of a gh api list. Reason holds gh's error text, or its exit code, when the read fails.
 function Read-GhPages([string]$Path) {
-    $out = & gh api --paginate --slurp $Path
-    $failed = [bool]$LASTEXITCODE
+    $ErrorActionPreference = 'Continue'
+    $errors = [Collections.Generic.List[string]]::new()
+    $out = & gh api --paginate --slurp $Path 2>&1 | ForEach-Object {
+        if ($_ -is [Management.Automation.ErrorRecord]) { $errors.Add("$_".Trim()) } else { $_ }
+    }
+    $code = $LASTEXITCODE
+    $failed = [bool]$code
     $items = @()
     if (-not $failed) {
         $items = @(($out | Out-String | ConvertFrom-Json) | ForEach-Object { $_ } | Where-Object { $_ })
     }
-    [pscustomobject]@{ Failed = $failed; Items = $items }
+    $reason = if (-not $failed) { $null }
+    elseif (@($errors | Where-Object { $_ }).Count) { (@($errors | Where-Object { $_ }) -join ' ') }
+    else { "gh exited $code" }
+    [pscustomobject]@{ Failed = $failed; Items = $items; Reason = $reason }
 }
 
 $writers = Read-GhPages "repos/$Repo/collaborators?affiliation=all&permission=push&per_page=100"
 if ($writers.Failed) {
-    Write-Host "${Repo}: couldn't read who has write access, so nothing is dismissed"
+    Write-Host "${Repo}: couldn't read who has write access ($($writers.Reason)), so nothing is dismissed"
     exit 1
 }
 $count = @($writers.Items | Where-Object { $_.type -eq 'User' }).Count
@@ -66,7 +75,7 @@ if ($count -ge 2) {
 
 $alerts = Read-GhPages "repos/$Repo/code-scanning/alerts?tool_name=Scorecard&state=open&per_page=100"
 if ($alerts.Failed) {
-    Write-Host "${Repo}: couldn't read its open Scorecard alerts, so nothing is dismissed"
+    Write-Host "${Repo}: couldn't read its open Scorecard alerts ($($alerts.Reason)), so nothing is dismissed"
     exit 1
 }
 if (-not $alerts.Items.Count) {
