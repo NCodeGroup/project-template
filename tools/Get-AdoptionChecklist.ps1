@@ -280,6 +280,41 @@ function Get-ExpectedApprovals {
     0
 }
 
+# The latest merged pull requests, newest first.
+function Get-MergedPulls {
+    Get-Cached 'mergedPulls' {
+        @(Read-Gh @('pr', 'list', '--repo', $slug, '--state', 'merged', '--limit', '20', '--json', 'number,author'))
+    }
+}
+
+# A result for a workflow's latest run: done when it succeeded, else not done with how it stands.
+function Get-LatestRun([string]$Workflow) {
+    $runs = @(Read-Gh @('run', 'list', '--repo', $slug, '--workflow', $Workflow, '--limit', '1', '--json', 'conclusion,status'))
+    if (-not $runs.Count) { return New-Result 'not done' "no $Workflow run yet" }
+    $run = $runs[0]
+    if ($run.conclusion -eq 'success') { return New-Result 'done' }
+    if (-not $run.conclusion) { return New-Result 'not done' "the latest $Workflow run is $($run.status)" }
+    New-Result 'not done' "the latest $Workflow run ended $($run.conclusion)"
+}
+
+# gh's view of the latest release, kept with its exit code and error.
+function Get-ReleaseView {
+    Get-Cached 'releaseView' { Invoke-Tool 'gh' @('release', 'view', '--repo', $slug, '--json', 'tagName,assets') }
+}
+
+# The reviews of the latest merged pull request a person wrote, as a result; rows 5.3 and 5.4 share it.
+function Get-ApprovalResult {
+    Get-Cached 'approvalResult' {
+        $pull = Get-MergedPulls | Where-Object { $_.author.is_bot -ne $true } | Select-Object -First 1
+        if (-not $pull) { return New-Result 'not done' 'no merged pull request by a person yet' }
+        $number = $pull.number
+        $reviews = @(Read-Gh @('api', "repos/$slug/pulls/$number/reviews?per_page=100"))
+        $approved = @($reviews | Where-Object { $_.user.login -eq 'ncode-review-approver[bot]' -and $_.state -eq 'APPROVED' })
+        if ($approved.Count) { New-Result 'done' "#$number approved by ncode-review-approver[bot]" }
+        else { New-Result 'not done' "#$number has no approval from ncode-review-approver[bot]" }
+    }
+}
+
 # Row checks
 $checks = @{}
 
@@ -483,6 +518,71 @@ $checks['7.1'] = {
     if ($newest.Version -le $current) { return New-Result 'done' "on $currentTag" }
     New-Result 'not done' "$($newest.Tag) is out; the project is on $currentTag"
 }
+
+$checks['1.4'] = {
+    if ($gitHost -eq 'gitlab') {
+        $list = Invoke-Tool 'glab' @('api', '--hostname', $hostName, "projects/$encoded/merge_requests?state=merged&order_by=updated_at&per_page=1")
+        if ($list.ExitCode) { throw "glab api merge_requests failed: $($list.Error)" }
+        $merged = if ($list.Out.Trim()) { @($list.Out | ConvertFrom-Json) } else { @() }
+        if (-not $merged.Count) { return New-Result 'not done' 'no merged merge request yet' }
+        $iid = $merged[0].iid
+        $r = Invoke-Tool 'glab' @('api', '--hostname', $hostName, "projects/$encoded/merge_requests/$iid")
+        if ($r.ExitCode) { throw "glab api merge_requests/$iid failed: $($r.Error)" }
+        $status = ($r.Out | ConvertFrom-Json).head_pipeline.status
+        if ($status -eq 'success') { return New-Result 'done' "!$iid's pipeline passed" }
+        $shown = if ($status) { $status } else { 'none' }
+        return New-Result 'not done' "!$iid's pipeline: $shown"
+    }
+    $pull = @(Get-MergedPulls) | Select-Object -First 1
+    if (-not $pull) { return New-Result 'not done' 'no merged pull request yet' }
+    $number = $pull.number
+    # gh exits 8 while checks are pending, so the output is read whatever the exit code.
+    $r = Invoke-Tool 'gh' @('pr', 'checks', "$number", '--repo', $slug, '--json', 'name,bucket')
+    try {
+        if (-not $r.Out.Trim()) { throw 'no output' }
+        $reported = @($r.Out | ConvertFrom-Json -ErrorAction Stop)
+    }
+    catch { throw "couldn't read the checks of #${number}: $($r.Error)" }
+    if (-not $reported.Count) { return New-Result 'not done' "#$number reported no checks" }
+    $failing = @($reported | Where-Object { $_.bucket -notin 'pass', 'skipping' })
+    if ($failing.Count) {
+        return New-Result 'not done' "#${number}: $(@($failing | ForEach-Object { "$($_.name) ($($_.bucket))" }) -join ', ')"
+    }
+    New-Result 'done' "#${number}: $($reported.Count) checks passed"
+}
+
+$checks['3.1'] = {
+    $parts = @(Get-LatestRun 'tag-release.yml')
+    $view = Get-ReleaseView
+    if (-not $view.ExitCode) { $parts += New-Result 'done' "$(($view.Out | ConvertFrom-Json).tagName)" }
+    elseif ($view.Error -match 'not found') { $parts += New-Result 'not done' 'no release yet' }
+    else {
+        $why = if ($view.Error) { $view.Error } else { "gh exited $($view.ExitCode)" }
+        $parts += New-Result 'unreadable' "gh release view failed: $why"
+    }
+    Join-Result $parts
+}
+
+$checks['3.2'] = {
+    $tag = @(git -C $Path tag --list 'v*' --sort=-version:refname) | Select-Object -First 1
+    if (-not $tag) { return New-Result 'not done' 'no release tag in the clone' }
+    $identity = "https://github.com/$slug/.github/workflows/tag-release.yml@refs/heads/$((Get-Repo).default_branch)"
+    $r = Invoke-Tool 'gitsign' @('verify-tag', '--certificate-identity', $identity,
+        '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com', "$tag") -WorkingDirectory $Path
+    if ($r.ExitCode -eq -1) { return New-Result 'unreadable' "gitsign isn't installed" }
+    if ($r.ExitCode -eq 0) { return New-Result 'done' "$tag verified" }
+    $why = if ($r.Error) { $r.Error } else { "exit $($r.ExitCode)" }
+    New-Result 'not done' "gitsign refused ${tag}: $why"
+}
+
+$checks['5.3'] = { Get-ApprovalResult }
+
+$checks['5.4'] = {
+    $r = Get-ApprovalResult
+    New-Result $r.Status "as 5.3: $($r.Detail)"
+}
+
+$checks['6.4'] = { Get-LatestRun 'copilot-setup-steps.yml' }
 
 $counts = @{ 'done' = 0; 'not done' = 0; 'unreadable' = 0; 'does not apply' = 0 }
 foreach ($row in $rows) {

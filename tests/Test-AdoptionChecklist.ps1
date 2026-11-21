@@ -214,6 +214,24 @@ $calls = @{
     'gh secret list --org NCodeGroup --json name' = Answer (Json @(@{ name = 'NCODE_REVIEW_APP_PRIVATE_KEY' }, @{ name = 'AWS_BEARER_TOKEN_BEDROCK' }))
     'gh api repos/someone/private-sample/rules/branches/main' = Answer (Json @(@{ type = 'pull_request'; parameters = @{ required_approving_review_count = 1 } }))
     'gh api repos/someone/private-sample/code-scanning/default-setup' = Answer (Json @{ state = 'not-configured'; languages = @() })
+    'gh pr list --repo NCodeGroup/sample --state merged --limit 20 --json number,author' = Answer (Json @(
+            @{ number = 13; author = @{ login = 'app/dependabot'; is_bot = $true } },
+            @{ number = 12; author = @{ login = 'maintainer'; is_bot = $false } }))
+    'gh pr checks 13 --repo NCodeGroup/sample --json name,bucket' = Answer (Json @(
+            @{ name = 'build-and-test'; bucket = 'pass' }, @{ name = 'Code review'; bucket = 'skipping' }))
+    'gh api repos/NCodeGroup/sample/pulls/12/reviews?per_page=100' = Answer (Json @(
+            @{ user = @{ login = 'ncode-review[bot]' }; state = 'COMMENTED' },
+            @{ user = @{ login = 'ncode-review-approver[bot]' }; state = 'APPROVED' }))
+    'gh run list --repo NCodeGroup/sample --workflow tag-release.yml --limit 1 --json conclusion,status' = Answer (Json @(@{ conclusion = 'success'; status = 'completed' }))
+    'gh run list --repo NCodeGroup/sample --workflow copilot-setup-steps.yml --limit 1 --json conclusion,status' = Answer (Json @(@{ conclusion = 'success'; status = 'completed' }))
+    'gh release view --repo NCodeGroup/sample --json tagName,assets' = Answer (Json @{
+            tagName = 'v1.0.0'
+            assets = @(@{ name = 'Sample.1.0.0.nupkg' }, @{ name = 'Sample.1.0.0.snupkg' }, @{ name = 'v1.0.0.intoto.jsonl' }, @{ name = 'v1.0.0.spdx.json' })
+        })
+    'gitsign verify-tag --certificate-identity https://github.com/NCodeGroup/sample/.github/workflows/tag-release.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com v1.0.0' = Answer $null
+    'gh pr list --repo someone/private-sample --state merged --limit 20 --json number,author' = Answer '[]'
+    'glab api --hostname gitlab.com projects/group%2Fsub%2Fsample/merge_requests?state=merged&order_by=updated_at&per_page=1' = Answer (Json @(@{ iid = 4 }))
+    'glab api --hostname gitlab.com projects/group%2Fsub%2Fsample/merge_requests/4' = Answer (Json @{ head_pipeline = @{ status = 'failed' } })
 }
 
 $savedPath = $env:PATH
@@ -292,6 +310,26 @@ try {
             @('2.2', 'not done', 'private', $pr), @('2.3', 'not done', 'private', $pr),
             @('5.1', 'not done', 'nokey', $nokey), @('2.2', 'not done', 'nokey', $nokey),
             @('0.3', 'unreadable', 'nokey', $nokey))) {
+        $step, $want, $label, $run = $row
+        Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
+    }
+
+    # Rows the pull request, run and tag show: 1.4, 3.1, 3.2, 5.3, 5.4, 6.4
+    $failing = Invoke-Override (Join-Path $Work 'github') @{
+        'gh pr checks 13 --repo NCodeGroup/sample --json name,bucket' = Answer (Json @(
+                @{ name = 'build-and-test'; bucket = 'fail' }, @{ name = 'Code review'; bucket = 'skipping' }))
+        'gh api repos/NCodeGroup/sample/pulls/12/reviews?per_page=100' = Answer (Json @(
+                @{ user = @{ login = 'ncode-review[bot]' }; state = 'COMMENTED' }))
+        'gh run list --repo NCodeGroup/sample --workflow tag-release.yml --limit 1 --json conclusion,status' = Answer (Json @(@{ conclusion = 'failure'; status = 'completed' }))
+        'gitsign verify-tag --certificate-identity https://github.com/NCodeGroup/sample/.github/workflows/tag-release.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com v1.0.0' = Answer $null 1 'no matching signature'
+    }
+    foreach ($row in @(
+            @('1.4', 'done', 'github', $gh), @('3.1', 'done', 'github', $gh), @('3.2', 'done', 'github', $gh),
+            @('5.3', 'done', 'github', $gh), @('5.4', 'done', 'github', $gh), @('6.4', 'done', 'github', $gh),
+            @('1.4', 'not done', 'private', $pr), @('1.4', 'not done', 'gitlab', $gl),
+            @('1.4', 'not done', 'failing', $failing), @('5.3', 'not done', 'failing', $failing),
+            @('5.4', 'not done', 'failing', $failing), @('3.1', 'not done', 'failing', $failing),
+            @('3.2', 'not done', 'failing', $failing))) {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
