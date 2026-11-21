@@ -239,6 +239,12 @@ $calls = @{
     'gh variable list --repo NCodeGroup/sample --json name' = Answer (Json @(@{ name = 'NUGET_USER' }))
     'gh run list --repo NCodeGroup/sample --workflow publish.yml --limit 1 --json conclusion,status' = Answer (Json @(@{ conclusion = 'success'; status = 'completed' }))
     'gh pr list --repo NCodeGroup/sample --head baseline-1.0.0 --state merged --json number' = Answer (Json @(@{ number = 14 }))
+    'gh api repos/NCodeGroup/sample/pages' = Answer (Json @{ build_type = 'workflow'; cname = 'sample.ncode.io'; https_enforced = $true })
+    'gh label list --repo NCodeGroup/sample --json name --limit 500' = Answer (Json @(@{ name = 'documentation' }, @{ name = 'follow-up' }))
+    'gh label list --repo someone/private-sample --json name --limit 500' = Answer (Json @(@{ name = 'bug' }))
+    "Set-GitLabBaseline -Path $((Resolve-Path -LiteralPath (Join-Path $Work 'gitlab')).ProviderPath) -WhatIf -BaselineToken" = Answer @(
+        'group/sub/sample: All threads must be resolved: already set'
+        'group/sub/sample: protect the tags v*: would set')
 }
 
 $savedPath = $env:PATH
@@ -361,6 +367,17 @@ try {
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
     Check 'row 4.1 unreadable: github names the trusted publishing page' ($gh.Output -match '(?m)^4\.1 .+nuget\.org/account/trustedpublishing') "output=$($gh.Output)"
+
+    # The remaining rows: 2.5, 6.2, 6.3, 6.5, 7.2, 7.3
+    foreach ($row in @(
+            @('6.2', 'unreadable', 'github', $gh), @('6.3', 'done', 'github', $gh), @('6.5', 'done', 'github', $gh),
+            @('7.2', 'unreadable', 'github', $gh), @('7.3', 'unreadable', 'github', $gh),
+            @('6.5', 'not done', 'private', $pr), @('7.2', 'not done', 'private', $pr),
+            @('2.5', 'not done', 'gitlab', $gl))) {
+        $step, $want, $label, $run = $row
+        Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
+    }
+    Check 'row 7.3 every row checked: github' ($gh.Output -notmatch 'no check for this row yet' -and $gh.Output -match '(?m)^NCodeGroup/sample: 28 done, 0 not done, 4 unreadable, 2 do not apply\r?$') "output=$($gh.Output)"
 }
 finally {
     $env:PATH = $savedPath

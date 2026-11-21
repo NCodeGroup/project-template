@@ -644,6 +644,52 @@ $checks['4.7'] = {
     New-Result 'done' "$tag has its packages, provenance and SBOM"
 }
 
+$checks['2.5'] = {
+    $extra = @()
+    if ((Get-Answer 'nuget_package') -eq 'true') { $extra += '-BaselineToken' }
+    $run = Invoke-Sibling 'Set-GitLabBaseline.ps1' (@('-Path', $Path, '-WhatIf') + $extra)
+    if ($run.ExitCode) {
+        return New-Result 'unreadable' "the -WhatIf run exited $($run.ExitCode): $(Get-LastLine $run)"
+    }
+    $set = @($run.Lines | Where-Object { $_ -match 'would set' })
+    if ($set.Count) { return New-Result 'not done' "$($set.Count) setting(s) to set: $($set -join '; ')" }
+    $unavailable = @($run.Lines | Where-Object { $_ -match 'not available' })
+    if ($unavailable.Count) { return New-Result 'unreadable' ($unavailable -join '; ') }
+    New-Result 'done'
+}
+
+$checks['6.2'] = {
+    New-Result 'unreadable' "only https://app.codecov.io/gh/$slug shows the latest commit"
+}
+
+$checks['6.3'] = {
+    $pages = Read-Gh @('api', "repos/$slug/pages") -Missing
+    if ($null -eq $pages) { return New-Result 'not done' "Pages isn't set up" }
+    $cname = "$($pages.cname)"
+    if ($pages.build_type -eq 'workflow' -and $cname -and $pages.https_enforced -eq $true) {
+        return New-Result 'done' "workflow $cname true"
+    }
+    New-Result 'not done' "$($pages.build_type) $cname $($pages.https_enforced)"
+}
+
+$checks['6.5'] = {
+    $labels = @(Read-Gh @('label', 'list', '--repo', $slug, '--json', 'name', '--limit', '500') | ForEach-Object { $_.name })
+    if ('documentation' -in $labels) { New-Result 'done' }
+    else { New-Result 'not done' 'no documentation label' }
+}
+
+$checks['7.2'] = {
+    if (-not (Test-Path -LiteralPath (Join-Path $Path '.github/dependabot.yml')) -and
+        -not (Test-Path -LiteralPath (Join-Path $Path '.github/dependabot.yaml'))) {
+        return New-Result 'not done' 'no .github/dependabot.yml'
+    }
+    New-Result 'unreadable' 'only Insights > Dependency graph > Dependabot shows its recent checks'
+}
+
+$checks['7.3'] = {
+    New-Result 'unreadable' "only the NCode Review apps' settings pages list their keys"
+}
+
 $counts = @{ 'done' = 0; 'not done' = 0; 'unreadable' = 0; 'does not apply' = 0 }
 foreach ($row in $rows) {
     try {
