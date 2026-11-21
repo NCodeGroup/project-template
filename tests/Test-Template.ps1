@@ -469,7 +469,7 @@ foreach ($case in $cases) {
             # A called workflow that asks for more than its caller grants fails the whole run at startup, so the caller's
             # grant must be exactly the permissions the called workflow's jobs declare.
             $permissionsOf = { param([string]$Text) @([regex]::Matches($Text, '(?m)^      ([a-z-]+): (read|write)[ \t]*\r?$') | ForEach-Object { "$($_.Groups[1].Value): $($_.Groups[2].Value)" } | Sort-Object -Unique) -join ', ' }
-            $grantOf = { param([string]$Job, [string]$Called) $at = $workflow.IndexOf("`n  ${Job}:"); $end = $workflow.IndexOf("    uses: ./.github/workflows/$Called", $at); if ($at -lt 0 -or $end -lt 0) { '' } else { & $permissionsOf $workflow.Substring($at, $end - $at) } }
+            $grantOf = { param([string]$Job, [string]$Called) $at = $workflow.IndexOf("`n  ${Job}:"); if ($at -lt 0) { return '' }; $end = $workflow.IndexOf("    uses: ./.github/workflows/$Called", $at); if ($end -lt 0) { '' } else { & $permissionsOf $workflow.Substring($at, $end - $at) } }
             $grants = @{ provenance = (& $grantOf 'provenance' 'release-provenance.yml'); baseline = (& $grantOf 'baseline' 'raise-baseline.yml') }
             $declares = @{ provenance = (& $permissionsOf $provenanceText); baseline = (& $permissionsOf $raiseText) }
             Check "${name}: the publish workflow grants each called workflow exactly the permissions its jobs declare, so neither run fails at startup" ($grants.provenance -and $grants.provenance -eq $declares.provenance -and $grants.baseline -and $grants.baseline -eq $declares.baseline) "provenance grants [$($grants.provenance)], declares [$($declares.provenance)]; baseline grants [$($grants.baseline)], declares [$($declares.baseline)]"
