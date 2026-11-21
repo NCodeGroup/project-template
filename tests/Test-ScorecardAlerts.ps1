@@ -88,7 +88,8 @@ Write-Text (Join-Path $bin 'data.json') (ConvertTo-Json -Depth 6 -InputObject @{
     }
 })
 
-# The comments the script gives each check, from the decision records (each under GitHub's 280 characters).
+# The comments the script gives each check, each under GitHub's 280 characters: CII-Best-Practices' and Contributors'
+# are ADR-0035's, and Branch-Protection's cites ADR-0034 and ADR-0036, since the one ADR-0035 gives predates ADR-0036.
 $comments = @{
     'Branch-Protection' = 'One person has write access, and GitHub counts no approval from the author, so the ruleset ' +
         'can require only the one approval, of the last push, that NCode Review''s approver gives where it is set up, ' +
