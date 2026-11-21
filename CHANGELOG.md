@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `docs/adopt.md`, a runbook that takes a maintainer from nothing to a fully adopted repository, new or existing, on GitHub or GitLab: the organization's one-time setup, protecting the default branch and tags, releases, a .NET library's nuget.org publishing, NCode Review, the other one-time settings and staying current, each step saying who does it, where, how to check it and what usually goes wrong, and a checklist that audits an adopted repository; the README's table of contents links it ([#468](https://github.com/NCodeGroup/project-template/issues/468)).
+
 ## [0.111.1] - 2026-11-21
 
 ### Fixed
