@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-20
-- **Amends:** 0020, 0022
+- **Amends:** 0005, 0006, 0019, 0020, 0022, 0031 and, where a project has it, 0150
 
 ## Context
 
@@ -48,7 +48,21 @@ NCodeGroup/PropertyBag scored 10 for Code-Review and 4 for Branch-Protection.
    counts for Scorecard's Code-Review.
 7. This amends ADR-0022's decision 2 and its "about 8" for Branch-Protection, which needs a second writer. It adds a
    second way the script loosens its own ruleset, beside ADR-0031's, because either setting blocks every merge where
-   one person can write.
+   one person can write. So ADR-0031's decision 6, which says the script loosens its own "Protect main" "in this one
+   way alone", reads "in these two ways".
+8. GitHub counts no approval from NCode Review toward a required approval, whatever the number of writers, while its app
+   has no write access. A required approval is met only by someone with write access other than the author; NCode
+   Review's approval is a signal the person who merges reads, and counts for Scorecard's Code-Review. So the records
+   that say its approval meets a required approval read that way, and their text stays as written, as the decision
+   records' README asks: [ADR-0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md)'s Context
+   and its rejected option of one approving review; [ADR-0006](0006-a-person-merges-every-pull-request.md)'s Context
+   ("its approval is the formal one") and its rejected option of one approving review;
+   [ADR-0019](0019-nothing-requires-the-code-review-check-the-person-who-merges-waits-for-it.md)'s consequence that an
+   outage blocks a merge where the ruleset requires NCode Review's approval, since no ruleset waits for its approval and
+   an outage blocks no merge; ADR-0022's title, decision 2 and its consequence that an outage blocks merges, for the
+   same reason; ADR-0031's decision 5, where dismissing stale reviews makes a writer's approval, not NCode Review's,
+   cover the latest push; and, where a project has record 0150, its consequence that a workflow token's approval counts
+   "where NCode Review's approval is required", which reads: where the ruleset requires an approval.
 
 ## Options considered
 
@@ -75,7 +89,9 @@ NCodeGroup/PropertyBag scored 10 for Code-Review and 4 for Branch-Protection.
 - `tools/Set-RepositoryBaseline.ps1` and `tests/Test-RepositoryBaseline.ps1` in the project template's repository
 - [About protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches),
   GitHub Docs, read 2026-11-20
-- [ADR-0006](0006-a-person-merges-every-pull-request.md), [ADR-0020](
+- [ADR-0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md),
+  [ADR-0006](0006-a-person-merges-every-pull-request.md),
+  [ADR-0019](0019-nothing-requires-the-code-review-check-the-person-who-merges-waits-for-it.md), [ADR-0020](
   0020-github-projects-are-scored-by-openssf-scorecard.md), [ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md),
   [ADR-0031](0031-the-baseline-turns-off-approval-of-the-last-push-where-no-approval-is-required.md) and
   [ADR-0035](0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md)
