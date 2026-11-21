@@ -6,10 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.111.4] - 2026-11-21
+
 ### Changed
 
 - `docs/adopt.md`'s NCode Review steps, 0.3 and section 5 with 5.1, link NCode Review's own runbook, [Set Up NCode Review, End to End](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md), at its once-per-organization, once-per-repository and troubleshooting sections, instead of NCodeGroup/code-review's README sections "Using it" and "Opting a repository in", so NCode Review's setup has one procedure ([#472](https://github.com/NCodeGroup/project-template/issues/472)).
 - `USAGE.md`'s NCode Review paragraph sends an existing project to `.\.template\Update-Project.ps1 -Data @{ code_review = $true }`, `docs/adopt.md` section 5 and NCode Review's runbook, and names the NCode Review Approver's installation and `Enable-CodeReview.ps1`'s `-ApproverPrivateKeyPath`, which it left out, so a maintainer who follows it sets up the approval too ([#472](https://github.com/NCodeGroup/project-template/issues/472)).
+- ADR-0028 records that whether a GitHub project's releases are immutable depends on the project, not the template: a project whose releases get files or attestations after they are published keeps mutable releases, as a .NET library does, whose `release-provenance.yml` attaches its packages, their provenance and an SBOM, and every other project gets immutable ones from `tools/Set-RepositoryBaseline.ps1`. `tag-release.yml` keeps publishing each release and `publish.yml` keeps attaching its files afterwards, rather than drafting the release until its files are attached. The record adds that Scorecard v5.7.0's `releasesAreImmutable` probe scores an immutable release as high as one with a provenance file, and ADR-0139 says a library's releases stay mutable ([#393](https://github.com/NCodeGroup/project-template/issues/393), [ADR-0028](template/docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md)).
+- `docs/adopt.md`'s 3.3 Immutable Releases says a .NET library's releases stay mutable by that decision, and that a project whose own workflow runs on a `release` event only to publish elsewhere can turn them on with `gh api -X PUT repos/<owner>/<name>/immutable-releases` ([#393](https://github.com/NCodeGroup/project-template/issues/393)).
 
 ## [0.111.3] - 2026-11-21
 
@@ -1829,7 +1833,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.111.3...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.111.4...HEAD
+[0.111.4]: https://github.com/NCodeGroup/project-template/compare/v0.111.3...v0.111.4
 [0.111.3]: https://github.com/NCodeGroup/project-template/compare/v0.111.2...v0.111.3
 [0.111.2]: https://github.com/NCodeGroup/project-template/compare/v0.111.1...v0.111.2
 [0.111.1]: https://github.com/NCodeGroup/project-template/compare/v0.111.0...v0.111.1
