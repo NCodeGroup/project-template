@@ -9,8 +9,9 @@ name: Code review
 # such as an agent's `---` line and attribution, which NCode Review sets aside; `/review explain F3` says whether a
 # finding still holds, and `/review teach <rule>` files a rule as an issue, both on a closed pull request too. A
 # `skip-review` label skips the automatic reviews. When a pull request closes, merged or not, the outcomes job only
-# records each posted finding's outcome, with no model call. It needs no environment: the app's key is an organization
-# secret, and the code-review environment holds none; it only lets Anthropic's federation rule trust the review job.
+# records each posted finding's outcome, with no model call. It needs no environment: the NCode Review app's key is an
+# organization secret. The code-review environment, which only the default branch can deploy to, holds the approver's
+# key, NCODE_REVIEW_APPROVER_PRIVATE_KEY, once it is stored, and lets Anthropic's federation rule trust the review job.
 #
 # approve: true approves a pull request whose review leaves no blocker or should-fix finding open, which Scorecard's
 # Code-Review check counts. GitHub counts an approval toward a ruleset's required approval only from a reviewer that can
