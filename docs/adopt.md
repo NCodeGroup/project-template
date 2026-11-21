@@ -63,10 +63,10 @@ Do these once per organization, and once per maintainer's PC for 0.1.
 
 - **Applies to:** GitHub, with NCode Review
 - **Who:** an organization owner, with `admin:org`.
-- **Where:** NCodeGroup/code-review's README.
-- **Do:** Create and install the two apps, NCode Review and NCode Review Approver, set up Anthropic, and store the organization secrets `NCODE_REVIEW_APP_PRIVATE_KEY` and `AWS_BEARER_TOKEN_BEDROCK` with its `tools/Enable-CodeReview.ps1`, as `https://github.com/NCodeGroup/code-review#using-it` says. Its end-to-end runbook is NCodeGroup/code-review#237. This page doesn't repeat it.
+- **Where:** NCodeGroup/code-review's runbook, [Set Up NCode Review, End to End](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md).
+- **Do:** Follow the runbook's [1. Once per Organization](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md#1-once-per-organization), 1.1 to 1.5: give `gh` the `admin:org` scope, create and install the two apps, NCode Review and NCode Review Approver, set up Anthropic, and store the organization secrets `NCODE_REVIEW_APP_PRIVATE_KEY` and `AWS_BEARER_TOKEN_BEDROCK` with NCodeGroup/code-review's `tools/Enable-CodeReview.ps1`. This page doesn't repeat them.
 - **Check:** `gh secret list --org <org>` lists both secrets.
-- **Goes wrong:** see code-review's runbook (NCodeGroup/code-review#237) for its own troubleshooting.
+- **Goes wrong:** see the runbook's [5. Troubleshooting](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md#5-troubleshooting).
 
 ## 1. Create or Adopt
 
@@ -270,16 +270,16 @@ This section is for a .NET library on GitHub with the template's `publish.yml`, 
 
 ## 5. NCode Review
 
-This section is for a GitHub project with NCode Review, after [0.3](#03-ncode-reviews-organization-setup). `https://github.com/NCodeGroup/code-review#opting-a-repository-in` and NCodeGroup/code-review#237 give the per-repository steps in full.
+This section is for a GitHub project with NCode Review, after [0.3](#03-ncode-reviews-organization-setup). NCode Review's runbook gives the per-repository steps in full, in [2. Once per Repository](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md#2-once-per-repository); 5.1 to 5.3 summarize them, in the same order.
 
 ### 5.1 Set Up the Repository
 
 - **Applies to:** GitHub, with NCode Review
 - **Who:** an organization owner (`admin:org`).
 - **Where:** each app's installation settings (Organization settings > GitHub Apps > Configure > Repository access), and an up-to-date clone of NCodeGroup/code-review (run `git pull` first).
-- **Do:** Add the repository to both apps' installations, NCode Review and NCode Review Approver. Run `.\tools\Enable-CodeReview.ps1 -Repo <name> -ApproverPrivateKeyPath <path to the approver's .pem>`. It creates the `code-review` environment (default branch only), gives the repository the organization secrets, and stores `NCODE_REVIEW_APPROVER_PRIVATE_KEY` in that environment. Then delete the `.pem` (see [7.3](#73-rotate-a-key)). Make sure the default branch has `.github/workflows/code-review.yml`, from the `code_review` answer (see [1.1](#11-a-new-project) and [1.2](#12-an-existing-repository)) or from `.\.template\Update-Project.ps1 -Data @{ code_review = $true }` in the project. It pins NCodeGroup/code-review v1.5.0 or later by full commit SHA, and its review job passes `approve: true` and `approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}`. `.template\Update-Project.ps1` says what an older file lacks.
+- **Do:** As the runbook's [2.1](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md#21-add-the-repository-to-both-apps-installations), [2.2](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md#22-store-the-approvers-key) and [2.3](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md#23-pass-the-approval-inputs-in-code-reviewyml) say, add the repository to both apps' installations, NCode Review and NCode Review Approver. Run `.\tools\Enable-CodeReview.ps1 -Repo <name> -ApproverPrivateKeyPath <path to the approver's .pem>`. It creates the `code-review` environment (default branch only), gives the repository the organization secrets, and stores `NCODE_REVIEW_APPROVER_PRIVATE_KEY` in that environment. Then delete the `.pem` (see [7.3](#73-rotate-a-key)). Make sure the default branch has `.github/workflows/code-review.yml`, from the `code_review` answer (see [1.1](#11-a-new-project) and [1.2](#12-an-existing-repository)) or from `.\.template\Update-Project.ps1 -Data @{ code_review = $true }` in the project. It pins NCodeGroup/code-review v1.5.0 or later by full commit SHA, and its review job passes `approve: true` and `approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}`. `.template\Update-Project.ps1` says what an older file lacks.
 - **Check:** `gh secret list --env code-review --repo <owner>/<name>` lists `NCODE_REVIEW_APPROVER_PRIVATE_KEY`.
-- **Goes wrong:** a stale clone's script doesn't know `-ApproverPrivateKeyPath`; `gh`'s token can't list an installation's repositories, so the script warns and goes on, and you add the repository on the app's page; a public repository needs the event policy (see [0.2](#02-the-organizations-actions-policy) or [2.1](#21-run-the-baseline)) or GitHub blocks the review.
+- **Goes wrong:** a stale clone's script doesn't know `-ApproverPrivateKeyPath`; `gh`'s token can't list an installation's repositories, so the script warns and goes on, and you add the repository on the app's page; a public repository needs the event policy (see [0.2](#02-the-organizations-actions-policy) or [2.1](#21-run-the-baseline)) or GitHub blocks the review; the runbook's [5. Troubleshooting](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md#5-troubleshooting) has the rest.
 
 ### 5.2 Require the Approval
 
