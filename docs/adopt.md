@@ -148,3 +148,21 @@ GitHub runs 2.1 to 2.4; GitLab runs only 2.5.
 - **Do:** Set up default setup with the repository's languages. Then run [2.1](#21-run-the-baseline) again with the same `-RequireChecks`, which adds the code-scanning rule and switches the setup to the extended query suite.
 - **Check:** `gh api repos/<owner>/<name>/code-scanning/default-setup --jq '.state + " " + (.languages | join(","))'` prints `configured` and at least one language.
 - **Goes wrong:** an organization's security configuration can turn default setup on with no language, as on NCodeGroup/docs and NCodeGroup/brand; the baseline then leaves the rule out and says why, and a rule kept from an older run blocks every pull request until a language is set up ([ADR-0030](../template/docs/decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md)).
+
+### 2.4 Scorecard
+
+- **Applies to:** GitHub, public repository
+- **Who:** a maintainer with write access (`repo`, which includes `security_events`).
+- **Where:** a clone of NCodeGroup/project-template; the repository's Security > Code scanning.
+- **Do:** `scorecard.yml` runs on each push to the default branch and every Tuesday. With one writer, the baseline ends with a notice naming `tools/Dismiss-ScorecardAlerts.ps1`. Run `.\tools\Dismiss-ScorecardAlerts.ps1 -Repo <owner>/<name> -WhatIf`, then run it without `-WhatIf`. It dismisses only the Branch-Protection, CII-Best-Practices and Contributors alerts as won't fix, with the comment [ADR-0035](../template/docs/decisions/project-template/0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md) gives, and it dismisses nothing with two or more writers. Re-run Scorecard once the approver is set up and approver-approved pull requests fill the last 30 commits (#437): open the latest Scorecard run and choose Re-run all jobs, then compare each check with the table in [ADR-0020](../template/docs/decisions/project-template/0020-github-projects-are-scored-by-openssf-scorecard.md.jinja).
+- **Check:** the `-WhatIf` run lists nothing to dismiss; `https://scorecard.dev/viewer/?uri=github.com/<owner>/<name>` shows the score.
+- **Goes wrong:** an alert of any other check is the project's to fix, and stays open.
+
+### 2.5 On GitLab
+
+- **Applies to:** GitLab
+- **Who:** a Maintainer of the project, signed in with `glab`.
+- **Where:** a clone of NCodeGroup/project-template.
+- **Do:** Run `.\tools\Set-GitLabBaseline.ps1 -Project <group/name> -WhatIf`, then run it without `-WhatIf`. Add `-Hostname` for a GitLab other than gitlab.com, or `-Path` to point at a clone. It turns on "All threads must be resolved" and "Pipelines must succeed", sets "Squash commits when merging" to "Do not allow", lets no one push to the default branch, and schedules the "Weekly dependency audit" pipeline. A .NET library adds `-BaselineToken`, which protects `v*` tags and creates the `raise-baseline` project access token (valid for a year) in the masked, protected `BASELINE_TOKEN` variable. On GitLab the other steps that apply are 0.1 (with `glab`), [section 1](#1-create-or-adopt), [4.3](#43-the-first-package-validation-baseline) and [7.1](#71-template-updates); the rest are GitHub only. See [Protect the Default Branch](../README.md#protect-the-default-branch).
+- **Check:** the `-WhatIf` run prints `already set` for every setting.
+- **Goes wrong:** a project whose CI runs no pipeline on a merge request can't merge; a protection that names users or groups (GitLab Premium) is left for Settings > Repository > Protected branches; after a year the token expires, so delete `BASELINE_TOKEN` and run the script with `-BaselineToken` again.
