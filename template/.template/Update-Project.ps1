@@ -79,7 +79,7 @@
     ADR-0151). When the project has version.json, it also warns about a publish.yml or a
     .gitlab-ci.yml that packs without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning
     themselves (the template's ADR-0138).
-    It also names each job of the project's own workflows, other than publish.yml, that builds, packs, tests without --no-build or pushes packages with an actions/checkout step without fetch-depth: 0, on which Nerdbank.GitVersioning fails the build, or with a -p:Version argument, which it ignores.
+    It also names each job of the project's own workflows, other than publish.yml, that builds, packs, tests without --no-build or pushes packages with an actions/checkout step without fetch-depth: 0 whose folder holds such a step's working directory (its working-directory:, or the job's or the workflow's defaults:), on which Nerdbank.GitVersioning fails the build, or with a -p:Version argument, which it ignores; when it can't tell which checkout a step runs in, it names each shallow checkout of the job.
     Such a library's nuget_publisher answer names its own publishing workflows, so the update also leaves out or deletes release-provenance.yml and raise-baseline.yml, and its documents name those workflows instead of publish.yml.
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     An existing project keeps off the checks a new one starts with until -Data turns them on: csharp_format, node_lint, coverage_gate and file_headers are false when its answers lack them.
