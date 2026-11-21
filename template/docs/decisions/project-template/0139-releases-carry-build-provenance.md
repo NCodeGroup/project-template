@@ -29,6 +29,8 @@ the project's workflow and commit, and the release carries no packages or proven
 
 - The assets stay on the release.
 - A rerun of Publish packages re-attests and replaces the assets (`--clobber`).
+- The release gets its files after it is published, so the repository keeps mutable releases
+  ([ADR-0028](0028-github-releases-are-immutable-and-their-tags-signed.md)).
 - A project with its own publish workflow gets a workflow that runs only once that workflow calls it.
 - A release that `publish.yml` publishes is covered once its `provenance` job calls the workflow, and an earlier one
   can be backfilled while its `Publish packages` run's artifact is kept
