@@ -28,8 +28,8 @@ A GitHub repository's releases are immutable, and a public repository's release 
 - Whether a repository's releases are immutable depends on the repository, not on the template. A project whose
   releases get files or attestations after they are published keeps mutable releases, as a .NET library does, whose
   `publish.yml` has `release-provenance.yml` attach its packages, their provenance and an SBOM; every other GitHub
-  project gets immutable ones. The template's release flow stays as it is: `tag-release.yml` publishes each release,
-  and `publish.yml` attaches its files afterwards
+  project gets immutable ones. In the template's release flow, `tag-release.yml` publishes each release, and
+  `publish.yml` attaches its files afterwards
   ([project-template#393](https://github.com/NCodeGroup/project-template/issues/393)).
 - In a public repository, `tag-release.yml` signs each tag with gitsign, Sigstore's keyless signing through the job's
   OIDC token (`id-token: write`), installed by `chainguard-dev/actions/setup-gitsign` pinned to a commit.
@@ -60,7 +60,7 @@ A GitHub repository's releases are immutable, and a public repository's release 
   releases mutable; its owner can turn them on with `gh api -X PUT repos/OWNER/REPO/immutable-releases`, which the
   script never undoes.
 - Scorecard's Signed-Releases check counts only the releases that have assets among the five newest. Scorecard v5.7.0,
-  which the template's `scorecard.yml` runs through `ossf/scorecard-action` v2.6.0, adds the `releasesAreImmutable`
+  which the template's `scorecard.yml` runs through `ossf/scorecard-action` v2.6.0, has a `releasesAreImmutable`
   probe and scores such a release 10 when it is immutable, as it scores one with a `*.intoto.jsonl` provenance file, so
   a library that keeps mutable releases and attaches its provenance scores as high as a project whose immutable
   releases have assets. A release without assets isn't counted, immutable or not, and the release attestation GitHub
