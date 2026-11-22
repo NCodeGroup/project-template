@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- This repository's own `.github/workflows/code-review.yml` takes the template's: it pins NCode Review v1.5.0 by its full commit SHA in both jobs, under ADR-0009's commented exception until 2026-11-24, and its review job passes `approve: true` and `approver-private-key`, so once an organization owner has installed the NCode Review Approver here, stored its key in the `code-review` environment and run `tools/Set-RepositoryBaseline.ps1`, the Protect main ruleset requires the approver's approval, of the last push; until then NCode Review approves as its own app, which meets no required approval. `AGENTS.md` and `CONTRIBUTING.md` say so ([#482](https://github.com/NCodeGroup/project-template/issues/482), [ADR-0036](template/docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)).
+
 ## [0.112.1] - 2026-11-21
 
 ### Fixed
