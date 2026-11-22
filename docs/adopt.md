@@ -1,6 +1,6 @@
 # Adopt a Project, End to End
 
-This runbook takes a maintainer from nothing to a fully adopted repository, new or existing, top to bottom, without reading code. [README.md](../README.md) is the reference for each script, and this page is the order to run them in. Section 8 is a checklist to audit an adopted repository.
+This runbook takes a maintainer from nothing to a fully adopted repository, new or existing, top to bottom, without reading code. [README.md](../README.md) is the reference for each script, and this page is the order to run them in. Section 8 is a checklist to audit an adopted repository, which `tools/Get-AdoptionChecklist.ps1` runs in one command.
 
 ## How to Read It
 
@@ -404,7 +404,7 @@ See [Update a Project](../README.md#update-a-project) and [Stay Current](../READ
 
 ## 8. Checklist
 
-Audit an adopted repository by running each check; a script checks an item only where the last column names one.
+Audit an adopted repository with `.\tools\Get-AdoptionChecklist.ps1 -Path C:\src\<name>`, from a clone of NCodeGroup/project-template, on an up-to-date clone of the repository on its default branch. It changes nothing: it runs each row's check through the clone, `gh` or `glab`, and the `-WhatIf` runs the last column names, prints each row as `done`, `not done`, `unreadable` or `does not apply`, with the reason, then a count of each, and exits 1 when a row is not done. A row that only a web page shows, such as 4.1, is `unreadable` and names the page. The last column names the script whose `-WhatIf` run checks a row on its own.
 
 | Step | Applies to | Shows it is done | Checked by a script |
 | --- | --- | --- | --- |
@@ -443,4 +443,4 @@ Audit an adopted repository by running each check; a script checks an item only 
 | [7.2](#72-dependabot) | GitHub | Insights > Dependency graph > Dependabot shows recent checks | No |
 | [7.3](#73-rotate-a-key) | GitHub, with NCode Review | the app's page lists only the new key; 5.3's check passes | No |
 
-No script yet checks the rows marked No; a read-only checker that runs this table is a planned follow-up.
+For a row marked No, the checker reads what the Shows it is done column names where a command can: 1.4 and 5.3 from the latest merged pull request, 3.1, 4.4 and 6.4 from their workflow's latest run, 1.3 from the node on PATH or the releases nvs has installed, without running `Use-Node.ps1`, which installs a missing release, and 4.3 without running `./build/dod.ps1`.

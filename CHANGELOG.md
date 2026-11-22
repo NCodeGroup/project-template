@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.112.0] - 2026-11-21
+
+### Added
+
+- `tools/Get-AdoptionChecklist.ps1 -Path <clone>` audits an adopted repository in one command: it runs every row of `docs/adopt.md`'s Checklist through the clone, `gh` or `glab`, and the `-WhatIf` runs of `Set-RepositoryBaseline.ps1`, `Dismiss-ScorecardAlerts.ps1` and `Set-GitLabBaseline.ps1`, prints each row as done, not done, unreadable, naming the page that shows a row no command reads, or does not apply, changes nothing, and exits 1 when a row is not done ([#471](https://github.com/NCodeGroup/project-template/issues/471)).
+
+### Changed
+
+- `docs/adopt.md`'s Checklist says how to run it with `tools/Get-AdoptionChecklist.ps1`, and what the checker reads for a row no script checked before, instead of naming the checker as a planned follow-up ([#471](https://github.com/NCodeGroup/project-template/issues/471)).
+- A GitHub project's `.template/Get-TemplateUpdate.ps1` reads a tag as a template version only when the whole tag is an optional `v` and up to four dot-separated numbers in ASCII digits, and expands a `gh:` or `gl:` template address or moves the old `polewskm` one only when the whole answer matches, the patterns `tools/Get-AdoptionChecklist.ps1` shares: a tag with other Unicode digits no longer stops the weekly update notice with a conversion error, and one that ends in a line break is no version ([#471](https://github.com/NCodeGroup/project-template/issues/471)).
+
 ## [0.111.4] - 2026-11-21
 
 ### Changed
@@ -1837,7 +1848,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.111.4...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.112.0...HEAD
+[0.112.0]: https://github.com/NCodeGroup/project-template/compare/v0.111.4...v0.112.0
 [0.111.4]: https://github.com/NCodeGroup/project-template/compare/v0.111.3...v0.111.4
 [0.111.3]: https://github.com/NCodeGroup/project-template/compare/v0.111.2...v0.111.3
 [0.111.2]: https://github.com/NCodeGroup/project-template/compare/v0.111.1...v0.111.2
