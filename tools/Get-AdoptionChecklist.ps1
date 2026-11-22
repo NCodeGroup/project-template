@@ -143,7 +143,9 @@ function Invoke-Process([string]$FileName, [string[]]$Arguments, [string]$Workin
         $out = $process.StandardOutput.ReadToEndAsync()
         $err = $process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit($timeoutMilliseconds)) {
-            $process.Kill($true)
+            # It may have exited just before the kill, which leaves nothing to stop.
+            try { $process.Kill($true) }
+            catch [InvalidOperationException] { Write-Verbose "$Label exited before it could be stopped." }
             $process.WaitForExit()
             throw "$Label timed out after $TimeoutSeconds s"
         }
@@ -151,7 +153,7 @@ function Invoke-Process([string]$FileName, [string[]]$Arguments, [string]$Workin
         [pscustomobject]@{
             ExitCode = $process.ExitCode
             Out = @(($out.Result -replace '\r?\n\z') -split '\r?\n')
-            Err = @($err.Result -split '\r?\n')
+            Err = @($err.Result -split '\r?\n' | Where-Object { $_ })
         }
     }
     finally { $process.Dispose() }
@@ -701,11 +703,15 @@ $checks['3.1'] = {
 }
 
 # gitsign exits 1 for any failure, so only its message tells a tag it refuses from a check that couldn't run. These
-# messages come from gitsign's verify-tag and cosign's certificate check; any other error, such as reading TUF, Fulcio
-# or Rekor failing, leaves row 3.2 unreadable.
+# messages come from gitsign's verify-tag and verifier and cosign's certificate check; any other error, such as
+# reading TUF, Fulcio or Rekor failing, leaves row 3.2 unreadable.
 $gitsignRefusal = @(
     'none of the expected identities matched'            # another workflow, branch or issuer signed it
     'failed to verify (?:detached|attached) signature'    # the signature or its certificate chain doesn't verify
+    'failed to parse signature'                           # the signature isn't one gitsign can read
+    'error getting signature certs'                       # the signature's certificates can't be read
+    'no certificates found in signature'                  # the signature carries no certificate
+    'no verified certificate chains returned'             # its certificate doesn't chain to Fulcio's root
     'tag has no in-body signature'                        # the annotated tag isn't signed
     'unsupported signature type'                          # signed, but not by gitsign, such as with GPG or SSH
     'error reading tag object: object not found'          # a lightweight tag, which has no signature

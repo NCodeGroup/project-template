@@ -581,6 +581,10 @@ try {
         "`nsecond line"
     $offline = Invoke-Override (Join-Path $Work 'github') @{ $gitsignKey = Answer $null 1 $offlineError }
     Check 'row 3.2 unreadable: offline names gitsign''s first error line' ($offline.Output -match '(?m)^3\.2 .+: unreadable \(gitsign couldn.t check v1\.0\.0: failed to validate rekor entry: dial tcp: lookup rekor\.sigstore\.dev: no such host\)') "output=$($offline.Output)"
+    $badChain = Invoke-Override (Join-Path $Work 'github') @{
+        $gitsignKey = Answer $null 1 'Error: no verified certificate chains returned'
+    }
+    Check 'row 3.2 not done: badchain is a refused signature' ($badChain.Output -match '(?m)^3\.2 .+: not done \(gitsign refused v1\.0\.0: Error: no verified certificate chains returned\)') "output=$($badChain.Output)"
     $noOrigin = Invoke-Checklist (Join-Path $Work 'noorigin') $calls
     Check 'frame: a clone without an origin remote names the git error' ($noOrigin.ExitCode -eq 1 -and $noOrigin.Output -match 'Couldn.t read the origin remote of ') "exit=$($noOrigin.ExitCode) output=$($noOrigin.Output)"
     # The calls of every run
