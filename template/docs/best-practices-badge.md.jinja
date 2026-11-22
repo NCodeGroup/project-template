@@ -42,7 +42,7 @@ The silver criteria that need a document point to these:
 {% endif -%}
 | Vulnerability response and credit | [SECURITY.md](../SECURITY.md) |
 | Coding standards and their enforcement | [CONTRIBUTING.md](../CONTRIBUTING.md), `.editorconfig`{% if stack == 'dotnet' %} and the analyzers in `./build/dod.ps1`{% elif stack == 'node' and (node_lint | default(false)) %} and `biome.json`, which CI runs{% endif %} |
-| Test policy (`test_policy_mandated`) | [CONTRIBUTING.md](../CONTRIBUTING.md), Make a Change, item 3 |
+| Test policy (`test_policy_mandated`) | [CONTRIBUTING.md](../CONTRIBUTING.md), which says that a change that adds or changes behavior adds or updates the automated tests that cover it |
 
 ## Where It Stands
 
