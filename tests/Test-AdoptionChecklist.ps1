@@ -257,8 +257,8 @@ $calls = @{
             @{ user = @{ login = 'ncode-review-approver[bot]' }; state = 'APPROVED' }))
     'gh run list --repo NCodeGroup/sample --workflow tag-release.yml --limit 1 --json conclusion,status' = Answer (Json @(@{ conclusion = 'success'; status = 'completed' }))
     'gh run list --repo NCodeGroup/sample --workflow copilot-setup-steps.yml --limit 1 --json conclusion,status' = Answer (Json @(@{ conclusion = 'success'; status = 'completed' }))
-    'gh release view --repo NCodeGroup/sample --json tagName,assets' = Answer (Json @{
-            tagName = 'v1.0.0'
+    'gh api repos/NCodeGroup/sample/releases/latest' = Answer (Json @{
+            tag_name = 'v1.0.0'
             assets = @(@{ name = 'Sample.1.0.0.nupkg' }, @{ name = 'Sample.1.0.0.snupkg' }, @{ name = 'v1.0.0.intoto.jsonl' }, @{ name = 'v1.0.0.spdx.json' })
         })
     'gitsign verify-tag --certificate-identity https://github.com/NCodeGroup/sample/.github/workflows/tag-release.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com v1.0.0' = Answer $null
@@ -406,8 +406,8 @@ try {
         'gh api repos/NCodeGroup/sample/environments/nuget/deployment-branch-policies' = Answer $null 1 'gh: Not Found (HTTP 404)'
         'gh run list --repo NCodeGroup/sample --workflow publish.yml --limit 1 --json conclusion,status' = Answer (Json @(@{ conclusion = 'startup_failure'; status = 'completed' }))
         'gh pr list --repo NCodeGroup/sample --head baseline-1.0.0 --state merged --json number' = Answer '[]'
-        'gh release view --repo NCodeGroup/sample --json tagName,assets' = Answer (Json @{
-                tagName = 'v1.0.0'
+        'gh api repos/NCodeGroup/sample/releases/latest' = Answer (Json @{
+                tag_name = 'v1.0.0'
                 assets = @(@{ name = 'Sample.1.0.0.nupkg' }, @{ name = 'Sample.1.0.0.snupkg' }, @{ name = 'v1.0.0.intoto.jsonl' })
             })
     }
@@ -514,6 +514,10 @@ try {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
+    # No release yet: 3.1, 4.7
+    $unreleased = Invoke-Override (Join-Path $Work 'github') @{ 'gh api repos/NCodeGroup/sample/releases/latest' = Answer $null 1 'gh: Not Found (HTTP 404)' }
+    Check 'row 3.1 not done: unreleased has no release' ($unreleased.Output -match '(?m)^3\.1 .+: not done \(no release yet\)') "output=$($unreleased.Output)"
+    Check 'row 4.7 not done: unreleased has no release' ($unreleased.Output -match '(?m)^4\.7 .+: not done \(no release yet\)') "output=$($unreleased.Output)"
     # The calls of every run
     $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })

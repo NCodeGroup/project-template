@@ -299,9 +299,9 @@ function Get-LatestRun([string]$Workflow) {
     New-Result 'not done' "the latest $Workflow run ended $($run.conclusion)"
 }
 
-# gh's view of the latest release, kept with its exit code and error.
-function Get-ReleaseView {
-    Get-Cached 'releaseView' { Invoke-Tool 'gh' @('release', 'view', '--repo', $slug, '--json', 'tagName,assets') }
+# The latest release; $null when there is none (a 404).
+function Get-LatestRelease {
+    Get-Cached 'latestRelease' { Read-Gh @('api', "repos/$slug/releases/latest") -Missing }
 }
 
 # The reviews of the latest merged pull request a person wrote, as a result; rows 5.3 and 5.4 share it.
@@ -567,13 +567,12 @@ $checks['1.4'] = {
 
 $checks['3.1'] = {
     $parts = @(Get-LatestRun 'tag-release.yml')
-    $view = Get-ReleaseView
-    if (-not $view.ExitCode) { $parts += New-Result 'done' "$(($view.Out | ConvertFrom-Json).tagName)" }
-    elseif ($view.Error -match 'not found') { $parts += New-Result 'not done' 'no release yet' }
-    else {
-        $why = if ($view.Error) { $view.Error } else { "gh exited $($view.ExitCode)" }
-        $parts += New-Result 'unreadable' "gh release view failed: $why"
+    try {
+        $latest = Get-LatestRelease
+        if ($null -eq $latest) { $parts += New-Result 'not done' 'no release yet' }
+        else { $parts += New-Result 'done' "$($latest.tag_name)" }
     }
+    catch { $parts += New-Result 'unreadable' "$($_.Exception.Message)" }
     Join-Result $parts
 }
 
@@ -639,15 +638,10 @@ $checks['4.6'] = {
 }
 
 $checks['4.7'] = {
-    $view = Get-ReleaseView
-    if ($view.ExitCode) {
-        if ($view.Error -match 'not found') { return New-Result 'not done' 'no release yet' }
-        $why = if ($view.Error) { $view.Error } else { "gh exited $($view.ExitCode)" }
-        return New-Result 'unreadable' "gh release view failed: $why"
-    }
-    $release = $view.Out | ConvertFrom-Json
-    $tag = "$($release.tagName)"
-    $assets = @(@($release.assets) | ForEach-Object { "$($_.name)" })
+    $latest = Get-LatestRelease
+    if ($null -eq $latest) { return New-Result 'not done' 'no release yet' }
+    $tag = "$($latest.tag_name)"
+    $assets = @(@($latest.assets) | ForEach-Object { "$($_.name)" })
     $missing = @()
     if (-not @($assets | Where-Object { $_.EndsWith('.nupkg') })) { $missing += 'a .nupkg' }
     if (-not @($assets | Where-Object { $_.EndsWith('.snupkg') })) { $missing += 'a .snupkg' }
