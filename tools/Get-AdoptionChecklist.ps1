@@ -64,7 +64,7 @@ function Test-WorkflowText([string]$Text) {
     $folder = Join-Path $Path '.github/workflows'
     if (-not (Test-Path -LiteralPath $folder -PathType Container)) { return $false }
     foreach ($file in Get-ChildItem -LiteralPath $folder -File | Where-Object { $_.Extension -in '.yml', '.yaml' }) {
-        if ((Get-Content -LiteralPath $file.FullName -Raw).Contains($Text)) { return $true }
+        if ("$(Get-Content -LiteralPath $file.FullName -Raw)".Contains($Text)) { return $true }
     }
     $false
 }
@@ -164,7 +164,7 @@ else {
     $project = $originPath
     $script:encoded = [uri]::EscapeDataString($project)
 }
-$release = if ((Get-FileText 'AGENTS.md') -match '(?m)^- release:\s*(\S+)') { $Matches[1] } else { 'none' }
+$release = if ((Get-FileText 'AGENTS.md') -match '(?m)^- release:[ \t]*(\S+)') { $Matches[1] } else { 'none' }
 $rootSubject = @(git -C $Path log --max-parents=0 --format=%s)[-1]
 
 # The rows of docs/adopt.md's section 8 Checklist, titled as its headings are.
@@ -256,8 +256,8 @@ function Get-EnvSecretNames {
 
 # The workflow that runs NCode Review, and whether it passes approve: true and the approver's private key.
 $reviewFile = Get-FileText '.github/workflows/code-review.yml'
-$approve = "$reviewFile" -match 'approve:\s*true'
-$approverKey = "$reviewFile" -match 'approver-private-key:\s*\S'
+$approve = "$reviewFile" -match 'approve:[ \t]*true'
+$approverKey = "$reviewFile" -match 'approver-private-key:[ \t]*\S'
 
 # The approvals the default branch's pull request rule requires; $null when no rule requires a pull request.
 function Get-RequiredApprovals {

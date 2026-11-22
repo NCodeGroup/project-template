@@ -202,6 +202,13 @@ uses_node: true
 
 New-Fixture (Join-Path $Work 'bare') @{ 'README.md' = '# Bare' } @('Initial commit')
 
+New-GitHubVariant 'blank' @{
+    'AGENTS.md' = "# Agents`n`n## Landing`n`n- release:`n- changelog: CHANGELOG.md`n"
+    '.github/workflows/code-review.yml' = "name: Code Review`njobs:`n  review:`n    steps:`n      - with:`n          approve: true`n          approver-private-key:`n          model: sonnet`n"
+    '.github/workflows/coverage.yml' = $null
+    '.github/workflows/empty.yml' = ''
+}
+
 # Answers
 $calls = @{
     'gh api repos/NCodeGroup/sample' = Answer (Json @{ visibility = 'public'; default_branch = 'main'; owner = @{ type = 'Organization' } })
@@ -408,6 +415,13 @@ try {
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
     Check 'row 7.3 every row checked: github' ($gh.Output -notmatch 'no check for this row yet' -and $gh.Output -match '(?m)^NCodeGroup/sample: 28 done, 0 not done, 4 unreadable, 2 do not apply\r?$') "output=$($gh.Output)"
+    # Values left blank, and an empty workflow file: 3.1, 5.1, 6.2
+    $blank = Invoke-Checklist (Join-Path $Work 'blank') $calls
+    Check 'row 3.1 does not apply: blank reads release: none' ($blank.Output -match '(?m)^3\.1 .+: does not apply \(AGENTS\.md.s Landing says release: none\)') "output=$($blank.Output)"
+    foreach ($row in @(@('5.1', 'not done', 'blank', $blank), @('6.2', 'does not apply', 'blank', $blank))) {
+        $step, $want, $label, $run = $row
+        Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
+    }
     # The calls of every run
     $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })
