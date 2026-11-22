@@ -214,7 +214,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `regression_tests_added50` | MUST | yes | no | **Check**: read the changelog's `### Fixed` entries and the {{ pr }} titles of the last six months and name each fix with its test ([Checks](#checks)); N/A only when none fixed a bug. |
 | `test_statement_coverage80` | MUST | yes | no | {% if coverage %}**Met**: CI fails below 90% of the statements (`.template/Test-Coverage.ps1`, [ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)); cite a passing run's figure.{% else %}**Check**: a measured statement coverage of 80% or more ([Checks](#checks)).{% endif %} |
 | `test_policy_mandated` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) says that a change that adds or changes behavior adds or updates the automated tests that cover it, which is the written policy. |
-| `tests_documented_added` | MUST | yes | no | **Met**: the same item, in the instructions for a change. |
+| `tests_documented_added` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) says that a change that adds or changes behavior adds or updates the automated tests that cover it. |
 | `warnings_strict` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: warnings as errors, nullable reference types, and the analyzers at `latest-recommended` with code style enforced in the build.{% else %}**Check**: Met when the strictest practical settings are on.{% endif %} |
 
 ### Security
