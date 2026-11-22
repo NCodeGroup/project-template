@@ -6,9 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.112.2] - 2026-11-21
+
 ### Changed
 
 - This repository's own `.github/workflows/code-review.yml` takes the template's: it pins NCode Review v1.5.0 by its full commit SHA in both jobs, under ADR-0009's commented exception until 2026-11-24, and its review job passes `approve: true` and `approver-private-key`, so once an organization owner has installed the NCode Review Approver here, stored its key in the `code-review` environment and run `tools/Set-RepositoryBaseline.ps1`, the Protect main ruleset requires the approver's approval, of the last push; until then NCode Review approves as its own app, which meets no required approval. `AGENTS.md` and `CONTRIBUTING.md` say so ([#482](https://github.com/NCodeGroup/project-template/issues/482), [ADR-0036](template/docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)).
+- The `.github/workflows/code-review.yml` a GitHub project gets with NCode Review wraps its header paragraph and the comment above `approver-private-key` within 120 columns, as this repository's own copy does, so the two files are identical again; no word or setting changes, and an existing project's copy, which updates leave alone, keeps its lines ([#486](https://github.com/NCodeGroup/project-template/issues/486)).
 
 ## [0.112.1] - 2026-11-21
 
@@ -1859,7 +1862,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.112.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.112.2...HEAD
+[0.112.2]: https://github.com/NCodeGroup/project-template/compare/v0.112.1...v0.112.2
 [0.112.1]: https://github.com/NCodeGroup/project-template/compare/v0.112.0...v0.112.1
 [0.112.0]: https://github.com/NCodeGroup/project-template/compare/v0.111.4...v0.112.0
 [0.111.4]: https://github.com/NCodeGroup/project-template/compare/v0.111.3...v0.111.4
