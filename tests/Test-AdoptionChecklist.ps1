@@ -58,7 +58,8 @@ if (-not $data.ContainsKey($key)) {
     exit 99
 }
 $answer = $data[$key]
-if ($answer.sleep) { Start-Sleep -Seconds ([int]$answer.sleep) }foreach ($line in @($answer.out)) { $line }
+if ($answer.sleep) { Start-Sleep -Seconds ([int]$answer.sleep) }
+foreach ($line in @($answer.out)) { $line }
 if ($answer.err) { Write-Error -Message $answer.err -ErrorAction Continue }
 exit ([int]$answer.exit)
 '@
@@ -105,7 +106,8 @@ function Invoke-Checklist([string]$Fixture, [hashtable]$Calls, [string[]]$Extra 
     if (Test-Path -LiteralPath $logFile) { Remove-Item -LiteralPath $logFile -Force }
     $env:ADOPTION_CHECKLIST_DATA = $dataFile
     $env:ADOPTION_CHECKLIST_LOG = $logFile
-    $output = & pwsh -NoProfile -File (Join-Path $tools 'Get-AdoptionChecklist.ps1') -Path $Fixture @Extra 2>&1 | Out-String
+    $checkerFile = Join-Path $tools 'Get-AdoptionChecklist.ps1'
+    $output = & pwsh -NoProfile -File $checkerFile -Path $Fixture @Extra 2>&1 | Out-String
     $exitCode = $LASTEXITCODE
     $log = if (Test-Path -LiteralPath $logFile) { @(Get-Content -LiteralPath $logFile) } else { @() }
     foreach ($line in $log) { $allCalls.Add("$line") }
@@ -575,7 +577,8 @@ try {
     $gitsignKey = 'gitsign verify-tag --certificate-identity ' +
         'https://github.com/NCodeGroup/sample/.github/workflows/tag-release.yml@refs/heads/main ' +
         '--certificate-oidc-issuer https://token.actions.githubusercontent.com v1.0.0'
-    $offlineError = "Error: failed to validate rekor entry: dial tcp: lookup rekor.sigstore.dev: no such host`nsecond line"
+    $offlineError = "Error: failed to validate rekor entry: dial tcp: lookup rekor.sigstore.dev: no such host" +
+        "`nsecond line"
     $offline = Invoke-Override (Join-Path $Work 'github') @{ $gitsignKey = Answer $null 1 $offlineError }
     Check 'row 3.2 unreadable: offline names gitsign''s first error line' ($offline.Output -match '(?m)^3\.2 .+: unreadable \(gitsign couldn.t check v1\.0\.0: failed to validate rekor entry: dial tcp: lookup rekor\.sigstore\.dev: no such host\)') "output=$($offline.Output)"
     $noOrigin = Invoke-Checklist (Join-Path $Work 'noorigin') $calls
