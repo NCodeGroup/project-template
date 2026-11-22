@@ -38,6 +38,16 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+# The newest merged pull requests rows 1.4, 5.3 and 5.4 read: 1.4 takes the newest, and 5.3 the newest a person wrote,
+# which is among them unless bots merged all 20 since.
+$mergedPullLimit = 20
+# gh label list's limit, far above the labels a repository has; 6.5 looks for one of them.
+$labelLimit = 500
+# GitHub's largest REST page: the collaborators 2.2 counts and the reviews 5.3 reads come in one read.
+$pageSize = 100
+# The oldest PowerShell docs/adopt.md 0.1 accepts.
+$minimumPowerShell = [version]'7.4'
+
 $Path = (Resolve-Path -LiteralPath $Path).ProviderPath
 $answersFile = Join-Path $Path '.copier-answers.yml'
 if (-not (Test-Path -LiteralPath $answersFile -PathType Leaf)) {
@@ -277,7 +287,7 @@ function Get-RequiredApprovals {
 function Get-ExpectedApprovals {
     if ($approve -and $approverKey -and ('NCODE_REVIEW_APPROVER_PRIVATE_KEY' -in @(Get-EnvSecretNames))) { return 1 }
     if ($approve) {
-        $people = @(Read-Gh @('api', "repos/$slug/collaborators?affiliation=all&permission=push&per_page=100") |
+        $people = @(Read-Gh @('api', "repos/$slug/collaborators?affiliation=all&permission=push&per_page=$pageSize") |
                 Where-Object { $_.type -eq 'User' })
         if ($people.Count -ge 2) { return 1 }
     }
@@ -287,7 +297,7 @@ function Get-ExpectedApprovals {
 # The latest merged pull requests, newest first.
 function Get-MergedPulls {
     Get-Cached 'mergedPulls' {
-        @(Read-Gh @('pr', 'list', '--repo', $slug, '--state', 'merged', '--limit', '20', '--json', 'number,author'))
+        @(Read-Gh @('pr', 'list', '--repo', $slug, '--state', 'merged', '--limit', "$mergedPullLimit", '--json', 'number,author'))
     }
 }
 
@@ -312,7 +322,7 @@ function Get-ApprovalResult {
         $pull = Get-MergedPulls | Where-Object { $_.author.is_bot -ne $true } | Select-Object -First 1
         if (-not $pull) { return New-Result 'not done' 'no merged pull request by a person yet' }
         $number = $pull.number
-        $reviews = @(Read-Gh @('api', "repos/$slug/pulls/$number/reviews?per_page=100"))
+        $reviews = @(Read-Gh @('api', "repos/$slug/pulls/$number/reviews?per_page=$pageSize"))
         $approved = @($reviews | Where-Object { $_.user.login -eq 'ncode-review-approver[bot]' -and $_.state -eq 'APPROVED' })
         if ($approved.Count) { New-Result 'done' "#$number approved by ncode-review-approver[bot]" }
         else { New-Result 'not done' "#$number has no approval from ncode-review-approver[bot]" }
@@ -333,8 +343,8 @@ $checks['0.1'] = {
     }
     $copier = Invoke-Tool 'copier' @('--version')
     if ($copier.ExitCode) { $parts += New-Result 'not done' "copier: $($copier.Error)" }
-    if (-not ($PSVersionTable.PSVersion -ge [version]'7.4')) {
-        $parts += New-Result 'not done' "PowerShell $($PSVersionTable.PSVersion) is older than 7.4"
+    if (-not ($PSVersionTable.PSVersion -ge $minimumPowerShell)) {
+        $parts += New-Result 'not done' "PowerShell $($PSVersionTable.PSVersion) is older than $minimumPowerShell"
     }
     $email = Invoke-Tool 'git' @('-C', $Path, 'config', 'user.email')
     if (-not $email.Out.Trim()) { $parts += New-Result 'not done' 'git has no user.email' }
@@ -688,7 +698,7 @@ $checks['6.3'] = {
 }
 
 $checks['6.5'] = {
-    $labels = @(Read-Gh @('label', 'list', '--repo', $slug, '--json', 'name', '--limit', '500') | ForEach-Object { $_.name })
+    $labels = @(Read-Gh @('label', 'list', '--repo', $slug, '--json', 'name', '--limit', "$labelLimit") | ForEach-Object { $_.name })
     if ('documentation' -in $labels) { New-Result 'done' }
     else { New-Result 'not done' 'no documentation label' }
 }
