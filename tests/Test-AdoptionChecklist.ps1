@@ -97,6 +97,8 @@ function New-Fixture([string]$Folder, [hashtable]$Files, [string[]]$Subjects, [s
 
 $dataFile = Join-Path $Work 'data.json'
 $logFile = Join-Path $Work 'calls.log'
+# Every command line the stand-ins got, over all runs.
+$allCalls = [Collections.Generic.List[string]]::new()
 # A run: the script's output and exit code, and every command line the stand-ins got.
 function Invoke-Checklist([string]$Fixture, [hashtable]$Calls) {
     Write-Text $dataFile (Json $Calls)
@@ -106,6 +108,7 @@ function Invoke-Checklist([string]$Fixture, [hashtable]$Calls) {
     $output = & pwsh -NoProfile -File (Join-Path $tools 'Get-AdoptionChecklist.ps1') -Path $Fixture 2>&1 | Out-String
     $exitCode = $LASTEXITCODE
     $log = if (Test-Path -LiteralPath $logFile) { @(Get-Content -LiteralPath $logFile) } else { @() }
+    foreach ($line in $log) { $allCalls.Add("$line") }
     [pscustomobject]@{ Output = $output; ExitCode = $exitCode; Log = $log }
 }
 # A run with the answers of $calls changed: a key set to another answer.
@@ -250,6 +253,9 @@ $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
 $savedNvsHome = $env:NVS_HOME
 $env:NVS_HOME = Join-Path $Work 'nvs'
 try {
+    $stray = @('gh', 'glab', 'copier', 'gitsign', 'node' | Where-Object { $found = (Get-Command $_ -ErrorAction SilentlyContinue | Select-Object -First 1).Source; -not $found -or (Split-Path -Parent $found) -ne $bin })
+    Check 'stand-ins: gh, glab, copier, gitsign and node run from the suite bin' ($stray.Count -eq 0) "not from ${bin}: $($stray -join ', ')"
+
     # Runs
     $gh = Invoke-Checklist (Join-Path $Work 'github') $calls
     $pr = Invoke-Checklist (Join-Path $Work 'private') $calls
@@ -386,6 +392,10 @@ try {
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
     Check 'row 7.3 every row checked: github' ($gh.Output -notmatch 'no check for this row yet' -and $gh.Output -match '(?m)^NCodeGroup/sample: 28 done, 0 not done, 4 unreadable, 2 do not apply\r?$') "output=$($gh.Output)"
+    # The calls of every run
+    $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
+    $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })
+    Check 'read-only: every command line the stand-ins got is a read' ($allCalls.Count -gt 0 -and $writes.Count -eq 0) "not reads: $($writes -join '; ')"
 }
 finally {
     $env:PATH = $savedPath
