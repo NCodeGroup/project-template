@@ -706,7 +706,7 @@ $checks['3.1'] = {
 # messages come from gitsign's verify-tag and verifier and cosign's certificate check; any other error, such as
 # reading TUF, Fulcio or Rekor failing, leaves row 3.2 unreadable.
 $gitsignRefusal = @(
-    'none of the expected identities matched'            # another workflow, branch or issuer signed it
+    'none of the expected identities matched'             # another workflow, branch or issuer signed it
     'failed to verify (?:detached|attached) signature'    # the signature or its certificate chain doesn't verify
     'failed to parse signature'                           # the signature isn't one gitsign can read
     'error getting signature certs'                       # the signature's certificates can't be read
