@@ -1387,7 +1387,7 @@ try {
         $gitVersioning = @(Get-GitVersioningReference)
         if ($gitVersioning.Count -gt 0) {
             ''
-            "These files reference Nerdbank.GitVersioning, which build/ProjectTemplate.props references for every project once version.json exists (the template's ADR-0138): $($gitVersioning -join ', '). A second reference fails the build (NU1504, NU1506): delete the project's own PackageReference of it, and its own PackageVersion of it in Directory.Packages.props, keeping the template's."
+            "These files reference Nerdbank.GitVersioning, which build/ProjectTemplate.props references too, as a library's does once version.json exists (the template's ADR-0138): $($gitVersioning -join ', '). A second reference fails the build (NU1504, NU1506): delete the project's own PackageReference of it, and its own PackageVersion of it in Directory.Packages.props, keeping the template's."
         }
     }
 
