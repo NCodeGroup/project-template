@@ -232,6 +232,8 @@ New-GitHubVariant 'badsource' @{ '.copier-answers.yml' = $answers.Replace("_src_
 New-GitHubVariant 'noversion' @{ '.copier-answers.yml' = $answers.Replace('_commit: v0.111.3', '_commit: 1a2b3c4'); '.template-version' = $null }
 New-GitHubVariant 'nosourceanswer' @{ '.copier-answers.yml' = $answers -replace '(?m)^_src_path: .*\r?\n', '' }
 
+New-Fixture (Join-Path $Work 'noorigin') @{ '.copier-answers.yml' = "git_host: github`n" } @('Initial commit')
+
 # Answers
 $calls = @{
     'gh api repos/NCodeGroup/sample' = Answer (Json @{ visibility = 'public'; default_branch = 'main'; owner = @{ type = 'Organization' } })
@@ -531,6 +533,8 @@ try {
     Check 'row 1.4 not done: nochecks' ($noChecks.Output -match '(?m)^1\.4 .+: not done \(#13 reported no checks\)') "output=$($noChecks.Output)"
     Check 'row 1.4 unreadable: garbled' ($garbled.Output -match '(?m)^1\.4 .+: unreadable \(couldn.t read the checks of #13') "output=$($garbled.Output)"
     Check 'row 7.1 done: gitlab with CRLF files' ($gl.Output -match '(?m)^7\.1 .+: done \(on v0\.111\.3\)') "output=$($gl.Output)"
+    $noOrigin = Invoke-Checklist (Join-Path $Work 'noorigin') $calls
+    Check 'frame: a clone without an origin remote names the git error' ($noOrigin.ExitCode -eq 1 -and $noOrigin.Output -match 'Couldn.t read the origin remote of ') "exit=$($noOrigin.ExitCode) output=$($noOrigin.Output)"
     # The calls of every run
     $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })

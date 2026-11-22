@@ -149,7 +149,9 @@ function Invoke-Sibling([string]$Script, [string[]]$Arguments) {
 function Get-Repo { Get-Cached 'repo' { Read-Gh @('api', "repos/$slug") } }
 
 # Facts about the repository, read once. The row checks read $hostName and $encoded, so they are script-scoped.
-$origin = "$(git -C $Path remote get-url origin 2>$null)"
+$originRead = Invoke-Tool 'git' @('-C', $Path, 'remote', 'get-url', 'origin')
+if ($originRead.ExitCode) { throw "Couldn't read the origin remote of ${Path}: $($originRead.Error)" }
+$origin = $originRead.Out.Trim()
 if ($origin -notmatch '^(?:(?:https?|ssh)://)?(?:[^@/]+@)?(?<host>[\w.-]+\.[\w-]+)(?::\d+)?[:/](?<path>[\w.-]+(?:/[\w.-]+?)+?)(?:\.git)?/?$') {
     throw "Couldn't tell the repository from the origin remote of ${Path}: '$origin'."
 }
@@ -346,7 +348,10 @@ $checks['1.1'] = {
         $r = Invoke-Tool 'glab' @('api', '--hostname', $hostName, "projects/$encoded")
         if ($r.ExitCode) { throw "couldn't read ${project}: $($r.Error)" }
     }
-    else { $null = Get-Repo }
+    else {
+        # Get-Repo throws when gh can't read the repository, which makes the row unreadable.
+        $null = Get-Repo
+    }
     New-Result 'done' "template $version"
 }
 
@@ -392,6 +397,7 @@ $checks['2.1'] = {
 $checks['3.3'] = {
     $line = Get-BaselineLines | Where-Object { $_ -match ': immutable releases: (.+)$' } | Select-Object -First 1
     if (-not $line) { return New-Result 'unreadable' 'the baseline printed no immutable releases line' }
+    # Matches the line again to fill $Matches.
     $null = "$line" -match ': immutable releases: (.+)$'
     $state = $Matches[1].Trim()
     if ($state -eq 'already set') { New-Result 'done' 'on' }
@@ -420,6 +426,7 @@ $checks['0.2'] = {
             Select-Object -First 1
         if (-not $line) { $parts += New-Result 'unreadable' 'no two-factor line' }
         else {
+            # Matches the line again to fill $Matches.
             $null = "$line" -match 'organization two-factor requirement: (.+)$'
             $state = $Matches[1].Trim()
             $parts += if ($state -eq 'required') { New-Result 'done' }
