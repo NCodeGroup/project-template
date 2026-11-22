@@ -199,6 +199,13 @@ uses_node: true
     'AGENTS.md' = "# Agents`n`n## Landing`n`n- release: none`n"
     '.node-version' = '24'
 } @('Create project from project-template v0.111.3') 'https://gitlab.com/group/sub/sample.git' @('v1.2.0')
+# The gitlab fixture's files end their lines with CRLF, as a Windows checkout with core.autocrlf does.
+foreach ($relative in '.copier-answers.yml', 'AGENTS.md') {
+    $file = Join-Path $Work "gitlab/$relative"
+    [IO.File]::WriteAllText($file, ((Get-Content -LiteralPath $file -Raw) -replace '\r?\n', "`r`n"))
+}
+[IO.File]::WriteAllText((Join-Path $Work 'gitlab/.template-version'), "v0.111.3`r`n")
+[IO.File]::WriteAllText((Join-Path $Work 'gitlab/.node-version'), "24`r`n")
 
 New-Fixture (Join-Path $Work 'bare') @{ 'README.md' = '# Bare' } @('Initial commit')
 
@@ -523,6 +530,7 @@ try {
     $garbled = Invoke-Override (Join-Path $Work 'github') @{ 'gh pr checks 13 --repo NCodeGroup/sample --json name,bucket' = Answer 'no checks reported on the branch' 1 'GraphQL: Could not resolve to a PullRequest' }
     Check 'row 1.4 not done: nochecks' ($noChecks.Output -match '(?m)^1\.4 .+: not done \(#13 reported no checks\)') "output=$($noChecks.Output)"
     Check 'row 1.4 unreadable: garbled' ($garbled.Output -match '(?m)^1\.4 .+: unreadable \(couldn.t read the checks of #13') "output=$($garbled.Output)"
+    Check 'row 7.1 done: gitlab with CRLF files' ($gl.Output -match '(?m)^7\.1 .+: done \(on v0\.111\.3\)') "output=$($gl.Output)"
     # The calls of every run
     $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })
