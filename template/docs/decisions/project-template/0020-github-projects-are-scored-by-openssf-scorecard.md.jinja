@@ -1,5 +1,6 @@
 {% set review = git_host == 'github' and code_review is defined and code_review -%}
 {% set library = stack == 'dotnet' and (nuget_package | default(false)) -%}
+{% set publisher = nuget_publisher | default('') if library else '' -%}
 {% set licensed = (license | default('')) in ['Apache-2.0', 'MIT'] -%}
 # 0020. A GitHub project is scored by OpenSSF Scorecard
 
@@ -27,7 +28,7 @@ The table lists each check, what the template does for it and what needs a perso
 | Binary-Artifacts | Commits no binary files. | Nothing. |
 | Dangerous-Workflow | No workflow runs untrusted pull request code with a privileged token. | Nothing. |
 | Pinned-Dependencies | Workflow actions are pinned by commit SHA ([ADR-0008](0008-external-inputs-are-pinned-and-kept-current.md)). | Nothing. |
-| Token-Permissions | Every workflow's top-level token is read-only or empty. Job-level write is only where a job needs it: `issues: write` in `template-update.yml`; `contents: write`, `actions: write` and `id-token: write` in `tag-release.yml`; `contents: write` and `pull-requests: write` in `code-review-auto-merge.yml`; `id-token: write` in `code-review.yml`; `security-events: write` and `id-token: write` in `scorecard.yml`; and, for a library, `id-token: write` in `publish.yml`; `attestations: write`, `contents: write` and `id-token: write` in `release-provenance.yml`; and `contents: write`, `pull-requests: write` and `actions: write` in `raise-baseline.yml`.{% if library %} The called workflows get what `publish.yml`'s provenance and baseline jobs grant them; job-level write warns and still scores 10.{% endif %} | Nothing. |
+| Token-Permissions | Every workflow's top-level token is read-only or empty. Job-level write is only where a job needs it: `issues: write` in `template-update.yml`; `contents: write`, `actions: write` and `id-token: write` in `tag-release.yml`; `contents: write` and `pull-requests: write` in `code-review-auto-merge.yml`; `id-token: write` in `code-review.yml`; {% if publisher %}and {% endif %}`security-events: write` and `id-token: write` in `scorecard.yml`{% if publisher %}. Scorecard scores `{{ publisher }}`, the project's own publishing workflow, too.{% else %}; and, for a library, `id-token: write` in `publish.yml`; `attestations: write`, `contents: write` and `id-token: write` in `release-provenance.yml`; and `contents: write`, `pull-requests: write` and `actions: write` in `raise-baseline.yml`.{% endif %}{% if library and not publisher %} The called workflows get what `publish.yml`'s provenance and baseline jobs grant them; job-level write warns and still scores 10.{% endif %} | {% if publisher %}Keep the top-level token of `{{ publisher }}` read-only or empty, with write only on the jobs that need it.{% else %}Nothing.{% endif %} |
 | Dependency-Update-Tool | Dependabot is configured. | Nothing. |
 | Security-Policy | `SECURITY.md` ships. | Nothing. |
 | License | {% if licensed %}`LICENSE.txt` ships, for the `{{ license }}` license ([ADR-0024](0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md)).{% else %}Nothing: the template writes a license file only for an Apache-2.0 or MIT `license` answer ([ADR-0024](0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md)).{% endif %} | {% if licensed %}Nothing.{% else %}A license file at the repository root: `.\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }` writes one, or add the text of the license answered.{% endif %} |
@@ -35,13 +36,17 @@ The table lists each check, what the template does for it and what needs a perso
 | Vulnerabilities | Dependency and vulnerability scanning is configured. | Fix the findings it reports. |
 | CI-Tests | Pull requests run the CI workflow. | Nothing. |
 | Maintained | Scheduled automation keeps the repository active. | Keep committing and answering issues. |
-{%- if stack == 'dotnet' and nuget_package %}
+{%- if library and not publisher %}
 | Signed-Releases | `publish.yml` calls `release-provenance.yml`, attaching packages, a signed `<tag>.intoto.jsonl` and an SBOM ([ADR-0139](0139-releases-carry-build-provenance.md), [ADR-0151](0151-release-follow-ups-are-jobs-publish-calls.md)), so each such release scores 10. The files arrive after a release is published, so the releases stay mutable ([ADR-0028](0028-github-releases-are-immutable-and-their-tags-signed.md)). | Of the five newest releases, those with assets are averaged: delete older unsigned assets (packages stay on nuget.org) or wait five releases. `release-provenance.yml`'s `workflow_dispatch` backfills a release only while the Publish run's `packages` artifact is kept (14 days); never attest packages downloaded from a registry, which claims a build the workflow never ran. |
+{%- elif publisher %}
+| Signed-Releases | Nothing: `{{ publisher }}`, the project's own workflow, publishes the packages, and the template attaches no signature or provenance to this project's releases. Scorecard counts only the releases with assets among the five newest, so while no recent release has assets the check is inconclusive and left out of the score. | Where a workflow, such as `{{ publisher }}`, attaches files to the releases, Scorecard v5.7.0, which `scorecard.yml` runs, scores a release 10 when it is immutable or has a `*.intoto.jsonl` provenance file among its assets, and 8 with a signature alone: upload the files to a draft release before publishing it and turn immutable releases on with `gh api -X PUT repos/OWNER/REPO/immutable-releases`, which the baseline leaves off where a workflow uploads release assets ([ADR-0028](0028-github-releases-are-immutable-and-their-tags-signed.md)), or attach a provenance file for the packages from the run of `{{ publisher }}` that builds them. Never attest packages downloaded from a registry, which claims a build the workflow never ran. |
 {%- else %}
 | Signed-Releases | Nothing: a release `tag-release.yml` publishes has no assets, and Scorecard counts only the releases with assets among the five newest, so the check is inconclusive and left out of the score. From Scorecard v5.7.0, which `scorecard.yml` runs, a release with assets scores 10 when it is immutable, as `tools/Set-RepositoryBaseline.ps1` makes this project's releases where no workflow attaches files after publishing ([ADR-0028](0028-github-releases-are-immutable-and-their-tags-signed.md)). | Nothing while the releases have no assets. A project whose own workflow attaches files scores 10 a release either way: upload them to a draft release before publishing it and turn immutable releases on with `gh api -X PUT repos/OWNER/REPO/immutable-releases`, which the baseline leaves off where a workflow uploads release assets, or attach a `*.intoto.jsonl` provenance file to each mutable release; a signature alone scores 8. Never attest packages downloaded from a registry, which claims a build the workflow never ran. |
 {%- endif %}
-{%- if library %}
+{%- if library and not publisher %}
 | Packaging | `publish.yml` publishes the packages. | The first successful `publish.yml` run. |
+{%- elif publisher %}
+| Packaging | Nothing: `{{ publisher }}`, the project's own workflow, publishes the packages. | The first successful run of `{{ publisher }}`. |
 {%- else %}
 | Packaging | Nothing: the template publishes no packages for this project. | A workflow that publishes its packages, if it ships any. |
 {%- endif %}
@@ -86,7 +91,7 @@ The table lists each check, what the template does for it and what needs a perso
 - [ADR-0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md): the default branch accepts changes
   only through pull requests.
 - [ADR-0008](0008-external-inputs-are-pinned-and-kept-current.md): external inputs are pinned and kept current.
-{%- if stack == 'dotnet' and nuget_package %}
+{%- if library and not publisher %}
 - [ADR-0139](0139-releases-carry-build-provenance.md): releases carry build provenance.
 {%- endif %}
 - [ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md): where NCode Review approves, the ruleset requires an
@@ -99,7 +104,7 @@ The table lists each check, what the template does for it and what needs a perso
   documents the Best Practices silver level asks for.
 - [ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md): every Best Practices criterion is
   mapped in a template-owned page.
-{%- if library %}
+{%- if library and not publisher %}
 - [ADR-0151](0151-release-follow-ups-are-jobs-publish-calls.md): release follow-ups are jobs `publish.yml` calls.
 {%- endif %}
 - `.github/workflows/scorecard.yml`
