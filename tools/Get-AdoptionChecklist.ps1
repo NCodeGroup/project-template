@@ -13,8 +13,9 @@
     order, then a summary line of the counts. The statuses are:
       done            the row's check shows it is done.
       not done        the row's check shows it isn't done.
-      unreadable      the script can't tell: a read failed, a sibling script exited non-zero, or only a web page shows
-                      the row (4.1, 6.2, 7.2 once .github/dependabot.yml exists, and 7.3). The detail says why.
+      unreadable      the script can't tell: a read failed or ran past -TimeoutSeconds, a sibling script exited
+                      non-zero, or only a web page shows the row (4.1, 6.2, 7.2 once .github/dependabot.yml exists,
+                      and 7.3). The detail says why.
       does not apply  the row's Applies to column doesn't hold for this repository. The detail says why.
 
     Where a row's check names something a script can't run as written, the script runs an equivalent read: the
@@ -28,13 +29,21 @@
 .PARAMETER Path
     A clone of the adopted repository, on its default branch.
 
+.PARAMETER TimeoutSeconds
+    How long each command the script runs (gh, glab, git, gitsign, copier, node, or a sibling script) may take, in
+    seconds; 300 by default. A command still running then is stopped, with every process it started, and its row is
+    unreadable, "timed out after <n> s".
+
 .EXAMPLE
     .\tools\Get-AdoptionChecklist.ps1 -Path C:\src\Buffers
 #>
 [CmdletBinding()]
 param(
     # A clone of the adopted repository, on its default branch.
-    [Parameter(Mandatory)][string]$Path
+    [Parameter(Mandatory)][string]$Path,
+    # How long each command may run, in seconds, before it is stopped and its row is unreadable: far longer than
+    # any read takes, short enough that a command stalled on the network or a prompt doesn't hang the audit.
+    [ValidateRange(1, 86400)][int]$TimeoutSeconds = 300
 )
 $ErrorActionPreference = 'Stop'
 
@@ -55,6 +64,7 @@ if (-not (Test-Path -LiteralPath $answersFile -PathType Leaf)) {
 }
 $pwsh = (Get-Process -Id $PID).Path
 $script:cache = @{}
+$timeoutMilliseconds = $TimeoutSeconds * 1000
 
 # Reads one answer from .copier-answers.yml; nothing when the file doesn't set it.
 function Get-Answer([string]$Key) {
@@ -114,6 +124,39 @@ function Join-Result([object[]]$Parts) {
     New-Result 'done' (@($Parts.Detail | Where-Object { $_ }) -join '; ')
 }
 
+# Runs a program in a process of its own, its input closed so a program that would ask gets no answer instead of
+# waiting, and gives { ExitCode; Out; Err }, its output and error lines. When it runs past -TimeoutSeconds, stops it
+# and every process it started, and throws.
+function Invoke-Process([string]$FileName, [string[]]$Arguments, [string]$WorkingDirectory, [string]$Label) {
+    $start = [Diagnostics.ProcessStartInfo]::new($FileName)
+    foreach ($a in $Arguments) { $start.ArgumentList.Add($a) }
+    $start.WorkingDirectory = $WorkingDirectory
+    $start.UseShellExecute = $false
+    $start.RedirectStandardInput = $true
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $start.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $start.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+    $process = [Diagnostics.Process]::Start($start)
+    try {
+        $process.StandardInput.Close()
+        $out = $process.StandardOutput.ReadToEndAsync()
+        $err = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit($timeoutMilliseconds)) {
+            $process.Kill($true)
+            $process.WaitForExit()
+            throw "$Label timed out after $TimeoutSeconds s"
+        }
+        $process.WaitForExit()
+        [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Out = @(($out.Result -replace '\r?\n\z') -split '\r?\n')
+            Err = @($err.Result -split '\r?\n')
+        }
+    }
+    finally { $process.Dispose() }
+}
+
 # Runs a command and keeps what it printed: Out is the output lines joined by newlines, Error the error text, and
 # Status the HTTP status that gh names in it, or 0. ExitCode is -1 when the command isn't installed.
 function Invoke-Tool([string]$Name, [string[]]$Arguments, [string]$WorkingDirectory) {
@@ -148,11 +191,13 @@ function Read-Gh([string[]]$Arguments, [switch]$Missing) {
     $r.Out | ConvertFrom-Json
 }
 
-# Runs one of the sibling scripts in tools/, which the baseline and Scorecard rows read with -WhatIf.
+# Runs one of the sibling scripts in tools/, which the baseline and Scorecard rows read with -WhatIf. Lines are its
+# output lines, then its error lines; throws when it runs past -TimeoutSeconds.
 function Invoke-Sibling([string]$Script, [string[]]$Arguments) {
-    $ErrorActionPreference = 'Continue'
-    $lines = @(& $pwsh -NoProfile -File (Join-Path $PSScriptRoot $Script) @Arguments 2>&1 | ForEach-Object { "$_" })
-    [pscustomobject]@{ ExitCode = $LASTEXITCODE; Lines = $lines }
+    $folder = (Get-Location -PSProvider FileSystem).ProviderPath
+    $file = Join-Path $PSScriptRoot $Script
+    $run = Invoke-Process $pwsh (@('-NoProfile', '-File', $file) + $Arguments) $folder $Script
+    [pscustomobject]@{ ExitCode = $run.ExitCode; Lines = @($run.Out) + @($run.Err) }
 }
 
 # The GitHub repository, from gh api.

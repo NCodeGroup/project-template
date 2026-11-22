@@ -44,8 +44,8 @@ Copy-Item -LiteralPath (Join-Path $repoRoot 'tools/Get-AdoptionChecklist.ps1') -
 
 # The stand-in for gh, glab, copier, gitsign, node and the three sibling scripts. It answers by its command line (its
 # base name, then its arguments joined by single spaces) from the JSON at ADOPTION_CHECKLIST_DATA (each key: out, the
-# lines it prints; err, what it writes to the error stream; exit, its exit code), and appends the line to the log at
-# ADOPTION_CHECKLIST_LOG.
+# lines it prints; err, what it writes to the error stream; exit, its exit code; sleep, the seconds it waits before it
+# answers), and appends the line to the log at ADOPTION_CHECKLIST_LOG.
 $standIn = @'
 # The script runs this in its own session, so a -WhatIf run would reach it as $WhatIfPreference, and its log would stay
 # empty: it has to record the calls of a -WhatIf run too, to show that they change nothing.
@@ -58,7 +58,7 @@ if (-not $data.ContainsKey($key)) {
     exit 99
 }
 $answer = $data[$key]
-foreach ($line in @($answer.out)) { $line }
+if ($answer.sleep) { Start-Sleep -Seconds ([int]$answer.sleep) }foreach ($line in @($answer.out)) { $line }
 if ($answer.err) { Write-Error -Message $answer.err -ErrorAction Continue }
 exit ([int]$answer.exit)
 '@
@@ -68,8 +68,8 @@ foreach ($name in 'Set-RepositoryBaseline', 'Dismiss-ScorecardAlerts', 'Set-GitL
 }
 
 # A stand-in's answer: the lines it prints, its exit code and what it writes to the error stream.
-function Answer($Out, [int]$Exit = 0, [string]$Err = '') {
-    @{ out = $(if ($null -eq $Out) { @() } else { @($Out) }); exit = $Exit; err = $Err }
+function Answer($Out, [int]$Exit = 0, [string]$Err = '', [int]$Sleep = 0) {
+    @{ out = $(if ($null -eq $Out) { @() } else { @($Out) }); exit = $Exit; err = $Err; sleep = $Sleep }
 }
 function Json($Object) { ConvertTo-Json -Compress -Depth 10 -InputObject $Object }
 
@@ -100,22 +100,22 @@ $logFile = Join-Path $Work 'calls.log'
 # Every command line the stand-ins got, over all runs.
 $allCalls = [Collections.Generic.List[string]]::new()
 # A run: the script's output and exit code, and every command line the stand-ins got.
-function Invoke-Checklist([string]$Fixture, [hashtable]$Calls) {
+function Invoke-Checklist([string]$Fixture, [hashtable]$Calls, [string[]]$Extra = @()) {
     Write-Text $dataFile (Json $Calls)
     if (Test-Path -LiteralPath $logFile) { Remove-Item -LiteralPath $logFile -Force }
     $env:ADOPTION_CHECKLIST_DATA = $dataFile
     $env:ADOPTION_CHECKLIST_LOG = $logFile
-    $output = & pwsh -NoProfile -File (Join-Path $tools 'Get-AdoptionChecklist.ps1') -Path $Fixture 2>&1 | Out-String
+    $output = & pwsh -NoProfile -File (Join-Path $tools 'Get-AdoptionChecklist.ps1') -Path $Fixture @Extra 2>&1 | Out-String
     $exitCode = $LASTEXITCODE
     $log = if (Test-Path -LiteralPath $logFile) { @(Get-Content -LiteralPath $logFile) } else { @() }
     foreach ($line in $log) { $allCalls.Add("$line") }
     [pscustomobject]@{ Output = $output; ExitCode = $exitCode; Log = $log }
 }
 # A run with the answers of $calls changed: a key set to another answer.
-function Invoke-Override([string]$Fixture, [hashtable]$Changes) {
+function Invoke-Override([string]$Fixture, [hashtable]$Changes, [string[]]$Extra = @()) {
     $changed = $calls.Clone()
     foreach ($key in $Changes.Keys) { $changed[$key] = $Changes[$key] }
-    Invoke-Checklist $Fixture $changed
+    Invoke-Checklist $Fixture $changed $Extra
 }
 # A row's status in a run's output; $null when the row has no line.
 function Get-Status($Run, [string]$Step) {
@@ -539,6 +539,14 @@ try {
     Check 'row 1.4 not done: nochecks' ($noChecks.Output -match '(?m)^1\.4 .+: not done \(#13 reported no checks\)') "output=$($noChecks.Output)"
     Check 'row 1.4 unreadable: garbled' ($garbled.Output -match '(?m)^1\.4 .+: unreadable \(couldn.t read the checks of #13') "output=$($garbled.Output)"
     Check 'row 7.1 done: gitlab with CRLF files' ($gl.Output -match '(?m)^7\.1 .+: done \(on v0\.111\.3\)') "output=$($gl.Output)"
+    # Commands that stall: 2.4 runs a sibling script, stopped after -TimeoutSeconds
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $stalled = Invoke-Override (Join-Path $Work 'github') @{
+        'Dismiss-ScorecardAlerts -Repo NCodeGroup/sample -WhatIf' = Answer $null 0 '' 60
+    } @('-TimeoutSeconds', '3')
+    $watch.Stop()
+    Check 'row 2.4 unreadable: stalled sibling times out' ($stalled.Output -match '(?m)^2\.4 .+: unreadable \(Dismiss-ScorecardAlerts\.ps1 timed out after 3 s\)') "output=$($stalled.Output)"
+    Check 'stalled: the run stops each stalled command instead of waiting for it' ($watch.Elapsed.TotalSeconds -lt 50) "took $($watch.Elapsed.TotalSeconds) s"
     $noOrigin = Invoke-Checklist (Join-Path $Work 'noorigin') $calls
     Check 'frame: a clone without an origin remote names the git error' ($noOrigin.ExitCode -eq 1 -and $noOrigin.Output -match 'Couldn.t read the origin remote of ') "exit=$($noOrigin.ExitCode) output=$($noOrigin.Output)"
     # The calls of every run
