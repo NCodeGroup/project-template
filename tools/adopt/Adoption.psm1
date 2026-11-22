@@ -341,11 +341,14 @@ function Move-PackageVersionsToCentral([string]$Path) {
     $lines
 }
 
-# Drops the repository's own Nerdbank.GitVersioning reference, since build/ProjectTemplate.props references it too once
-# version.json exists and two references fail the build (NU1504, NU1506). A text edit, like Move-PackageVersionsToCentral.
+# Drops the repository's own Nerdbank.GitVersioning reference, since a library's build/ProjectTemplate.props references it too
+# once version.json exists and two references fail the build (NU1504, NU1506). A text edit, like Move-PackageVersionsToCentral.
+# Drops nothing when build/ProjectTemplate.props doesn't reference it, as in a repository that isn't a library, whose own reference is its only one.
 # Returns one File and Version object per edited file.
 function Remove-GitVersioningReference([string]$Path) {
     $root = (Resolve-Path -LiteralPath $Path).Path.TrimEnd('\', '/')
+    $templateProps = Join-Path $root 'build/ProjectTemplate.props'
+    if (-not (Test-Path -LiteralPath $templateProps -PathType Leaf) -or (Get-Content -LiteralPath $templateProps -Raw) -notmatch '<PackageReference\s+Include="Nerdbank\.GitVersioning"') { return }
     $referenceRegex = [regex]::new('(?s)[ \t]*<PackageReference\b[^>]*?\bInclude="Nerdbank\.GitVersioning"(?:[^>/]|/(?!>))*(?:/>|>.*?</PackageReference>)[ \t]*\r?\n?')
     $emptyGroupRegex = [regex]::new('(?s)[ \t]*<ItemGroup>\s*</ItemGroup>[ \t]*\r?\n?')
     $versionTagRegex = [regex]::new('<PackageVersion\b[^>]*\bInclude="Nerdbank\.GitVersioning"[^>]*/>')
