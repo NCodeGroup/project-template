@@ -505,6 +505,20 @@ foreach ($case in $cases) {
             $licenseRow.Count -eq 1 -and $licenseRow[0].Contains("-Data @{ license = 'Apache-2.0' }")
         }
         Check "${name}: ADR-0020's License row says whether LICENSE.txt ships" $licenseRowRight ($licenseRow -join ' | ')
+        # ADR-0020's Signed-Releases and Packaging rows follow the nuget_package and nuget_publisher answers.
+        $scorecardLines = @(Get-Content -LiteralPath $scorecardRecord)
+        $scorecardAll = $scorecardLines -join "`n"
+        $signedRows = @($scorecardLines | Where-Object { $_.StartsWith('| Signed-Releases |') })
+        $packagingRows = @($scorecardLines | Where-Object { $_.StartsWith('| Packaging |') })
+        $isLibrary = $case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true'
+        $rowsRight = if ($isLibrary -and $case.Data.nuget_publisher) {
+            $signedRows.Count -eq 1 -and $signedRows[0].Contains($case.Data.nuget_publisher) -and $packagingRows.Count -eq 1 -and $packagingRows[0].Contains($case.Data.nuget_publisher)
+        } elseif ($isLibrary) {
+            $signedRows.Count -eq 1 -and $signedRows[0].Contains('`release-provenance.yml`') -and $signedRows[0].Contains('the releases stay mutable') -and $signedRows[0].Contains('[ADR-0028](') -and $packagingRows.Count -eq 1 -and $packagingRows[0].Contains('`publish.yml` publishes the packages') -and $scorecardAll.Contains('- [ADR-0139](') -and $scorecardAll.Contains('- [ADR-0151](')
+        } else {
+            $signedRows.Count -eq 1 -and $signedRows[0].Contains('publishes has no assets') -and -not $signedRows[0].Contains('release-provenance.yml') -and $signedRows[0].Contains('[ADR-0028](') -and $packagingRows.Count -eq 1 -and $packagingRows[0].Contains('the template publishes no packages') -and -not $scorecardAll.Contains('- [ADR-0139](')
+        }
+        Check "${name}: ADR-0020's Signed-Releases and Packaging rows follow the nuget_package and nuget_publisher answers" $rowsRight (($signedRows + $packagingRows) -join ' | ')
     }
     # The Copilot cloud agent's environment: only for a GitHub project that uses Copilot.
     $copilotSetup = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
