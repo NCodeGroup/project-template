@@ -518,6 +518,11 @@ try {
     $unreleased = Invoke-Override (Join-Path $Work 'github') @{ 'gh api repos/NCodeGroup/sample/releases/latest' = Answer $null 1 'gh: Not Found (HTTP 404)' }
     Check 'row 3.1 not done: unreleased has no release' ($unreleased.Output -match '(?m)^3\.1 .+: not done \(no release yet\)') "output=$($unreleased.Output)"
     Check 'row 4.7 not done: unreleased has no release' ($unreleased.Output -match '(?m)^4\.7 .+: not done \(no release yet\)') "output=$($unreleased.Output)"
+    # Checks that report none, and output that isn't JSON: 1.4
+    $noChecks = Invoke-Override (Join-Path $Work 'github') @{ 'gh pr checks 13 --repo NCodeGroup/sample --json name,bucket' = Answer '[]' }
+    $garbled = Invoke-Override (Join-Path $Work 'github') @{ 'gh pr checks 13 --repo NCodeGroup/sample --json name,bucket' = Answer 'no checks reported on the branch' 1 'GraphQL: Could not resolve to a PullRequest' }
+    Check 'row 1.4 not done: nochecks' ($noChecks.Output -match '(?m)^1\.4 .+: not done \(#13 reported no checks\)') "output=$($noChecks.Output)"
+    Check 'row 1.4 unreadable: garbled' ($garbled.Output -match '(?m)^1\.4 .+: unreadable \(couldn.t read the checks of #13') "output=$($garbled.Output)"
     # The calls of every run
     $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })
