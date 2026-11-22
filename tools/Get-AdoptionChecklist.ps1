@@ -92,7 +92,7 @@ function Test-WorkflowText([string]$Text) {
 # The highest stable tag, v<major>.<minor>.<patch> with a major of 1 or more; $null when there is none.
 function Get-StableTag {
     $best = $null
-    foreach ($tag in @(git -C $Path tag --list)) {
+    foreach ($tag in Get-GitLines @('tag', '--list')) {
         if ("$tag" -notmatch '^v?([0-9]+)\.[0-9]+\.[0-9]+\z' -or [int]$Matches[1] -lt 1) { continue }
         $version = [version]("$tag" -replace '^v')
         if (-not $best -or $version -gt $best.Version) { $best = [pscustomobject]@{ Tag = "$tag"; Version = $version } }
@@ -204,6 +204,11 @@ function Invoke-Tool([string]$Name, [string[]]$Arguments, [string]$WorkingDirect
     [pscustomobject]@{ ExitCode = $run.ExitCode; Out = (@($run.Out) -join "`n"); Error = $said; Status = $status }
 }
 
+# The output lines of a git command in the clone, whatever git's exit code, as the git calls it replaces read them.
+function Get-GitLines([string[]]$Arguments) {
+    @((Invoke-Tool 'git' (@('-C', $Path) + $Arguments)).Out -split "`n" | Where-Object { $_ })
+}
+
 # Runs gh and gives its JSON output as objects; $null for a 404 when -Missing is set, else a failure throws.
 function Read-Gh([string[]]$Arguments, [switch]$Missing) {
     $r = Invoke-Tool 'gh' $Arguments
@@ -246,7 +251,7 @@ else {
     $script:encoded = [uri]::EscapeDataString($project)
 }
 $release = if ((Get-FileText 'AGENTS.md') -match '(?m)^- release:[ \t]*(\S+)') { $Matches[1] } else { 'none' }
-$rootSubject = @(git -C $Path log --max-parents=0 --format=%s)[-1]
+$rootSubject = @(Get-GitLines @('log', '--max-parents=0', '--format=%s'))[-1]
 
 # The rows of docs/adopt.md's section 8 Checklist, titled as its headings are.
 $rows = @(
@@ -435,7 +440,7 @@ $checks['1.1'] = {
 }
 
 $checks['1.2'] = {
-    $subject = @(git -C $Path log --format=%s) | Where-Object { "$_".StartsWith('Adopt project-template ') } |
+    $subject = Get-GitLines @('log', '--format=%s') | Where-Object { "$_".StartsWith('Adopt project-template ') } |
         Select-Object -First 1
     if ($subject) { New-Result 'done' "$subject" }
     else { New-Result 'not done' "no 'Adopt project-template' commit" }
@@ -663,7 +668,7 @@ $checks['3.1'] = {
 }
 
 $checks['3.2'] = {
-    $tag = @(git -C $Path tag --list 'v*' --sort=-version:refname) | Select-Object -First 1
+    $tag = Get-GitLines @('tag', '--list', 'v*', '--sort=-version:refname') | Select-Object -First 1
     if (-not $tag) { return New-Result 'not done' 'no release tag in the clone' }
     $identity = "https://github.com/$slug/.github/workflows/tag-release.yml@refs/heads/$((Get-Repo).default_branch)"
     $r = Invoke-Tool 'gitsign' @('verify-tag', '--certificate-identity', $identity,
