@@ -352,6 +352,7 @@ try {
     $broken = Invoke-Override (Join-Path $Work 'github') @{
         'Set-RepositoryBaseline -Repo sample -Owner NCodeGroup -WhatIf' = Answer $null 1 'gh: Not Found (HTTP 404)'
         'Set-RepositoryBaseline -OrganizationPolicy -Owner NCodeGroup -WhatIf' = Answer $null 1 'gh: Not Found (HTTP 404)'
+        'Dismiss-ScorecardAlerts -Repo NCodeGroup/sample -WhatIf' = Answer $null 1 'gh: Forbidden (HTTP 403)'
     }
     foreach ($row in @(
             @('0.2', 'done', 'github', $gh), @('2.1', 'done', 'github', $gh), @('2.4', 'done', 'github', $gh),
@@ -359,7 +360,7 @@ try {
             @('2.1', 'not done', 'bad', $bad), @('3.3', 'not done', 'bad', $bad), @('0.2', 'not done', 'bad', $bad),
             @('2.4', 'not done', 'bad', $bad),
             @('2.1', 'unreadable', 'broken', $broken), @('3.3', 'unreadable', 'broken', $broken),
-            @('0.2', 'unreadable', 'broken', $broken))) {
+            @('0.2', 'unreadable', 'broken', $broken), @('2.4', 'unreadable', 'broken', $broken))) {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
@@ -489,6 +490,30 @@ try {
     $shared = @('''^v?(\d+(?:\.\d+){0,3})$''', '''^gh:(.+)$''', '''^gl:(.+)$''', '''^https://github\.com/polewskm/project-template(?:\.git)?/?$''', '''https://github.com/NCodeGroup/project-template.git''')
     $apart = @($shared | Where-Object { -not ($checkerText.Contains($_) -and $updateText.Contains($_)) })
     Check 'frame: 7.1 reads versions and addresses as Get-TemplateUpdate.ps1 does' ($apart.Count -eq 0) "not in both: $($apart -join ', ')"
+    # Immutable releases not available or unknown, and the GitLab baseline failing or not available: 3.3, 2.5
+    $limited = Invoke-Override (Join-Path $Work 'github') @{
+        'Set-RepositoryBaseline -Repo sample -Owner NCodeGroup -WhatIf' = Answer @(
+            'sample: allow auto-merge: already set'
+            'sample: immutable releases: not available for this account'
+            'sample: organization two-factor requirement: required')
+    }
+    $odd = Invoke-Override (Join-Path $Work 'github') @{
+        'Set-RepositoryBaseline -Repo sample -Owner NCodeGroup -WhatIf' = Answer @(
+            'sample: allow auto-merge: already set'
+            'sample: immutable releases: pending'
+            'sample: organization two-factor requirement: required')
+    }
+    $glKey = "Set-GitLabBaseline -Path $((Resolve-Path -LiteralPath (Join-Path $Work 'gitlab')).ProviderPath) -WhatIf -BaselineToken"
+    $glBroken = Invoke-Override (Join-Path $Work 'gitlab') @{ $glKey = Answer $null 1 'glab: 401 Unauthorized' }
+    $glLimited = Invoke-Override (Join-Path $Work 'gitlab') @{
+        $glKey = Answer @('group/sub/sample: All threads must be resolved: already set', 'group/sub/sample: merge trains: not available on this tier')
+    }
+    foreach ($row in @(
+            @('3.3', 'done', 'limited', $limited), @('3.3', 'unreadable', 'odd', $odd),
+            @('2.5', 'unreadable', 'glbroken', $glBroken), @('2.5', 'unreadable', 'gllimited', $glLimited))) {
+        $step, $want, $label, $run = $row
+        Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
+    }
     # The calls of every run
     $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })
