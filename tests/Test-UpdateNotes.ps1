@@ -26,6 +26,7 @@
       gitversioning-reference Get-GitVersioningReference names the files that reference Nerdbank.GitVersioning
                 themselves only when build/ProjectTemplate.props references it too, as a library's does, and nothing
                 when build/ProjectTemplate.props doesn't reference it or is missing.
+                tools\adopt\Adoption.psm1's Remove-GitVersioningReference drops the same files.
       publisher Get-NuGetPublisherAnswer names the workflows other than publish.yml that run nuget push, joined with
                 ", ", when the library has no publish.yml, and is blank beside a publish.yml, without such a workflow or
                 without .github/workflows.
@@ -250,6 +251,8 @@ $gitVersioningReference = & {
         try { $got = @(Get-GitVersioningReference) -join ', ' }
         finally { Pop-Location }
         Check "gitversioning-reference: $name" ($got -eq $case.Want) "got [$got], want [$($case.Want)]"
+        $dropped = @(Remove-GitVersioningReference $folder | ForEach-Object File) -join ', '
+        Check "gitversioning-reference: $name (tools\adopt\Adoption.psm1's copy)" ($dropped -eq $case.Want) "got [$dropped], want [$($case.Want)]"
     }
 }
 $gitVersioningReference
