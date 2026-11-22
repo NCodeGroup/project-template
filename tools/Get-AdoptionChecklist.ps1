@@ -264,7 +264,8 @@ $rootSubject = @(Get-GitLines @('log', '--max-parents=0', '--format=%s'))[-1]
 
 # The rows of docs/adopt.md's section 8 Checklist, titled as its headings are.
 $rows = @(
-    @('0.1', 'Accounts and Tools'), @('0.2', "The Organization's Actions Policy"), @('0.3', "NCode Review's Organization Setup"),
+    @('0.1', 'Accounts and Tools'), @('0.2', "The Organization's Actions Policy"),
+    @('0.3', "NCode Review's Organization Setup"),
     @('1.1', 'A New Project'), @('1.2', 'An Existing Repository'), @('1.3', 'Node.js: nvs and the Prelude'),
     @('1.4', 'First Push and First Pull Request'),
     @('2.1', 'Run the Baseline'), @('2.2', 'When an Approval Is Required'), @('2.3', "CodeQL's Languages"),
@@ -309,14 +310,17 @@ function Get-NotApplying([string]$Step) {
     }
     if ($Step -eq '6.2' -and -not (Test-WorkflowText 'codecov/codecov-action')) { return 'no Codecov upload' }
     if ($Step -eq '6.3' -and -not (Test-WorkflowText 'actions/deploy-pages')) { return 'no documentation site' }
-    if ($Step -eq '6.4' -and -not (Test-Path -LiteralPath (Join-Path $Path '.github/workflows/copilot-setup-steps.yml'))) {
+    $noCopilot = -not (Test-Path -LiteralPath (Join-Path $Path '.github/workflows/copilot-setup-steps.yml'))
+    if ($Step -eq '6.4' -and $noCopilot) {
         return 'without Copilot'
     }
     $null
 }
 
-# Reads a template version, v<major>.<minor>.<patch> or shorter, as Get-TemplateUpdate.ps1 does; $null when it isn't one.
-# Its pattern and 7.1's address rewrites are Get-TemplateUpdate.ps1's: tests/Test-AdoptionChecklist.ps1 checks they match.
+# Reads a template version, v<major>.<minor>.<patch> or shorter, as Get-TemplateUpdate.ps1 does;
+# $null when it isn't one.
+# Its pattern and 7.1's address rewrites are Get-TemplateUpdate.ps1's:
+# tests/Test-AdoptionChecklist.ps1 checks they match.
 function ConvertTo-TemplateVersion([string]$Text) {
     if ($Text -notmatch '^v?([0-9]+(?:\.[0-9]+){0,3})\z') { return $null }
     $parts = @($Matches[1] -split '\.')
@@ -360,7 +364,8 @@ $approverKey = "$reviewFile" -match 'approver-private-key:[ \t]*\S'
 function Get-RequiredApprovals {
     Get-Cached 'requiredApprovals' {
         $rules = Read-Gh @('api', "repos/$slug/rules/branches/$((Get-Repo).default_branch)")
-        $counts = @(@($rules) | Where-Object { $_.type -eq 'pull_request' } | ForEach-Object { [int]$_.parameters.required_approving_review_count })
+        $counts = @(@($rules) | Where-Object { $_.type -eq 'pull_request' } |
+                ForEach-Object { [int]$_.parameters.required_approving_review_count })
         if ($counts.Count) { [int]($counts | Measure-Object -Maximum).Maximum }
     }
 }
@@ -380,13 +385,15 @@ function Get-ExpectedApprovals {
 # The latest merged pull requests, newest first.
 function Get-MergedPulls {
     Get-Cached 'mergedPulls' {
-        @(Read-Gh @('pr', 'list', '--repo', $slug, '--state', 'merged', '--limit', "$mergedPullLimit", '--json', 'number,author'))
+        @(Read-Gh @('pr', 'list', '--repo', $slug, '--state', 'merged', '--limit', "$mergedPullLimit",
+                '--json', 'number,author'))
     }
 }
 
 # A result for a workflow's latest run: done when it succeeded, else not done with how it stands.
 function Get-LatestRun([string]$Workflow) {
-    $runs = @(Read-Gh @('run', 'list', '--repo', $slug, '--workflow', $Workflow, '--limit', '1', '--json', 'conclusion,status'))
+    $runs = @(Read-Gh @('run', 'list', '--repo', $slug, '--workflow', $Workflow, '--limit', '1',
+            '--json', 'conclusion,status'))
     if (-not $runs.Count) { return New-Result 'not done' "no $Workflow run yet" }
     $run = $runs[0]
     if ($run.conclusion -eq 'success') { return New-Result 'done' }
@@ -406,7 +413,8 @@ function Get-ApprovalResult {
         if (-not $pull) { return New-Result 'not done' 'no merged pull request by a person yet' }
         $number = $pull.number
         $reviews = @(Read-Gh @('api', "repos/$slug/pulls/$number/reviews?per_page=$pageSize"))
-        $approved = @($reviews | Where-Object { $_.user.login -eq 'ncode-review-approver[bot]' -and $_.state -eq 'APPROVED' })
+        $approved = @($reviews |
+                Where-Object { $_.user.login -eq 'ncode-review-approver[bot]' -and $_.state -eq 'APPROVED' })
         if ($approved.Count) { New-Result 'done' "#$number approved by ncode-review-approver[bot]" }
         else { New-Result 'not done' "#$number has no approval from ncode-review-approver[bot]" }
     }
@@ -503,7 +511,8 @@ $checks['0.2'] = {
     $parts = @()
     $org = Invoke-Sibling 'Set-RepositoryBaseline.ps1' @('-OrganizationPolicy', '-Owner', $owner, '-WhatIf')
     if ($org.ExitCode) {
-        $parts += New-Result 'unreadable' "the -OrganizationPolicy -WhatIf run exited $($org.ExitCode): $(Get-LastLine $org)"
+        $why = "the -OrganizationPolicy -WhatIf run exited $($org.ExitCode): $(Get-LastLine $org)"
+        $parts += New-Result 'unreadable' $why
     }
     else {
         $set = @($org.Lines | Where-Object { $_ -match 'would set' })
@@ -512,7 +521,8 @@ $checks['0.2'] = {
     }
     $baseline = Get-Baseline
     if ($baseline.ExitCode) {
-        $parts += New-Result 'unreadable' "the baseline's -WhatIf run exited $($baseline.ExitCode): $(Get-LastLine $baseline)"
+        $why = "the baseline's -WhatIf run exited $($baseline.ExitCode): $(Get-LastLine $baseline)"
+        $parts += New-Result 'unreadable' $why
     }
     else {
         $line = $baseline.Lines | Where-Object { $_ -match 'organization two-factor requirement: (.+)\z' } |
@@ -542,7 +552,10 @@ $checks['2.4'] = {
 
 $checks['2.2'] = {
     $count = Get-RequiredApprovals
-    if ($null -eq $count) { return New-Result 'not done' "no rule requires a pull request on $((Get-Repo).default_branch)" }
+    if ($null -eq $count) {
+        $why = "no rule requires a pull request on $((Get-Repo).default_branch)"
+        return New-Result 'not done' $why
+    }
     $expected = Get-ExpectedApprovals
     if ($count -eq $expected) { New-Result 'done' "requires $count approval(s)" }
     else { New-Result 'not done' "requires $count approval(s), expected $expected" }
@@ -550,7 +563,10 @@ $checks['2.2'] = {
 
 $checks['5.2'] = {
     $count = Get-RequiredApprovals
-    if ($null -eq $count) { return New-Result 'not done' "no rule requires a pull request on $((Get-Repo).default_branch)" }
+    if ($null -eq $count) {
+        $why = "no rule requires a pull request on $((Get-Repo).default_branch)"
+        return New-Result 'not done' $why
+    }
     if ($count -eq 1) { New-Result 'done' }
     else { New-Result 'not done' "requires $count approval(s), expected 1" }
 }
@@ -558,7 +574,10 @@ $checks['5.2'] = {
 $checks['2.3'] = {
     $setup = Read-Gh @('api', "repos/$slug/code-scanning/default-setup")
     $languages = @($setup.languages | Where-Object { $_ })
-    if ($setup.state -eq 'configured' -and $languages.Count) { return New-Result 'done' "configured: $($languages -join ', ')" }
+    if ($setup.state -eq 'configured' -and $languages.Count) {
+        $why = "configured: $($languages -join ', ')"
+        return New-Result 'done' $why
+    }
     $analyzing = if ($languages.Count) { $languages -join ', ' } else { 'no language' }
     New-Result 'not done' "$($setup.state), analyzing $analyzing"
 }
@@ -569,7 +588,8 @@ $checks['5.1'] = {
         $parts += New-Result 'not done' 'the code-review environment has no NCODE_REVIEW_APPROVER_PRIVATE_KEY'
     }
     if (-not ($approve -and $approverKey)) {
-        $parts += New-Result 'not done' ".github/workflows/code-review.yml doesn't pass approve: true and approver-private-key"
+        $why = ".github/workflows/code-review.yml doesn't pass approve: true and approver-private-key"
+        $parts += New-Result 'not done' $why
     }
     Join-Result (@($parts) + (New-Result 'done'))
 }
@@ -604,14 +624,16 @@ $checks['6.1'] = {
 
 $checks['7.1'] = {
     $versionFile = Get-FileText '.template-version'
-    $currentText = if ($null -ne $versionFile) { "$(@($versionFile -split '\r?\n')[0])".Trim() } else { Get-Answer '_commit' }
+    $currentText = if ($null -ne $versionFile) { "$(@($versionFile -split '\r?\n')[0])".Trim() }
+    else { Get-Answer '_commit' }
     # A version between tags, such as v0.12.0-3-gabc1234, is the tag before the first dash.
     $currentTag = "$currentText" -replace '-.*$'
     $current = ConvertTo-TemplateVersion $currentTag
     if (-not $current) { throw "can't read the project's template version from .template-version ('$currentText')" }
     $src = Get-Answer '_src_path'
     if (-not $src) { throw '.copier-answers.yml has no _src_path' }
-    # Copier's shorthands, and the template's old address, which GitHub only redirects, as Get-TemplateUpdate.ps1 reads them.
+    # Copier's shorthands, and the template's old address, which GitHub only redirects,
+    # as Get-TemplateUpdate.ps1 reads them.
     if ($src -match '^gh:(.+)\z') { $src = "https://github.com/$($Matches[1])" }
     elseif ($src -match '^gl:(.+)\z') { $src = "https://gitlab.com/$($Matches[1])" }
     if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?\z') {
@@ -635,7 +657,8 @@ $checks['7.1'] = {
 
 $checks['1.4'] = {
     if ($gitHost -eq 'gitlab') {
-        $list = Invoke-Tool 'glab' @('api', '--hostname', $hostName, "projects/$encoded/merge_requests?state=merged&order_by=updated_at&per_page=1")
+        $list = Invoke-Tool 'glab' @('api', '--hostname', $hostName,
+            "projects/$encoded/merge_requests?state=merged&order_by=updated_at&per_page=1")
         if ($list.ExitCode) { throw "glab api merge_requests failed: $($list.Error)" }
         $merged = if ($list.Out.Trim()) { @($list.Out | ConvertFrom-Json) } else { @() }
         if (-not $merged.Count) { return New-Result 'not done' 'no merged merge request yet' }
@@ -660,7 +683,8 @@ $checks['1.4'] = {
     if (-not $reported.Count) { return New-Result 'not done' "#$number reported no checks" }
     $failing = @($reported | Where-Object { $_.bucket -notin 'pass', 'skipping' })
     if ($failing.Count) {
-        return New-Result 'not done' "#${number}: $(@($failing | ForEach-Object { "$($_.name) ($($_.bucket))" }) -join ', ')"
+        $why = "#${number}: $(@($failing | ForEach-Object { "$($_.name) ($($_.bucket))" }) -join ', ')"
+        return New-Result 'not done' $why
     }
     New-Result 'done' "#${number}: $($reported.Count) checks passed"
 }
@@ -744,7 +768,8 @@ $checks['4.6'] = {
     $tag = Get-StableTag
     if (-not $tag) { return New-Result 'done' 'no stable release yet' }
     $version = "$tag" -replace '^v'
-    $pulls = @(Read-Gh @('pr', 'list', '--repo', $slug, '--head', "baseline-$version", '--state', 'merged', '--json', 'number'))
+    $pulls = @(Read-Gh @('pr', 'list', '--repo', $slug, '--head', "baseline-$version", '--state', 'merged',
+            '--json', 'number'))
     if ($pulls.Count) { New-Result 'done' "#$($pulls[0].number) merged" }
     else { New-Result 'not done' "no merged pull request from baseline-$version" }
 }
@@ -793,7 +818,8 @@ $checks['6.3'] = {
 }
 
 $checks['6.5'] = {
-    $labels = @(Read-Gh @('label', 'list', '--repo', $slug, '--json', 'name', '--limit', "$labelLimit") | ForEach-Object { $_.name })
+    $labels = @(Read-Gh @('label', 'list', '--repo', $slug, '--json', 'name', '--limit', "$labelLimit") |
+            ForEach-Object { $_.name })
     if ('documentation' -in $labels) { New-Result 'done' }
     else { New-Result 'not done' 'no documentation label' }
 }
@@ -827,7 +853,7 @@ foreach ($row in $rows) {
     Write-Host $line
 }
 $label = if ($gitHost -eq 'gitlab') { $project } else { $slug }
-Write-Host ("${label}: $($counts['done']) done, $($counts['not done']) not done, $($counts['unreadable']) unreadable, " +
-    "$($counts['does not apply']) do not apply")
+Write-Host ("${label}: $($counts['done']) done, $($counts['not done']) not done, " +
+    "$($counts['unreadable']) unreadable, $($counts['does not apply']) do not apply")
 if ($counts['not done']) { exit 1 }
 exit 0
