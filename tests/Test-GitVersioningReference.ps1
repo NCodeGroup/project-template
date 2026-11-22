@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Builds one fixture folder per case and passes it to Remove-GitVersioningReference: a project file, a Directory.Build.props
-    and a Directory.Packages.props that carry the reference, and the files that must stay as they are. Prints PASS or FAIL per
+    and a Directory.Packages.props that carry the reference, and the files that must stay as they are, among them every file of a repository whose build/ProjectTemplate.props doesn't reference Nerdbank.GitVersioning, or that has none. Prints PASS or FAIL per
     check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -38,6 +38,15 @@ New-Item -ItemType Directory -Force $Work | Out-Null
 
 Import-Module (Join-Path $repoRoot 'tools\adopt\Adoption.psm1') -Force
 
+# build/ProjectTemplate.props as a library's: it references Nerdbank.GitVersioning, so a repository's own reference is a second one.
+$template = @'
+<Project>
+  <ItemGroup>
+    <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
+'@
+
 # (a) a project file with a self-closing reference and another package
 $a = Join-Path $Work 'a'
 $csproj = @'
@@ -49,6 +58,7 @@ $csproj = @'
 </Project>
 '@
 Write-Text (Join-Path $a 'src/A/A.csproj') $csproj
+Write-Text (Join-Path $a 'build/ProjectTemplate.props') $template
 $result = @(Remove-GitVersioningReference $a)
 $text = Read-Text (Join-Path $a 'src/A/A.csproj')
 Check 'self-closing: the reference is gone' (-not $text.Contains('Nerdbank.GitVersioning')) $text
@@ -67,6 +77,7 @@ $props = @'
 </Project>
 '@
 Write-Text (Join-Path $b 'Directory.Build.props') $props
+Write-Text (Join-Path $b 'build/ProjectTemplate.props') $template
 $result = @(Remove-GitVersioningReference $b)
 $text = Read-Text (Join-Path $b 'Directory.Build.props')
 Check 'multi-line: the reference is gone' (-not $text.Contains('Nerdbank.GitVersioning') -and -not $text.Contains('PrivateAssets')) $text
@@ -86,6 +97,7 @@ $central = @'
 </Project>
 '@
 Write-Text (Join-Path $c 'Directory.Packages.props') $central
+Write-Text (Join-Path $c 'build/ProjectTemplate.props') $template
 $result = @(Remove-GitVersioningReference $c)
 $text = Read-Text (Join-Path $c 'Directory.Packages.props')
 Check 'two versions: the first stays' ($text.Contains('Version="3.7.115"')) $text
@@ -115,13 +127,6 @@ Check 'no reference: the files are byte-for-byte unchanged' (($before -join ',')
 
 # (f) build/ProjectTemplate.props with the reference
 $f = Join-Path $Work 'f'
-$template = @'
-<Project>
-  <ItemGroup>
-    <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />
-  </ItemGroup>
-</Project>
-'@
 Write-Text (Join-Path $f 'build/ProjectTemplate.props') $template
 $result = @(Remove-GitVersioningReference $f)
 Check 'template props: untouched' ((Read-Text (Join-Path $f 'build/ProjectTemplate.props')) -ceq $template)
@@ -140,11 +145,33 @@ $followed = @'
 </Project>
 '@
 Write-Text (Join-Path $g 'src/G/G.csproj') $followed
+Write-Text (Join-Path $g 'build/ProjectTemplate.props') $template
 $result = @(Remove-GitVersioningReference $g)
 $text = Read-Text (Join-Path $g 'src/G/G.csproj')
 Check 'self-closing before multi-line: the reference is gone' (-not $text.Contains('Nerdbank.GitVersioning')) $text
 Check 'self-closing before multi-line: the next element stays whole' ($text.Contains('<PackageReference Include="Serilog" Version="1">') -and $text.Contains('<PrivateAssets>all</PrivateAssets>') -and $text.Contains('</PackageReference>')) $text
 Check 'self-closing before multi-line: one result' ($result.Count -eq 1) "Got $($result.Count)"
+
+# (h) a repository that isn't a library: build/ProjectTemplate.props doesn't reference Nerdbank.GitVersioning, so the repository's own reference is its only one
+$h = Join-Path $Work 'h'
+Write-Text (Join-Path $h 'build/ProjectTemplate.props') ("<Project>`n  <PropertyGroup>`n    <Nullable>enable</Nullable>`n  </PropertyGroup>`n</Project>`n")
+Write-Text (Join-Path $h 'Directory.Build.props') $props
+Write-Text (Join-Path $h 'src/H/H.csproj') $csproj
+Write-Text (Join-Path $h 'Directory.Packages.props') $central
+$before = @(Get-ChildItem -LiteralPath $h -Recurse -File | Sort-Object FullName | ForEach-Object { (Get-FileHash -LiteralPath $_.FullName).Hash })
+$result = @(Remove-GitVersioningReference $h)
+$after = @(Get-ChildItem -LiteralPath $h -Recurse -File | Sort-Object FullName | ForEach-Object { (Get-FileHash -LiteralPath $_.FullName).Hash })
+Check 'not a library: no result' ($result.Count -eq 0) "Got $($result.Count)"
+Check 'not a library: the files are byte-for-byte unchanged' (($before -join ',') -ceq ($after -join ',')) "$($before -join ',') vs $($after -join ',')"
+
+# (i) a repository without build/ProjectTemplate.props
+$i = Join-Path $Work 'i'
+Write-Text (Join-Path $i 'src/I/I.csproj') $csproj
+$before = @(Get-ChildItem -LiteralPath $i -Recurse -File | Sort-Object FullName | ForEach-Object { (Get-FileHash -LiteralPath $_.FullName).Hash })
+$result = @(Remove-GitVersioningReference $i)
+$after = @(Get-ChildItem -LiteralPath $i -Recurse -File | Sort-Object FullName | ForEach-Object { (Get-FileHash -LiteralPath $_.FullName).Hash })
+Check 'no template props: no result' ($result.Count -eq 0) "Got $($result.Count)"
+Check 'no template props: the files are byte-for-byte unchanged' (($before -join ',') -ceq ($after -join ',')) "$($before -join ',') vs $($after -join ',')"
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "GitVersioning reference tests: FAILED ($($failures.Count))"; exit 1 }
