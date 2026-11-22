@@ -211,6 +211,9 @@ New-GitHubVariant 'blank' @{
 
 New-GitHubVariant 'publisher' @{ '.copier-answers.yml' = "$($githubFiles['.copier-answers.yml'])`nnuget_publisher: publish-nuget.yml`n" }
 
+New-GitHubVariant 'noemail' @{}
+Invoke-Git (Join-Path $Work 'noemail') @('config', '--unset', 'user.email')
+
 # Answers
 $calls = @{
     'gh api repos/NCodeGroup/sample' = Answer (Json @{ visibility = 'public'; default_branch = 'main'; owner = @{ type = 'Organization' } })
@@ -442,6 +445,13 @@ try {
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
     Check 'publisher: section 4 names nuget_publisher' ($publisher.Output -match '(?m)^4\.4 .+: does not apply \(.*nuget_publisher') "output=$($publisher.Output)"
+    # Row 0.1 with gh signed out, no copier and no user.email
+    $signedOut = Invoke-Override (Join-Path $Work 'noemail') @{
+        'gh auth status' = Answer $null 1 'You are not logged into any GitHub hosts.'
+        'copier --version' = Answer $null 1 'No module named copier'
+    }
+    Check 'row 0.1 not done: signedout' ((Get-Status $signedOut '0.1') -eq 'not done') "output=$($signedOut.Output)"
+    Check 'signedout: row 0.1 names gh, copier and user.email' ($signedOut.Output -match '(?m)^0\.1 .+gh isn.t signed in; copier: No module named copier; git has no user\.email') "output=$($signedOut.Output)"
     # The calls of every run
     $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })
