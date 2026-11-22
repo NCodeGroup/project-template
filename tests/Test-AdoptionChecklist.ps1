@@ -214,6 +214,8 @@ New-GitHubVariant 'publisher' @{ '.copier-answers.yml' = "$($githubFiles['.copie
 New-GitHubVariant 'noemail' @{}
 Invoke-Git (Join-Path $Work 'noemail') @('config', '--unset', 'user.email')
 
+New-GitHubVariant 'prestable' @{} @('v0.9.0', 'v1.0.0-rc.1')
+
 # Answers
 $calls = @{
     'gh api repos/NCodeGroup/sample' = Answer (Json @{ visibility = 'public'; default_branch = 'main'; owner = @{ type = 'Organization' } })
@@ -452,6 +454,10 @@ try {
     }
     Check 'row 0.1 not done: signedout' ((Get-Status $signedOut '0.1') -eq 'not done') "output=$($signedOut.Output)"
     Check 'signedout: row 0.1 names gh, copier and user.email' ($signedOut.Output -match '(?m)^0\.1 .+gh isn.t signed in; copier: No module named copier; git has no user\.email') "output=$($signedOut.Output)"
+    # Only a 0.x tag and a prerelease tag: 4.3, 4.6
+    $prestable = Invoke-Checklist (Join-Path $Work 'prestable') $calls
+    Check 'row 4.3 done: prestable has no stable release' ($prestable.Output -match '(?m)^4\.3 .+: done \(no stable release yet') "output=$($prestable.Output)"
+    Check 'row 4.6 done: prestable has no stable release' ($prestable.Output -match '(?m)^4\.6 .+: done \(no stable release yet') "output=$($prestable.Output)"
     # The calls of every run
     $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })
