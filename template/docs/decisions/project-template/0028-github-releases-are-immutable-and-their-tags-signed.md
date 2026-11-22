@@ -59,10 +59,13 @@ A GitHub repository's releases are immutable, and a public repository's release 
 - A workflow that runs on a `release` event only to publish elsewhere, such as to a package registry, also keeps
   releases mutable; its owner can turn them on with `gh api -X PUT repos/OWNER/REPO/immutable-releases`, which the
   script never undoes.
-- Scorecard v5.6.0's Signed-Releases check doesn't count an attestation that isn't an asset. Scorecard v5.7.0, which
-  `ossf/scorecard-action` v2.6.0 runs, adds the `releasesAreImmutable` probe and scores an immutable release 10, as it
-  scores a release with a `*.intoto.jsonl` provenance file, so a library that keeps mutable releases and attaches its
-  provenance scores as high as a project whose releases are immutable.
+- Scorecard's Signed-Releases check counts only the releases that have assets among the five newest. Scorecard v5.7.0,
+  which the template's `scorecard.yml` runs through `ossf/scorecard-action` v2.6.0, adds the `releasesAreImmutable`
+  probe and scores such a release 10 when it is immutable, as it scores one with a `*.intoto.jsonl` provenance file, so
+  a library that keeps mutable releases and attaches its provenance scores as high as a project whose immutable
+  releases have assets. A release without assets isn't counted, immutable or not, and the release attestation GitHub
+  signs isn't an asset: where no recent release has assets, as in a project whose releases get no files, the check is
+  inconclusive and left out of the score.
 - GitHub shows a gitsign signature as unverified, since its certificate authority isn't GitHub's; `gitsign verify-tag`
   is the check that counts.
 
