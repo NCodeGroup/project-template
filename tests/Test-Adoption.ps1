@@ -402,13 +402,14 @@ if (-not $UnitOnly) {
     $gvPackages = Get-Content -Raw -LiteralPath (Join-Path $ownGitVersioning 'Directory.Packages.props')
     Check 'own-gitversioning: drops the project''s own reference, keeps the template''s one, and says so' (((Get-Content -Raw -LiteralPath (Join-Path $ownGitVersioning 'src/Lib/Lib.csproj')) -notmatch 'Nerdbank\.GitVersioning') -and ([regex]::Matches($gvPackages, '<PackageVersion\s+Include="Nerdbank\.GitVersioning"')).Count -eq 1 -and ((Get-Content -Raw -LiteralPath (Join-Path $ownGitVersioning 'build/ProjectTemplate.props')) -match 'Nerdbank\.GitVersioning') -and $gitVersioningOut.Contains('Dropped src/Lib/Lib.csproj') -and $gitVersioningOut.Contains('pinned version 3.6.0') -and -not (git -C $ownGitVersioning status --porcelain)) $gitVersioningOut
 
-    # Without version.json and a template reference to Nerdbank.GitVersioning, the project's own reference stays.
+    # A repository that isn't a library keeps its own reference, also beside a version.json of its own: its build/ProjectTemplate.props references Nerdbank.GitVersioning nowhere, so that reference is its only one.
     $ownGitVersioningNone = New-Fixture 'own-gitversioning-none' @{
         'src/Lib/Lib.csproj' = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n  <ItemGroup>`n    <PackageReference Include=""Nerdbank.GitVersioning"" Version=""3.6.0"" PrivateAssets=""all"" />`n  </ItemGroup>`n</Project>`n"
         'README.md'          = "# Lib`n"
+        'version.json'       = "{`n  `"version`": `"1.0`"`n}`n"
     } 'https://github.com/example/own-gitversioning-none.git'
     $gitVersioningNoneOut = & $adopt -Path $ownGitVersioningNone -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; nuget_package = $false; license = 'Apache-2.0'; test_command = '' } -NoVerify | Out-String
-    Check 'own-gitversioning-none: keeps the project''s own reference when the template adds none, and drops nothing' (((Get-Content -Raw -LiteralPath (Join-Path $ownGitVersioningNone 'src/Lib/Lib.csproj')) -match 'Nerdbank\.GitVersioning') -and -not $gitVersioningNoneOut.Contains('Dropped')) $gitVersioningNoneOut
+    Check 'own-gitversioning-none: keeps the project''s own reference and its version.json when the template adds no reference, and drops nothing' (((Get-Content -Raw -LiteralPath (Join-Path $ownGitVersioningNone 'src/Lib/Lib.csproj')) -match 'Nerdbank\.GitVersioning') -and (Test-Path -LiteralPath (Join-Path $ownGitVersioningNone 'version.json')) -and ((Get-Content -Raw -LiteralPath (Join-Path $ownGitVersioningNone 'build/ProjectTemplate.props')) -notmatch 'Nerdbank\.GitVersioning') -and -not $gitVersioningNoneOut.Contains('Dropped')) $gitVersioningNoneOut
 
     if (-not $SkipDotnetBuild) {
         $subject = git -C $scaffoldRepo log -1 --format=%s
