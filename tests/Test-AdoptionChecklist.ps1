@@ -539,13 +539,15 @@ try {
     Check 'row 1.4 not done: nochecks' ($noChecks.Output -match '(?m)^1\.4 .+: not done \(#13 reported no checks\)') "output=$($noChecks.Output)"
     Check 'row 1.4 unreadable: garbled' ($garbled.Output -match '(?m)^1\.4 .+: unreadable \(couldn.t read the checks of #13') "output=$($garbled.Output)"
     Check 'row 7.1 done: gitlab with CRLF files' ($gl.Output -match '(?m)^7\.1 .+: done \(on v0\.111\.3\)') "output=$($gl.Output)"
-    # Commands that stall: 2.4 runs a sibling script, stopped after -TimeoutSeconds
+    # Commands that stall: 6.3 reads gh and 2.4 runs a sibling script, each stopped after -TimeoutSeconds
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $stalled = Invoke-Override (Join-Path $Work 'github') @{
+        'gh api repos/NCodeGroup/sample/pages' = Answer '{}' 0 '' 60
         'Dismiss-ScorecardAlerts -Repo NCodeGroup/sample -WhatIf' = Answer $null 0 '' 60
     } @('-TimeoutSeconds', '3')
     $watch.Stop()
     Check 'row 2.4 unreadable: stalled sibling times out' ($stalled.Output -match '(?m)^2\.4 .+: unreadable \(Dismiss-ScorecardAlerts\.ps1 timed out after 3 s\)') "output=$($stalled.Output)"
+    Check 'row 6.3 unreadable: stalled gh times out' ($stalled.Output -match '(?m)^6\.3 .+: unreadable \(gh api repos/NCodeGroup/sample/pages timed out after 3 s\)') "output=$($stalled.Output)"
     Check 'stalled: the run stops each stalled command instead of waiting for it' ($watch.Elapsed.TotalSeconds -lt 50) "took $($watch.Elapsed.TotalSeconds) s"
     $noOrigin = Invoke-Checklist (Join-Path $Work 'noorigin') $calls
     Check 'frame: a clone without an origin remote names the git error' ($noOrigin.ExitCode -eq 1 -and $noOrigin.Output -match 'Couldn.t read the origin remote of ') "exit=$($noOrigin.ExitCode) output=$($noOrigin.Output)"

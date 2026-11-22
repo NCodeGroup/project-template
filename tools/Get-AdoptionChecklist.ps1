@@ -157,27 +157,51 @@ function Invoke-Process([string]$FileName, [string[]]$Arguments, [string]$Workin
     finally { $process.Dispose() }
 }
 
+# Runs a .ps1 command, such as the suite's stand-ins, in a runspace of its own in this process, as & did: a pwsh
+# process for each would add a third of a second to every read. Gives { ExitCode; Out; Err } as Invoke-Process
+# does; when it runs past -TimeoutSeconds, stops it and throws.
+function Invoke-Script([string]$File, [string[]]$Arguments, [string]$WorkingDirectory, [string]$Label) {
+    $body = {
+        param([string]$File, [string[]]$Arguments, [string]$Folder)
+        Set-Location -LiteralPath $Folder
+        $global:LASTEXITCODE = 0
+        $errors = [Collections.Generic.List[string]]::new()
+        $out = @(& $File @Arguments 2>&1 | ForEach-Object {
+                if ($_ -is [Management.Automation.ErrorRecord]) { $errors.Add("$_") } else { "$_" }
+            })
+        [pscustomobject]@{ ExitCode = $global:LASTEXITCODE; Out = $out; Err = $errors.ToArray() }
+    }
+    $shell = [powershell]::Create()
+    try {
+        $null = $shell.AddScript($body.ToString()).AddArgument($File).AddArgument($Arguments)
+        $null = $shell.AddArgument($WorkingDirectory)
+        $async = $shell.BeginInvoke()
+        if (-not $async.AsyncWaitHandle.WaitOne($timeoutMilliseconds)) {
+            $shell.Stop()
+            throw "$Label timed out after $TimeoutSeconds s"
+        }
+        @($shell.EndInvoke($async))[0]
+    }
+    finally { $shell.Dispose() }
+}
+
 # Runs a command and keeps what it printed: Out is the output lines joined by newlines, Error the error text, and
 # Status the HTTP status that gh names in it, or 0. ExitCode is -1 when the command isn't installed.
+# Throws when the command runs past -TimeoutSeconds.
 function Invoke-Tool([string]$Name, [string[]]$Arguments, [string]$WorkingDirectory) {
-    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+    $command = Get-Command $Name -CommandType Application, ExternalScript -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $command) {
         return [pscustomobject]@{ ExitCode = -1; Out = ''; Error = "$Name isn't installed"; Status = 0 }
     }
-    $ErrorActionPreference = 'Continue'
-    $errors = [Collections.Generic.List[string]]::new()
-    if ($WorkingDirectory) { Push-Location -LiteralPath $WorkingDirectory }
-    try {
-        $out = @(& $Name @Arguments 2>&1 | ForEach-Object {
-                if ($_ -is [Management.Automation.ErrorRecord]) { $errors.Add("$_".Trim()) } else { "$_" }
-            })
-        $code = $LASTEXITCODE
-    }
-    finally {
-        if ($WorkingDirectory) { Pop-Location }
-    }
-    $said = @($errors | Where-Object { $_ }) -join ' '
+    $folder = if ($WorkingDirectory) { $WorkingDirectory } else { (Get-Location -PSProvider FileSystem).ProviderPath }
+    $label = "$Name $($Arguments -join ' ')"
+    $run = if ($command.CommandType -eq 'ExternalScript') { Invoke-Script $command.Source $Arguments $folder $label }
+    else { Invoke-Process $command.Source $Arguments $folder $label }
+    $errors = @($run.Err | ForEach-Object { "$_" -split '\r?\n' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $said = $errors -join ' '
     $status = if ($said -match 'HTTP ([0-9]{3})') { [int]$Matches[1] } else { 0 }
-    [pscustomobject]@{ ExitCode = $code; Out = ($out -join "`n"); Error = $said; Status = $status }
+    [pscustomobject]@{ ExitCode = $run.ExitCode; Out = (@($run.Out) -join "`n"); Error = $said; Status = $status }
 }
 
 # Runs gh and gives its JSON output as objects; $null for a 404 when -Missing is set, else a failure throws.
