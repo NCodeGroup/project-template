@@ -496,7 +496,13 @@ try {
     }
     $checkerText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'tools/Get-AdoptionChecklist.ps1')
     $updateText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template/.template/Get-TemplateUpdate.ps1')
-    $shared = @('''^v?(\d+(?:\.\d+){0,3})$''', '''^gh:(.+)$''', '''^gl:(.+)$''', '''^https://github\.com/polewskm/project-template(?:\.git)?/?$''', '''https://github.com/NCodeGroup/project-template.git''')
+    $shared = @(
+        '''^v?([0-9]+(?:\.[0-9]+){0,3})\z'''
+        '''^gh:(.+)\z'''
+        '''^gl:(.+)\z'''
+        '''^https://github\.com/polewskm/project-template(?:\.git)?/?\z'''
+        '''https://github.com/NCodeGroup/project-template.git'''
+    )
     $apart = @($shared | Where-Object { -not ($checkerText.Contains($_) -and $updateText.Contains($_)) })
     Check 'frame: 7.1 reads versions and addresses as Get-TemplateUpdate.ps1 does' ($apart.Count -eq 0) "not in both: $($apart -join ', ')"
     # Immutable releases not available or unknown, and the GitLab baseline failing or not available: 3.3, 2.5

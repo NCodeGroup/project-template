@@ -48,7 +48,7 @@ $script:cache = @{}
 
 # Reads one answer from .copier-answers.yml; nothing when the file doesn't set it.
 function Get-Answer([string]$Key) {
-    $match = Select-String -LiteralPath $answersFile -Pattern "^${Key}:\s*(.+?)\s*$" | Select-Object -First 1
+    $match = Select-String -LiteralPath $answersFile -Pattern "^${Key}:\s*(.+?)\s*\z" | Select-Object -First 1
     if ($match) { $match.Matches[0].Groups[1].Value.Trim("'", '"') }
 }
 
@@ -73,7 +73,7 @@ function Test-WorkflowText([string]$Text) {
 function Get-StableTag {
     $best = $null
     foreach ($tag in @(git -C $Path tag --list)) {
-        if ("$tag" -notmatch '^v?(\d+)\.\d+\.\d+$' -or [int]$Matches[1] -lt 1) { continue }
+        if ("$tag" -notmatch '^v?([0-9]+)\.[0-9]+\.[0-9]+\z' -or [int]$Matches[1] -lt 1) { continue }
         $version = [version]("$tag" -replace '^v')
         if (-not $best -or $version -gt $best.Version) { $best = [pscustomobject]@{ Tag = "$tag"; Version = $version } }
     }
@@ -123,7 +123,7 @@ function Invoke-Tool([string]$Name, [string[]]$Arguments, [string]$WorkingDirect
         if ($WorkingDirectory) { Pop-Location }
     }
     $said = @($errors | Where-Object { $_ }) -join ' '
-    $status = if ($said -match 'HTTP (\d{3})') { [int]$Matches[1] } else { 0 }
+    $status = if ($said -match 'HTTP ([0-9]{3})') { [int]$Matches[1] } else { 0 }
     [pscustomobject]@{ ExitCode = $code; Out = ($out -join "`n"); Error = $said; Status = $status }
 }
 
@@ -152,7 +152,7 @@ function Get-Repo { Get-Cached 'repo' { Read-Gh @('api', "repos/$slug") } }
 $originRead = Invoke-Tool 'git' @('-C', $Path, 'remote', 'get-url', 'origin')
 if ($originRead.ExitCode) { throw "Couldn't read the origin remote of ${Path}: $($originRead.Error)" }
 $origin = $originRead.Out.Trim()
-if ($origin -notmatch '^(?:(?:https?|ssh)://)?(?:[^@/]+@)?(?<host>[\w.-]+\.[\w-]+)(?::\d+)?[:/](?<path>[\w.-]+(?:/[\w.-]+?)+?)(?:\.git)?/?$') {
+if ($origin -notmatch '^(?:(?:https?|ssh)://)?(?:[^@/]+@)?(?<host>[\w.-]+\.[\w-]+)(?::[0-9]+)?[:/](?<path>[\w.-]+(?:/[\w.-]+?)+?)(?:\.git)?/?\z') {
     throw "Couldn't tell the repository from the origin remote of ${Path}: '$origin'."
 }
 $script:hostName = $Matches['host']
@@ -225,7 +225,7 @@ function Get-NotApplying([string]$Step) {
 # Reads a template version, v<major>.<minor>.<patch> or shorter, as Get-TemplateUpdate.ps1 does; $null when it isn't one.
 # Its pattern and 7.1's address rewrites are Get-TemplateUpdate.ps1's: tests/Test-AdoptionChecklist.ps1 checks they match.
 function ConvertTo-TemplateVersion([string]$Text) {
-    if ($Text -notmatch '^v?(\d+(?:\.\d+){0,3})$') { return $null }
+    if ($Text -notmatch '^v?([0-9]+(?:\.[0-9]+){0,3})\z') { return $null }
     $parts = @($Matches[1] -split '\.')
     while ($parts.Count -lt 3) { $parts += '0' }
     [version]($parts -join '.')
@@ -395,10 +395,10 @@ $checks['2.1'] = {
 }
 
 $checks['3.3'] = {
-    $line = Get-BaselineLines | Where-Object { $_ -match ': immutable releases: (.+)$' } | Select-Object -First 1
+    $line = Get-BaselineLines | Where-Object { $_ -match ': immutable releases: (.+)\z' } | Select-Object -First 1
     if (-not $line) { return New-Result 'unreadable' 'the baseline printed no immutable releases line' }
     # Matches the line again to fill $Matches.
-    $null = "$line" -match ': immutable releases: (.+)$'
+    $null = "$line" -match ': immutable releases: (.+)\z'
     $state = $Matches[1].Trim()
     if ($state -eq 'already set') { New-Result 'done' 'on' }
     elseif ($state -eq 'would set') { New-Result 'not done' 'immutable releases are off' }
@@ -422,12 +422,12 @@ $checks['0.2'] = {
         $parts += New-Result 'unreadable' "the baseline's -WhatIf run exited $($baseline.ExitCode): $(Get-LastLine $baseline)"
     }
     else {
-        $line = $baseline.Lines | Where-Object { $_ -match 'organization two-factor requirement: (.+)$' } |
+        $line = $baseline.Lines | Where-Object { $_ -match 'organization two-factor requirement: (.+)\z' } |
             Select-Object -First 1
         if (-not $line) { $parts += New-Result 'unreadable' 'no two-factor line' }
         else {
             # Matches the line again to fill $Matches.
-            $null = "$line" -match 'organization two-factor requirement: (.+)$'
+            $null = "$line" -match 'organization two-factor requirement: (.+)\z'
             $state = $Matches[1].Trim()
             $parts += if ($state -eq 'required') { New-Result 'done' }
             elseif ($state -eq 'not required') {
@@ -519,16 +519,16 @@ $checks['7.1'] = {
     $src = Get-Answer '_src_path'
     if (-not $src) { throw '.copier-answers.yml has no _src_path' }
     # Copier's shorthands, and the template's old address, which GitHub only redirects, as Get-TemplateUpdate.ps1 reads them.
-    if ($src -match '^gh:(.+)$') { $src = "https://github.com/$($Matches[1])" }
-    elseif ($src -match '^gl:(.+)$') { $src = "https://gitlab.com/$($Matches[1])" }
-    if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?$') {
+    if ($src -match '^gh:(.+)\z') { $src = "https://github.com/$($Matches[1])" }
+    elseif ($src -match '^gl:(.+)\z') { $src = "https://gitlab.com/$($Matches[1])" }
+    if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?\z') {
         $src = 'https://github.com/NCodeGroup/project-template.git'
     }
     $r = Invoke-Tool 'git' @('ls-remote', '--tags', '--refs', '--', $src)
     if ($r.ExitCode) { return New-Result 'unreadable' "couldn't read the template's tags at ${src}: $($r.Error)" }
     $newest = $null
     foreach ($ref in $r.Out -split "`n") {
-        if ($ref -match 'refs/tags/(.+)$') {
+        if ($ref -match 'refs/tags/(.+)\z') {
             $version = ConvertTo-TemplateVersion $Matches[1]
             if ($version -and (-not $newest -or $version -gt $newest.Version)) {
                 $newest = [pscustomobject]@{ Tag = $Matches[1]; Version = $version }
