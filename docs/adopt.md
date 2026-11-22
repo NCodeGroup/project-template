@@ -443,4 +443,4 @@ Audit an adopted repository with `.\tools\Get-AdoptionChecklist.ps1 -Path C:\src
 | [7.2](#72-dependabot) | GitHub | Insights > Dependency graph > Dependabot shows recent checks | No |
 | [7.3](#73-rotate-a-key) | GitHub, with NCode Review | the app's page lists only the new key; 5.3's check passes | No |
 
-For a row marked No, the checker reads what the Shows it is done column names where a command can: 1.4 and 5.3 from the latest merged pull request, 3.1, 4.4 and 6.4 from their workflow's latest run, and 4.3 without running `./build/dod.ps1`.
+For a row marked No, the checker reads what the Shows it is done column names where a command can: 1.4 and 5.3 from the latest merged pull request, 3.1, 4.4 and 6.4 from their workflow's latest run, 1.3 from the node on PATH or the releases nvs has installed, without running `Use-Node.ps1`, which installs a missing release, and 4.3 without running `./build/dod.ps1`.

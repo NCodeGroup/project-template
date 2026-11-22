@@ -358,15 +358,27 @@ $checks['1.2'] = {
 $checks['1.3'] = {
     $text = Get-FileText '.node-version'
     if (-not $text) { return New-Result 'not done' 'no .node-version' }
-    $major = (("$text".Trim() -split '\r?\n')[0] -replace '^v') -replace '\..*$'
-    $r = Invoke-Tool $pwsh @('-NoProfile', '-Command', '. ./.template/Use-Node.ps1; node --version') -WorkingDirectory $Path
-    $node = if ($r.Out) { @($r.Out -split "`n")[-1].Trim() } else { '' }
-    if (-not $r.ExitCode -and $node -and (($node -replace '^v') -replace '\..*$') -eq $major) {
-        return New-Result 'done' "node $node"
+    # Reads what Use-Node.ps1 would select without running it: it installs a missing release with nvs add.
+    $wanted = (("$text".Trim() -split '\r?\n')[0]).Trim() -creplace '^v', ''
+    $fits = {
+        param([string]$Version)
+        $Version -and ($Version -ceq $wanted -or $Version.StartsWith("$wanted.", [StringComparison]::Ordinal))
     }
-    $seen = if ($r.ExitCode -or -not $node) { "$($r.Error)".Trim() } else { $node }
-    if (-not $seen) { $seen = "exit $($r.ExitCode)" }
-    New-Result 'not done' "node $seen doesn't match .node-version $major"
+    $r = Invoke-Tool node @('--version')
+    $onPath = if (-not $r.ExitCode -and $r.Out) { @($r.Out -split "`n")[-1].Trim() -creplace '^v', '' } else { '' }
+    if (& $fits $onPath) { return New-Result 'done' "node v$onPath on PATH" }
+    $nvsHome = if ($env:NVS_HOME) { $env:NVS_HOME }
+    elseif ($IsWindows) { Join-Path $env:LOCALAPPDATA 'nvs' }
+    else { Join-Path $HOME '.nvs' }
+    $nodeFolder = Join-Path $nvsHome 'node'
+    if ((Test-Path -LiteralPath (Join-Path $nvsHome 'nvs.ps1')) -and (Test-Path -LiteralPath $nodeFolder)) {
+        $installed = @(Get-ChildItem -LiteralPath $nodeFolder -Directory | Where-Object { & $fits $_.Name } |
+                ForEach-Object Name)
+        if ($installed.Count) { return New-Result 'done' "nvs has node $($installed -join ', ')" }
+    }
+    $found = if ($onPath) { "node v$onPath" } else { 'no node' }
+    New-Result 'not done' ("Node.js $wanted from .node-version is neither on PATH (found $found) " +
+        "nor installed in nvs at ${nvsHome}: run ./.template/Initialize-Nvs.ps1")
 }
 
 $checks['2.1'] = {

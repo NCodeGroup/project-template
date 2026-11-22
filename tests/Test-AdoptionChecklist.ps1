@@ -158,7 +158,6 @@ jobs:
 '@
     '.github/dependabot.yml' = "version: 2`n"
     '.node-version' = '26'
-    '.template/Use-Node.ps1' = '# Selects the Node.js version.'
     'README.md' = "# Sample`n`n[![Best Practices](https://www.bestpractices.dev/projects/16752/badge)](https://www.bestpractices.dev/projects/16752)`n"
     'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion>`n  </PropertyGroup>`n</Project>`n"
 } @('Create project from project-template v0.111.3') 'https://github.com/NCodeGroup/sample.git' @('v1.0.0')
@@ -187,7 +186,6 @@ uses_node: true
     '.template-version' = 'v0.111.3'
     'AGENTS.md' = "# Agents`n`n## Landing`n`n- release: none`n"
     '.node-version' = '24'
-    '.template/Use-Node.ps1' = '# Selects the Node.js version.'
 } @('Create project from project-template v0.111.3') 'https://gitlab.com/group/sub/sample.git' @('v1.2.0')
 
 New-Fixture (Join-Path $Work 'bare') @{ 'README.md' = '# Bare' } @('Initial commit')
@@ -249,6 +247,8 @@ $calls = @{
 
 $savedPath = $env:PATH
 $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+$savedNvsHome = $env:NVS_HOME
+$env:NVS_HOME = Join-Path $Work 'nvs'
 try {
     # Runs
     $gh = Invoke-Checklist (Join-Path $Work 'github') $calls
@@ -288,6 +288,14 @@ try {
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
     Check 'row 6.1 not done: private exits 1' ($pr.ExitCode -eq 1) "exit=$($pr.ExitCode) output=$($pr.Output)"
+    Check 'row 1.3 not done: gitlab names Initialize-Nvs.ps1' ($gl.Output -match '(?m)^1\.3 .+Initialize-Nvs\.ps1') "output=$($gl.Output)"
+    $nvsHome = Join-Path $Work 'nvs-home'
+    Write-Text (Join-Path $nvsHome 'nvs.ps1') '# nvs'
+    New-Item -ItemType Directory -Force (Join-Path $nvsHome 'node/24.3.0/x64') | Out-Null
+    $env:NVS_HOME = $nvsHome
+    $nvsRun = Invoke-Checklist (Join-Path $Work 'gitlab') $calls
+    $env:NVS_HOME = Join-Path $Work 'nvs'
+    Check 'row 1.3 done: gitlab with nvs''s 24.3.0' ((Get-Status $nvsRun '1.3') -eq 'done' -and $nvsRun.Output -match '(?m)^1\.3 .+24\.3\.0') "status=$(Get-Status $nvsRun '1.3') output=$($nvsRun.Output)"
 
     # Rows the baseline and Scorecard runs show: 0.2, 2.1, 2.4, 3.3
     $bad = Invoke-Override (Join-Path $Work 'github') @{
@@ -381,6 +389,7 @@ try {
 }
 finally {
     $env:PATH = $savedPath
+    if ($null -eq $savedNvsHome) { Remove-Item Env:NVS_HOME -ErrorAction SilentlyContinue } else { $env:NVS_HOME = $savedNvsHome }
     Remove-Item Env:ADOPTION_CHECKLIST_DATA, Env:ADOPTION_CHECKLIST_LOG -ErrorAction SilentlyContinue
 }
 
