@@ -321,6 +321,10 @@ foreach ($case in $cases) {
         }
         $signedRow = [regex]::Match($criteriaText, '(?m)^\| `signed_releases` \|.*$').Value
         Check "${name}: docs/best-practices-criteria.md's signed_releases row names the project's own publishing workflow and isn't Met" ($signedRow.Contains($ownPublisher) -and -not $signedRow.Contains('**Met**')) $signedRow
+        # ADR-0020 may name provenance, which Scorecard scores among a release's assets, but none of the template's publishing workflows or the records that describe them.
+        $scorecardText = [IO.File]::ReadAllText((Join-Path $dest 'docs/decisions/project-template/0020-github-projects-are-scored-by-openssf-scorecard.md'))
+        $staleRecord = @('publish.yml', 'release-provenance.yml', 'raise-baseline.yml', 'trusted publishing', '`nuget` environment', 'ADR-0139', 'ADR-0151' | Where-Object { $scorecardText.Contains($_) })
+        Check "${name}: ADR-0020 names the project's own publishing workflow and no publish.yml, release-provenance.yml, raise-baseline.yml, ADR-0139 or ADR-0151" ($staleRecord.Count -eq 0 -and $scorecardText.Contains($ownPublisher)) "stale: $($staleRecord -join ', '); names $ownPublisher`: $($scorecardText.Contains($ownPublisher))"
     }
     # Every template decision record a rendered Markdown file cites by number is one the project has.
     $recordNumbers = @(Get-ChildItem -LiteralPath (Join-Path $dest 'docs\decisions'), (Join-Path $dest 'docs\decisions\project-template') -File -Filter '*.md' | ForEach-Object { if ($_.Name -match '^(\d{4})-') { $Matches[1] } })
@@ -501,6 +505,20 @@ foreach ($case in $cases) {
             $licenseRow.Count -eq 1 -and $licenseRow[0].Contains("-Data @{ license = 'Apache-2.0' }")
         }
         Check "${name}: ADR-0020's License row says whether LICENSE.txt ships" $licenseRowRight ($licenseRow -join ' | ')
+        # ADR-0020's Signed-Releases and Packaging rows follow the nuget_package and nuget_publisher answers.
+        $scorecardLines = @(Get-Content -LiteralPath $scorecardRecord)
+        $scorecardAll = $scorecardLines -join "`n"
+        $signedRows = @($scorecardLines | Where-Object { $_.StartsWith('| Signed-Releases |') })
+        $packagingRows = @($scorecardLines | Where-Object { $_.StartsWith('| Packaging |') })
+        $isLibrary = $case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true'
+        $rowsRight = if ($isLibrary -and $case.Data.nuget_publisher) {
+            $signedRows.Count -eq 1 -and $signedRows[0].Contains($case.Data.nuget_publisher) -and $packagingRows.Count -eq 1 -and $packagingRows[0].Contains($case.Data.nuget_publisher)
+        } elseif ($isLibrary) {
+            $signedRows.Count -eq 1 -and $signedRows[0].Contains('`release-provenance.yml`') -and $signedRows[0].Contains('the releases stay mutable') -and $signedRows[0].Contains('[ADR-0028](') -and $packagingRows.Count -eq 1 -and $packagingRows[0].Contains('`publish.yml` publishes the packages') -and $scorecardAll.Contains('- [ADR-0139](') -and $scorecardAll.Contains('- [ADR-0151](')
+        } else {
+            $signedRows.Count -eq 1 -and $signedRows[0].Contains('publishes has no assets') -and -not $signedRows[0].Contains('release-provenance.yml') -and $signedRows[0].Contains('[ADR-0028](') -and $packagingRows.Count -eq 1 -and $packagingRows[0].Contains('the template publishes no packages') -and -not $scorecardAll.Contains('- [ADR-0139](')
+        }
+        Check "${name}: ADR-0020's Signed-Releases and Packaging rows follow the nuget_package and nuget_publisher answers" $rowsRight (($signedRows + $packagingRows) -join ' | ')
     }
     # The Copilot cloud agent's environment: only for a GitHub project that uses Copilot.
     $copilotSetup = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
