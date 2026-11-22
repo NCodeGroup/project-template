@@ -164,14 +164,16 @@ jobs:
     'README.md' = "# Sample`n`n[![Best Practices](https://www.bestpractices.dev/projects/16752/badge)](https://www.bestpractices.dev/projects/16752)`n"
     'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion>`n  </PropertyGroup>`n</Project>`n"
 }
-New-Fixture (Join-Path $Work 'github') $githubFiles @('Create project from project-template v0.111.3') 'https://github.com/NCodeGroup/sample.git' @('v1.0.0')
+$githubSubject = 'Create project from project-template v0.111.3'
+$githubOrigin = 'https://github.com/NCodeGroup/sample.git'
+New-Fixture (Join-Path $Work 'github') $githubFiles @($githubSubject) $githubOrigin @('v1.0.0')
 # A fixture like github's, at $Work/<Name>: the files of $Changes set, or deleted where the value is $null, and the tags.
 function New-GitHubVariant([string]$Name, [hashtable]$Changes, [string[]]$Tags = @('v1.0.0')) {
     $files = $githubFiles.Clone()
     foreach ($key in $Changes.Keys) {
         if ($null -eq $Changes[$key]) { $files.Remove($key) } else { $files[$key] = $Changes[$key] }
     }
-    New-Fixture (Join-Path $Work $Name) $files @('Create project from project-template v0.111.3') 'https://github.com/NCodeGroup/sample.git' $Tags
+    New-Fixture (Join-Path $Work $Name) $files @($githubSubject) $githubOrigin $Tags
 }
 
 New-Fixture (Join-Path $Work 'private') @{
@@ -216,7 +218,9 @@ New-GitHubVariant 'blank' @{
     '.github/workflows/empty.yml' = ''
 }
 
-New-GitHubVariant 'publisher' @{ '.copier-answers.yml' = "$($githubFiles['.copier-answers.yml'])`nnuget_publisher: publish-nuget.yml`n" }
+New-GitHubVariant 'publisher' @{
+    '.copier-answers.yml' = "$($githubFiles['.copier-answers.yml'])`nnuget_publisher: publish-nuget.yml`n"
+}
 
 New-GitHubVariant 'noemail' @{}
 Invoke-Git (Join-Path $Work 'noemail') @('config', '--unset', 'user.email')
@@ -225,11 +229,25 @@ New-GitHubVariant 'prestable' @{} @('v0.9.0', 'v1.0.0-rc.1')
 
 New-Fixture (Join-Path $Work 'untagged') @{ 'README.md' = 'untagged' } @('Untagged')
 $answers = $githubFiles['.copier-answers.yml']
-New-GitHubVariant 'shorthand' @{ '.copier-answers.yml' = $answers.Replace("_src_path: $template", '_src_path: gh:NCodeGroup/project-template.git') }
-New-GitHubVariant 'oldaddress' @{ '.copier-answers.yml' = $answers.Replace("_src_path: $template", '_src_path: https://github.com/polewskm/project-template').Replace('_commit: v0.111.3', '_commit: v0.111.2-3-gabc1234'); '.template-version' = $null }
-New-GitHubVariant 'notags' @{ '.copier-answers.yml' = $answers.Replace("_src_path: $template", "_src_path: $(Join-Path $Work 'untagged')") }
-New-GitHubVariant 'badsource' @{ '.copier-answers.yml' = $answers.Replace("_src_path: $template", "_src_path: $(Join-Path $Work 'missing-template')") }
-New-GitHubVariant 'noversion' @{ '.copier-answers.yml' = $answers.Replace('_commit: v0.111.3', '_commit: 1a2b3c4'); '.template-version' = $null }
+$localSource = "_src_path: $template"
+New-GitHubVariant 'shorthand' @{
+    '.copier-answers.yml' = $answers.Replace($localSource, '_src_path: gh:NCodeGroup/project-template.git')
+}
+$oldAnswers = $answers.Replace($localSource, '_src_path: https://github.com/polewskm/project-template')
+New-GitHubVariant 'oldaddress' @{
+    '.copier-answers.yml' = $oldAnswers.Replace('_commit: v0.111.3', '_commit: v0.111.2-3-gabc1234')
+    '.template-version' = $null
+}
+New-GitHubVariant 'notags' @{
+    '.copier-answers.yml' = $answers.Replace($localSource, "_src_path: $(Join-Path $Work 'untagged')")
+}
+New-GitHubVariant 'badsource' @{
+    '.copier-answers.yml' = $answers.Replace($localSource, "_src_path: $(Join-Path $Work 'missing-template')")
+}
+New-GitHubVariant 'noversion' @{
+    '.copier-answers.yml' = $answers.Replace('_commit: v0.111.3', '_commit: 1a2b3c4')
+    '.template-version' = $null
+}
 New-GitHubVariant 'nosourceanswer' @{ '.copier-answers.yml' = $answers -replace '(?m)^_src_path: .*\r?\n', '' }
 
 New-Fixture (Join-Path $Work 'noorigin') @{ '.copier-answers.yml' = "git_host: github`n" } @('Initial commit')
@@ -449,8 +467,12 @@ try {
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
     # Branch rules: none that requires a pull request, and two pull request rules: 2.2, 5.2
-    $noRule = Invoke-Override (Join-Path $Work 'github') @{ 'gh api repos/NCodeGroup/sample/rules/branches/main' = Answer '[]' }
-    $twoRules = Invoke-Override (Join-Path $Work 'github') @{ 'gh api repos/NCodeGroup/sample/rules/branches/main' = Answer (Json @(@{ type = 'pull_request'; parameters = @{ required_approving_review_count = 0 } }, @{ type = 'pull_request'; parameters = @{ required_approving_review_count = 1 } })) }
+    $rulesKey = 'gh api repos/NCodeGroup/sample/rules/branches/main'
+    $noRule = Invoke-Override (Join-Path $Work 'github') @{ $rulesKey = Answer '[]' }
+    $twoRulesAnswer = Answer (Json @(
+            @{ type = 'pull_request'; parameters = @{ required_approving_review_count = 0 } },
+            @{ type = 'pull_request'; parameters = @{ required_approving_review_count = 1 } }))
+    $twoRules = Invoke-Override (Join-Path $Work 'github') @{ $rulesKey = $twoRulesAnswer }
     Check 'row 2.2 not done: norule names the missing rule' ($noRule.Output -match '(?m)^2\.2 .+: not done \(no rule requires a pull request on main\)') "output=$($noRule.Output)"
     Check 'row 5.2 not done: norule names the missing rule' ($noRule.Output -match '(?m)^5\.2 .+: not done \(no rule requires a pull request on main\)') "output=$($noRule.Output)"
     Check 'row 2.2 done: tworules takes the strictest rule' ((Get-Status $twoRules '2.2') -eq 'done') "output=$($twoRules.Output)"
@@ -559,7 +581,17 @@ try {
     $noOrigin = Invoke-Checklist (Join-Path $Work 'noorigin') $calls
     Check 'frame: a clone without an origin remote names the git error' ($noOrigin.ExitCode -eq 1 -and $noOrigin.Output -match 'Couldn.t read the origin remote of ') "exit=$($noOrigin.ExitCode) output=$($noOrigin.Output)"
     # The calls of every run
-    $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
+    $reads = '^(?:' + (@(
+            'gh api [^ ]+'
+            'gh auth status'
+            'gh (?:pr list|pr checks|run list|secret list|variable list|label list) .+'
+            'glab auth status --hostname [^ ]+'
+            'glab api --hostname [^ ]+ [^ ]+'
+            'copier --version'
+            'node --version'
+            'gitsign verify-tag .+'
+            '(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?'
+        ) -join '|') + ')\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })
     Check 'read-only: every command line the stand-ins got is a read' ($allCalls.Count -gt 0 -and $writes.Count -eq 0) "not reads: $($writes -join '; ')"
 }
