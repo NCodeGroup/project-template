@@ -77,8 +77,8 @@
     ADR-0026). When it has release-provenance.yml or raise-baseline.yml and a publish.yml that
     doesn't call one of them, or either, it warns that no release gets its provenance or baseline pull request (the template's
     ADR-0151). When the project has version.json, it also warns about a publish.yml or a
-    .gitlab-ci.yml that packs without -p:PublicRelease=true and names the files that reference Nerdbank.GitVersioning
-    themselves (the template's ADR-0138).
+    .gitlab-ci.yml that packs without -p:PublicRelease=true and, when build/ProjectTemplate.props references
+    Nerdbank.GitVersioning, as a library's does, names the files that reference it themselves (the template's ADR-0138).
     It also names each job of the project's own workflows, other than publish.yml, that builds, packs, tests without --no-build or pushes packages with an actions/checkout step without fetch-depth: 0 whose folder holds such a step's working directory (its working-directory:, or the job's or the workflow's defaults:), on which Nerdbank.GitVersioning fails the build, or with a -p:Version argument, which it ignores; when it can't tell which checkout a step runs in, it names each shallow checkout of the job.
     Such a library's nuget_publisher answer names its own publishing workflows, so the update also leaves out or deletes release-provenance.yml and raise-baseline.yml, and its documents name those workflows instead of publish.yml.
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
@@ -941,8 +941,9 @@ function Update-VersionFile {
     $result
 }
 
-# The files, other than the template's own, that reference Nerdbank.GitVersioning, which build/ProjectTemplate.props references once version.json exists (the template's ADR-0138).
+# The files, other than the template's own, that reference Nerdbank.GitVersioning, when build/ProjectTemplate.props references it too, as a library's does once version.json exists (the template's ADR-0138). Without that reference, as in a project that isn't a library, the project's own reference is its only one: nothing to name.
 function Get-GitVersioningReference {
+    if (-not (Test-Path -LiteralPath build/ProjectTemplate.props -PathType Leaf) -or (Get-Content -LiteralPath build/ProjectTemplate.props -Raw) -notmatch '<PackageReference\s+Include="Nerdbank\.GitVersioning"') { return }
     $found = foreach ($file in @(git ls-files -- '*.props' '*.targets' '*.csproj') | Where-Object { $_ -ne 'build/ProjectTemplate.props' }) {
         $text = Get-Content -LiteralPath $file -Raw
         if ($file -eq 'Directory.Packages.props') {
