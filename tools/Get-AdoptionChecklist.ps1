@@ -187,12 +187,15 @@ function Invoke-Script([string]$File, [string[]]$Arguments, [string]$WorkingDire
 
 # Runs a command and keeps what it printed: Out is the output lines joined by newlines, Error the error text, and
 # Status the HTTP status that gh names in it, or 0. ExitCode is -1 when the command isn't installed.
+# FirstError is the first error line.
 # Throws when the command runs past -TimeoutSeconds.
 function Invoke-Tool([string]$Name, [string[]]$Arguments, [string]$WorkingDirectory) {
     $command = Get-Command $Name -CommandType Application, ExternalScript -ErrorAction SilentlyContinue |
         Select-Object -First 1
     if (-not $command) {
-        return [pscustomobject]@{ ExitCode = -1; Out = ''; Error = "$Name isn't installed"; Status = 0 }
+        return [pscustomobject]@{
+            ExitCode = -1; Out = ''; Error = "$Name isn't installed"; FirstError = "$Name isn't installed"; Status = 0
+        }
     }
     $folder = if ($WorkingDirectory) { $WorkingDirectory } else { (Get-Location -PSProvider FileSystem).ProviderPath }
     $label = "$Name $($Arguments -join ' ')"
@@ -201,7 +204,13 @@ function Invoke-Tool([string]$Name, [string[]]$Arguments, [string]$WorkingDirect
     $errors = @($run.Err | ForEach-Object { "$_" -split '\r?\n' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $said = $errors -join ' '
     $status = if ($said -match 'HTTP ([0-9]{3})') { [int]$Matches[1] } else { 0 }
-    [pscustomobject]@{ ExitCode = $run.ExitCode; Out = (@($run.Out) -join "`n"); Error = $said; Status = $status }
+    [pscustomobject]@{
+        ExitCode = $run.ExitCode
+        Out = (@($run.Out) -join "`n")
+        Error = $said
+        FirstError = "$(@($errors)[0])"
+        Status = $status
+    }
 }
 
 # The output lines of a git command in the clone, whatever git's exit code, as the git calls it replaces read them.
@@ -667,6 +676,17 @@ $checks['3.1'] = {
     Join-Result $parts
 }
 
+# gitsign exits 1 for any failure, so only its message tells a tag it refuses from a check that couldn't run. These
+# messages come from gitsign's verify-tag and cosign's certificate check; any other error, such as reading TUF, Fulcio
+# or Rekor failing, leaves row 3.2 unreadable.
+$gitsignRefusal = @(
+    'none of the expected identities matched'            # another workflow, branch or issuer signed it
+    'failed to verify (?:detached|attached) signature'    # the signature or its certificate chain doesn't verify
+    'tag has no in-body signature'                        # the annotated tag isn't signed
+    'unsupported signature type'                          # signed, but not by gitsign, such as with GPG or SSH
+    'error reading tag object: object not found'          # a lightweight tag, which has no signature
+) -join '|'
+
 $checks['3.2'] = {
     $tag = Get-GitLines @('tag', '--list', 'v*', '--sort=-version:refname') | Select-Object -First 1
     if (-not $tag) { return New-Result 'not done' 'no release tag in the clone' }
@@ -675,8 +695,9 @@ $checks['3.2'] = {
         '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com', "$tag") -WorkingDirectory $Path
     if ($r.ExitCode -eq -1) { return New-Result 'unreadable' "gitsign isn't installed" }
     if ($r.ExitCode -eq 0) { return New-Result 'done' "$tag verified" }
-    $why = if ($r.Error) { $r.Error } else { "exit $($r.ExitCode)" }
-    New-Result 'not done' "gitsign refused ${tag}: $why"
+    if ($r.Error -match $gitsignRefusal) { return New-Result 'not done' "gitsign refused ${tag}: $($r.Error)" }
+    $first = if ($r.FirstError) { $r.FirstError -replace '^Error: ' } else { "exit $($r.ExitCode)" }
+    New-Result 'unreadable' "gitsign couldn't check ${tag}: $first"
 }
 
 $checks['5.3'] = { Get-ApprovalResult }

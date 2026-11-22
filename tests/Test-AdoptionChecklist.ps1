@@ -397,7 +397,7 @@ try {
         'gh api repos/NCodeGroup/sample/pulls/12/reviews?per_page=100' = Answer (Json @(
                 @{ user = @{ login = 'ncode-review[bot]' }; state = 'COMMENTED' }))
         'gh run list --repo NCodeGroup/sample --workflow tag-release.yml --limit 1 --json conclusion,status' = Answer (Json @(@{ conclusion = 'failure'; status = 'completed' }))
-        'gitsign verify-tag --certificate-identity https://github.com/NCodeGroup/sample/.github/workflows/tag-release.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com v1.0.0' = Answer $null 1 'no matching signature'
+        'gitsign verify-tag --certificate-identity https://github.com/NCodeGroup/sample/.github/workflows/tag-release.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com v1.0.0' = Answer $null 1 'Error: none of the expected identities matched what was in the certificate, got subjects [https://github.com/NCodeGroup/sample/.github/workflows/release.yml@refs/heads/main] with issuer https://token.actions.githubusercontent.com'
     }
     foreach ($row in @(
             @('1.4', 'done', 'github', $gh), @('3.1', 'done', 'github', $gh), @('3.2', 'done', 'github', $gh),
@@ -549,6 +549,13 @@ try {
     Check 'row 2.4 unreadable: stalled sibling times out' ($stalled.Output -match '(?m)^2\.4 .+: unreadable \(Dismiss-ScorecardAlerts\.ps1 timed out after 3 s\)') "output=$($stalled.Output)"
     Check 'row 6.3 unreadable: stalled gh times out' ($stalled.Output -match '(?m)^6\.3 .+: unreadable \(gh api repos/NCodeGroup/sample/pages timed out after 3 s\)') "output=$($stalled.Output)"
     Check 'stalled: the run stops each stalled command instead of waiting for it' ($watch.Elapsed.TotalSeconds -lt 50) "took $($watch.Elapsed.TotalSeconds) s"
+    # gitsign failing for a reason other than the tag: 3.2
+    $gitsignKey = 'gitsign verify-tag --certificate-identity ' +
+        'https://github.com/NCodeGroup/sample/.github/workflows/tag-release.yml@refs/heads/main ' +
+        '--certificate-oidc-issuer https://token.actions.githubusercontent.com v1.0.0'
+    $offlineError = "Error: failed to validate rekor entry: dial tcp: lookup rekor.sigstore.dev: no such host`nsecond line"
+    $offline = Invoke-Override (Join-Path $Work 'github') @{ $gitsignKey = Answer $null 1 $offlineError }
+    Check 'row 3.2 unreadable: offline names gitsign''s first error line' ($offline.Output -match '(?m)^3\.2 .+: unreadable \(gitsign couldn.t check v1\.0\.0: failed to validate rekor entry: dial tcp: lookup rekor\.sigstore\.dev: no such host\)') "output=$($offline.Output)"
     $noOrigin = Invoke-Checklist (Join-Path $Work 'noorigin') $calls
     Check 'frame: a clone without an origin remote names the git error' ($noOrigin.ExitCode -eq 1 -and $noOrigin.Output -match 'Couldn.t read the origin remote of ') "exit=$($noOrigin.ExitCode) output=$($noOrigin.Output)"
     # The calls of every run
