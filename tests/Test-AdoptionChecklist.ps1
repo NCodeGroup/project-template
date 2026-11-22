@@ -216,6 +216,15 @@ Invoke-Git (Join-Path $Work 'noemail') @('config', '--unset', 'user.email')
 
 New-GitHubVariant 'prestable' @{} @('v0.9.0', 'v1.0.0-rc.1')
 
+New-Fixture (Join-Path $Work 'untagged') @{ 'README.md' = 'untagged' } @('Untagged')
+$answers = $githubFiles['.copier-answers.yml']
+New-GitHubVariant 'shorthand' @{ '.copier-answers.yml' = $answers.Replace("_src_path: $template", '_src_path: gh:NCodeGroup/project-template.git') }
+New-GitHubVariant 'oldaddress' @{ '.copier-answers.yml' = $answers.Replace("_src_path: $template", '_src_path: https://github.com/polewskm/project-template').Replace('_commit: v0.111.3', '_commit: v0.111.2-3-gabc1234'); '.template-version' = $null }
+New-GitHubVariant 'notags' @{ '.copier-answers.yml' = $answers.Replace("_src_path: $template", "_src_path: $(Join-Path $Work 'untagged')") }
+New-GitHubVariant 'badsource' @{ '.copier-answers.yml' = $answers.Replace("_src_path: $template", "_src_path: $(Join-Path $Work 'missing-template')") }
+New-GitHubVariant 'noversion' @{ '.copier-answers.yml' = $answers.Replace('_commit: v0.111.3', '_commit: 1a2b3c4'); '.template-version' = $null }
+New-GitHubVariant 'nosourceanswer' @{ '.copier-answers.yml' = $answers -replace '(?m)^_src_path: .*\r?\n', '' }
+
 # Answers
 $calls = @{
     'gh api repos/NCodeGroup/sample' = Answer (Json @{ visibility = 'public'; default_branch = 'main'; owner = @{ type = 'Organization' } })
@@ -458,6 +467,28 @@ try {
     $prestable = Invoke-Checklist (Join-Path $Work 'prestable') $calls
     Check 'row 4.3 done: prestable has no stable release' ($prestable.Output -match '(?m)^4\.3 .+: done \(no stable release yet') "output=$($prestable.Output)"
     Check 'row 4.6 done: prestable has no stable release' ($prestable.Output -match '(?m)^4\.6 .+: done \(no stable release yet') "output=$($prestable.Output)"
+    # Row 7.1's address rewrites and failures
+    $shorthand = Invoke-Checklist (Join-Path $Work 'shorthand') $calls
+    $oldAddress = Invoke-Checklist (Join-Path $Work 'oldaddress') $calls
+    $noTags = Invoke-Checklist (Join-Path $Work 'notags') $calls
+    $badSource = Invoke-Checklist (Join-Path $Work 'badsource') $calls
+    $noVersion = Invoke-Checklist (Join-Path $Work 'noversion') $calls
+    $noSourceAnswer = Invoke-Checklist (Join-Path $Work 'nosourceanswer') $calls
+    foreach ($row in @(
+            @('done', 'shorthand', $shorthand, 'on v0\.111\.3'),
+            @('not done', 'oldaddress', $oldAddress, 'v0\.111\.3 is out; the project is on v0\.111\.2'),
+            @('unreadable', 'notags', $noTags, '.+ has no version tags'),
+            @('unreadable', 'badsource', $badSource, 'couldn.t read the template.s tags'),
+            @('unreadable', 'noversion', $noVersion, 'can.t read the project.s template version'),
+            @('unreadable', 'nosourceanswer', $noSourceAnswer, '\.copier-answers\.yml has no _src_path'))) {
+        $want, $label, $run, $detail = $row
+        Check "row 7.1 ${want}: $label" ($run.Output -match "(?m)^7\.1 Template Updates: $want \($detail") "output=$($run.Output)"
+    }
+    $checkerText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'tools/Get-AdoptionChecklist.ps1')
+    $updateText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template/.template/Get-TemplateUpdate.ps1')
+    $shared = @('''^v?(\d+(?:\.\d+){0,3})$''', '''^gh:(.+)$''', '''^gl:(.+)$''', '''^https://github\.com/polewskm/project-template(?:\.git)?/?$''', '''https://github.com/NCodeGroup/project-template.git''')
+    $apart = @($shared | Where-Object { -not ($checkerText.Contains($_) -and $updateText.Contains($_)) })
+    Check 'frame: 7.1 reads versions and addresses as Get-TemplateUpdate.ps1 does' ($apart.Count -eq 0) "not in both: $($apart -join ', ')"
     # The calls of every run
     $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })

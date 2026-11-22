@@ -221,6 +221,7 @@ function Get-NotApplying([string]$Step) {
 }
 
 # Reads a template version, v<major>.<minor>.<patch> or shorter, as Get-TemplateUpdate.ps1 does; $null when it isn't one.
+# Its pattern and 7.1's address rewrites are Get-TemplateUpdate.ps1's: tests/Test-AdoptionChecklist.ps1 checks they match.
 function ConvertTo-TemplateVersion([string]$Text) {
     if ($Text -notmatch '^v?(\d+(?:\.\d+){0,3})$') { return $null }
     $parts = @($Matches[1] -split '\.')
