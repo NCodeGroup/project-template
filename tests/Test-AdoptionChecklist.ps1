@@ -209,6 +209,8 @@ New-GitHubVariant 'blank' @{
     '.github/workflows/empty.yml' = ''
 }
 
+New-GitHubVariant 'publisher' @{ '.copier-answers.yml' = "$($githubFiles['.copier-answers.yml'])`nnuget_publisher: publish-nuget.yml`n" }
+
 # Answers
 $calls = @{
     'gh api repos/NCodeGroup/sample' = Answer (Json @{ visibility = 'public'; default_branch = 'main'; owner = @{ type = 'Organization' } })
@@ -429,6 +431,17 @@ try {
     Check 'row 5.2 not done: norule names the missing rule' ($noRule.Output -match '(?m)^5\.2 .+: not done \(no rule requires a pull request on main\)') "output=$($noRule.Output)"
     Check 'row 2.2 done: tworules takes the strictest rule' ((Get-Status $twoRules '2.2') -eq 'done') "output=$($twoRules.Output)"
     Check 'row 5.2 done: tworules takes the strictest rule' ((Get-Status $twoRules '5.2') -eq 'done') "output=$($twoRules.Output)"
+    # Section 4 with nuget_publisher set
+    $publisher = Invoke-Checklist (Join-Path $Work 'publisher') $calls
+    foreach ($row in @(
+            @('4.1', 'does not apply', 'publisher', $publisher), @('4.2', 'does not apply', 'publisher', $publisher),
+            @('4.3', 'done', 'publisher', $publisher), @('4.4', 'does not apply', 'publisher', $publisher),
+            @('4.5', 'does not apply', 'publisher', $publisher), @('4.6', 'does not apply', 'publisher', $publisher),
+            @('4.7', 'does not apply', 'publisher', $publisher))) {
+        $step, $want, $label, $run = $row
+        Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
+    }
+    Check 'publisher: section 4 names nuget_publisher' ($publisher.Output -match '(?m)^4\.4 .+: does not apply \(.*nuget_publisher') "output=$($publisher.Output)"
     # The calls of every run
     $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })
