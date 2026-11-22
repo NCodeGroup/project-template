@@ -422,6 +422,13 @@ try {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
+    # Branch rules: none that requires a pull request, and two pull request rules: 2.2, 5.2
+    $noRule = Invoke-Override (Join-Path $Work 'github') @{ 'gh api repos/NCodeGroup/sample/rules/branches/main' = Answer '[]' }
+    $twoRules = Invoke-Override (Join-Path $Work 'github') @{ 'gh api repos/NCodeGroup/sample/rules/branches/main' = Answer (Json @(@{ type = 'pull_request'; parameters = @{ required_approving_review_count = 0 } }, @{ type = 'pull_request'; parameters = @{ required_approving_review_count = 1 } })) }
+    Check 'row 2.2 not done: norule names the missing rule' ($noRule.Output -match '(?m)^2\.2 .+: not done \(no rule requires a pull request on main\)') "output=$($noRule.Output)"
+    Check 'row 5.2 not done: norule names the missing rule' ($noRule.Output -match '(?m)^5\.2 .+: not done \(no rule requires a pull request on main\)') "output=$($noRule.Output)"
+    Check 'row 2.2 done: tworules takes the strictest rule' ((Get-Status $twoRules '2.2') -eq 'done') "output=$($twoRules.Output)"
+    Check 'row 5.2 done: tworules takes the strictest rule' ((Get-Status $twoRules '5.2') -eq 'done') "output=$($twoRules.Output)"
     # The calls of every run
     $reads = '^(?:gh api [^ ]+|gh auth status|gh (?:pr list|pr checks|run list|release view|secret list|variable list|label list) .+|glab auth status --hostname [^ ]+|glab api --hostname [^ ]+ [^ ]+|copier --version|node --version|gitsign verify-tag .+|(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?)\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })

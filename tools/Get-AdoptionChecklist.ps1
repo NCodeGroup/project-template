@@ -259,12 +259,13 @@ $reviewFile = Get-FileText '.github/workflows/code-review.yml'
 $approve = "$reviewFile" -match 'approve:[ \t]*true'
 $approverKey = "$reviewFile" -match 'approver-private-key:[ \t]*\S'
 
-# The approvals the default branch's pull request rule requires; $null when no rule requires a pull request.
+# The approvals the default branch's pull request rules require: the most any one requires, since GitHub enforces
+# the strictest; $null when no rule requires a pull request.
 function Get-RequiredApprovals {
     Get-Cached 'requiredApprovals' {
         $rules = Read-Gh @('api', "repos/$slug/rules/branches/$((Get-Repo).default_branch)")
-        $rule = @($rules) | Where-Object { $_.type -eq 'pull_request' } | Select-Object -First 1
-        if ($rule) { [int]$rule.parameters.required_approving_review_count }
+        $counts = @(@($rules) | Where-Object { $_.type -eq 'pull_request' } | ForEach-Object { [int]$_.parameters.required_approving_review_count })
+        if ($counts.Count) { [int]($counts | Measure-Object -Maximum).Maximum }
     }
 }
 
