@@ -135,7 +135,7 @@ function Get-Applying($Run) {
 $template = Join-Path $Work 'template'
 New-Fixture $template @{ 'README.md' = 'template' } @('Template') '' @('v0.111.2', 'v0.111.3')
 
-New-Fixture (Join-Path $Work 'github') @{
+$githubFiles = @{
     '.copier-answers.yml' = @"
 _commit: v0.111.3
 _src_path: $template
@@ -163,7 +163,16 @@ jobs:
     '.node-version' = '26'
     'README.md' = "# Sample`n`n[![Best Practices](https://www.bestpractices.dev/projects/16752/badge)](https://www.bestpractices.dev/projects/16752)`n"
     'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion>`n  </PropertyGroup>`n</Project>`n"
-} @('Create project from project-template v0.111.3') 'https://github.com/NCodeGroup/sample.git' @('v1.0.0')
+}
+New-Fixture (Join-Path $Work 'github') $githubFiles @('Create project from project-template v0.111.3') 'https://github.com/NCodeGroup/sample.git' @('v1.0.0')
+# A fixture like github's, at $Work/<Name>: the files of $Changes set, or deleted where the value is $null, and the tags.
+function New-GitHubVariant([string]$Name, [hashtable]$Changes, [string[]]$Tags = @('v1.0.0')) {
+    $files = $githubFiles.Clone()
+    foreach ($key in $Changes.Keys) {
+        if ($null -eq $Changes[$key]) { $files.Remove($key) } else { $files[$key] = $Changes[$key] }
+    }
+    New-Fixture (Join-Path $Work $Name) $files @('Create project from project-template v0.111.3') 'https://github.com/NCodeGroup/sample.git' $Tags
+}
 
 New-Fixture (Join-Path $Work 'private') @{
     '.copier-answers.yml' = @"
@@ -248,6 +257,13 @@ $calls = @{
         'group/sub/sample: protect the tags v*: would set')
 }
 
+# Git reads only this config: the PC's user.email never answers row 0.1, and the template's GitHub address reads the local template, so 7.1's address rewrites need no network.
+$gitConfig = Join-Path $Work 'gitconfig'
+Invoke-Git $Work @('config', '--file', $gitConfig, "url.$template.insteadOf", 'https://github.com/NCodeGroup/project-template.git')
+$savedGitGlobal = $env:GIT_CONFIG_GLOBAL
+$env:GIT_CONFIG_GLOBAL = $gitConfig
+$savedGitNoSystem = $env:GIT_CONFIG_NOSYSTEM
+$env:GIT_CONFIG_NOSYSTEM = '1'
 $savedPath = $env:PATH
 $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
 $savedNvsHome = $env:NVS_HOME
@@ -400,6 +416,8 @@ try {
 finally {
     $env:PATH = $savedPath
     if ($null -eq $savedNvsHome) { Remove-Item Env:NVS_HOME -ErrorAction SilentlyContinue } else { $env:NVS_HOME = $savedNvsHome }
+    if ($null -eq $savedGitGlobal) { Remove-Item Env:GIT_CONFIG_GLOBAL -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_GLOBAL = $savedGitGlobal }
+    if ($null -eq $savedGitNoSystem) { Remove-Item Env:GIT_CONFIG_NOSYSTEM -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_NOSYSTEM = $savedGitNoSystem }
     Remove-Item Env:ADOPTION_CHECKLIST_DATA, Env:ADOPTION_CHECKLIST_LOG -ErrorAction SilentlyContinue
 }
 
