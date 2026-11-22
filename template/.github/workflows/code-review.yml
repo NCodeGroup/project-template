@@ -4,14 +4,14 @@ name: Code review
 # "Code review" check run, a summary comment with a verdict, and inline threads. Its findings are advice, and nothing
 # requires its check run; its approval is another matter, below. It reviews a pull request when it opens (drafts
 # included, since that's when its author reviews it) and when it's marked ready, unless that commit was already
-# reviewed; pushes in between start nothing. A top-level comment from someone
-# with write access whose first line is `/review` reviews the latest commit on demand, also with a footer below it,
-# such as an agent's `---` line and attribution, which NCode Review sets aside; `/review explain F3` says whether a
-# finding still holds, and `/review teach <rule>` files a rule as an issue, both on a closed pull request too. A
-# `skip-review` label skips the automatic reviews. When a pull request closes, merged or not, the outcomes job only
-# records each posted finding's outcome, with no model call. It needs no environment: the NCode Review app's key is an
-# organization secret. The code-review environment, which only the default branch can deploy to, holds the approver's
-# key, NCODE_REVIEW_APPROVER_PRIVATE_KEY, once it is stored, and lets Anthropic's federation rule trust the review job.
+# reviewed; pushes in between start nothing. A top-level comment from someone with write access whose first line is
+# `/review` reviews the latest commit on demand, also with a footer below it, such as an agent's `---` line and
+# attribution, which NCode Review sets aside; `/review explain F3` says whether a finding still holds, and
+# `/review teach <rule>` files a rule as an issue, both on a closed pull request too. A `skip-review` label skips the
+# automatic reviews. When a pull request closes, merged or not, the outcomes job only records each posted finding's
+# outcome, with no model call. It needs no environment: the NCode Review app's key is an organization secret. The
+# code-review environment, which only the default branch can deploy to, holds the approver's key,
+# NCODE_REVIEW_APPROVER_PRIVATE_KEY, once it is stored, and lets Anthropic's federation rule trust the review job.
 #
 # approve: true approves a pull request whose review leaves no blocker or should-fix finding open, which Scorecard's
 # Code-Review check counts. GitHub counts an approval toward a ruleset's required approval only from a reviewer that can
@@ -96,7 +96,8 @@ jobs:
           bedrock-api-key: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           # A review that leaves no blocker or should-fix finding open approves the pull request.
           approve: true
-          # The NCode Review Approver submits the approval, so it meets the ruleset's required approval; the key is a secret of the code-review environment, which only the default branch can deploy to.
+          # The NCode Review Approver submits the approval, so it meets the ruleset's required approval; the key is a
+          # secret of the code-review environment, which only the default branch can deploy to.
           approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}
 
   outcomes:
