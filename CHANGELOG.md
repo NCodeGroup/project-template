@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.112.1] - 2026-11-21
+
+### Fixed
+
+- `.template/Update-Project.ps1` names the files that reference Nerdbank.GitVersioning themselves, and says to delete that reference, only when the project's `build/ProjectTemplate.props` references it too, as a .NET library's does once `version.json` exists. A project that isn't a library (`nuget_package` false) and versions itself through a `version.json` and a Nerdbank.GitVersioning reference of its own no longer gets a note that would remove its only reference, and `Adopt-Project.ps1` no longer drops such a repository's reference ([#477](https://github.com/NCodeGroup/project-template/issues/477)).
+- `docs/best-practices-badge.md`'s test-policy row, and every row of `docs/best-practices-criteria.md` that cited `CONTRIBUTING.md` by a heading or an item number, say which statement of `CONTRIBUTING.md` they cite instead. A project whose own `CONTRIBUTING.md` is laid out differently can check that its file makes each one. The badge page is the project's own, so an update shows its new row as a change to it ([#478](https://github.com/NCodeGroup/project-template/issues/478)).
+
 ## [0.112.0] - 2026-11-21
 
 ### Added
@@ -1848,7 +1855,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.112.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.112.1...HEAD
+[0.112.1]: https://github.com/NCodeGroup/project-template/compare/v0.112.0...v0.112.1
 [0.112.0]: https://github.com/NCodeGroup/project-template/compare/v0.111.4...v0.112.0
 [0.111.4]: https://github.com/NCodeGroup/project-template/compare/v0.111.3...v0.111.4
 [0.111.3]: https://github.com/NCodeGroup/project-template/compare/v0.111.2...v0.111.3

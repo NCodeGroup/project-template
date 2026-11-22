@@ -23,6 +23,10 @@
                 ${{ github.workspace }}/), for full history, a flow mapping, --no-build, a job that doesn't build,
                 publish.yml or a project without version.json.
                 tools\adopt\Adoption.psm1's copy prints the same.
+      gitversioning-reference Get-GitVersioningReference names the files that reference Nerdbank.GitVersioning
+                themselves only when build/ProjectTemplate.props references it too, as a library's does, and nothing
+                when build/ProjectTemplate.props doesn't reference it or is missing.
+                tools\adopt\Adoption.psm1's Remove-GitVersioningReference drops the same files.
       publisher Get-NuGetPublisherAnswer names the workflows other than publish.yml that run nuget push, joined with
                 ", ", when the library has no publish.yml, and is blank beside a publish.yml, without such a workflow or
                 without .github/workflows.
@@ -222,6 +226,36 @@ $gitVersioningNote = & {
     }
 }
 $gitVersioningNote
+
+# gitversioning-reference: Get-GitVersioningReference, run from inside each fixture folder, a Git repository whose files are staged, which is also the project.
+$gitVersioningReference = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-GitVersioningReference' }, $true)
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $reference = '<PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />'
+    $referenceCases = [ordered]@{
+        'library'           = @{ Template = "<Project>`n  <ItemGroup>`n    $reference`n  </ItemGroup>`n</Project>`n"; Want = 'Directory.Build.props' }
+        'not a library'     = @{ Template = "<Project>`n  <PropertyGroup>`n    <Nullable>enable</Nullable>`n  </PropertyGroup>`n</Project>`n"; Want = '' }
+        'no template props' = @{ Template = $null; Want = '' }
+    }
+    foreach ($name in $referenceCases.Keys) {
+        $case = $referenceCases[$name]
+        $folder = Join-Path $Work "gitversioning-reference-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path (Join-Path $folder 'build') -Force
+        [IO.File]::WriteAllText((Join-Path $folder 'version.json'), '{}')
+        [IO.File]::WriteAllText((Join-Path $folder 'Directory.Build.props'), "<Project>`n  <ItemGroup>`n    $reference`n  </ItemGroup>`n</Project>`n")
+        if ($null -ne $case.Template) { [IO.File]::WriteAllText((Join-Path $folder 'build/ProjectTemplate.props'), $case.Template) }
+        git -C $folder init -q -b main
+        git -C $folder -c core.autocrlf=false add .
+        Push-Location $folder
+        try { $got = @(Get-GitVersioningReference) -join ', ' }
+        finally { Pop-Location }
+        Check "gitversioning-reference: $name" ($got -eq $case.Want) "got [$got], want [$($case.Want)]"
+        $dropped = @(Remove-GitVersioningReference $folder | ForEach-Object File) -join ', '
+        Check "gitversioning-reference: $name (tools\adopt\Adoption.psm1's copy)" ($dropped -eq $case.Want) "got [$dropped], want [$($case.Want)]"
+    }
+}
+$gitVersioningReference
 
 # publisher: Get-NuGetPublisherAnswer, run from inside each fixture folder, which is also the project.
 $publisherAnswer = & {

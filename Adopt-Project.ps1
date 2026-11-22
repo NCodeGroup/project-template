@@ -42,7 +42,7 @@
 
     For a .NET repository whose .config/dotnet-tools.json names CSharpier, it lists each of the repository's own build/*.ps1 scripts that runs dotnet csharpier check as a follow-up (Get-CSharpierWrapper), because the adopted build/dod.ps1 runs that check in its Format stage.
 
-    When the repository references Nerdbank.GitVersioning itself, which build/ProjectTemplate.props references once version.json exists, it drops the repository's own PackageReference (and a second PackageVersion in Directory.Packages.props) and reports it, because two references fail the build with NU1504 or NU1506 (ADR-0138).
+    When the repository references Nerdbank.GitVersioning itself and build/ProjectTemplate.props references it too, as a library's does once version.json exists, it drops the repository's own PackageReference (and a second PackageVersion in Directory.Packages.props) and reports it, because two references fail the build with NU1504 or NU1506 (ADR-0138). A repository that isn't a library keeps its own reference, its only one.
 
 .EXAMPLE
     .\Adopt-Project.ps1 -Path C:\src\buffers
