@@ -233,7 +233,7 @@ try {
     if ($LASTEXITCODE) { throw "copier copy for dotnet-library-apache exited with code ${LASTEXITCODE}: $($output.Trim())" }
 }
 finally { $env:COPIER_CACHE_DIR = $copierCache }
-# Each fresh render passes CSharpier's check before anything formats it: the template renders every file CSharpier checks in the form CSharpier prints it.
+# Each fresh render passes CSharpier's check before anything formats it: the template renders every file CSharpier checks in the form CSharpier prints it. CSharpier checks exactly Directory.Build.props and Directory.Packages.props, because .csharpierignore skips the template-owned build/ProjectTemplate.props and nuget.config, so a file that drops out of the check fails it.
 foreach ($case in 'dotnet', 'dotnet-library-apache') {
     Push-Location (Join-Path $Work $case)
     try {
@@ -244,7 +244,7 @@ foreach ($case in 'dotnet', 'dotnet-library-apache') {
     }
     finally { Pop-Location }
     $checked = if ($formatOutput -match 'Checked (\d+) files') { [int]$Matches[1] } else { 0 }
-    Check "${case}: a fresh render passes CSharpier's check before anything formats it" ($formatExit -eq 0 -and $checked -ge 2) $formatOutput
+    Check "${case}: a fresh render passes CSharpier's check before anything formats it" ($formatExit -eq 0 -and $checked -eq 2) $formatOutput
 }
 if ($FormatOnly) {
     ''
