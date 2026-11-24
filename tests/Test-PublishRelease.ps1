@@ -261,6 +261,10 @@ try {
     $run = Invoke-Publish $work
     Check 'release: tag: it pushes the tag and publishes no release' ($run.Code -eq 0 -and (Get-OriginTag $work) -ccontains 'v0.2.0' -and -not (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases')) $run.Output
 
+    $work = New-Clone 'other-digits' '- release: tag+release' $changelog.Replace('## [0.2.0] - 2026-11-08', "## [$([char]0x0661).3.0] - 2026-11-15")
+    $run = Invoke-Publish $work
+    Check 'a release heading in other digits: it tags nothing and says the release isn''t shaped like 1.2.3' ($run.Code -eq 0 -and $run.Output -match 'isn''t shaped like 1\.2\.3' -and -not (Get-OriginTag $work)) $run.Output
+
     $work = New-Clone 'signed' '- release: tag+release'
     # A stand-in for the signing program: it reads the tag's text, reports a signature on Git's status file descriptor and prints one.
     $signer = Join-Path $temp 'fake-sign'
