@@ -184,10 +184,10 @@ try {
     function Get-WorkflowLine([string]$File, [string[]]$Starts) {
         @(Get-Content -LiteralPath (Join-Path $workflowDir $File) | ForEach-Object { $_.Trim() } | Where-Object { $line = $_; $Starts | Where-Object { $line.StartsWith($_) } })
     }
-    $publishTag = Get-WorkflowLine 'publish.yml' 'if ($env:TAG -'
-    $provenanceTag = Get-WorkflowLine 'release-provenance.yml' 'if ($env:TAG -'
-    $provenanceRun = Get-WorkflowLine 'release-provenance.yml' 'if ($env:RUN_ID -'
-    $baselineTag = Get-WorkflowLine 'raise-baseline.yml' 'if ($env:TAG -', 'throw "The tag '''
+    $publishTag = @(Get-WorkflowLine 'publish.yml' 'if ($env:TAG -')
+    $provenanceTag = @(Get-WorkflowLine 'release-provenance.yml' 'if ($env:TAG -')
+    $provenanceRun = @(Get-WorkflowLine 'release-provenance.yml' 'if ($env:RUN_ID -')
+    $baselineTag = @(Get-WorkflowLine 'raise-baseline.yml' 'if ($env:TAG -', 'throw "The tag ''')
     Check 'tag check: the workflows have the lines this test runs' ($publishTag.Count -eq 1 -and $provenanceTag.Count -eq 1 -and $provenanceRun.Count -eq 1 -and $baselineTag.Count -eq 3) "$($publishTag.Count), $($provenanceTag.Count), $($provenanceRun.Count), $($baselineTag.Count)"
 
     $tagCases = [ordered]@{
@@ -199,7 +199,7 @@ try {
         'the Kelvin sign'    = "v1.2.3-$([char]0x212A)"
     }
     foreach ($file in 'publish.yml', 'release-provenance.yml') {
-        $lines = if ($file -eq 'publish.yml') { $publishTag } else { $provenanceTag }
+        $lines = @(if ($file -eq 'publish.yml') { $publishTag } else { $provenanceTag })
         $wrong = foreach ($case in $tagCases.Keys) {
             $result = Invoke-StepLine ($lines + '"matched=$($Matches[1])"') @{ TAG = $tagCases[$case] }
             $ok = switch ($case) {
