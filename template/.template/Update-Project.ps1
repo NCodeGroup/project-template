@@ -598,6 +598,25 @@ function Get-RewrittenFile([string[]]$Files, [string]$Folder) {
     }
 }
 
+# True when the update keeps every line the project changed in a template-owned file (#488): each line its copy at $Head adds to the
+# current version's render in $ResetCommit is in the file the update left, and no line it removes is. A binary file, or a change with no changed line, isn't kept.
+function Test-EditKept([string]$File, [string]$ResetCommit, [string]$Head) {
+    $diff = @(git -c core.quotePath=false diff --no-color --no-ext-diff --no-renames -U0 $ResetCommit $Head -- $File)
+    if ($LASTEXITCODE) { return $false }
+    $path = Join-Path $project $File
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+    $now = [Collections.Generic.HashSet[string]]::new([string[]]@([IO.File]::ReadAllText($path) -split '\r?\n'))
+    $inHunk = $false
+    $changed = 0
+    foreach ($line in $diff) {
+        if ($line.StartsWith('@@')) { $inHunk = $true; continue }
+        if (-not $inHunk) { if ($line.StartsWith('Binary files ')) { return $false }; continue }
+        if ($line.StartsWith('+')) { $changed++; if (-not $now.Contains($line.Substring(1).TrimEnd("`r"))) { return $false } }
+        elseif ($line.StartsWith('-')) { $changed++; if ($now.Contains($line.Substring(1).TrimEnd("`r"))) { return $false } }
+    }
+    $changed -gt 0
+}
+
 # How to run the template's .githooks in this clone: HooksPath when core.hooksPath can point at it, otherwise the
 # Note to warn with. A hooks path turns off the hooks in .git/hooks.
 # A hooks path the clone already has, from any Git config, is never changed: one that names a .githooks folder runs the
@@ -1098,6 +1117,7 @@ try {
         [IO.File]::WriteAllText($infoExclude, "$excludeBefore`n$beginCopy`n$([IO.File]::ReadAllText($projectIgnore))`n$endCopy`n")
     }
     $versionFileNew = $false
+    $resetCommit = $null
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
@@ -1143,7 +1163,7 @@ try {
         }
         Add-UpdateChange $scratch
         $resetCommitted = [bool](git diff --cached --name-only)
-        if ($resetCommitted) { git commit -q --no-verify -m 'Reset template-owned files'; if ($LASTEXITCODE) { throw 'Committing the reset failed.' } }
+        if ($resetCommitted) { git commit -q --no-verify -m 'Reset template-owned files'; if ($LASTEXITCODE) { throw 'Committing the reset failed.' }; $resetCommit = git rev-parse HEAD }
 
         $copierArgs = @('update', '--defaults', '--quiet', '--vcs-ref', $to)
         foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
@@ -1219,8 +1239,9 @@ try {
     "Template $from -> ${to}:"
     $changes | Sort-Object Kind, File | ForEach-Object { '  {0,-9} {1}' -f $_.Kind, $_.File }
     # A file the update leaves as the project had it lost nothing, such as a local edit the new version also makes or a deleted file it also deletes: list only the files that differ from the commit the update started from.
+    # An edited file whose every changed line the update keeps lost nothing either (Test-EditKept), such as a pin bump the new version also makes beside changes of its own (#488).
     $differs = @((git -c core.quotePath=false diff --name-only --no-renames -z $head) -split "`0" | Where-Object { $_ })
-    $edited = @($reset | Where-Object { $_.Kind -ne 'added' -and $_.File -in $differs } | ForEach-Object File)
+    $edited = @($reset | Where-Object { $_.Kind -ne 'added' -and $_.File -in $differs -and -not ($_.Kind -eq 'modified' -and $resetCommit -and (Test-EditKept $_.File $resetCommit $head)) } | ForEach-Object File)
     $restored = @($reset | Where-Object { $_.Kind -eq 'added' -and $_.File -in $differs } | ForEach-Object File)
     $refreshed = @($refreshed | Where-Object { $_ -in $differs })
     if ($edited) { ''; 'Local edits discarded — these files are the template''s; make the change in a project file instead:'; $edited | ForEach-Object { "  $_" } }
