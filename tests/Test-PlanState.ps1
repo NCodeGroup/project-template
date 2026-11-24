@@ -850,6 +850,10 @@ Write-Text $lateLog "# Changelog`n`n## [Unreleased]`n`n## [0.3.1] - 2026-10-28`n
 $r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'keep-a-changelog'; 'changelog-version' = 'v0.3.1' }
 Check 'changelog: reads the newest Keep a Changelog release with the plan''s prefix' $r.Ok $r.Detail
 
+Write-Text $lateLog "# Changelog`n`n## [Unreleased]`n`n## [$([char]0x0661).4.0] - 2026-10-29`n`n### Fixed`n`n- Other digits.`n`n## [0.3.1] - 2026-10-28`n`n### Fixed`n`n- Third.`n"
+$r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'keep-a-changelog'; 'changelog-version' = 'v0.3.1' }
+Check 'changelog: a heading in other digits is no release' $r.Ok $r.Detail
+
 Write-Text $lateLog "# Changelog`n`n## [Unreleased]`n`n### Added`n`n- Coming.`n"
 $r = Test-State (Get-State $lateRepo) @{ 'changelog-format' = 'keep-a-changelog'; 'changelog-version' = '-'; 'changelog-duplicates' = '-' }
 Check 'changelog: an Unreleased section alone is no release' $r.Ok $r.Detail

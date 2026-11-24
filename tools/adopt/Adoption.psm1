@@ -470,7 +470,7 @@ function Get-GitHooksSetup {
 }
 
 # Reads the format as workflow/Get-PlanState.ps1's Get-ChangelogFormat does.
-function Test-KeepAChangelog([string]$Text) { $Text -match '(?m)^## \[(Unreleased|v?\d+\.\d+\.\d+)\]' }
+function Test-KeepAChangelog([string]$Text) { $Text -match '(?m)^## \[(Unreleased|v?[0-9]+\.[0-9]+\.[0-9]+)\]' }
 
 # The changelog AGENTS.md's Landing section names (CHANGELOG.md by default) as File, and as Range the version tags merged into HEAD
 # that have no release heading in it: <oldest>..<newest>, the tag alone, or -. workflow/Get-PlanState.ps1 prints Range as changelog-backfill.
@@ -486,8 +486,8 @@ function Get-ChangelogBackfill {
             if ($inLanding -and $line -match '^- pre-release:\s*`?untracked`?\s*$') { $untracked = $true }
         }
     }
-    $listed = @(if (Test-Path -LiteralPath $file -PathType Leaf) { foreach ($line in Get-Content -LiteralPath $file) { if ($line -match '^## \[?v?(\d+\.\d+\.\d+)\]?(?: - \d{4}-\d{2}-\d{2})?(?: \[YANKED\])?\s*$') { [version]$Matches[1] } } })
-    $missing = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)$' -and [version]$Matches[1] -notin $listed -and -not ($untracked -and ([version]$Matches[1]).Major -lt 1) } | Sort-Object { [version]($_ -replace '^v') })
+    $listed = @(if (Test-Path -LiteralPath $file -PathType Leaf) { foreach ($line in Get-Content -LiteralPath $file) { if ($line -match '^## \[?v?([0-9]+\.[0-9]+\.[0-9]+)\]?(?: - [0-9]{4}-[0-9]{2}-[0-9]{2})?(?: \[YANKED\])?\s*\z') { [version]$Matches[1] } } })
+    $missing = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?([0-9]+\.[0-9]+\.[0-9]+)\z' -and [version]$Matches[1] -notin $listed -and -not ($untracked -and ([version]$Matches[1]).Major -lt 1) } | Sort-Object { [version]($_ -replace '^v') })
     $range = if ($missing.Count -eq 0) { '-' } elseif ($missing.Count -eq 1) { $missing[0] } else { "$($missing[0])..$($missing[-1])" }
     [pscustomobject]@{ File = $file; Range = $range }
 }
@@ -536,7 +536,7 @@ function Get-AssemblyVersionFloor {
     if (-not (Test-Path -LiteralPath build/ProjectTemplate.props -PathType Leaf)) { return }
     if ((Get-Content -LiteralPath build/ProjectTemplate.props -Raw) -notmatch 'Name="ProjectTemplatePinAssemblyVersion"') { return }
     if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion[\s>]') { return }
-    $tags = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$' } |
+    $tags = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?([0-9]+\.[0-9]+\.[0-9]+)(?:-[0-9A-Za-z.-]+)?\z' } |
         Sort-Object { [version]($_ -replace '^v' -replace '-.*$') })
     if ($tags.Count -eq 0) { return }
     $major = ([version]($tags[-1] -replace '^v' -replace '-.*$')).Major
@@ -547,7 +547,7 @@ function Get-AssemblyVersionFloor {
         if ($number.Major -ne $major) { continue }
         $shipped = $null
         $props = git show "${tag}:Directory.Build.props" 2>$null
-        if ($LASTEXITCODE -eq 0 -and ($props -join "`n") -match '<AssemblyVersion>\s*(\d+(?:\.\d+){1,3})\s*</AssemblyVersion>') { $shipped = [version]$Matches[1] }
+        if ($LASTEXITCODE -eq 0 -and ($props -join "`n") -match '<AssemblyVersion>\s*([0-9]+(?:\.[0-9]+){1,3})\s*</AssemblyVersion>') { $shipped = [version]$Matches[1] }
         if (-not $shipped) {
             $template = git show "${tag}:build/ProjectTemplate.props" 2>$null
             $shipped = if ($LASTEXITCODE -eq 0 -and ($template -join "`n") -match 'Name="ProjectTemplatePinAssemblyVersion"') { [version]::new($major, 0, 0, 0) } else { $number }
@@ -748,7 +748,7 @@ function Update-VersionFile {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return }
     $text = [IO.File]::ReadAllText($path)
     $result = [pscustomobject]@{ Version = $null; Tag = $null; AssemblyVersion = $null; Precision = $null }
-    $tag = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?\d+\.\d+\.\d+$' } | Sort-Object { [version]($_ -replace '^v') }) | Select-Object -Last 1
+    $tag = @(git tag --list --merged HEAD 2>$null | Where-Object { $_ -match '^v?[0-9]+\.[0-9]+\.[0-9]+\z' } | Sort-Object { [version]($_ -replace '^v') }) | Select-Object -Last 1
     if ($tag) {
         $number = [version]($tag -replace '^v')
         $version = "$($number.Major).$($number.Minor).$($number.Build + 1)"
@@ -756,7 +756,7 @@ function Update-VersionFile {
         if ($updated -ne $text) { $text = $updated; $result.Version = $version; $result.Tag = $tag }
     }
     $shipped = $null
-    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion>\s*(\d+(?:\.\d+){1,3})\s*</AssemblyVersion>') { $shipped = $Matches[1] }
+    if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match '<AssemblyVersion>\s*([0-9]+(?:\.[0-9]+){1,3})\s*</AssemblyVersion>') { $shipped = $Matches[1] }
     if (-not $shipped) { $shipped = (Get-AssemblyVersionFloor).AssemblyVersion }
     if ($shipped) {
         $number = [version]$shipped

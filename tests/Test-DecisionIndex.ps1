@@ -5,10 +5,11 @@
 .DESCRIPTION
     Builds one small fixture project per case, runs the check on it and compares the exit code and the output. Also
     checks that every decision record the template ships in docs/decisions/project-template/ is numbered 0001-0999 and
-    linked from the template's index. Fixture Git repositories check that a record numbered below 1000 that is new since
-    the merge base with origin/main, or with -Base, fails, that a renamed older one passes, and that the check is
-    skipped, saying so, without a merge base or in a folder that isn't a repository's root. Prints PASS or FAIL per
-    check and exits 1 on any failure. The checks take seconds.
+    linked from the template's index, and that the index lists each table's records in number order, with only records
+    numbered 0001-0099 under Every Project. Fixture Git repositories check that a record numbered below 1000 that is
+    new since the merge base with origin/main, or with -Base, fails, that a renamed older one passes, and that the
+    check is skipped, saying so, without a merge base or in a folder that isn't a repository's root. Prints PASS or FAIL
+    per check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-decision-index-test-<process ID> in the
@@ -80,6 +81,20 @@ function Get-Readme([string[]]$Rows) {
 function Get-TemplateRecord([string]$Folder) { @(Get-ChildItem -LiteralPath $Folder -File | ForEach-Object { if ($_.Name -match '(\d{4})-[^{}%]+?\.md') { [pscustomobject]@{ Number = [int]$Matches[1]; Record = $Matches[0] } } }) }
 function Get-OutOfRange([object[]]$Records) { @($Records | Where-Object { $_.Number -lt 1 -or $_.Number -gt 999 } | ForEach-Object Record) }
 function Get-SharedNumber([object[]]$Records) { @($Records | Group-Object Number | Where-Object Count -GT 1 | ForEach-Object { '{0:D4}: {1}' -f [int]$_.Name, (($_.Group.Record | Sort-Object) -join ', ') }) }
+# Walks the index's lines; a heading starts a table, a row is a number, and anything else, Jinja tags included, is skipped.
+function Get-IndexOrderProblem([string]$Text) {
+    $section = ''
+    $previous = 0
+    foreach ($line in $Text -split '\r?\n') {
+        if ($line -cmatch '^## (.+?)\s*$') { $section = $Matches[1]; $previous = 0 }
+        elseif ($line -cmatch '^\| \[([0-9]{4})\]\(') {
+            $number = [int]$Matches[1]
+            if ($number -lt $previous) { '{0}: {1:D4} after {2:D4}' -f $section, $number, $previous }
+            if ($section -ceq 'Every Project' -and ($number -lt 1 -or $number -gt 99)) { '{0}: {1:D4} is outside 0001-0099' -f $section, $number }
+            $previous = $number
+        }
+    }
+}
 
 $adrIndex = Join-Path $repoRoot 'template\.template\Test-AdrIndex.ps1'
 $record = '# x'
@@ -267,6 +282,14 @@ Check 'template records: a record numbered 1000 is out of range' ($fixtureOutsid
 $fixtureShared = (Get-SharedNumber $fixtureRecords) -join ';'
 Check 'template records: two records with one number are named' ($fixtureShared -eq '0100: 0100-b.md, 0100-c.md') "shared: $fixtureShared"
 
+$fixtureIndex = @(
+    '## Every Project', '', '| ADR | Decision |', '| --- | --- |', '| [0001](0001-a.md) | A |', '| [0153](0153-b.md) | B |',
+    "{%- if git_host == 'github' %}", '| [0002](0002-c.md) | C |', '{%- endif %}', '',
+    '## Libraries', '', '| ADR | Decision |', '| --- | --- |', '| [0130](0130-d.md) | D |', '| [0135](0135-e.md) | E |'
+) -join "`n"
+$fixtureOrder = (Get-IndexOrderProblem $fixtureIndex) -join '; '
+Check 'index order: a row below the one before it and an Every Project row above 0099 are named' ($fixtureOrder -eq 'Every Project: 0153 is outside 0001-0099; Every Project: 0002 after 0153') "problems: $fixtureOrder"
+
 # The template's own records, in the folder every template update replaces.
 $templateFolder = Join-Path $repoRoot 'template\docs\decisions\project-template'
 $templateRecords = Get-TemplateRecord $templateFolder
@@ -276,6 +299,9 @@ Check 'repository: every template decision record is numbered 0001-0999' (($temp
 $templateIndex = [IO.File]::ReadAllText((Join-Path $templateFolder 'README.md.jinja'))
 $unlinked = @($templateRecords | Where-Object { -not $templateIndex.Contains("($($_.Record))") } | ForEach-Object Record)
 Check "repository: the template's decision index links every template record" (($templateRecords.Count -gt 0) -and -not $unlinked) "records: $($templateRecords.Count); not linked: $($unlinked -join ', ')"
+
+$orderProblems = @(Get-IndexOrderProblem $templateIndex)
+Check "repository: the template's decision index lists each table in number order, and only 0001-0099 under Every Project" ($orderProblems.Count -eq 0) "problems: $($orderProblems -join '; ')"
 
 $shared = Get-SharedNumber $templateRecords
 Check 'repository: no two template decision records share a number' (($templateRecords.Count -gt 0) -and -not $shared) "records: $($templateRecords.Count); sharing a number: $($shared -join '; ')"

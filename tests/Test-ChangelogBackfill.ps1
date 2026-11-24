@@ -7,7 +7,7 @@
     side branch that main doesn't contain. Then, for the copy of Get-ChangelogBackfill in .template\Update-Project.ps1 and the one in
     tools\adopt\Adoption.psm1, writes changelogs of different shapes and checks the changelog file and the range of version tags
     without a section that the function returns, including a project whose Landing section says pre-release: untracked, which needs no
-    section for a tag below 1.0.0. Prints PASS or FAIL per check and exits 1 on any failure.
+    section for a tag below 1.0.0, and a changelog heading whose version is in other Unicode digits, which is no section. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-changelog-backfill-test-<process ID> in the
@@ -80,6 +80,7 @@ $cases = [ordered]@{
     'a pre-release project needs no section for a tag below 1.0.0' = @{ Folder = $repo; Files = @{ 'AGENTS.md' = "# Fixture`n`n## Landing`n`n- pre-release: untracked`n" }; File = 'CHANGELOG.md'; Range = '-' }
     'a tracked project names its tags below 1.0.0'          = @{ Folder = $repo; Files = @{ 'AGENTS.md' = "# Fixture`n`n## Landing`n`n- pre-release: tracked`n" }; File = 'CHANGELOG.md'; Range = 'v0.1.0..v0.3.0' }
     'the Landing section names the changelog and pre-release' = @{ Folder = $repo; Files = @{ 'AGENTS.md' = "# Fixture`n`n## Landing`n`n- changelog: ``docs/CHANGES.md```n- pre-release: ``untracked```n" }; File = 'docs/CHANGES.md'; Range = '-' }
+    'a heading in other digits is no section'               = @{ Folder = $repo; Files = @{ 'CHANGELOG.md' = "## [0.3.0] - 2026-01-03`n`n## [$([char]0x0661).2.0] - 2026-01-02`n" }; File = 'CHANGELOG.md'; Range = 'v0.1.0..v0.2.0' }
 }
 foreach ($source in $sources.Keys) {
     foreach ($name in $cases.Keys) {
@@ -90,7 +91,7 @@ foreach ($source in $sources.Keys) {
                 if (Test-Path -LiteralPath $leftover) { Remove-Item -LiteralPath $leftover -Recurse -Force }
             }
             foreach ($file in $case.Files.Keys) { Write-Text (Join-Path $case.Folder $file) $case.Files[$file] }
-            $result = & $sources[$source]
+            $result = try { & $sources[$source] } catch { [pscustomobject]@{ File = 'threw'; Range = "$_" } }
         }
         finally { Pop-Location }
         Check "${source}: $name" ($null -ne $result -and $result.File -eq $case.File -and $result.Range -eq $case.Range) "File '$($result.File)', Range '$($result.Range)'; expected '$($case.File)', '$($case.Range)'"

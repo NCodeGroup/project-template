@@ -38,13 +38,22 @@
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.5.0, passes
                 no approve: true or passes it without approver-private-key, and an AGENTS.md Landing section that
                 doesn't say draft: yes, says when ADR-0009's cooldown lets a project adopt v1.5.0, and says nothing
-                for a current setup or a project without code-review.yml.
+                for a current setup, a pin whose version is in other Unicode digits, or a project without
+                code-review.yml.
       immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
                 for an upload named only in a comment line.
       copies    Get-WorkflowEvents and Test-ReleaseAssetWorkflow in Update-Project.ps1 are character for character
                 the ones in tools/Set-RepositoryBaseline.ps1, and Adopt-Project.ps1's copies of those and
                 Get-ImmutableReleaseNote are the ones in Update-Project.ps1.
+      kept-edit Test-EditKept is true when the update keeps every line the project changed in a template-owned file:
+                each line the project adds to the current version's render is in the file the update leaves at least
+                as often as in the project's copy, such as a pin the new version also bumps beside changes of its own,
+                and a line the project deletes is there no more often than in that copy, such as a deleted line the
+                update also deletes. It is false when an added line is there fewer times, such as an added } or blank
+                line the update drops that also appears elsewhere, when a deleted line is brought back, for a binary
+                file, and when the project's copy changes no line.
+      newest-tag Get-NewestTag picks the newest version tag and ignores a tag in other Unicode digits.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notes-test-<process ID> in the temp
@@ -364,6 +373,8 @@ $codeReviewNote = & {
         'tag pin, no comment'           = @{ Workflow = "jobs:`n  review:`n    steps:`n      - uses: NCodeGroup/code-review@v1.3.0`n        with:`n          approve: true`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @('pins NCodeGroup/code-review v1.3.0'); Not = @('passes no approve', 'says draft', 'has no draft line') }
         'approve without approver key'  = @{ Workflow = "jobs:`n  review:`n    steps:`n      - uses: $pin # v1.5.0`n        with:`n          approve: true`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @('has no approver-private-key input', 'Enable-CodeReview.ps1 -ApproverPrivateKeyPath'); Not = @('pins', 'passes no approve: true') }
         'pin before the approver'       = @{ Workflow = (& $review 'v1.4.0' $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @('pins NCodeGroup/code-review v1.4.0'); Not = @('has no approver-private-key input') }
+        'pin comment in other digits'   = @{ Workflow = (& $review "v$([char]0x0661).3.0" $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
+        'tag pin in other digits'       = @{ Workflow = "jobs:`n  review:`n    steps:`n      - uses: NCodeGroup/code-review@v$([char]0x0661).3.0`n        with:`n          approve: true`n          approver-private-key: `${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
         'no code-review.yml'            = @{ Workflow = $null; Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @(); Not = @() }
     }
     foreach ($name in $reviewCases.Keys) {
@@ -439,6 +450,71 @@ $immutableNote = & {
     Check 'copies: Adopt-Project.ps1''s Get-WorkflowEvents, Test-ReleaseAssetWorkflow and Get-ImmutableReleaseNote match Update-Project.ps1''s' (-not $adoptDiffer) "differ: [$($adoptDiffer -join ', ')]"
 }
 $immutableNote
+
+# kept-edit: Test-EditKept, run from inside each fixture folder, a Git repository, which is also the project.
+$keptEdit = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Test-EditKept' }, $true)
+    if (-not $fn) { Check 'kept-edit: Update-Project.ps1 defines Test-EditKept' $false; return }
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $keptCases = [ordered]@{
+        'a pin the target also bumps, beside changes of its own' = @{ Current = "a`nuses: x@OLD # v2.5.0`nb`n"; Project = "a`nuses: x@NEW # v2.6.0`nb`n"; Target = "# exception`r`na`r`nuses: x@NEW # v2.6.0`r`nb2`r`n"; Want = $true }
+        'an edit the target lacks'                               = @{ Current = "a`nuses: x@OLD # v2.5.0`nb`n"; Project = "a`nuses: x@NEW # v2.6.0`nb`n"; Target = "a`nuses: x@OLD # v2.5.0`nb2`n"; Want = $false }
+        'a deleted line the target brings back'                  = @{ Current = "a`nb`nc`n"; Project = "a`nc`n"; Target = "a2`nb`nc`n"; Want = $false }
+        'a deleted line the target also deletes'                 = @{ Current = "a`nb`nc`n"; Project = "a`nc`n"; Target = "a2`nc`n"; Want = $true }
+        'a binary file'                                          = @{ Current = "a`0b"; Project = "a`0c"; Target = "a`0c"; Want = $false }
+        'an added copy of a line the target has once'            = @{ Current = "a`n}`nb`n"; Project = "a`n}`n}`nb`n"; Target = "a`n}`nb2`n"; Want = $false }
+        'an added blank line the target drops'                   = @{ Current = "a`n`nb`n"; Project = "a`n`n`nb`n"; Target = "a`n`nb2`n"; Want = $false }
+        'an added copy of a line the target keeps both of'       = @{ Current = "a`n}`nb`n"; Project = "a`n}`n}`nb`n"; Target = "a`n}`n}`nb2`n"; Want = $true }
+        'a deleted copy of a line the target has elsewhere'      = @{ Current = "a`n}`n}`nb`n"; Project = "a`n}`nb`n"; Target = "a`n}`nb2`n"; Want = $true }
+        'no changed line'                                        = @{ Current = "a`nb`n"; Project = "a`nb`n"; Target = "a`nb2`n"; Want = $false }
+    }
+    $identity = '-c', 'user.name=template-test', '-c', 'user.email=template-test@example.invalid', '-c', 'commit.gpgsign=false'
+    foreach ($name in $keptCases.Keys) {
+        $case = $keptCases[$name]
+        $folder = Join-Path $Work "kept-edit-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path $folder -Force
+        $file = Join-Path $folder 'f.yml'
+        git -C $folder init -q -b main
+        git -C $folder config core.autocrlf false
+        [IO.File]::WriteAllText($file, $case.Project)
+        git -C $folder add f.yml
+        git -C $folder @identity commit -q -m 'Project'
+        $head = git -C $folder rev-parse HEAD
+        [IO.File]::WriteAllText($file, $case.Current)
+        git -C $folder @identity commit -q --allow-empty -am 'Reset template-owned files'
+        $reset = git -C $folder rev-parse HEAD
+        git -C $folder update-ref HEAD $head
+        [IO.File]::WriteAllText($file, $case.Target)
+        # Set-Variable: only the loaded function reads project, which the script analyzer can't see.
+        Set-Variable -Name project -Value $folder
+        Push-Location $folder
+        try { $got = Test-EditKept 'f.yml' $reset $head }
+        finally { Pop-Location }
+        Check "kept-edit: $name" ($got -eq $case.Want) "got [$got], want [$($case.Want)]"
+    }
+}
+$keptEdit
+
+# newest-tag: Get-NewestTag, which picks the template version an update goes to.
+$newestTag = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-NewestTag' }, $true)
+    if (-not $fn) { Check 'newest-tag: Update-Project.ps1 defines Get-NewestTag' $false; return }
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $identity = '-c', 'user.name=template-test', '-c', 'user.email=template-test@example.invalid', '-c', 'commit.gpgsign=false'
+    $folder = Join-Path $Work 'newest-tag'
+    $null = New-Item -ItemType Directory -Path $folder -Force
+    git -C $folder init -q -b main
+    git -C $folder @identity commit -q --allow-empty -m one
+    git -C $folder tag v0.1.0
+    git -C $folder @identity commit -q --allow-empty -m two
+    git -C $folder tag v0.2.0
+    git -C $folder tag "v$([char]0x0661).3.0"
+    $got = try { Get-NewestTag $folder } catch { "threw: $_" }
+    Check 'newest-tag: a tag in other digits is no version' ($got -eq 'v0.2.0') "got [$got]"
+}
+$newestTag
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Update notes tests: FAILED ($($failures.Count))"; exit 1 }

@@ -15,6 +15,7 @@
     version, a tag without CHANGELOG.md, a section that brings the body to exactly the 60,000-character limit and one a
     character longer, a project ahead of the newest tag, and the runs that fail: an unreadable template (with Git's
     message), no _src_path, no version tags, an unreadable or empty project version, and a failing gh call.
+    Also checks that Get-ChangelogSection takes no section from a heading whose version is in other Unicode digits.
     Prints PASS or FAIL per check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
@@ -349,6 +350,11 @@ finally {
     $env:PATH = $savedPath
     foreach ($name in $gitConfig) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
 }
+
+# Get-ChangelogSection reads a heading's version only when it is in ASCII digits: a heading in other digits is no section.
+$sectionFunction = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Get-TemplateUpdate.ps1'), [ref]$null, [ref]$null).FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-ChangelogSection' }, $true) | Select-Object -First 1
+$otherDigits = try { . ([scriptblock]::Create($sectionFunction.Extent.Text)); @(Get-ChangelogSection "# Changelog`n`n## [$([char]0x0661).2.0] - 2026-10-02`n`n- Other digits.`n`n## [0.1.0] - 2026-10-01`n`n- First.`n") } catch { "threw: $_" }
+Check 'changelog: a heading in other digits is no section' ($otherDigits -isnot [string] -and $otherDigits.Count -eq 1 -and $otherDigits[0].Version -eq [version]'0.1.0' -and $otherDigits[0].Text.StartsWith('## [0.1.0]')) "$otherDigits"
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Template update notice tests: FAILED ($($failures.Count))"; exit 1 }
