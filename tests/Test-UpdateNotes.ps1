@@ -38,7 +38,8 @@
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.5.0, passes
                 no approve: true or passes it without approver-private-key, and an AGENTS.md Landing section that
                 doesn't say draft: yes, says when ADR-0009's cooldown lets a project adopt v1.5.0, and says nothing
-                for a current setup, a pin whose version is in other Unicode digits, or a project without code-review.yml.
+                for a current setup, a pin whose version is in other Unicode digits, or a project without
+                code-review.yml.
       immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
                 for an upload named only in a comment line.
