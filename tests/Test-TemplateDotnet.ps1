@@ -237,7 +237,8 @@ finally { $env:COPIER_CACHE_DIR = $copierCache }
 foreach ($case in 'dotnet', 'dotnet-library-apache') {
     Push-Location (Join-Path $Work $case)
     try {
-        dotnet tool restore | Out-Null
+        $restoreOutput = dotnet tool restore 2>&1 | Out-String
+        if ($LASTEXITCODE) { throw "dotnet tool restore for ${case} exited with code ${LASTEXITCODE}: $($restoreOutput.Trim())" }
         $formatOutput = dotnet csharpier check . 2>&1 | Out-String
         $formatExit = $LASTEXITCODE
     }
