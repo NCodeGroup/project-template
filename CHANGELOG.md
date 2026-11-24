@@ -10,8 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- The `.claude/settings.json` a project gets has no `ask` rules: every Bash and PowerShell command runs without asking, one whose text mentions `.env` or `secrets/` too. An ask rule overrides the allow even in Auto mode, so the rules prompted for any command that only named those paths, such as an agent's pre-push `grep` or a commit message, in every cloud session. The `deny` rules stay: the Read tool still can't read `.env` files or the root `secrets/` folder, and both stay gitignored. An update merges the removal into a project's copy and keeps any rule the project added itself ([#490](https://github.com/NCodeGroup/project-template/pull/490)).
-- No change for projects made from the template. This repository's own `.claude/settings.json` drops the same rules ([#490](https://github.com/NCodeGroup/project-template/pull/490)).
+- The `.claude/settings.json` a project gets has no `ask` rules: every Bash and PowerShell command runs without asking, one whose text mentions `.env` or `secrets/` too. An ask rule overrides the allow even in Auto mode, so the rules prompted for any command that only named those paths, such as an agent's pre-push `grep` or a commit message, in every cloud session. The `deny` rules stay: the Read tool still can't read `.env` files or the root `secrets/` folder, and both stay gitignored. An update merges the removal into a project's copy and keeps any rule the project added itself ([#491](https://github.com/NCodeGroup/project-template/pull/491)).
+- This repository's own `.claude/settings.json`, which projects don't get, dropped the same rules first, so the change above is the only one a project sees ([#490](https://github.com/NCodeGroup/project-template/pull/490)).
 
 ## [0.112.2] - 2026-11-21
 
