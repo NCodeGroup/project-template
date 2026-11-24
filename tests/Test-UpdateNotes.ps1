@@ -38,7 +38,7 @@
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.5.0, passes
                 no approve: true or passes it without approver-private-key, and an AGENTS.md Landing section that
                 doesn't say draft: yes, says when ADR-0009's cooldown lets a project adopt v1.5.0, and says nothing
-                for a current setup or a project without code-review.yml.
+                for a current setup, a pin whose version is in other Unicode digits, or a project without code-review.yml.
       immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
                 for an upload named only in a comment line.
@@ -52,6 +52,7 @@
                 update also deletes. It is false when an added line is there fewer times, such as an added } or blank
                 line the update drops that also appears elsewhere, when a deleted line is brought back, for a binary
                 file, and when the project's copy changes no line.
+      newest-tag Get-NewestTag picks the newest version tag and ignores a tag in other Unicode digits.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notes-test-<process ID> in the temp
@@ -371,6 +372,8 @@ $codeReviewNote = & {
         'tag pin, no comment'           = @{ Workflow = "jobs:`n  review:`n    steps:`n      - uses: NCodeGroup/code-review@v1.3.0`n        with:`n          approve: true`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @('pins NCodeGroup/code-review v1.3.0'); Not = @('passes no approve', 'says draft', 'has no draft line') }
         'approve without approver key'  = @{ Workflow = "jobs:`n  review:`n    steps:`n      - uses: $pin # v1.5.0`n        with:`n          approve: true`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @('has no approver-private-key input', 'Enable-CodeReview.ps1 -ApproverPrivateKeyPath'); Not = @('pins', 'passes no approve: true') }
         'pin before the approver'       = @{ Workflow = (& $review 'v1.4.0' $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @('pins NCodeGroup/code-review v1.4.0'); Not = @('has no approver-private-key input') }
+        'pin comment in other digits'   = @{ Workflow = (& $review "v$([char]0x0661).3.0" $true); Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
+        'tag pin in other digits'       = @{ Workflow = "jobs:`n  review:`n    steps:`n      - uses: NCodeGroup/code-review@v$([char]0x0661).3.0`n        with:`n          approve: true`n          approver-private-key: `${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}`n"; Agents = "# P`n`n## Landing`n`n- draft: yes`n"; Want = @(); Not = @() }
         'no code-review.yml'            = @{ Workflow = $null; Agents = "# P`n`n## Landing`n`n- draft: no`n"; Want = @(); Not = @() }
     }
     foreach ($name in $reviewCases.Keys) {
@@ -491,6 +494,26 @@ $keptEdit = & {
     }
 }
 $keptEdit
+
+# newest-tag: Get-NewestTag, which picks the template version an update goes to.
+$newestTag = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-NewestTag' }, $true)
+    if (-not $fn) { Check 'newest-tag: Update-Project.ps1 defines Get-NewestTag' $false; return }
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $identity = '-c', 'user.name=template-test', '-c', 'user.email=template-test@example.invalid', '-c', 'commit.gpgsign=false'
+    $folder = Join-Path $Work 'newest-tag'
+    $null = New-Item -ItemType Directory -Path $folder -Force
+    git -C $folder init -q -b main
+    git -C $folder @identity commit -q --allow-empty -m one
+    git -C $folder tag v0.1.0
+    git -C $folder @identity commit -q --allow-empty -m two
+    git -C $folder tag v0.2.0
+    git -C $folder tag "v$([char]0x0661).3.0"
+    $got = try { Get-NewestTag $folder } catch { "threw: $_" }
+    Check 'newest-tag: a tag in other digits is no version' ($got -eq 'v0.2.0') "got [$got]"
+}
+$newestTag
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Update notes tests: FAILED ($($failures.Count))"; exit 1 }
