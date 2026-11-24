@@ -9,13 +9,15 @@
     publishes as a file. Checks that it tags the commit with the changelog's newest version and publishes that version's
     section as the release notes; that a second run changes nothing; that a run after a tag without a release publishes
     only the release; that it tags nothing when the remote has a newer version tag, publishes no release with release:
-    tag, and does nothing with release: none; that it drops the v when the remote's version tags have none; that a
-    release lookup failing other than with a 404 stops it with gh's message; and that -WhatIf pushes and publishes
-    nothing. Also checks that the version comes from the merged pull request's Release: line: with pre-release:
+    tag, and does nothing with release: none; that it drops the v when the remote's version tags have none, ignoring a
+    tag in other Unicode digits; that a release lookup failing other than with a 404 stops it with gh's message; and
+    that -WhatIf pushes and publishes nothing. Also checks that the version comes from the merged pull request's
+    Release: line: with pre-release:
     untracked and no release heading it tags the merged commit with that version and publishes the [Unreleased] section,
     it does nothing for another commit's pull request or a description without the line, it accepts a line that agrees
-    with the changelog and fails on one that disagrees, and it stops with gh's message when the pull request lookup
-    fails. The stand-in also accepts the call that starts publish.yml. Also checks that it starts publish.yml once, on
+    with the changelog, fails on one that disagrees and reads one in other Unicode digits as none, and it stops with
+    gh's message when the pull request lookup fails. The stand-in also accepts the call that starts publish.yml. Also
+    checks that it starts publish.yml once, on
     the tag, after publishing the release when publish.yml has a workflow_dispatch trigger, starts nothing on a second
     run or without a publish.yml, and fails naming the trigger when publish.yml has none, and fails naming publish.yml
     and the tag when starting it fails. Also checks that with pre-release: untracked the release notes stop at the link
@@ -297,6 +299,13 @@ try {
     $run = Invoke-Publish $work
     Check 'version tags without a v: it tags 1.1.0' ($run.Code -eq 0 -and (Get-OriginTag $work) -ccontains '1.1.0') ((Get-OriginTag $work) -join ', ')
 
+    $work = New-Clone 'no-prefix-other-digits' '- release: tag+release' ($changelog -replace '0\.2\.0', '1.1.0')
+    & git -C $work tag 1.0.0
+    & git -C $work tag "v$([char]0x0661).0.0"
+    & git -C $work push -q origin refs/tags/1.0.0 "refs/tags/v$([char]0x0661).0.0" 2>$null
+    $run = Invoke-Publish $work
+    Check 'version tags without a v beside a tag in other digits: it tags 1.1.0' ($run.Code -eq 0 -and (Get-OriginTag $work) -ccontains '1.1.0' -and -not ((Get-OriginTag $work) -ccontains 'v1.1.0')) $run.Output
+
     $work = New-Clone 'what-if' '- release: tag+release'
     $run = Invoke-Publish $work @('-WhatIf')
     Check '-WhatIf: it pushes and publishes nothing' ($run.Code -eq 0 -and -not (Get-OriginTag $work).Count -and -not (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/releases -f') -and -not (& git -C $work tag --list)) $run.Output
@@ -370,6 +379,13 @@ try {
     Set-Pulls $head $body030
     $run = Invoke-Publish $work
     Check 'a Release: line that disagrees with the changelog: it fails, names both versions and tags nothing' ($run.Code -ne 0 -and $run.Output -match 'v0\.3\.0' -and $run.Output -match '0\.2\.0' -and -not (Get-OriginTag $work).Count) $run.Output
+
+    $work = New-Clone 'line-other-digits' '- release: tag+release'
+    $head = (& git -C $work rev-parse HEAD)
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    Set-Pulls $head "Summary.`n`nRelease: v$([char]0x0661).3.0`nCloses #5"
+    $run = Invoke-Publish $work
+    Check 'a Release: line in other digits is no version: it tags the changelog''s v0.2.0' ($run.Code -eq 0 -and (Get-OriginTag $work) -ccontains 'v0.2.0') $run.Output
 
     $work = New-Clone 'version-file-disagrees' '- release: tag+release' -Files @{ 'version.json' = '{ "version": "0.1.0" }' }
     Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
