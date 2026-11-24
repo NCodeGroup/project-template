@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.113.0] - 2026-11-24
+
+### Changed
+
+- The `.claude/settings.json` a project gets has no `ask` rules: every Bash and PowerShell command runs without asking, one whose text mentions `.env` or `secrets/` too. An ask rule overrides the allow even in Auto mode, so the rules prompted for any command that only named those paths, such as an agent's pre-push `grep` or a commit message, in every cloud session. The `deny` rules stay: the Read tool still can't read `.env` files or the root `secrets/` folder, and both stay gitignored. An update merges the removal into a project's copy and keeps any rule the project added itself ([#490](https://github.com/NCodeGroup/project-template/pull/490)).
+- No change for projects made from the template. This repository's own `.claude/settings.json` drops the same rules ([#490](https://github.com/NCodeGroup/project-template/pull/490)).
+
 ## [0.112.2] - 2026-11-21
 
 ### Changed
@@ -1863,7 +1870,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.112.2...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.113.0...HEAD
+[0.113.0]: https://github.com/NCodeGroup/project-template/compare/v0.112.2...v0.113.0
 [0.112.2]: https://github.com/NCodeGroup/project-template/compare/v0.112.1...v0.112.2
 [0.112.1]: https://github.com/NCodeGroup/project-template/compare/v0.112.0...v0.112.1
 [0.112.0]: https://github.com/NCodeGroup/project-template/compare/v0.111.4...v0.112.0
