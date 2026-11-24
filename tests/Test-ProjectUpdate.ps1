@@ -108,6 +108,8 @@ try {
     Edit-File CLAUDE.md '## Claude Code' '## Claude Code, Edited in the Project'
     # A local edit the target version also makes, and below a deletion it also makes: the update discards and restores nothing there (#432).
     Edit-File .claude/commands/plan-feature.md 'description: "Plan a new feature for the executor model to build"' 'description: "Plan a new feature, updated in v0.2.0"'
+    # A local edit the target version also makes, beside a change of its own to another line: the update keeps it and lists nothing there (#488).
+    Edit-File .claude/commands/plan-tests.md 'description: "Plan tests for risky or untested code"' 'description: "Plan tests, updated in v0.2.0"'
     Remove-Item -LiteralPath .claude/commands/plan-docs.md, .vscode/extensions.json, .claude/commands/analyze-decision.md
     Invoke-Git add -A; Invoke-Git commit -q -m 'Local edits'
     $projectOwnedHashes = (Get-FileHash -LiteralPath AGENTS.md, README.md).Hash -join ','
@@ -128,6 +130,8 @@ try {
     Edit-File "$rules.jinja" '## Conventions' '## Conventions, Updated'
     Edit-File .vscode/extensions.json.jinja '"editorconfig.editorconfig"' '"editorconfig.editorconfig", "example.added-in-v0-2-0"'
     Edit-File .claude/commands/plan-feature.md 'description: "Plan a new feature for the executor model to build"' 'description: "Plan a new feature, updated in v0.2.0"'
+    Edit-File .claude/commands/plan-tests.md 'description: "Plan tests for risky or untested code"' 'description: "Plan tests, updated in v0.2.0"'
+    Edit-File .claude/commands/plan-tests.md 'argument-hint: "[Module, feature or folder to cover]"' 'argument-hint: "[Module, feature or folder to cover, in v0.2.0]"'
     Remove-Item -LiteralPath .claude/commands/analyze-decision.md
     Set-Content -LiteralPath $added 'Added in v0.2.0.' -NoNewline
     # A new version of the update script, which the project's v0.1.0 copy must hand the update over to.
@@ -170,6 +174,7 @@ try {
     Check 'update: edit to a template-owned file discarded and reported' ((-not (Select-String -LiteralPath CLAUDE.md -Pattern 'Edited in the Project' -Quiet)) -and $output -match '(?s)Local edits discarded.*\n  CLAUDE\.md')
     Check 'update: deleted template-owned file restored and reported' ((Test-Path -LiteralPath .claude/commands/plan-docs.md) -and $output -match '(?s)Restored.*\n  \.claude/commands/plan-docs\.md')
     Check 'update: lists neither a local edit the new version also makes nor a deleted file it also deletes (#432)' ((Select-String -LiteralPath .claude/commands/plan-feature.md -SimpleMatch 'Plan a new feature, updated in v0.2.0' -Quiet) -and $output -notmatch '(?m)^  \.claude/commands/(plan-feature|analyze-decision)\.md\r?$') $output.Trim()
+    Check 'update: lists no local edit the new version keeps beside changes of its own to the file (#488)' ((Select-String -LiteralPath .claude/commands/plan-tests.md -SimpleMatch 'Plan tests, updated in v0.2.0' -Quiet) -and (Select-String -LiteralPath .claude/commands/plan-tests.md -SimpleMatch 'folder to cover, in v0.2.0' -Quiet) -and $output -notmatch '(?m)^  \.claude/commands/plan-tests\.md\r?$') $output.Trim()
     Check 'update: file removed from the template deleted' (-not (Test-Path -LiteralPath .claude/commands/analyze-decision.md))
     Check 'update: file added to the template created' ([bool](git ls-files -- $added))
     Check 'update: no conflict markers or .rej files' (-not (git grep -lE '^(<<<<<<<|>>>>>>>) ') -and -not (Get-ChildItem -Recurse -Filter '*.rej' -File))

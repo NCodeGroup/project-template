@@ -45,6 +45,11 @@
       copies    Get-WorkflowEvents and Test-ReleaseAssetWorkflow in Update-Project.ps1 are character for character
                 the ones in tools/Set-RepositoryBaseline.ps1, and Adopt-Project.ps1's copies of those and
                 Get-ImmutableReleaseNote are the ones in Update-Project.ps1.
+      kept-edit Test-EditKept is true when the update keeps every line the project changed in a template-owned file:
+                each line the project adds to the current version's render is in the file the update leaves, such as a
+                pin the new version also bumps beside changes of its own, and so is a deleted line the update also
+                deletes. It is false when a line the project adds is missing from that file, when a line the project
+                deletes is brought back, and for a binary file.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notes-test-<process ID> in the temp
@@ -439,6 +444,46 @@ $immutableNote = & {
     Check 'copies: Adopt-Project.ps1''s Get-WorkflowEvents, Test-ReleaseAssetWorkflow and Get-ImmutableReleaseNote match Update-Project.ps1''s' (-not $adoptDiffer) "differ: [$($adoptDiffer -join ', ')]"
 }
 $immutableNote
+
+# kept-edit: Test-EditKept, run from inside each fixture folder, a Git repository, which is also the project.
+$keptEdit = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Test-EditKept' }, $true)
+    if (-not $fn) { Check 'kept-edit: Update-Project.ps1 defines Test-EditKept' $false; return }
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $keptCases = [ordered]@{
+        'a pin the target also bumps, beside changes of its own' = @{ Current = "a`nuses: x@OLD # v2.5.0`nb`n"; Project = "a`nuses: x@NEW # v2.6.0`nb`n"; Target = "# exception`r`na`r`nuses: x@NEW # v2.6.0`r`nb2`r`n"; Want = $true }
+        'an edit the target lacks'                               = @{ Current = "a`nuses: x@OLD # v2.5.0`nb`n"; Project = "a`nuses: x@NEW # v2.6.0`nb`n"; Target = "a`nuses: x@OLD # v2.5.0`nb2`n"; Want = $false }
+        'a deleted line the target brings back'                  = @{ Current = "a`nb`nc`n"; Project = "a`nc`n"; Target = "a2`nb`nc`n"; Want = $false }
+        'a deleted line the target also deletes'                 = @{ Current = "a`nb`nc`n"; Project = "a`nc`n"; Target = "a2`nc`n"; Want = $true }
+        'a binary file'                                          = @{ Current = "a`0b"; Project = "a`0c"; Target = "a`0c"; Want = $false }
+    }
+    $identity = '-c', 'user.name=template-test', '-c', 'user.email=template-test@example.invalid', '-c', 'commit.gpgsign=false'
+    foreach ($name in $keptCases.Keys) {
+        $case = $keptCases[$name]
+        $folder = Join-Path $Work "kept-edit-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path $folder -Force
+        $file = Join-Path $folder 'f.yml'
+        git -C $folder init -q -b main
+        git -C $folder config core.autocrlf false
+        [IO.File]::WriteAllText($file, $case.Project)
+        git -C $folder add f.yml
+        git -C $folder @identity commit -q -m 'Project'
+        $head = git -C $folder rev-parse HEAD
+        [IO.File]::WriteAllText($file, $case.Current)
+        git -C $folder @identity commit -q -am 'Reset template-owned files'
+        $reset = git -C $folder rev-parse HEAD
+        git -C $folder update-ref HEAD $head
+        [IO.File]::WriteAllText($file, $case.Target)
+        # Set-Variable: only the loaded function reads project, which the script analyzer can't see.
+        Set-Variable -Name project -Value $folder
+        Push-Location $folder
+        try { $got = Test-EditKept 'f.yml' $reset $head }
+        finally { Pop-Location }
+        Check "kept-edit: $name" ($got -eq $case.Want) "got [$got], want [$($case.Want)]"
+    }
+}
+$keptEdit
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "Update notes tests: FAILED ($($failures.Count))"; exit 1 }
