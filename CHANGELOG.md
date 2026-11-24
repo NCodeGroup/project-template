@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.113.2] - 2026-11-24
+
+### Changed
+
+- No change for projects made from the template. `tests/Test-TemplateDotnet.ps1` runs `dotnet csharpier check .` on a fresh render of its `dotnet` and `dotnet-library-apache` cases before anything formats them, so a file the template renders in a form CSharpier rejects fails the template's tests; `-FormatOnly` runs only that check, after the offline installer checks ([#496](https://github.com/NCodeGroup/project-template/issues/496)).
+
+### Fixed
+
+- A new .NET project with `csharp_format` passes its own `build/dod.ps1` at the Format stage with no edit: the template renders `Directory.Build.props` and `Directory.Packages.props` in the form CSharpier 1.4.0 prints them, with no blank line after `<Project>` or before `</Project>` and the empty `<PropertyGroup></PropertyGroup>` and `<ItemGroup></ItemGroup>` each on one line, so `dotnet csharpier check .` no longer fails on both files. `Directory.Packages.props` is merged, so an update brings the change into a project's copy; a project that added its own `PackageVersion` items to that empty `<ItemGroup>` gets a conflict there, which it resolves by keeping its items in that `<ItemGroup>`. `Directory.Build.props` is the project's own, so an update shows the template's change to it to copy into the project's file ([#496](https://github.com/NCodeGroup/project-template/issues/496)).
+
 ## [0.113.1] - 2026-11-23
 
 ### Fixed
@@ -1879,7 +1889,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.113.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.113.2...HEAD
+[0.113.2]: https://github.com/NCodeGroup/project-template/compare/v0.113.1...v0.113.2
 [0.113.1]: https://github.com/NCodeGroup/project-template/compare/v0.113.0...v0.113.1
 [0.113.0]: https://github.com/NCodeGroup/project-template/compare/v0.112.2...v0.113.0
 [0.112.2]: https://github.com/NCodeGroup/project-template/compare/v0.112.1...v0.112.2
