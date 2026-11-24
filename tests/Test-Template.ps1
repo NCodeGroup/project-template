@@ -822,10 +822,9 @@ Check 'New-Project: keeps a hooks path Git already has and warns with the comman
 $secretsIgnored = @(foreach ($p in 'secrets/key.txt', 'src/secrets/x.cs', 'src/Secrets/New.cs') { git -C $listProject check-ignore -q --no-index $p; $LASTEXITCODE }) -join ','
 $secretsDeny = @((Get-Content -LiteralPath (Join-Path $listProject '.claude\settings.json') -Raw | ConvertFrom-Json).permissions.deny)
 Check 'project: only the root secrets/ folder is gitignored and denied to Claude Code' (($secretsIgnored -eq '0,1,1') -and ('Read(/secrets/**)' -in $secretsDeny) -and ('Read(./secrets/**)' -notin $secretsDeny)) "check-ignore exit codes $secretsIgnored; deny $($secretsDeny -join ', ')"
-$secretsAsk = @((Get-Content -LiteralPath (Join-Path $listProject '.claude\settings.json') -Raw | ConvertFrom-Json).permissions.ask)
-$secretsAskCommon = @('secrets/*', '* secrets/*', '* ./secrets*', '* secrets', '* secrets *', '*"secrets/*', '*''secrets/*', '*(secrets/*', '*;secrets/*', '*&secrets/*', '*|secrets/*', '*../secrets*')
-$secretsAskExpected = @('Bash(*.env*)', 'PowerShell(*.env*)') + @($secretsAskCommon | ForEach-Object { "Bash($_)" }) + @(($secretsAskCommon + @('secrets\*', '* secrets\*', '* .\secrets*', '*"secrets\*', '*''secrets\*', '*(secrets\*', '*;secrets\*', '*..\secrets*')) | ForEach-Object { "PowerShell($_)" })
-Check 'project: a Bash or PowerShell command that mentions .env or the root secrets/ folder asks, in quoted, compound and ../ forms too, though every command is allowed, and no ask rule matches a secrets-named source folder' (-not ($secretsAskExpected | Where-Object { $_ -notin $secretsAsk }) -and ('Bash(*secrets*)' -notin $secretsAsk) -and ('PowerShell(*secrets*)' -notin $secretsAsk)) "ask $($secretsAsk -join ', ')"
+$projectPermissions = (Get-Content -LiteralPath (Join-Path $listProject '.claude\settings.json') -Raw | ConvertFrom-Json).permissions
+$projectAsk = @($projectPermissions.ask | Where-Object { $_ })
+Check 'project: every Bash and PowerShell command runs without asking, one that mentions .env or secrets/ too, since an ask rule overrides the allow even in Auto mode' (('Bash' -in $projectPermissions.allow) -and ('PowerShell' -in $projectPermissions.allow) -and -not $projectAsk) "allow $($projectPermissions.allow -join ', '); ask $($projectAsk -join ', ')"
 
 $workflow = Join-Path $repoRoot 'workflow'
 $fresh = Join-Path $Work 'generated'
