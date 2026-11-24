@@ -7,6 +7,7 @@
     NuGet. Then, for the copy of each function in .template\Update-Project.ps1 and the one in tools\adopt\Adoption.psm1, checks the
     tag and assembly version that Get-AssemblyVersionFloor returns, the workflows that Get-NuGetPublisher names, and the
     version.json that Update-VersionFile fills (the patch after the newest tag and the assembly version with its precision),
+    taking no version from a tag or an AssemblyVersion in other Unicode digits,
     whether Test-PackageValidationBaseline finds a package validation baseline, and the C# files that
     Get-CSharpFileWithoutHeader names for lacking the .editorconfig header.
     Prints PASS or FAIL per check and exits 1 on any failure.
@@ -58,7 +59,8 @@ $untagged = Join-Path $Work 'untagged'
 $noWorkflows = Join-Path $Work 'no-workflows'
 $onlyPublish = Join-Path $Work 'only-publish'
 $others = Join-Path $Work 'others'
-foreach ($folder in $floor, $newMajor, $ownVersion, $untagged, $noWorkflows, $onlyPublish, $others) {
+$otherDigits = Join-Path $Work 'other-digits'
+foreach ($folder in $floor, $newMajor, $ownVersion, $untagged, $noWorkflows, $onlyPublish, $others, $otherDigits) {
     New-Item -ItemType Directory -Force $folder | Out-Null
 }
 
@@ -103,6 +105,18 @@ try {
 }
 finally { Pop-Location }
 
+Push-Location $otherDigits
+try {
+    Invoke-Git init -q -b main
+    Write-Text (Join-Path $otherDigits 'Directory.Build.props') "<Project><PropertyGroup><AssemblyVersion>$([char]0x0665).9.0.0</AssemblyVersion></PropertyGroup></Project>"
+    Save-Commit 'Release v5.3.0' 'v5.3.0'
+    Write-Text (Join-Path $otherDigits 'Directory.Build.props') $plainProps
+    Write-Text (Join-Path $otherDigits 'build/ProjectTemplate.props') $pinnedProps
+    Save-Commit 'Release v5.4.0' 'v5.4.0'
+    Invoke-Git tag "v$([char]0x0665).9.0"
+}
+finally { Pop-Location }
+
 Write-Text (Join-Path $onlyPublish '.github/workflows/publish.yml') $pushed
 Write-Text (Join-Path $others '.github/workflows/publish.yml') $pushed
 Write-Text (Join-Path $others '.github/workflows/release.yml') "- run: dotnet nuget push out/*.nupkg`n"
@@ -127,6 +141,7 @@ $floorCases = [ordered]@{
     'a new major with the pin from its first tag gives nothing' = @{ Folder = $newMajor; Files = @{}; Expect = $null }
     'a tag whose Directory.Build.props set the version gives nothing' = @{ Folder = $ownVersion; Files = @{}; Expect = $null }
     'no tag gives nothing' = @{ Folder = $untagged; Files = @{}; Expect = $null }
+    'tags and an AssemblyVersion in other digits are no versions' = @{ Folder = $otherDigits; Files = @{}; Expect = @{ Tag = 'v5.3.0'; AssemblyVersion = '5.3.0.0'; Major = 5 } }
 }
 $versionText = [IO.File]::ReadAllText((Join-Path $repoRoot 'template/version.json'))
 $precisionMajor = '"assemblyVersion": { "precision": "major" }'
@@ -136,6 +151,8 @@ $versionCases = [ordered]@{
     'a new major keeps the major precision' = @{ Folder = $newMajor; Write = $true; Files = @{}; Expect = @{ Version = '6.0.1'; Tag = 'v6.0.0'; AssemblyVersion = $null; Precision = $null }; Keeps = @($precisionMajor) }
     'no tag leaves the file unchanged' = @{ Folder = $untagged; Write = $true; Files = @{}; Expect = @{ Version = $null; Tag = $null; AssemblyVersion = $null; Precision = $null }; Keeps = @($versionText) }
     'no version.json gives nothing' = @{ Folder = $untagged; Write = $false; Files = @{}; Expect = $null; Keeps = @() }
+    'a tag in other digits is no version' = @{ Folder = $otherDigits; Write = $true; Files = @{}; Expect = @{ Version = '5.4.1'; Tag = 'v5.4.0'; AssemblyVersion = '5.3'; Precision = 'minor' }; Keeps = @() }
+    'an AssemblyVersion in other digits is no version' = @{ Folder = $otherDigits; Write = $true; Files = @{ 'Directory.Build.props' = "<Project><PropertyGroup><AssemblyVersion>$([char]0x0665).3.2.0</AssemblyVersion></PropertyGroup></Project>" }; Expect = @{ Version = '5.4.1'; Tag = 'v5.4.0'; AssemblyVersion = $null; Precision = $null }; Keeps = @($precisionMajor) }
 }
 $publisherCases = [ordered]@{
     'no workflows folder gives nothing' = @{ Folder = $noWorkflows; Expect = '' }
