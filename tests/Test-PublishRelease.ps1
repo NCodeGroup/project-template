@@ -24,7 +24,11 @@
     policy and does nothing else, and that tag-release.yml is named Tag and publish release, reads the policy in a
     read-only job and runs its write job only for release: tag or tag+release. Also checks that a merged pull request
     without a Release: line, once the changelog's newest section is tagged and published, tags nothing, publishes
-    nothing and starts nothing. Prints PASS or FAIL per check and exits 1 on any failure.
+    nothing and starts nothing. Also runs the tag and run-id checks of the template's publish.yml,
+    release-provenance.yml and raise-baseline.yml in a pwsh process of their own: each accepts v1.2.3 and v1.2.3-rc.1,
+    which raise-baseline.yml reads as 1.2.3 and as a prerelease, and refuses a tag with other Unicode digits, a final
+    line break, a capital V or the Kelvin sign, and release-provenance.yml accepts only a run id of ASCII digits.
+    Prints PASS or FAIL per check and exits 1 on any failure.
 
 .EXAMPLE
     .\tests\Test-PublishRelease.ps1
@@ -150,7 +154,82 @@ function Set-Pulls([string]$Sha, [string]$Body) {
 function Get-OriginTag([string]$Work) { @(& git -C $Work ls-remote --tags --refs origin | ForEach-Object { ($_ -split "`t")[1] -replace '^refs/tags/' }) }
 function Get-Calls { $log = Join-Path $releases 'calls.log'; if (Test-Path -LiteralPath $log) { @(Get-Content -LiteralPath $log) } else { @() } }
 
+function Invoke-StepLine([string[]]$Lines, [hashtable]$Variables) {
+    $id = [guid]::NewGuid().ToString('N')
+    $outputFile = Join-Path $temp "step-output-$id"
+    $summaryFile = Join-Path $temp "step-summary-$id"
+    New-Item -ItemType File -Path $outputFile, $summaryFile | Out-Null
+    $set = @{} + $Variables
+    $set['GITHUB_OUTPUT'] = $outputFile
+    $set['GITHUB_STEP_SUMMARY'] = $summaryFile
+    $saved = @{}
+    foreach ($name in $set.Keys) { $saved[$name] = [Environment]::GetEnvironmentVariable($name) }
+    try {
+        foreach ($name in $set.Keys) { [Environment]::SetEnvironmentVariable($name, $set[$name]) }
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(($Lines -join [char]10)))
+        $output = & pwsh -NoProfile -NonInteractive -EncodedCommand $encoded 2>&1
+        [pscustomobject]@{
+            Code         = $LASTEXITCODE
+            Output       = (($output | ForEach-Object { "$_" }) -join "`n")
+            GitHubOutput = "$(Get-Content -Raw -LiteralPath $outputFile)"
+            Summary      = "$(Get-Content -Raw -LiteralPath $summaryFile)"
+        }
+    } finally {
+        foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) }
+    }
+}
+
 try {
+    $workflowDir = Join-Path $repoRoot 'template/.github/workflows'
+    function Get-WorkflowLine([string]$File, [string[]]$Starts) {
+        @(Get-Content -LiteralPath (Join-Path $workflowDir $File) | ForEach-Object { $_.Trim() } | Where-Object { $line = $_; $Starts | Where-Object { $line.StartsWith($_) } })
+    }
+    $publishTag = Get-WorkflowLine 'publish.yml' 'if ($env:TAG -'
+    $provenanceTag = Get-WorkflowLine 'release-provenance.yml' 'if ($env:TAG -'
+    $provenanceRun = Get-WorkflowLine 'release-provenance.yml' 'if ($env:RUN_ID -'
+    $baselineTag = Get-WorkflowLine 'raise-baseline.yml' 'if ($env:TAG -', 'throw "The tag '''
+    Check 'tag check: the workflows have the lines this test runs' ($publishTag.Count -eq 1 -and $provenanceTag.Count -eq 1 -and $provenanceRun.Count -eq 1 -and $baselineTag.Count -eq 3) "$($publishTag.Count), $($provenanceTag.Count), $($provenanceRun.Count), $($baselineTag.Count)"
+
+    $tagCases = [ordered]@{
+        'v1.2.3'             = 'v1.2.3'
+        'v1.2.3-rc.1'        = 'v1.2.3-rc.1'
+        'other digits'       = "v$([char]0x0661).2.3"
+        'a final line break' = "v1.2.3$([char]10)"
+        'a capital V'        = 'V1.2.3'
+        'the Kelvin sign'    = "v1.2.3-$([char]0x212A)"
+    }
+    foreach ($file in 'publish.yml', 'release-provenance.yml') {
+        $lines = if ($file -eq 'publish.yml') { $publishTag } else { $provenanceTag }
+        $wrong = foreach ($case in $tagCases.Keys) {
+            $result = Invoke-StepLine ($lines + '"matched=$($Matches[1])"') @{ TAG = $tagCases[$case] }
+            $ok = switch ($case) {
+                'v1.2.3' { $result.Code -eq 0 -and ($result.Output -split "`n") -contains 'matched=1.2.3' }
+                'v1.2.3-rc.1' { $result.Code -eq 0 -and ($result.Output -split "`n") -contains 'matched=1.2.3-rc.1' }
+                default { $result.Code -ne 0 }
+            }
+            if (-not $ok) { $case }
+        }
+        Check "tag check: $file accepts v1.2.3 and v1.2.3-rc.1 and refuses other digits, a final line break, a capital V and the Kelvin sign" (-not $wrong) (@($wrong) -join ', ')
+    }
+
+    $runCases = [ordered]@{ '4242' = $true; "4$([char]0x0662)" = $false; "4242$([char]10)" = $false; '42a' = $false }
+    $wrong = foreach ($id in $runCases.Keys) {
+        $result = Invoke-StepLine $provenanceRun @{ RUN_ID = $id }
+        if (($result.Code -eq 0) -ne $runCases[$id]) { "run id $($id.Length) characters: code $($result.Code)" }
+    }
+    Check 'tag check: release-provenance.yml accepts a run id of ASCII digits only' (-not $wrong) (@($wrong) -join ', ')
+
+    $wrong = foreach ($case in $tagCases.Keys) {
+        $result = Invoke-StepLine $baselineTag @{ TAG = $tagCases[$case] }
+        $ok = switch ($case) {
+            'v1.2.3' { $result.Code -eq 0 -and $result.GitHubOutput.Trim() -eq 'version=1.2.3' }
+            'v1.2.3-rc.1' { $result.Code -eq 0 -and -not $result.GitHubOutput.Trim() -and $result.Summary.Contains('is a prerelease') }
+            default { $result.Code -ne 0 }
+        }
+        if (-not $ok) { $case }
+    }
+    Check 'tag check: raise-baseline.yml reads v1.2.3 as 1.2.3, calls v1.2.3-rc.1 a prerelease and refuses the rest' (-not $wrong) (@($wrong) -join ', ')
+
     $work = New-Clone 'full' '- release: tag+release'
     $head = (& git -C $work rev-parse HEAD)
     $run = Invoke-Publish $work
