@@ -46,10 +46,12 @@
                 the ones in tools/Set-RepositoryBaseline.ps1, and Adopt-Project.ps1's copies of those and
                 Get-ImmutableReleaseNote are the ones in Update-Project.ps1.
       kept-edit Test-EditKept is true when the update keeps every line the project changed in a template-owned file:
-                each line the project adds to the current version's render is in the file the update leaves, such as a
-                pin the new version also bumps beside changes of its own, and so is a deleted line the update also
-                deletes. It is false when a line the project adds is missing from that file, when a line the project
-                deletes is brought back, and for a binary file.
+                each line the project adds to the current version's render is in the file the update leaves at least
+                as often as in the project's copy, such as a pin the new version also bumps beside changes of its own,
+                and a line the project deletes is there no more often than in that copy, such as a deleted line the
+                update also deletes. It is false when an added line is there fewer times, such as an added } or blank
+                line the update drops that also appears elsewhere, when a deleted line is brought back, for a binary
+                file, and when the project's copy changes no line.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notes-test-<process ID> in the temp
@@ -457,6 +459,11 @@ $keptEdit = & {
         'a deleted line the target brings back'                  = @{ Current = "a`nb`nc`n"; Project = "a`nc`n"; Target = "a2`nb`nc`n"; Want = $false }
         'a deleted line the target also deletes'                 = @{ Current = "a`nb`nc`n"; Project = "a`nc`n"; Target = "a2`nc`n"; Want = $true }
         'a binary file'                                          = @{ Current = "a`0b"; Project = "a`0c"; Target = "a`0c"; Want = $false }
+        'an added copy of a line the target has once'            = @{ Current = "a`n}`nb`n"; Project = "a`n}`n}`nb`n"; Target = "a`n}`nb2`n"; Want = $false }
+        'an added blank line the target drops'                   = @{ Current = "a`n`nb`n"; Project = "a`n`n`nb`n"; Target = "a`n`nb2`n"; Want = $false }
+        'an added copy of a line the target keeps both of'       = @{ Current = "a`n}`nb`n"; Project = "a`n}`n}`nb`n"; Target = "a`n}`n}`nb2`n"; Want = $true }
+        'a deleted copy of a line the target has elsewhere'      = @{ Current = "a`n}`n}`nb`n"; Project = "a`n}`nb`n"; Target = "a`n}`nb2`n"; Want = $true }
+        'no changed line'                                        = @{ Current = "a`nb`n"; Project = "a`nb`n"; Target = "a`nb2`n"; Want = $false }
     }
     $identity = '-c', 'user.name=template-test', '-c', 'user.email=template-test@example.invalid', '-c', 'commit.gpgsign=false'
     foreach ($name in $keptCases.Keys) {
@@ -471,7 +478,7 @@ $keptEdit = & {
         git -C $folder @identity commit -q -m 'Project'
         $head = git -C $folder rev-parse HEAD
         [IO.File]::WriteAllText($file, $case.Current)
-        git -C $folder @identity commit -q -am 'Reset template-owned files'
+        git -C $folder @identity commit -q --allow-empty -am 'Reset template-owned files'
         $reset = git -C $folder rev-parse HEAD
         git -C $folder update-ref HEAD $head
         [IO.File]::WriteAllText($file, $case.Target)
