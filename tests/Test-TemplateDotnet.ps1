@@ -3,7 +3,7 @@
     Render the template's .NET cases and check that the .NET layer builds, tests and packs.
 
 .DESCRIPTION
-    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
+    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), checks that each fresh render passes dotnet csharpier check . before anything formats it, runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
 
 .EXAMPLE
     .\tests\Test-TemplateDotnet.ps1
@@ -14,6 +14,9 @@
 .PARAMETER InstallerOnly
     Run only the installer checks, offline: render nothing and build nothing.
 
+.PARAMETER FormatOnly
+    Run the installer checks, offline, then render the two cases and run only the check that each fresh render passes CSharpier's check: build nothing.
+
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-dotnet-test-<process ID> in the temp folder, the
     run's own: deleted when every check passes, kept when one fails.
@@ -22,6 +25,7 @@
 param(
     [switch]$SkipDotnetBuild,
     [switch]$InstallerOnly,
+    [switch]$FormatOnly,
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-dotnet-test-$PID")
 )
 $ErrorActionPreference = 'Stop'
@@ -229,6 +233,26 @@ try {
     if ($LASTEXITCODE) { throw "copier copy for dotnet-library-apache exited with code ${LASTEXITCODE}: $($output.Trim())" }
 }
 finally { $env:COPIER_CACHE_DIR = $copierCache }
+# Each fresh render passes CSharpier's check before anything formats it: the template renders every file CSharpier checks in the form CSharpier prints it. CSharpier checks exactly Directory.Build.props and Directory.Packages.props, because .csharpierignore skips the template-owned build/ProjectTemplate.props and nuget.config, so a file that drops out of the check fails it.
+foreach ($case in 'dotnet', 'dotnet-library-apache') {
+    Push-Location (Join-Path $Work $case)
+    try {
+        $restoreOutput = dotnet tool restore 2>&1 | Out-String
+        if ($LASTEXITCODE) { throw "dotnet tool restore for ${case} exited with code ${LASTEXITCODE}: $($restoreOutput.Trim())" }
+        $formatOutput = dotnet csharpier check . 2>&1 | Out-String
+        $formatExit = $LASTEXITCODE
+    }
+    finally { Pop-Location }
+    $checked = if ($formatOutput -match 'Checked (\d+) files') { [int]$Matches[1] } else { 0 }
+    Check "${case}: a fresh render passes CSharpier's check before anything formats it" ($formatExit -eq 0 -and $checked -eq 2) $formatOutput
+}
+if ($FormatOnly) {
+    ''
+    if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
+    if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
+    'Template .NET tests: PASSED'
+    exit 0
+}
 Push-Location (Join-Path $Work 'dotnet')
 try {
     dotnet new classlib -o src/Demo | Out-Null
