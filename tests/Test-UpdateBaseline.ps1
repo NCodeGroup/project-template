@@ -6,8 +6,9 @@
     Builds one fixture folder per case and runs the script with -SkipNugetCheck: the file edits, the changelog entry and
     the earlier baseline entries it replaces, the baseline suppressions it removes from CompatibilitySuppressions.xml at
     a new major version, the pull request description raise-baseline.yml writes from them, run in a Git fixture, the
-    cases that change nothing, a custom changelog file named by AGENTS.md, CRLF and byte order mark preservation, and a
-    prerelease version. Prints PASS or FAIL per check and exits 1 on any failure.
+    cases that change nothing, a custom changelog file named by AGENTS.md, CRLF and byte order mark preservation,
+    a prerelease version, a version in other Unicode digits or with a final line break, and a changelog whose only
+    release heading is in other digits. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-baseline-test-<process ID> in the
@@ -204,6 +205,12 @@ $out = Invoke-Baseline $folder
 $ok = $out.Count -eq 1 -and $out[0] -eq '5.0.2' -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.2') -and (Read-Text $folder 'CHANGELOG.md') -ceq $noRelease
 Check 'Update-Baseline: a changelog without a release section is left alone' $ok "Output: $($out -join ', ')"
 
+$otherHeading = "# Changelog`n`n## [Unreleased]`n`n### Added`n`n- A thing.`n`n## [$([char]0x0665).0.1] - 2026-11-14`n`n### Added`n`n- Old.`n"
+$folder = New-Case 'other-digits-heading' @{ $csproj = Get-Project '5.0.0'; 'CHANGELOG.md' = $otherHeading }
+$out = Invoke-Baseline $folder
+$ok = $out.Count -eq 1 -and $out[0] -eq '5.0.2' -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.2') -and (Read-Text $folder 'CHANGELOG.md') -ceq $otherHeading
+Check 'Update-Baseline: a changelog whose only release heading is in other digits is left alone' $ok "Output: $($out -join ', ')"
+
 $shipped = "`n## [5.0.1] - 2026-11-14`n`n### Changed`n`n$older`n`n[unreleased]: https://example.test/compare/v5.0.1...HEAD`n"
 $folder = New-Case 'release-section-entry' @{ $csproj = Get-Project '5.0.0'; 'CHANGELOG.md' = "$changelogHead`n$shipped" }
 $out = Invoke-Baseline $folder
@@ -231,6 +238,13 @@ $folder = New-Case 'prerelease' @{ $csproj = Get-Project '5.0.0'; 'CHANGELOG.md'
 try { Invoke-Baseline $folder '5.0.2-rc.1' | Out-Null; $threw = $false } catch { $threw = $true }
 $ok = $threw -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.0') -and (Read-Text $folder 'CHANGELOG.md') -ceq $changelog
 Check 'Update-Baseline: a prerelease version throws and changes nothing' $ok "Threw: $threw"
+
+foreach ($case in @{ Name = 'a version in other digits'; Version = "v$([char]0x0665).0.2" }, @{ Name = 'a version with a final line break'; Version = "v5.0.2`n" }) {
+    $folder = New-Case "version-$($case.Name -replace ' ', '-')" @{ $csproj = Get-Project '5.0.0'; 'CHANGELOG.md' = $changelog }
+    try { Invoke-Baseline $folder $case.Version | Out-Null; $message = '' } catch { $message = $_.Exception.Message }
+    $ok = $message.Contains("isn't a stable version") -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.0') -and (Read-Text $folder 'CHANGELOG.md') -ceq $changelog
+    Check "Update-Baseline: $($case.Name) throws and changes nothing" $ok "Message: $message"
+}
 
 # The wait: stand-ins for the script's network calls and sleeps, seen only by the script run here.
 $stubState = @{ Requests = $null; Sleeps = $null; Answers = $null }
