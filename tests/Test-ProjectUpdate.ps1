@@ -108,7 +108,8 @@ try {
     Edit-File CLAUDE.md '## Claude Code' '## Claude Code, Edited in the Project'
     # A local edit the target version also makes, and below a deletion it also makes: the update discards and restores nothing there (#432).
     Edit-File .claude/commands/plan-feature.md 'description: "Plan a new feature for the executor model to build"' 'description: "Plan a new feature, updated in v0.2.0"'
-    # A local edit the target version also makes, beside a change of its own to another line: the update keeps it and lists nothing there (#488).
+    # A local edit the target version also makes, in a file whose other lines the target version also changes: the
+    # update keeps it and lists nothing there (#488).
     Edit-File .claude/commands/plan-tests.md 'description: "Plan tests for risky or untested code"' 'description: "Plan tests, updated in v0.2.0"'
     Remove-Item -LiteralPath .claude/commands/plan-docs.md, .vscode/extensions.json, .claude/commands/analyze-decision.md
     Invoke-Git add -A; Invoke-Git commit -q -m 'Local edits'
