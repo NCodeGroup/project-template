@@ -598,23 +598,34 @@ function Get-RewrittenFile([string[]]$Files, [string]$Folder) {
     }
 }
 
-# True when the update keeps every line the project changed in a template-owned file (#488): each line its copy at $Head adds to the
-# current version's render in $ResetCommit is in the file the update left, and no line it removes is. A binary file, or a change with no changed line, isn't kept.
+# True when the update keeps every line the project changed in a template-owned file (#488): each line its copy at
+# $Head adds to the current version's render in $ResetCommit is in the file the update left at least as often as in
+# that copy, and each line it removes is there no more often. Lines are matched by text and count, not position. A
+# binary file, or a change with no changed line, isn't kept.
 function Test-EditKept([string]$File, [string]$ResetCommit, [string]$Head) {
     $diff = @(git -c core.quotePath=false diff --no-color --no-ext-diff --no-renames -U0 $ResetCommit $Head -- $File)
     if ($LASTEXITCODE) { return $false }
     $path = Join-Path $project $File
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
-    $now = [Collections.Generic.HashSet[string]]::new([string[]]@([IO.File]::ReadAllText($path) -split '\r?\n'))
+    $added = [Collections.Generic.HashSet[string]]::new()
+    $removed = [Collections.Generic.HashSet[string]]::new()
     $inHunk = $false
-    $changed = 0
     foreach ($line in $diff) {
         if ($line.StartsWith('@@')) { $inHunk = $true; continue }
         if (-not $inHunk) { if ($line.StartsWith('Binary files ')) { return $false }; continue }
-        if ($line.StartsWith('+')) { $changed++; if (-not $now.Contains($line.Substring(1).TrimEnd("`r"))) { return $false } }
-        elseif ($line.StartsWith('-')) { $changed++; if ($now.Contains($line.Substring(1).TrimEnd("`r"))) { return $false } }
+        if ($line.StartsWith('+')) { $null = $added.Add($line.Substring(1).TrimEnd("`r")) }
+        elseif ($line.StartsWith('-')) { $null = $removed.Add($line.Substring(1).TrimEnd("`r")) }
     }
-    $changed -gt 0
+    if (-not ($added.Count + $removed.Count)) { return $false }
+    $copy = @(git show "${Head}:$File")
+    if ($LASTEXITCODE) { return $false }
+    $was = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
+    foreach ($line in $copy) { $was[$line.TrimEnd("`r")]++ }
+    $now = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
+    foreach ($line in @(Get-Content -LiteralPath $path)) { $now[$line]++ }
+    foreach ($text in $added) { if ([int]$now[$text] -lt [int]$was[$text]) { return $false } }
+    foreach ($text in $removed) { if ([int]$now[$text] -gt [int]$was[$text]) { return $false } }
+    $true
 }
 
 # How to run the template's .githooks in this clone: HooksPath when core.hooksPath can point at it, otherwise the
