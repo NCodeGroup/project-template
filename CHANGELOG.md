@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.113.1] - 2026-11-23
+
+### Fixed
+
+- A .NET library's `release-provenance.yml` and `raise-baseline.yml`, and the `publish.yml` a new library gets, accept a release tag only when the whole tag is a lowercase `v` and a version in ASCII digits, such as `v1.2.3` or `v1.2.3-rc.1`, and `release-provenance.yml` a run id only of ASCII digits: their checks match with `[0-9]`, `\z` and the case-sensitive `-cmatch` and `-cnotmatch`, so a tag with other Unicode digits, a final line break, a capital `V` or a character such as the Kelvin sign, which case folding turns into `k`, no longer passes. `publish.yml` is the project's own, so an update shows the template's change to it to copy into the project's file ([#492](https://github.com/NCodeGroup/project-template/issues/492)).
+- The decision index a project gets lists every table in number order, and `/best-practices`' record, which applies to every project and was numbered 0153, is ADR-0037, in the 0001–0099 range ADR-0012 gives such records: `docs/decisions/project-template/0037-best-practices-reports-scorecard-and-answers-for-the-default-branch.md`, listed after ADR-0036, which ADR-0020, ADR-0025 and ADR-0035 cite by that number. A .NET library's Libraries table lists ADR-0135, ADR-0137, ADR-0139 and ADR-0151 among the others by number. A project file that cites ADR-0153 cites ADR-0037 instead ([#489](https://github.com/NCodeGroup/project-template/issues/489), [ADR-0037](template/docs/decisions/project-template/0037-best-practices-reports-scorecard-and-answers-for-the-default-branch.md.jinja)).
+- `.template/Update-Project.ps1` leaves a template-owned file out of "Local edits discarded" when the update keeps every line the project changed in it: each line the project's copy adds to the current version's file is in the target version's, and no line it removes comes back, such as a Dependabot bump of an action pin that the template made too, beside changes of its own to the same workflow. Such a file was listed whenever the target changed any other line of it, telling the project to move an edit it hadn't lost ([#488](https://github.com/NCodeGroup/project-template/issues/488)).
+
 ## [0.113.0] - 2026-11-24
 
 ### Changed
@@ -1870,7 +1878,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.113.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.113.1...HEAD
+[0.113.1]: https://github.com/NCodeGroup/project-template/compare/v0.113.0...v0.113.1
 [0.113.0]: https://github.com/NCodeGroup/project-template/compare/v0.112.2...v0.113.0
 [0.112.2]: https://github.com/NCodeGroup/project-template/compare/v0.112.1...v0.112.2
 [0.112.1]: https://github.com/NCodeGroup/project-template/compare/v0.112.0...v0.112.1
