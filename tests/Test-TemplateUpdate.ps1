@@ -11,7 +11,7 @@
     release notes, leaves it alone when nothing changed, edits and retitles that same issue, closes it once the project
     is current, and ignores tags that aren't versions. Then checks the version from _commit, an existing label, the
     oldest of several open notices, the old address and Copier's shorthands (rewritten to the fixture with Git's
-    insteadOf, so nothing reaches the network), a changelog too long for one issue, one with no section for the new
+    insteadOf, so nothing reaches the network), a template folder that isn't here, a changelog too long for one issue, one with no section for the new
     version, a tag without CHANGELOG.md, a section that brings the body to exactly the 60,000-character limit and one a
     character longer, a project ahead of the newest tag, and the runs that fail: an unreadable template (with Git's
     message), no _src_path, no version tags, an unreadable or empty project version, and a failing gh call.
@@ -254,6 +254,15 @@ try {
     Check 'old address: reads the template at its new address' ($r.ExitCode -eq 0 -and $r.Issues.Count -eq 1 -and $body.Contains('The newest version is v0.5.0, 4 versions later.')) "$($r.Output) $($r.Calls -join ' | ')"
     Check 'long changelog: the body fits in an issue and keeps the newest sections' ($body.Length -lt 65536 -and $body.Contains('## [0.5.0]') -and $body.Contains('## [0.4.0]') -and -not $body.Contains('## [0.3.0]') -and -not $body.Contains('## [0.2.0]')) "length $($body.Length)"
     Check 'long changelog: says how many sections are left out and links to CHANGELOG.md at the tag' ($body.TrimEnd().EndsWith("The 2 older section(s) don't fit in an issue; read them in [CHANGELOG.md](https://github.com/NCodeGroup/project-template/blob/v0.5.0/CHANGELOG.md).")) $body.Substring([Math]::Max(0, $body.Length - 300))
+
+    # 10a. A template folder that isn't here: the template is read at its address, which Git serves from the fixture.
+    Set-Answer "_commit: v0.1.0`n_src_path: $(Join-Path $Work 'missing-template')"
+    Set-ProjectVersion 'v0.4.0'
+    Set-GhState '{ "issues": [], "labels": ["bug"] }'
+    $r = Invoke-Notice
+    $body = "$((@($r.Issues) | Select-Object -First 1).body)"
+    Check 'missing local address: reads the template at https://github.com/NCodeGroup/project-template.git and says so' ($r.ExitCode -eq 0 -and $r.Issues.Count -eq 1 -and $body.Contains('The newest version is v0.5.0, one version later.') -and $r.Flat.Contains("a folder that isn't here, so the template is read at https://github.com/NCodeGroup/project-template.git")) "$($r.Output) $($r.Calls -join ' | ')"
+    Set-Answer "_commit: v0.1.0`n_src_path: gh:polewskm/project-template"
 
     # 11. A changelog with no section for the new version: the body links to it.
     Add-TemplateVersion '0.6.0' @('0.4.0', '0.3.0', '0.2.0', '0.1.0')
