@@ -309,12 +309,26 @@ try {
     finally { [IO.File]::Delete((Join-Path (Get-Location) 'src/Demo/Forgiving.cs')) }
     Check 'dotnet: the null-forgiving operator fails the build' ($forgivingOutput -match 'Forgiving\.cs\(\d+,\d+\): error NX000\d') (($forgivingOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ')
 
+    # An xUnit v3 project on VSTest, as .github/instructions/csharp-tests.instructions.md says: xunit.v3.mtp-off with xunit.runner.visualstudio and Microsoft.NET.Test.Sdk.
+    $tfm = [regex]::Match((Get-Content -Raw -LiteralPath src/Demo/Demo.csproj), '<TargetFramework>([^<]+)</TargetFramework>').Groups[1].Value
+    New-Item -ItemType Directory -Force tests/Demo.V3.Tests | Out-Null
+    [IO.File]::WriteAllText((Join-Path (Get-Location) 'tests/Demo.V3.Tests/Demo.V3.Tests.csproj'), "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>$tfm</TargetFramework>`n    <OutputType>Exe</OutputType>`n  </PropertyGroup>`n  <ItemGroup>`n    <PackageReference Include=""xunit.v3.mtp-off"" />`n    <PackageReference Include=""xunit.runner.visualstudio"" />`n    <PackageReference Include=""Microsoft.NET.Test.Sdk"" />`n  </ItemGroup>`n  <ItemGroup>`n    <ProjectReference Include=""../../src/Demo/Demo.csproj"" />`n  </ItemGroup>`n</Project>`n")
+    [IO.File]::WriteAllText((Join-Path (Get-Location) 'tests/Demo.V3.Tests/V3Tests.cs'), "namespace Demo.V3.Tests;`n`npublic class V3Tests`n{`n    [Xunit.Fact]`n    public void Passes_WhenRun_Succeeds() => Xunit.Assert.True(true);`n}`n")
+    Add-FileHeader (Join-Path (Get-Location) 'tests/Demo.V3.Tests/V3Tests.cs')
+    $props = [IO.File]::ReadAllText($propsPath) `
+        -replace '(<PackageVersion Include="Microsoft\.NET\.Test\.Sdk" Version=")[^"]*', '${1}18.12.0' `
+        -replace '(<PackageVersion Include="xunit\.runner\.visualstudio" Version=")[^"]*', '${1}4.0.1' `
+        -replace '(?m)^(\s*<PackageVersion Include="xunit" Version="[^"]*" />)\r?$', "`$1`n    <PackageVersion Include=""xunit.v3.mtp-off"" Version=""4.0.3"" />"
+    [IO.File]::WriteAllText($propsPath, $props)
+    dotnet sln add tests/Demo.V3.Tests | Out-Null
+
     # The scaffolded and test-written files are not yet formatted, and the Format stage would fail on them.
     dotnet tool restore | Out-Null
     dotnet csharpier format . | Out-Null
     $dodOutput = pwsh -NoProfile -File build/dod.ps1 2>&1 | Out-String
     Check 'dotnet: build/dod.ps1 passes and says so' ($LASTEXITCODE -eq 0 -and $dodOutput.TrimEnd().EndsWith('Definition of Done: PASSED') -and $dodOutput.Contains('== Decisions') -and $dodOutput.Contains('== Test') -and -not $dodOutput.Contains('== Pack')) $dodOutput
     Check 'dotnet: build/dod.ps1 checks the coverage of the tests' ($dodOutput.Contains('== Coverage')) $dodOutput
+    Check 'dotnet: an xUnit v3 test project on xunit.v3.mtp-off, with xunit.runner.visualstudio and Microsoft.NET.Test.Sdk, builds under the banned APIs and runs in build/dod.ps1' ($dodOutput.TrimEnd().EndsWith('Definition of Done: PASSED') -and $dodOutput -match 'Passed!.*Demo\.V3\.Tests\.dll') $dodOutput
     $filterOutput = pwsh -NoProfile -File build/dod.ps1 -Fast -Filter 'FullyQualifiedName~UnitTest1' 2>&1 | Out-String
     Check 'dotnet: build/dod.ps1 -Filter runs the tests it matches and skips the coverage stage' ($LASTEXITCODE -eq 0 -and $filterOutput.Contains('== Test') -and -not $filterOutput.Contains('== Coverage')) $filterOutput
 
