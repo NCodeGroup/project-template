@@ -105,6 +105,10 @@ $cases = [ordered]@{
         Files  = @{ 'src/A/obj/Generated.cs' = @{ Text = 'class G { }'; Bom = $true } }
         Expect = @()
     }
+    'skipped-claude' = @{
+        Files  = @{ '.claude/worktrees/wt/src/A/Class.cs' = @{ Text = 'class A { }'; Bom = $true }; '.claude/worktrees/wt/A.csproj' = $project }
+        Expect = @()
+    }
 }
 
 $updateAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
