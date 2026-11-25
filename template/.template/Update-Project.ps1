@@ -18,6 +18,9 @@
                       reset first, discarding a local edit, and listed as refreshed.
                       A file the update leaves as the project had it, such as an edit the new version also
                       makes or a deleted file it also deletes, is listed under none of these.
+                      An action pin, a uses: <action>@<sha> # <version> line, that the project moved past
+                      the new version's pin of that action in the same file, such as a Dependabot bump the
+                      template hasn't made yet, is kept and listed as kept, so an update never downgrades it.
       Merged          Files whose tools can't include a second file (copier.yml's _merged_files). The template's
                       changes are merged with the project's edits, like a Git merge; the same lines changed on
                       both sides conflict. An adopted project's own lines at the end of .gitignore,
