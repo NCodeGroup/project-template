@@ -244,6 +244,9 @@ New-GitHubVariant 'notags' @{
     '.copier-answers.yml' = $answers.Replace($localSource, "_src_path: $(Join-Path $Work 'untagged')")
 }
 New-GitHubVariant 'badsource' @{
+    '.copier-answers.yml' = $answers.Replace($localSource, "_src_path: file:///$((Join-Path $Work 'missing-template') -replace '\\', '/')")
+}
+New-GitHubVariant 'localsource' @{
     '.copier-answers.yml' = $answers.Replace($localSource, "_src_path: $(Join-Path $Work 'missing-template')")
 }
 New-GitHubVariant 'noversion' @{
@@ -506,6 +509,7 @@ try {
     $oldAddress = Invoke-Checklist (Join-Path $Work 'oldaddress') $calls
     $noTags = Invoke-Checklist (Join-Path $Work 'notags') $calls
     $badSource = Invoke-Checklist (Join-Path $Work 'badsource') $calls
+    $localSourceRun = Invoke-Checklist (Join-Path $Work 'localsource') $calls
     $noVersion = Invoke-Checklist (Join-Path $Work 'noversion') $calls
     $noSourceAnswer = Invoke-Checklist (Join-Path $Work 'nosourceanswer') $calls
     foreach ($row in @(
@@ -513,6 +517,7 @@ try {
             @('not done', 'oldaddress', $oldAddress, 'v0\.111\.3 is out; the project is on v0\.111\.2'),
             @('unreadable', 'notags', $noTags, '.+ has no version tags'),
             @('unreadable', 'badsource', $badSource, 'couldn.t read the template.s tags'),
+            @('done', 'localsource', $localSourceRun, 'on v0\.111\.3'),
             @('unreadable', 'noversion', $noVersion, 'can.t read the project.s template version'),
             @('unreadable', 'nosourceanswer', $noSourceAnswer, '\.copier-answers\.yml has no _src_path'))) {
         $want, $label, $run, $detail = $row
@@ -525,6 +530,7 @@ try {
         '''^gh:(.+)\z'''
         '''^gl:(.+)\z'''
         '''^https://github\.com/polewskm/project-template(?:\.git)?/?\z'''
+        '''^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'''
         '''https://github.com/NCodeGroup/project-template.git'''
     )
     $apart = @($shared | Where-Object { -not ($checkerText.Contains($_) -and $updateText.Contains($_)) })
