@@ -1,6 +1,6 @@
 # 0027. Source files carry a copyright and SPDX license header
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0038)
 - **Date:** 2026-11-16
 
 ## Context
