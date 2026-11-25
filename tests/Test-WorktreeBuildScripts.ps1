@@ -6,8 +6,9 @@
     Copies both scripts into fixture repositories and runs each in this process with stand-ins for dotnet and pwsh, so
     that nothing builds. Run from a plan's worktree, under .claude/worktrees/, dod.ps1 finds the test project and runs
     the Coverage stage, and Update-PublicApi.ps1 records the packable project's API. Run in a repository whose own
-    .claude, bin, obj and artifacts folders hold projects, both skip those. Prints PASS or FAIL per check and exits 1
-    on any failure.
+    .claude, bin, obj and artifacts folders hold projects, dod.ps1 skips the test projects in all four and
+    Update-PublicApi.ps1 the projects in .claude, bin and obj. Prints PASS or FAIL per check and exits 1 on any
+    failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-worktree-build-test-<process ID> in the
