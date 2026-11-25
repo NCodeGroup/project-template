@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Marcin Polewski
+# SPDX-License-Identifier: MIT
+
 <#
 .SYNOPSIS
     Installs the .NET SDK global.json selects and the runtimes build/Get-TestRuntimes.ps1 names.

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.114.0] - 2026-11-25
+
+### Added
+
+- Every script the template owns starts with the template's copyright line, `# Copyright (c) 2026 Marcin Polewski`, and `# SPDX-License-Identifier: MIT`, right after any `#!` or `# shellcheck` line: the `.ps1` and `.sh` files in `.template/`, the `build/*.ps1` scripts, `.claude/hooks/*.sh` and `.githooks/pre-push`. Updates replace these files, so a project couldn't add the lines to them, and the OpenSSF Best Practices gold criteria `copyright_per_file` and `license_per_file` stayed Unmet. `docs/best-practices-criteria.md` and a new project's `CONTRIBUTING.md` say the template's scripts carry the template's lines; `.template/Test-FileHeaders.ps1` still checks only the project's own files, for the project's lines. `tests/Test-FileHeaders.ps1` fails a template-owned script without them ([#503](https://github.com/NCodeGroup/project-template/issues/503), [ADR-0038](template/docs/decisions/project-template/0038-the-templates-scripts-carry-the-templates-copyright-and-license.md)).
+
+### Changed
+
+- The `UnitTestBase` sample in `.github/instructions/csharp-tests.instructions.md` follows `csharp.instructions.md`: it keeps its `MockRepository` in a private get-only property, `Mocks`, and `CreateStrictMock`, `CreateLooseMock` and `CreatePartialMock` take `params IEnumerable<object> args`, which `[.. args]` buffers into the array Moq takes. A project that copied the sample updates its own copy by hand ([#502](https://github.com/NCodeGroup/project-template/issues/502)).
+
+### Removed
+
+- The ADR-0009 exceptions that pinned NCode Review v1.5.0 and `ossf/scorecard-action` v2.6.0 before they were three days old, since both have aged: the sentence in the header of `.github/workflows/code-review.yml`, in the template's copy and this repository's own ([#475](https://github.com/NCodeGroup/project-template/issues/475), [#485](https://github.com/NCodeGroup/project-template/issues/485)), and the comment above the `Run Scorecard` step of `.github/workflows/scorecard.yml`, whose pin stays v2.6.0 ([#481](https://github.com/NCodeGroup/project-template/issues/481)). `code-review.yml` is the project's own, so an update shows the change to copy. `.template/Update-Project.ps1`'s note on an NCode Review setup without the approver says to pin v1.5.0 or later without the cooldown's dates ([#475](https://github.com/NCodeGroup/project-template/issues/475)).
+
 ## [0.113.4] - 2026-11-24
 
 ### Fixed
@@ -1912,7 +1926,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.113.4...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.114.0...HEAD
+[0.114.0]: https://github.com/NCodeGroup/project-template/compare/v0.113.4...v0.114.0
 [0.113.4]: https://github.com/NCodeGroup/project-template/compare/v0.113.3...v0.113.4
 [0.113.3]: https://github.com/NCodeGroup/project-template/compare/v0.113.2...v0.113.3
 [0.113.2]: https://github.com/NCodeGroup/project-template/compare/v0.113.1...v0.113.2

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Marcin Polewski
+# SPDX-License-Identifier: MIT
+
 <#
 .SYNOPSIS
     Sets up the Node.js version selector nvs in the bash and PowerShell profiles, once per PC.

@@ -18,6 +18,10 @@
       template-owned The five build scripts the template owns are skipped, a build script of the project's own is checked.
       no-license   With a blank license answer only the copyright line is required.
       no-author    Without an author_name answer there is nothing to check.
+      template-scripts Every script the template owns, in template/.template/, template/build/,
+                   template/.claude/hooks/ and template/.githooks/, starts with this repository's LICENSE copyright
+                   line and "SPDX-License-Identifier: MIT", after any #! or "# shellcheck" line (the template's ADR-0038),
+                   each folder holds a script, and a fixture shows the check names a script without the lines.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-file-headers-test-<process ID> in the temp
@@ -135,6 +139,40 @@ Check 'no-license: only the copyright line is required' ($unlicensedRun.ExitCode
 $noAuthor = New-Fixture 'no-author' "license: MIT`n" @{ 'a.py' = "print('a')`n" }
 $noAuthorRun = Invoke-Headers $noAuthor
 Check 'no-author: nothing to check' ($noAuthorRun.ExitCode -eq 0 -and $noAuthorRun.Output.Contains('No author_name answer, so there is no header to check.')) $noAuthorRun.Output
+
+# template-scripts: every script the template owns carries the template's copyright line, from LICENSE, and its SPDX line.
+$templateCopyright = "# $((Select-String -LiteralPath (Join-Path $repoRoot 'LICENSE') -Pattern '^Copyright ' | Select-Object -First 1).Line)"
+$templateSpdx = '# SPDX-License-Identifier: MIT'
+# The .ps1 and .sh files in each folder under $Root, and every file in a .githooks folder: how many, the folders that
+# hold none, and those whose first lines, after any #! or "# shellcheck" line, aren't the template's two lines.
+function Get-TemplateScriptHeader([string]$Root, [string[]]$Folders) {
+    $empty = [Collections.Generic.List[string]]::new()
+    $unheaded = [Collections.Generic.List[string]]::new()
+    $count = 0
+    foreach ($folder in $Folders) {
+        $scripts = @(Get-ChildItem -File -Force -LiteralPath (Join-Path $Root $folder) | Where-Object { $_.Extension -in '.ps1', '.sh' -or $_.Directory.Name -eq '.githooks' })
+        if (-not $scripts.Count) { $empty.Add($folder) }
+        $count += $scripts.Count
+        foreach ($file in $scripts) {
+            $head = @(Get-Content -LiteralPath $file.FullName -TotalCount 4)
+            $at = if ($head[0] -like '#!*' -or $head[0] -like '# shellcheck *') { 1 } else { 0 }
+            if ($head[$at] -cne $templateCopyright -or $head[$at + 1] -cne $templateSpdx) { $unheaded.Add("$folder/$($file.Name)") }
+        }
+    }
+    [pscustomobject]@{ Count = $count; Empty = @($empty); Unheaded = @($unheaded) }
+}
+$scriptsFixture = Join-Path $Work 'template-scripts'
+Write-Fixture (Join-Path $scriptsFixture 'tools/bare.ps1') "<#`n.SYNOPSIS`n#>`n"
+Write-Fixture (Join-Path $scriptsFixture 'tools/notes.txt') "notes`n"
+Write-Fixture (Join-Path $scriptsFixture 'tools/ok.ps1') "$templateCopyright`n$templateSpdx`n`n<#`n.SYNOPSIS`n#>`n"
+Write-Fixture (Join-Path $scriptsFixture 'tools/ok.sh') "#!/usr/bin/env bash`n$templateCopyright`n$templateSpdx`n#`necho ok`n"
+Write-Fixture (Join-Path $scriptsFixture 'tools/sourced.sh') "# shellcheck shell=bash`n$templateCopyright`n$templateSpdx`n#`n"
+Write-Fixture (Join-Path $scriptsFixture '.githooks/pre-push') "#!/bin/sh`n#`nexit 0`n"
+New-Item -ItemType Directory -Force (Join-Path $scriptsFixture 'empty') | Out-Null
+$scriptsRun = Get-TemplateScriptHeader $scriptsFixture 'tools', '.githooks', 'empty'
+Check 'template-scripts: a fixture names the scripts without the lines, a .githooks hook among them, and a folder without scripts' ($scriptsRun.Count -eq 5 -and ($scriptsRun.Unheaded -join ',') -ceq 'tools/bare.ps1,.githooks/pre-push' -and ($scriptsRun.Empty -join ',') -ceq 'empty') "$($scriptsRun.Count) scripts; folders without scripts: $($scriptsRun.Empty -join ', '); without the lines: $($scriptsRun.Unheaded -join ', ')"
+$templateRun = Get-TemplateScriptHeader $repoRoot 'template/.template', 'template/build', 'template/.claude/hooks', 'template/.githooks'
+Check 'template-scripts: every script the template owns starts with the template''s copyright and SPDX lines, after any #! or shellcheck line' (-not $templateRun.Empty.Count -and -not $templateRun.Unheaded.Count) "$($templateRun.Count) scripts; folders without scripts: $($templateRun.Empty -join ', '); without the lines: $($templateRun.Unheaded -join ', ')"
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "File headers tests: FAILED ($($failures.Count))"; exit 1 }

@@ -44,7 +44,7 @@ never brings a number the project already uses
 | [0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md) | Every OpenSSF Best Practices criterion of the passing, silver and gold levels is mapped to the answer to expect and its evidence in the template-owned `docs/best-practices-criteria.md`, which a test checks against the badge's own list (amends 0023{% if git_host == 'github' %} and 0020{% endif %}) |
 | [0026](0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md) | With `coverage_gate`, CI fails below 90% of the statements or 80% of the branches, and a GitHub release is tagged only after `tag-release.yml` runs CI again on its commit (amends 0016) |
 {%- if stack != 'dotnet' %}
-| [0027](0027-source-files-carry-a-copyright-and-spdx-license-header.md) | With `file_headers`, every source file starts with the copyright line and the SPDX license line, which `.template/Test-FileHeaders.ps1` checks in CI and `-Fix` adds |
+| [0027](0027-source-files-carry-a-copyright-and-spdx-license-header.md) | With `file_headers`, every source file starts with the copyright line and the SPDX license line, which `.template/Test-FileHeaders.ps1` checks in CI and `-Fix` adds (amended by 0038) |
 {%- endif %}
 {%- if git_host == 'github' %}
 | [0028](0028-github-releases-are-immutable-and-their-tags-signed.md) | GitHub releases are immutable, outside a repository with a workflow that runs on a release event or uploads release assets, and a public repository's release tags are signed with gitsign; `SECURITY.md` says how to verify both (amends 0016) |
@@ -62,6 +62,7 @@ never brings a number the project already uses
 | [0036](0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md) | Where NCode Review's approver app is set up, the baseline requires one approval, of the last push, whatever the number of writers, since GitHub counts an approval from a reviewer that can write; Actions never approve pull requests, and the baseline pull request is opened from an issue's link (amends 0022, 0034 and, where a project has it, 0150) |
 {%- endif %}
 | [0037](0037-best-practices-reports-scorecard-and-answers-for-the-default-branch.md) | `/best-practices` reports the Scorecard checks under 10 with their actions, finds an existing registration by URL, and answers for the default branch's tip (amends {% if git_host == 'github' %}0020 and {% endif %}0025) |
+| [0038](0038-the-templates-scripts-carry-the-templates-copyright-and-license.md) | Every script the template owns, in `.template/`, `build/`, `.claude/hooks/` and `.githooks/`, carries the template's copyright line and `SPDX-License-Identifier: MIT`, which a project's header check leaves alone{% if stack != 'dotnet' %} (amends 0027){% endif %} |
 {%- if stack == 'dotnet' %}
 
 ## .NET

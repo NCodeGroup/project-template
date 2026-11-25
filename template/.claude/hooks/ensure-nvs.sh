@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Marcin Polewski
+# SPDX-License-Identifier: MIT
 #
 # ensure-nvs.sh - put the project's Node.js on PATH in a Claude Code cloud session.
 #
