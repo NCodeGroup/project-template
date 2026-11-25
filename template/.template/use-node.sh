@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Copyright (c) 2026 Marcin Polewski
+# SPDX-License-Identifier: MIT
+#
 # Puts the project's Node.js on PATH in the current bash shell: the node already there when it is the .node-version
 # release, else the one nvs selects.
 #

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Marcin Polewski
+# SPDX-License-Identifier: MIT
 #
 # install-nvs.sh - install nvs, pinned to a release's commit, outside Windows.
 #
