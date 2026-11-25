@@ -53,6 +53,10 @@
                 update also deletes. It is false when an added line is there fewer times, such as an added } or blank
                 line the update drops that also appears elsewhere, when a deleted line is brought back, for a binary
                 file, and when the project's copy changes no line.
+      newer-pin Restore-NewerPin writes back each action pin the project moved past the target's pin of the same action,
+                every line of it, keeping CR LF, and returns the file, action and both versions; it changes nothing when
+                the target pins as new or newer, the project moved the pin back, pins the action to two SHAs, pins
+                another action, or writes the version in other Unicode digits; Test-EditKept then finds the edit kept.
       newest-tag Get-NewestTag picks the newest version tag and ignores a tag in other Unicode digits.
 
 .PARAMETER Work
@@ -495,6 +499,68 @@ $keptEdit = & {
     }
 }
 $keptEdit
+
+# newer-pin: Restore-NewerPin, run from inside each fixture folder, a Git repository, which is also the project.
+$newerPin = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'Restore-NewerPin', 'Test-EditKept') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        if (-not $fn) { Check "newer-pin: Update-Project.ps1 defines $fnName" $false; return }
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $sa, $sb, $sc, $sd = 'a' * 40, 'b' * 40, 'c' * 40, 'd' * 40
+    function L($sha, $ver) { "      - uses: github/codeql-action/upload-sarif@$sha # $ver" }
+    $K = 'f.yml github/codeql-action/upload-sarif'
+    $current = "a`n$(L $sa v4.39.3)`nb`n"
+    $project1 = "a`n$(L $sb v4.39.4)`nb`n"
+    $target1 = "a2`n$(L $sa v4.39.3)`nb`n"
+    $current5 = "a`n$(L $sa v4.39.3)`n$(L $sa v4.39.3)`n"
+    $target5 = "a2`r`n$(L $sa v4.39.3)`r`n$(L $sa v4.39.3)`r`n"
+    $pinCases = [ordered]@{
+        'a pin the project moved past the target''s'          = @{ Current = $current; Project = $project1; Target = $target1; Want = "a2`n$(L $sb v4.39.4)`nb`n"; Kept = "$K v4.39.4 v4.39.3" }
+        'a pin the target moves further'                      = @{ Current = $current; Project = $project1; Target = "a2`n$(L $sc v4.40.0)`nb`n"; Want = "a2`n$(L $sc v4.40.0)`nb`n"; Kept = '' }
+        'a pin the target also moves'                         = @{ Current = $current; Project = $project1; Target = "a2`n$(L $sb v4.39.4)`nb`n"; Want = "a2`n$(L $sb v4.39.4)`nb`n"; Kept = '' }
+        'a pin the project moved back'                        = @{ Current = $current; Project = "a`n$(L $sd v4.39.2)`nb`n"; Target = $target1; Want = $target1; Kept = '' }
+        'every pin of the action, with CR LF line ends'       = @{ Current = $current5; Project = "a`n$(L $sb v4.39.4)`n$(L $sb v4.39.4)`n"; Target = $target5; Want = "a2`r`n$(L $sb v4.39.4)`r`n$(L $sb v4.39.4)`r`n"; Kept = "$K v4.39.4 v4.39.3" }
+        'an action the project pins to two SHAs'              = @{ Current = $current5; Project = "a`n$(L $sb v4.39.4)`n$(L $sc v4.40.0)`n"; Target = "a2`n$(L $sa v4.39.3)`n$(L $sa v4.39.3)`n"; Want = "a2`n$(L $sa v4.39.3)`n$(L $sa v4.39.3)`n"; Kept = '' }
+        'another action''s pin'                               = @{ Current = $current; Project = $project1; Target = "a2`n      - uses: actions/checkout@$sa # v4.39.3`nb`n"; Want = "a2`n      - uses: actions/checkout@$sa # v4.39.3`nb`n"; Kept = '' }
+        'a version with only a major'                         = @{ Current = $current; Project = "a`n$(L $sb v5)`nb`n"; Target = $target1; Want = "a2`n$(L $sb v5)`nb`n"; Kept = "$K v5 v4.39.3" }
+        'a version in other Unicode digits'                   = @{ Current = $current; Project = "a`n$(L $sb "v4.$([char]0x0663)9.4")`nb`n"; Target = $target1; Want = $target1; Kept = '' }
+    }
+    $identity = '-c', 'user.name=template-test', '-c', 'user.email=template-test@example.invalid', '-c', 'commit.gpgsign=false'
+    $firstCase = $true
+    foreach ($name in $pinCases.Keys) {
+        $case = $pinCases[$name]
+        $folder = Join-Path $Work "newer-pin-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path $folder -Force
+        $file = Join-Path $folder 'f.yml'
+        git -C $folder init -q -b main
+        git -C $folder config core.autocrlf false
+        [IO.File]::WriteAllText($file, $case.Project)
+        git -C $folder add f.yml
+        git -C $folder @identity commit -q -m 'Project'
+        $head = git -C $folder rev-parse HEAD
+        [IO.File]::WriteAllText($file, $case.Current)
+        git -C $folder @identity commit -q --allow-empty -am 'Reset template-owned files'
+        $reset = git -C $folder rev-parse HEAD
+        git -C $folder update-ref HEAD $head
+        [IO.File]::WriteAllText($file, $case.Target)
+        # Set-Variable: only the loaded functions read project, which the script analyzer can't see.
+        Set-Variable -Name project -Value $folder
+        Push-Location $folder
+        try {
+            $got = @(Restore-NewerPin 'f.yml' $reset $head)
+            $kept = if ($firstCase) { Test-EditKept 'f.yml' $reset $head }
+        }
+        finally { Pop-Location }
+        $text = [IO.File]::ReadAllText($file)
+        $listed = (@($got | ForEach-Object { "$($_.File) $($_.Action) $($_.Kept) $($_.Template)" }) -join ';')
+        Check "newer-pin: $name" (($text -ceq $case.Want) -and ($listed -eq $case.Kept)) "got [$($text -replace "`r", '\r' -replace "`n", '\n')] and [$listed], want [$($case.Want -replace "`r", '\r' -replace "`n", '\n')] and [$($case.Kept)]"
+        if ($firstCase) { Check 'newer-pin: Test-EditKept then finds the edit kept' ($kept -eq $true) "got [$kept]" }
+        $firstCase = $false
+    }
+}
+$newerPin
 
 # newest-tag: Get-NewestTag, which picks the template version an update goes to.
 $newestTag = & {
