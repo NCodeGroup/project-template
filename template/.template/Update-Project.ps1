@@ -628,6 +628,54 @@ function Test-EditKept([string]$File, [string]$ResetCommit, [string]$Head) {
     $true
 }
 
+# Writes back each action pin of a template-owned file that the project moved past the new version's pin of that action, such as a Dependabot bump the template hasn't made yet (#495), so the update never downgrades it. Returns File, Action, Kept and Template, once per action written back.
+function Restore-NewerPin([string]$File, [string]$ResetCommit, [string]$Head) {
+    $pin = '^(?<lead>[ \t]*(?:-[ \t]+)?uses:[ \t]*)(?<action>[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)@(?<sha>[0-9a-fA-F]{40})(?<gap>[ \t]+#[ \t]*)(?<version>v?[0-9]+(?:\.[0-9]+){0,3})[ \t]*\z'
+    $diff = @(git -c core.quotePath=false diff --no-color --no-ext-diff --no-renames -U0 $ResetCommit $Head -- $File)
+    if ($LASTEXITCODE) { return }
+    $path = Join-Path $project $File
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return }
+    $ours = @{}
+    $inHunk = $false
+    foreach ($line in $diff) {
+        if ($line.StartsWith('@@')) { $inHunk = $true; continue }
+        if (-not $inHunk -or -not $line.StartsWith('+')) { continue }
+        if ($line.Substring(1).TrimEnd("`r") -match $pin) {
+            $entry = "$($Matches['sha']) $($Matches['version'])"
+            if (-not $ours.ContainsKey($Matches['action'])) { $ours[$Matches['action']] = [Collections.Generic.List[string]]::new() }
+            if (-not $ours[$Matches['action']].Contains($entry)) { $ours[$Matches['action']].Add($entry) }
+        }
+    }
+    if (-not $ours.Count) { return }
+    $parse = {
+        param([string]$Text)
+        $number = $Text.TrimStart('v')
+        if (-not $number.Contains('.')) { $number += '.0' }
+        $parsed = $null
+        if ([version]::TryParse($number, [ref]$parsed)) { $parsed }
+    }
+    $pieces = @([IO.File]::ReadAllText($path) -split '(?<=\n)')
+    $recorded = @{}
+    $changed = $false
+    for ($i = 0; $i -lt $pieces.Count; $i++) {
+        $piece = $pieces[$i]
+        $eol = if ($piece -match '\r?\n\z') { $Matches[0] } else { '' }
+        $body = $piece.Substring(0, $piece.Length - $eol.Length)
+        if ($body -notmatch $pin) { continue }
+        $lead = $Matches['lead']; $action = $Matches['action']; $gap = $Matches['gap']; $version = $Matches['version']
+        if (-not $ours.ContainsKey($action) -or $ours[$action].Count -ne 1) { continue }
+        $sha, $ourVersion = $ours[$action][0] -split ' '
+        $ourParsed = & $parse $ourVersion
+        $lineParsed = & $parse $version
+        if (-not $ourParsed -or -not $lineParsed -or $ourParsed -le $lineParsed) { continue }
+        $pieces[$i] = "$lead$action@$sha$gap$ourVersion$eol"
+        $changed = $true
+        if (-not $recorded.ContainsKey($action)) { $recorded[$action] = [pscustomobject]@{ File = $File; Action = $action; Kept = $ourVersion; Template = $version } }
+    }
+    if ($changed) { [IO.File]::WriteAllText($path, -join $pieces) }
+    $recorded.Values
+}
+
 # How to run the template's .githooks in this clone: HooksPath when core.hooksPath can point at it, otherwise the
 # Note to warn with. A hooks path turns off the hooks in .git/hooks.
 # A hooks path the clone already has, from any Git config, is never changed: one that names a .githooks folder runs the

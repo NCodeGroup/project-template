@@ -508,7 +508,7 @@ $newerPin = & {
         if (-not $fn) { Check "newer-pin: Update-Project.ps1 defines $fnName" $false; return }
         . ([scriptblock]::Create($fn.Extent.Text))
     }
-    $sa, $sb, $sc, $sd = 'a' * 40, 'b' * 40, 'c' * 40, 'd' * 40
+    $sa, $sb, $sc, $sd = ('a' * 40), ('b' * 40), ('c' * 40), ('d' * 40)
     function L($sha, $ver) { "      - uses: github/codeql-action/upload-sarif@$sha # $ver" }
     $K = 'f.yml github/codeql-action/upload-sarif'
     $current = "a`n$(L $sa v4.39.3)`nb`n"
