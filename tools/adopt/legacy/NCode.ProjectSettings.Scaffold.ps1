@@ -50,7 +50,7 @@ switch ($Phase) {
             if ($text -match '<DocumentationFile>') { "Sets DocumentationFile, the scaffold's path for XML documentation; the template generates it: remove it from $(& $relative $file.FullName)" }
         }
         # The scaffold imported the nearest project.props into each project; nothing does now.
-        foreach ($props in Get-ChildItem -LiteralPath $Path -Recurse -File -Filter project.props | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|\.git)[\\/]' }) {
+        foreach ($props in Get-ChildItem -LiteralPath $Path -Recurse -File -Filter project.props | Where-Object { [IO.Path]::GetRelativePath($Path, $_.FullName) -notmatch '(^|[\\/])(bin|obj|\.git|\.claude)[\\/]' }) {
             "Nothing imports $(& $relative $props.FullName) now: move its settings, such as Description and PackageTags, into the project file beside it and delete it"
         }
         foreach ($settings in Get-ChildItem -LiteralPath $Path -File -Filter '*.sln.DotSettings') {

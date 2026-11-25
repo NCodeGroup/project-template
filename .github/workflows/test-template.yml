@@ -117,6 +117,8 @@ jobs:
             run: ./tests/Test-ReproducibleBuild.ps1
           - name: Test the CSharpier wrapper check
             run: ./tests/Test-CSharpierWrapper.ps1
+          - name: Test the .NET build scripts run from a plan's worktree
+            run: ./tests/Test-WorktreeBuildScripts.ps1
           - name: Test dropping a repository's own GitVersioning reference
             run: ./tests/Test-GitVersioningReference.ps1
           - name: Check the changelog for duplicate headings

@@ -6,9 +6,10 @@
     Builds one fixture folder per case and runs the script with -SkipNugetCheck: the file edits, the changelog entry and
     the earlier baseline entries it replaces, the baseline suppressions it removes from CompatibilitySuppressions.xml at
     a new major version, the pull request description raise-baseline.yml writes from them, run in a Git fixture, the
-    cases that change nothing, a custom changelog file named by AGENTS.md, CRLF and byte order mark preservation,
-    a prerelease version, a version in other Unicode digits or with a final line break, and a changelog whose only
-    release heading is in other digits. Prints PASS or FAIL per check and exits 1 on any failure.
+    cases that change nothing, a project file under the repository's own .claude folder, a run from a plan's worktree
+    in a clone below a folder named bin, a custom changelog file named by AGENTS.md, CRLF and byte order mark
+    preservation, a prerelease version, a version in other Unicode digits or with a final line break, and a changelog
+    whose only release heading is in other digits. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-baseline-test-<process ID> in the
@@ -133,6 +134,16 @@ $folder = New-Case 'props-and-project' @{ 'Directory.Build.props' = $props; $csp
 $out = Invoke-Baseline $folder
 $ok = $out.Count -eq 1 -and $out[0] -eq '5.0.2' -and (Read-Text $folder 'Directory.Build.props') -ceq $props.Replace('5.0.0', '5.0.2') -and (Read-Text $folder $csproj) -ceq (Get-Project '6.0.0')
 Check 'Update-Baseline: only the file below the version changes' $ok "Output: $($out -join ', ')"
+
+$folder = New-Case 'claude-worktree' @{ $csproj = Get-Project '5.0.0'; ".claude/worktrees/wt/$csproj" = Get-Project '5.0.0' }
+$out = Invoke-Baseline $folder
+$ok = $out.Count -eq 1 -and $out[0] -eq '5.0.2' -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.2') -and (Read-Text $folder ".claude/worktrees/wt/$csproj") -ceq (Get-Project '5.0.0')
+Check 'Update-Baseline: a project file under the repository''s own .claude folder is left alone' $ok "Output: $($out -join ', ')"
+
+$folder = New-Case 'bin/repo/.claude/worktrees/wt' @{ $csproj = Get-Project '5.0.0' }
+$out = Invoke-Baseline $folder
+$ok = $out.Count -eq 1 -and $out[0] -eq '5.0.2' -and (Read-Text $folder $csproj) -ceq (Get-Project '5.0.2')
+Check 'Update-Baseline: run from a plan''s worktree in a clone below a folder named bin, raises the worktree''s project' $ok "Output: $($out -join ', ')"
 
 # The suppression files: a raise to a new major version removes the baseline suppressions beside the project it raises.
 $suppressions = 'src/Fixture.A/CompatibilitySuppressions.xml'

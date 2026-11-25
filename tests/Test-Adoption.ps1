@@ -73,6 +73,10 @@ $updateOwnable = @(git -C $repoRoot ls-files -- template/ | ForEach-Object { Con
 $adoptOwnable = @(Get-OwnableFile (Join-Path $repoRoot 'template') | Sort-Object -Unique)
 $onlyOne = @(Compare-Object $updateOwnable $adoptOwnable | ForEach-Object { "$($_.InputObject) $($_.SideIndicator)" })
 Check 'unit: Get-OwnableFile and Update-Project.ps1 agree on which files a project can own' ($updateOwnable.Count -gt 50 -and -not $onlyOne.Count) "update=$($updateOwnable.Count) adopt=$($adoptOwnable.Count) $($onlyOne -join '; ')"
+$msbuild = New-TestFolder 'bin/msbuild' @{ 'Directory.Build.props' = "<Project />`n"; 'src/A/A.csproj' = "<Project />`n"; 'src/A/obj/B.csproj' = "<Project />`n"; '.claude/worktrees/wt/src/C/C.csproj' = "<Project />`n" }
+$found = @(Get-MSBuildFile $msbuild | ForEach-Object { [IO.Path]::GetRelativePath($msbuild, $_.FullName) -replace '\\', '/' } | Sort-Object) -join ','
+$inWorktree = @(Get-MSBuildFile (Join-Path $msbuild '.claude/worktrees/wt') | ForEach-Object Name) -join ','
+Check 'unit: Get-MSBuildFile skips bin, obj and .claude folders below the folder it scans, also in a clone below a folder named bin, and reads a plan''s worktree' ($found -eq 'Directory.Build.props,src/A/A.csproj' -and $inWorktree -eq 'C.csproj') "$found | $inWorktree"
 
 $demo = New-TestFolder 'demo' @{
     'src/NCode.Demo.slnx'   = '<Solution />'
@@ -258,15 +262,16 @@ $iFoo = $pp.IndexOf('<PackageVersion Include="Foo" Version="1.2.0" />')
 Check 'unit: Move-PackageVersionsToCentral' (-not $pa.Contains('Version="') -and -not $pb.Contains('Version="') -and $pb.Contains('PrivateAssets="all"') -and $iBar -ge 0 -and $iBar -lt $iFoo -and 'Foo: 1.0.0, 1.2.0 -> 1.2.0' -in $report) "$pa | $pb | $pp | $($report -join ' / ')"
 $adapters = Join-Path $repoRoot 'tools\adopt\legacy'
 $scaffold = Join-Path $adapters 'NCode.ProjectSettings.Scaffold.ps1'
-$folder = New-TestFolder 'scaffold-adapter' @{
-    'NCodeGroup.png'                = $png
-    'src/A/A.csproj'                = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <DocumentationFile>bin\`$(Configuration)\A.xml</DocumentationFile>`n  </PropertyGroup>`n  <ItemGroup>`n    <PackageReference Include=""NCode.ProjectSettings.Scaffold""`n                      Version=""1.0.0"">`n      <PrivateAssets>all</PrivateAssets>`n    </PackageReference>`n    <PackageReference Include=""JetBrains.Annotations"" Version=""2.0.0"" />`n    <PackageReference Include=""Microsoft.SourceLink.GitHub"" Version=""10.0.0"" PrivateAssets=""all"" />`n  </ItemGroup>`n</Project>`n"
-    'src/A/project.props'           = "<Project>`n  <PropertyGroup>`n    <Description>A.</Description>`n  </PropertyGroup>`n</Project>`n"
+$folder = New-TestFolder 'bin/scaffold-adapter' @{
+    'NCodeGroup.png'                           = $png
+    'src/A/A.csproj'                           = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <DocumentationFile>bin\`$(Configuration)\A.xml</DocumentationFile>`n  </PropertyGroup>`n  <ItemGroup>`n    <PackageReference Include=""NCode.ProjectSettings.Scaffold""`n                      Version=""1.0.0"">`n      <PrivateAssets>all</PrivateAssets>`n    </PackageReference>`n    <PackageReference Include=""JetBrains.Annotations"" Version=""2.0.0"" />`n    <PackageReference Include=""Microsoft.SourceLink.GitHub"" Version=""10.0.0"" PrivateAssets=""all"" />`n  </ItemGroup>`n</Project>`n"
+    'src/A/project.props'                      = "<Project>`n  <PropertyGroup>`n    <Description>A.</Description>`n  </PropertyGroup>`n</Project>`n"
     # Build output the leftover reports must leave alone.
-    'src/A/bin/Debug/project.props' = "<Project />`n"
-    'A.sln.DotSettings'             = "<wpf:ResourceDictionary />`n"
-    '.github/workflows/main.yml'    = "on: release`njobs:`n  publish:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push x.nupkg`n"
-    '.github/workflows/publish.yml' = "on: release`njobs:`n  publish:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push x.nupkg`n"
+    'src/A/bin/Debug/project.props'            = "<Project />`n"
+    '.claude/worktrees/wt/src/B/project.props' = "<Project />`n"
+    'A.sln.DotSettings'                        = "<wpf:ResourceDictionary />`n"
+    '.github/workflows/main.yml'               = "on: release`njobs:`n  publish:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push x.nupkg`n"
+    '.github/workflows/publish.yml'            = "on: release`njobs:`n  publish:`n    runs-on: ubuntu-latest`n    steps:`n      - run: dotnet nuget push x.nupkg`n"
 }
 $detected = & $scaffold -Path $folder -Phase Detect
 $a = & $scaffold -Path $folder -Phase Answers
@@ -275,7 +280,7 @@ $proj = Get-Content -Raw -LiteralPath (Join-Path $folder 'src/A/A.csproj')
 $after = & $scaffold -Path $folder -Phase Detect
 Check 'unit: scaffold adapter' ($detected -eq $true -and $a.nuget_package -eq $true -and $a.license -eq 'Apache-2.0' -and $a.author_name -eq 'NCode Group' -and $a.package_icon -eq 'NCodeGroup.png' -and $out[0] -like '*src/A/A.csproj' -and $proj.Contains('JetBrains.Annotations') -and -not $proj.Contains('NCode.ProjectSettings.Scaffold') -and $after -eq $false) "$detected | $($out -join ' / ') | $proj | $after"
 $leftovers = $out -join "`n"
-Check 'unit: scaffold adapter reports what the package left behind' ($leftovers.Contains('References Microsoft.SourceLink.GitHub, which the .NET SDK builds in: remove it from src/A/A.csproj') -and $leftovers.Contains('Sets DocumentationFile') -and $leftovers.Contains('Nothing imports src/A/project.props now') -and -not $leftovers.Contains('bin/Debug/project.props') -and $leftovers.Contains('A.sln.DotSettings holds the scaffold''s ReSharper file header') -and $leftovers.Contains('.github/workflows/main.yml pushes packages to NuGet too') -and -not $leftovers.Contains('.github/workflows/publish.yml pushes')) $leftovers
+Check 'unit: scaffold adapter reports what the package left behind' ($leftovers.Contains('References Microsoft.SourceLink.GitHub, which the .NET SDK builds in: remove it from src/A/A.csproj') -and $leftovers.Contains('Sets DocumentationFile') -and $leftovers.Contains('Nothing imports src/A/project.props now') -and -not $leftovers.Contains('bin/Debug/project.props') -and -not $leftovers.Contains('.claude/') -and $leftovers.Contains('A.sln.DotSettings holds the scaffold''s ReSharper file header') -and $leftovers.Contains('.github/workflows/main.yml pushes packages to NuGet too') -and -not $leftovers.Contains('.github/workflows/publish.yml pushes')) $leftovers
 
 $workflow = Join-Path $adapters 'HybridWorkflowInstall.ps1'
 $folder = New-TestFolder 'workflow-install' @{ '.github/prompts/execute-step-copilot.prompt.md' = "old`n" }

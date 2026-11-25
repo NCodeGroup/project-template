@@ -1,6 +1,6 @@
 # Functions Adopt-Project.ps1 uses to bring an existing repository under the template.
 
-$script:SkipPath = '[\\/](bin|obj|node_modules|\.git)[\\/]'
+$script:SkipPath = '(^|[\\/])(bin|obj|node_modules|\.git|\.claude)[\\/]'
 # Folders at the root whose PowerShell files are build or CI helpers, not the project's code.
 $script:HelperPath = '^(\.github|\.gitlab|build|eng|scripts|tools)[\\/]'
 
@@ -32,8 +32,9 @@ function Get-OwnedFile($Value, [string[]]$Ownable) {
 }
 
 function Get-MSBuildFile([string]$Path) {
+    $root = (Resolve-Path -LiteralPath $Path).ProviderPath
     Get-ChildItem -LiteralPath $Path -Recurse -File -Include '*.csproj', '*.fsproj', '*.vbproj', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props' |
-        Where-Object { $_.FullName -notmatch $script:SkipPath }
+        Where-Object { [IO.Path]::GetRelativePath($root, $_.FullName) -notmatch $script:SkipPath }
 }
 
 # The package manager a Node.js repository uses: the one its packageManager field names, else the one whose lockfile
@@ -69,9 +70,10 @@ function Get-WorkflowTools([string]$Path) {
     if ($local) { 'local' }
 }
 
-# Whether a repository uses Node.js (ADR-0200): a package.json within two folders of the root, outside bin, obj, node_modules and .git, or a .nvmrc or .node-version at the root.
+# Whether a repository uses Node.js (ADR-0200): a package.json within two folders of the root, outside bin, obj, node_modules, .git and .claude, or a .nvmrc or .node-version at the root.
 function Test-NodeUse([string]$Path) {
-    if (Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Filter package.json | Where-Object { $_.FullName -notmatch $script:SkipPath }) { return $true }
+    $root = (Resolve-Path -LiteralPath $Path).ProviderPath
+    if (Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Filter package.json | Where-Object { [IO.Path]::GetRelativePath($root, $_.FullName) -notmatch $script:SkipPath }) { return $true }
     foreach ($name in '.nvmrc', '.node-version') {
         if (Test-Path -LiteralPath (Join-Path $Path $name) -PathType Leaf) { return $true }
     }
@@ -93,14 +95,14 @@ function Get-NodeVersionFile([string]$Path) {
 function Get-AdoptionAnswers([string]$Path) {
     $Path = (Resolve-Path -LiteralPath $Path).Path
     $found = @(Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Include '*.sln', '*.slnx', '*.csproj', '*.fsproj', '*.vbproj' |
-        Where-Object { $_.FullName -notmatch $script:SkipPath })
+        Where-Object { [IO.Path]::GetRelativePath($Path, $_.FullName) -notmatch $script:SkipPath })
     $solutions = @($found | Where-Object Extension -In '.sln', '.slnx')
     # An OpenTofu or Terraform repository is 'other' even when it has PowerShell helper scripts.
     $stack = if ($found) { 'dotnet' }
     elseif (Test-Path -LiteralPath (Join-Path $Path 'package.json')) { 'node' }
     elseif ('pyproject.toml', 'requirements.txt', 'setup.py' | Where-Object { Test-Path -LiteralPath (Join-Path $Path $_) }) { 'python' }
-    elseif (Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Include '*.tf', '*.tofu', '*.tftest.hcl' | Where-Object { $_.FullName -notmatch $script:SkipPath }) { 'other' }
-    elseif (Get-ChildItem -LiteralPath $Path -Recurse -File -Include '*.ps1', '*.psm1', '*.psd1' | Where-Object { $_.FullName -notmatch $script:SkipPath -and [IO.Path]::GetRelativePath($Path, $_.FullName) -notmatch $script:HelperPath }) { 'powershell' }
+    elseif (Get-ChildItem -LiteralPath $Path -Recurse -Depth 2 -File -Include '*.tf', '*.tofu', '*.tftest.hcl' | Where-Object { [IO.Path]::GetRelativePath($Path, $_.FullName) -notmatch $script:SkipPath }) { 'other' }
+    elseif (Get-ChildItem -LiteralPath $Path -Recurse -File -Include '*.ps1', '*.psm1', '*.psd1' | Where-Object { [IO.Path]::GetRelativePath($Path, $_.FullName) -notmatch $script:SkipPath -and [IO.Path]::GetRelativePath($Path, $_.FullName) -notmatch $script:HelperPath }) { 'powershell' }
     else { 'other' }
 
     $remote = "$(git -C $Path remote get-url origin 2>$null)"
@@ -564,8 +566,9 @@ function Get-AssemblyVersionFloor {
 # together; tests keep the two equal.
 function Get-PublishedPackageVersion {
     param([scriptblock]$Fetch = { param($Uri) Invoke-RestMethod -Uri $Uri -TimeoutSec 20 })
+    $root = (Get-Location).ProviderPath
     foreach ($file in Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue) {
-        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
+        if ([IO.Path]::GetRelativePath($root, $file.FullName) -match '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
         $text = Get-Content -LiteralPath $file.FullName -Raw
         if ($text -match '<IsPackable>\s*false') { continue }
         $id = if ($text -match '<PackageId>\s*([^<\s]+)\s*</PackageId>') { $Matches[1] } else { $file.BaseName }
@@ -597,7 +600,7 @@ function Get-PackageMetadataDrift {
     )
     $root = (Get-Location).ProviderPath
     foreach ($file in Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue) {
-        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
+        if ([IO.Path]::GetRelativePath($root, $file.FullName) -match '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
         $text = Get-Content -LiteralPath $file.FullName -Raw
         if ($text -match '<IsPackable>\s*false') { continue }
         $id = if ($text -match '<PackageId>\s*([^<\s]+)\s*</PackageId>') { $Matches[1] } else { $file.BaseName }
@@ -636,7 +639,8 @@ function Get-PackageMetadataDrift {
 # template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests keep the two equal.
 function Test-PackageValidationBaseline {
     if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match 'PackageValidationBaselineVersion') { return $true }
-    @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
+    $root = (Get-Location).ProviderPath
+    @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { [IO.Path]::GetRelativePath($root, $_.FullName) -notmatch '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
 }
 
 # The stale NuGet logistics an older library carries, found under the current folder, as Kind and Message in a fixed
@@ -645,7 +649,7 @@ function Test-PackageValidationBaseline {
 # together; tests keep the two equal.
 function Get-NuGetLogistics {
     $root = (Get-Location).ProviderPath
-    $excluded = 'bin', 'obj', 'node_modules', 'artifacts', '.git'
+    $excluded = 'bin', 'obj', 'node_modules', 'artifacts', '.git', '.claude'
     $found = [Collections.Generic.List[object]]::new()
     $pending = [Collections.Generic.Stack[string]]::new()
     $pending.Push($root)
@@ -731,8 +735,9 @@ function Get-CSharpFileWithoutHeader {
     $setting = [regex]::Match([IO.File]::ReadAllText((Join-Path (Get-Location).Path '.editorconfig')), '(?m)^file_header_template\s*=\s*(.+?)\r?$')
     if (-not $setting.Success) { return }
     $header = (($setting.Groups[1].Value -split '\\n') | ForEach-Object { "// $_" }) -join "`n"
+    $root = (Get-Location).ProviderPath
     foreach ($file in Get-ChildItem -LiteralPath . -Filter *.cs -File -Recurse -ErrorAction SilentlyContinue) {
-        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git|Migrations)[\\/]' -or $file.Name -match '\.(g|generated|designer)\.cs$') { continue }
+        if ([IO.Path]::GetRelativePath($root, $file.FullName) -match '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude|Migrations)[\\/]' -or $file.Name -match '\.(g|generated|designer)\.cs$') { continue }
         $text = ([IO.File]::ReadAllText($file.FullName).TrimStart([char]0xFEFF)) -replace "`r`n", "`n"
         if (-not $text.StartsWith("$header`n")) { [IO.Path]::GetRelativePath((Get-Location).Path, $file.FullName) -replace '\\', '/' }
     }
