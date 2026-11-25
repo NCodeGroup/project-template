@@ -18,6 +18,9 @@
       template-owned The five build scripts the template owns are skipped, a build script of the project's own is checked.
       no-license   With a blank license answer only the copyright line is required.
       no-author    Without an author_name answer there is nothing to check.
+      template-scripts Every script the template owns, in template/.template/, template/build/,
+                   template/.claude/hooks/ and template/.githooks/, starts with this repository's LICENSE copyright
+                   line and "SPDX-License-Identifier: MIT", after any #! or "# shellcheck" line (the template's ADR-0038).
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-file-headers-test-<process ID> in the temp
@@ -135,6 +138,18 @@ Check 'no-license: only the copyright line is required' ($unlicensedRun.ExitCode
 $noAuthor = New-Fixture 'no-author' "license: MIT`n" @{ 'a.py' = "print('a')`n" }
 $noAuthorRun = Invoke-Headers $noAuthor
 Check 'no-author: nothing to check' ($noAuthorRun.ExitCode -eq 0 -and $noAuthorRun.Output.Contains('No author_name answer, so there is no header to check.')) $noAuthorRun.Output
+
+# template-scripts: every script the template owns carries the template's copyright line, from LICENSE, and its SPDX line.
+$templateCopyright = "# $((Select-String -LiteralPath (Join-Path $repoRoot 'LICENSE') -Pattern '^Copyright ' | Select-Object -First 1).Line)"
+$templateSpdx = '# SPDX-License-Identifier: MIT'
+$templateFolders = 'template/.template', 'template/build', 'template/.claude/hooks', 'template/.githooks' | ForEach-Object { Join-Path $repoRoot $_ }
+$templateScripts = @(Get-ChildItem -File -Force -LiteralPath $templateFolders | Where-Object { $_.Extension -in '.ps1', '.sh' -or $_.Directory.Name -eq '.githooks' })
+$unheaded = @(foreach ($file in $templateScripts) {
+    $head = @(Get-Content -LiteralPath $file.FullName -TotalCount 4)
+    $at = if ($head[0] -like '#!*' -or $head[0] -like '# shellcheck *') { 1 } else { 0 }
+    if ($head[$at] -cne $templateCopyright -or $head[$at + 1] -cne $templateSpdx) { $file.FullName.Substring($repoRoot.Length + 1) }
+})
+Check 'template-scripts: every script the template owns starts with the template''s copyright and SPDX lines, after any #! or shellcheck line' ($templateScripts.Count -ge 21 -and -not $unheaded.Count) "$($templateScripts.Count) scripts; without the lines: $($unheaded -join ', ')"
 
 ''
 if ($failures.Count) { "Kept the work folder: $Work"; "File headers tests: FAILED ($($failures.Count))"; exit 1 }
