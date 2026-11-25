@@ -54,9 +54,11 @@
                 line the update drops that also appears elsewhere, when a deleted line is brought back, for a binary
                 file, and when the project's copy changes no line.
       newer-pin Restore-NewerPin writes back each action pin the project moved past the target's pin of the same action,
-                every line of it, keeping CR LF, and returns the file, action and both versions; it changes nothing when
-                the target pins as new or newer, the project moved the pin back, pins the action to two SHAs, pins
-                another action, or writes the version in other Unicode digits; Test-EditKept then finds the edit kept.
+                every line of it, keeping CR LF, and returns the file, action and both versions, in the order the file
+                pins them, also for two actions in one file; it changes nothing when the target pins as new or newer,
+                the project moved the pin back, pins the action to two SHAs, pins another action, writes the version in
+                other Unicode digits, or Git lists the file as conflicted; it throws, naming the file, when Git can't
+                read the project's changes; Test-EditKept then finds the edit kept.
       newest-tag Get-NewestTag picks the newest version tag and ignores a tag in other Unicode digits.
 
 .PARAMETER Work
@@ -510,14 +512,16 @@ $newerPin = & {
     }
     $sa, $sb, $sc, $sd = ('a' * 40), ('b' * 40), ('c' * 40), ('d' * 40)
     function L($sha, $ver) { "      - uses: github/codeql-action/upload-sarif@$sha # $ver" }
+    function C($sha, $ver) { "      - uses: actions/checkout@$sha # $ver" }
     $K = 'f.yml github/codeql-action/upload-sarif'
     $current = "a`n$(L $sa v4.39.3)`nb`n"
     $project1 = "a`n$(L $sb v4.39.4)`nb`n"
     $target1 = "a2`n$(L $sa v4.39.3)`nb`n"
     $current5 = "a`n$(L $sa v4.39.3)`n$(L $sa v4.39.3)`n"
     $target5 = "a2`r`n$(L $sa v4.39.3)`r`n$(L $sa v4.39.3)`r`n"
+    $conflicted = "<<<<<<< ours`n$(L $sa v4.39.3)`n=======`n$(L $sa v4.39.3)`n>>>>>>> theirs`nb`n"
     $pinCases = [ordered]@{
-        'a pin the project moved past the target''s'          = @{ Current = $current; Project = $project1; Target = $target1; Want = "a2`n$(L $sb v4.39.4)`nb`n"; Kept = "$K v4.39.4 v4.39.3" }
+        'a pin the project moved past the target''s'          = @{ Current = $current; Project = $project1; Target = $target1; Want = "a2`n$(L $sb v4.39.4)`nb`n"; Kept = "$K v4.39.4 v4.39.3"; EditKept = $true }
         'a pin the target moves further'                      = @{ Current = $current; Project = $project1; Target = "a2`n$(L $sc v4.40.0)`nb`n"; Want = "a2`n$(L $sc v4.40.0)`nb`n"; Kept = '' }
         'a pin the target also moves'                         = @{ Current = $current; Project = $project1; Target = "a2`n$(L $sb v4.39.4)`nb`n"; Want = "a2`n$(L $sb v4.39.4)`nb`n"; Kept = '' }
         'a pin the project moved back'                        = @{ Current = $current; Project = "a`n$(L $sd v4.39.2)`nb`n"; Target = $target1; Want = $target1; Kept = '' }
@@ -526,9 +530,11 @@ $newerPin = & {
         'another action''s pin'                               = @{ Current = $current; Project = $project1; Target = "a2`n      - uses: actions/checkout@$sa # v4.39.3`nb`n"; Want = "a2`n      - uses: actions/checkout@$sa # v4.39.3`nb`n"; Kept = '' }
         'a version with only a major'                         = @{ Current = $current; Project = "a`n$(L $sb v5)`nb`n"; Target = $target1; Want = "a2`n$(L $sb v5)`nb`n"; Kept = "$K v5 v4.39.3" }
         'a version in other Unicode digits'                   = @{ Current = $current; Project = "a`n$(L $sb "v4.$([char]0x0663)9.4")`nb`n"; Target = $target1; Want = $target1; Kept = '' }
+        'two actions in one file, each moved past the target' = @{ Current = "a`n$(C $sa v5.0.0)`n$(L $sa v4.39.3)`n"; Project = "a`n$(C $sb v5.0.1)`n$(L $sb v4.39.4)`n"; Target = "a2`n$(C $sa v5.0.0)`n$(L $sa v4.39.3)`n"; Want = "a2`n$(C $sb v5.0.1)`n$(L $sb v4.39.4)`n"; Kept = "f.yml actions/checkout v5.0.1 v5.0.0;$K v4.39.4 v4.39.3" }
+        'a file Git lists as conflicted'                      = @{ Current = $current; Project = $project1; Target = $conflicted; Want = $conflicted; Kept = ''; Unmerged = $true }
+        'a diff Git fails to read'                            = @{ Current = $current; Project = $project1; Target = $target1; Want = $target1; Kept = ''; Throws = $true }
     }
     $identity = '-c', 'user.name=template-test', '-c', 'user.email=template-test@example.invalid', '-c', 'commit.gpgsign=false'
-    $firstCase = $true
     foreach ($name in $pinCases.Keys) {
         $case = $pinCases[$name]
         $folder = Join-Path $Work "newer-pin-$($name -replace '\W+', '-')"
@@ -545,19 +551,27 @@ $newerPin = & {
         $reset = git -C $folder rev-parse HEAD
         git -C $folder update-ref HEAD $head
         [IO.File]::WriteAllText($file, $case.Target)
+        if ($case.ContainsKey('Unmerged')) {
+            $blob = git -C $folder hash-object -w -- f.yml
+            $info = "0 $('0' * 40)`tf.yml`n" + (-join (1..3 | ForEach-Object { "100644 $blob $_`tf.yml`n" }))
+            # Bytes, so PowerShell adds no CR LF to the lines Git reads.
+            , [Text.Encoding]::UTF8.GetBytes($info) | git -C $folder update-index --index-info
+        }
         # Set-Variable: only the loaded functions read project, which the script analyzer can't see.
         Set-Variable -Name project -Value $folder
         Push-Location $folder
+        $thrown = ''
         try {
-            $got = @(Restore-NewerPin 'f.yml' $reset $head)
-            $kept = if ($firstCase) { Test-EditKept 'f.yml' $reset $head }
+            try { $got = @(Restore-NewerPin 'f.yml' $(if ($case.ContainsKey('Throws')) { 'e' * 40 } else { $reset }) $head) }
+            catch { $got = @(); $thrown = "$_" }
+            $kept = if ($case.ContainsKey('EditKept')) { Test-EditKept 'f.yml' $reset $head }
         }
         finally { Pop-Location }
         $text = [IO.File]::ReadAllText($file)
         $listed = (@($got | ForEach-Object { "$($_.File) $($_.Action) $($_.Kept) $($_.Template)" }) -join ';')
-        Check "newer-pin: $name" (($text -ceq $case.Want) -and ($listed -eq $case.Kept)) "got [$($text -replace "`r", '\r' -replace "`n", '\n')] and [$listed], want [$($case.Want -replace "`r", '\r' -replace "`n", '\n')] and [$($case.Kept)]"
-        if ($firstCase) { Check 'newer-pin: Test-EditKept then finds the edit kept' ($kept -eq $true) "got [$kept]" }
-        $firstCase = $false
+        $thrownOk = if ($case.ContainsKey('Throws')) { $thrown -match 'f\.yml' } else { -not $thrown }
+        Check "newer-pin: $name" (($text -ceq $case.Want) -and ($listed -eq $case.Kept) -and $thrownOk) "got [$($text -replace "`r", '\r' -replace "`n", '\n')] and [$listed] and error [$thrown], want [$($case.Want -replace "`r", '\r' -replace "`n", '\n')] and [$($case.Kept)]"
+        if ($case.ContainsKey('EditKept')) { Check 'newer-pin: Test-EditKept then finds the edit kept' ($kept -eq $true) "got [$kept]" }
     }
 }
 $newerPin
