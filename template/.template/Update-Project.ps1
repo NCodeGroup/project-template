@@ -631,11 +631,14 @@ function Test-EditKept([string]$File, [string]$ResetCommit, [string]$Head) {
     $true
 }
 
-# Writes back each action pin of a template-owned file that the project moved past the new version's pin of that action, such as a Dependabot bump the template hasn't made yet (#495), so the update never downgrades it. Returns File, Action, Kept and Template, once per action written back.
+# Writes back each action pin of a template-owned file that the project moved past the new version's pin of that action, such as a Dependabot bump the template hasn't made yet (#495), so the update never downgrades it. Leaves a file Git lists as conflicted as it is, and throws, naming the file, when Git can't read its state or the project's changes to it. Returns File, Action, Kept and Template, once per action written back, in the order the file pins them.
 function Restore-NewerPin([string]$File, [string]$ResetCommit, [string]$Head) {
     $pin = '^(?<lead>[ \t]*(?:-[ \t]+)?uses:[ \t]*)(?<action>[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)@(?<sha>[0-9a-fA-F]{40})(?<gap>[ \t]+#[ \t]*)(?<version>v?[0-9]+(?:\.[0-9]+){0,3})[ \t]*\z'
+    $unmerged = @(git -c core.quotePath=false ls-files --unmerged -- $File)
+    if ($LASTEXITCODE) { throw "Reading whether $File has a conflict failed." }
+    if ($unmerged) { return }
     $diff = @(git -c core.quotePath=false diff --no-color --no-ext-diff --no-renames -U0 $ResetCommit $Head -- $File)
-    if ($LASTEXITCODE) { return }
+    if ($LASTEXITCODE) { throw "Reading this project's changes to $File failed." }
     $path = Join-Path $project $File
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return }
     $ours = @{}
@@ -658,7 +661,7 @@ function Restore-NewerPin([string]$File, [string]$ResetCommit, [string]$Head) {
         if ([version]::TryParse($number, [ref]$parsed)) { $parsed }
     }
     $pieces = @([IO.File]::ReadAllText($path) -split '(?<=\n)')
-    $recorded = @{}
+    $recorded = [ordered]@{}
     $changed = $false
     for ($i = 0; $i -lt $pieces.Count; $i++) {
         $piece = $pieces[$i]
@@ -673,7 +676,7 @@ function Restore-NewerPin([string]$File, [string]$ResetCommit, [string]$Head) {
         if (-not $ourParsed -or -not $lineParsed -or $ourParsed -le $lineParsed) { continue }
         $pieces[$i] = "$lead$action@$sha$gap$ourVersion$eol"
         $changed = $true
-        if (-not $recorded.ContainsKey($action)) { $recorded[$action] = [pscustomobject]@{ File = $File; Action = $action; Kept = $ourVersion; Template = $version } }
+        if (-not $recorded.Contains($action)) { $recorded[$action] = [pscustomobject]@{ File = $File; Action = $action; Kept = $ourVersion; Template = $version } }
     }
     if ($changed) { [IO.File]::WriteAllText($path, -join $pieces) }
     $recorded.Values
@@ -1255,8 +1258,7 @@ try {
 
         # Put back each action pin the project moved past the new version's (Restore-NewerPin, #495), so the update never downgrades one.
         if ($resetCommit) {
-            $pinConflicts = @(git -c core.quotePath=false diff --name-only --diff-filter=U)
-            $keptPins = @(foreach ($change in $reset) { if ($change.Kind -eq 'modified' -and $change.File -notin $pinConflicts) { Restore-NewerPin $change.File $resetCommit $head } })
+            $keptPins = @(foreach ($change in $reset) { if ($change.Kind -eq 'modified') { Restore-NewerPin $change.File $resetCommit $head } })
         }
 
         # Drop the reset commit but keep its changes, and any conflict, in the index and the working tree.
