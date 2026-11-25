@@ -4,9 +4,9 @@
 
 .DESCRIPTION
     Builds a class library fixture and runs the script on it: a deterministic build whose package and symbol package
-    match entry by entry and whose own .claude folder keeps its build output, the same fixture once a
-    Directory.Build.targets writes the clock into the Copyright, and a fixture that packs nothing. Prints PASS or FAIL
-    per check and exits 1 on any failure.
+    match entry by entry, whose own bin and obj folders it deletes and whose own .claude, artifacts and node_modules
+    folders keep their build output, the same fixture once a Directory.Build.targets writes the clock into the
+    Copyright, and a fixture that packs nothing. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-reproducible-build-test-<process ID> in
@@ -60,12 +60,16 @@ $worktreeOutput = @('bin/Release/keep.txt', 'obj/keep.txt' | ForEach-Object { Jo
 foreach ($file in $worktreeOutput) { Write-Text $file 'keep' }
 $skippedOutput = @('artifacts/old/bin/keep.txt', 'node_modules/pkg/obj/keep.txt' | ForEach-Object { Join-Path $packable $_ })
 foreach ($file in $skippedOutput) { Write-Text $file 'keep' }
+$staleOutput = @('bin/stale.txt', 'obj/stale.txt' | ForEach-Object { Join-Path $packable "src/Lib/$_" })
+foreach ($file in $staleOutput) { Write-Text $file 'stale' }
 $result = Invoke-Check $packable
 Check 'a deterministic library is reproducible' ($result.Exit -eq 0 -and $result.Output.Contains('Reproducible: 2 packages match')) "exit=$($result.Exit) $($result.Output)"
 $gone = @($worktreeOutput | Where-Object { -not (Test-Path -LiteralPath $_) })
 Check 'the build output of a plan''s worktree under the repository''s own .claude folder is left in place' ($gone.Count -eq 0) "Deleted: $($gone -join ', ')"
 $gone = @($skippedOutput | Where-Object { -not (Test-Path -LiteralPath $_) })
 Check 'the bin and obj folders under artifacts and node_modules are left in place' ($gone.Count -eq 0) "Deleted: $($gone -join ', ')"
+$kept = @($staleOutput | Where-Object { Test-Path -LiteralPath $_ })
+Check 'the bin and obj folders of the repository''s own project are deleted before each pack' ($kept.Count -eq 0) "Kept: $($kept -join ', ')"
 
 Write-Text (Join-Path $packable 'Directory.Build.targets') '<Project><PropertyGroup><Copyright>$([System.DateTime]::UtcNow.Ticks)</Copyright></PropertyGroup></Project>'
 $result = Invoke-Check $packable
