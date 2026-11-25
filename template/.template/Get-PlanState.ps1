@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Marcin Polewski
+# SPDX-License-Identifier: MIT
+
 <#
 .SYNOPSIS
     Print where the plan in a folder stands, and the workflow command to run next.
