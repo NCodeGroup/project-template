@@ -1,6 +1,7 @@
 # Keeps this repository's own CI inputs current: the actions in its workflow, the Python programs its tests run,
 # pinned in tests/requirements.txt, and the Node.js packages its tests use, pinned in tests/node/package.json. The pins
-# inside template/ are in merged files, which each project's own Dependabot keeps current.
+# inside template/ are kept current by each project's own Dependabot: an update merges a merged file's pin, and keeps a
+# template-owned file's pin that is newer than the template's.
 # Like every project's, each entry waits three days before it offers a new version (cooldown)
 # and gives security updates a group of their own.
 version: 2

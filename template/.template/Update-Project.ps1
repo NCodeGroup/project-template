@@ -18,6 +18,9 @@
                       reset first, discarding a local edit, and listed as refreshed.
                       A file the update leaves as the project had it, such as an edit the new version also
                       makes or a deleted file it also deletes, is listed under none of these.
+                      An action pin, a uses: <action>@<sha> # <version> line, that the project moved past
+                      the new version's pin of that action in the same file, such as a Dependabot bump the
+                      template hasn't made yet, is kept and listed as kept, so an update never downgrades it.
       Merged          Files whose tools can't include a second file (copier.yml's _merged_files). The template's
                       changes are merged with the project's edits, like a Git merge; the same lines changed on
                       both sides conflict. An adopted project's own lines at the end of .gitignore,
@@ -628,6 +631,57 @@ function Test-EditKept([string]$File, [string]$ResetCommit, [string]$Head) {
     $true
 }
 
+# Writes back each action pin of a template-owned file that the project moved past the new version's pin of that action, such as a Dependabot bump the template hasn't made yet (#495), so the update never downgrades it. Leaves a file Git lists as conflicted as it is, and throws, naming the file, when Git can't read its state or the project's changes to it. Returns File, Action, Kept and Template, once per action written back, in the order the file pins them.
+function Restore-NewerPin([string]$File, [string]$ResetCommit, [string]$Head) {
+    $pin = '^(?<lead>[ \t]*(?:-[ \t]+)?uses:[ \t]*)(?<action>[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)@(?<sha>[0-9a-fA-F]{40})(?<gap>[ \t]+#[ \t]*)(?<version>v?[0-9]+(?:\.[0-9]+){0,3})[ \t]*\z'
+    $unmerged = @(git -c core.quotePath=false ls-files --unmerged -- $File)
+    if ($LASTEXITCODE) { throw "Reading whether $File has a conflict failed." }
+    if ($unmerged) { return }
+    $diff = @(git -c core.quotePath=false diff --no-color --no-ext-diff --no-renames -U0 $ResetCommit $Head -- $File)
+    if ($LASTEXITCODE) { throw "Reading this project's changes to $File failed." }
+    $path = Join-Path $project $File
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return }
+    $ours = @{}
+    $inHunk = $false
+    foreach ($line in $diff) {
+        if ($line.StartsWith('@@')) { $inHunk = $true; continue }
+        if (-not $inHunk -or -not $line.StartsWith('+')) { continue }
+        if ($line.Substring(1).TrimEnd("`r") -match $pin) {
+            $entry = "$($Matches['sha']) $($Matches['version'])"
+            if (-not $ours.ContainsKey($Matches['action'])) { $ours[$Matches['action']] = [Collections.Generic.List[string]]::new() }
+            if (-not $ours[$Matches['action']].Contains($entry)) { $ours[$Matches['action']].Add($entry) }
+        }
+    }
+    if (-not $ours.Count) { return }
+    $parse = {
+        param([string]$Text)
+        $number = $Text.TrimStart('v')
+        if (-not $number.Contains('.')) { $number += '.0' }
+        $parsed = $null
+        if ([version]::TryParse($number, [ref]$parsed)) { $parsed }
+    }
+    $pieces = @([IO.File]::ReadAllText($path) -split '(?<=\n)')
+    $recorded = [ordered]@{}
+    $changed = $false
+    for ($i = 0; $i -lt $pieces.Count; $i++) {
+        $piece = $pieces[$i]
+        $eol = if ($piece -match '\r?\n\z') { $Matches[0] } else { '' }
+        $body = $piece.Substring(0, $piece.Length - $eol.Length)
+        if ($body -notmatch $pin) { continue }
+        $lead = $Matches['lead']; $action = $Matches['action']; $gap = $Matches['gap']; $version = $Matches['version']
+        if (-not $ours.ContainsKey($action) -or $ours[$action].Count -ne 1) { continue }
+        $sha, $ourVersion = $ours[$action][0] -split ' '
+        $ourParsed = & $parse $ourVersion
+        $lineParsed = & $parse $version
+        if (-not $ourParsed -or -not $lineParsed -or $ourParsed -le $lineParsed) { continue }
+        $pieces[$i] = "$lead$action@$sha$gap$ourVersion$eol"
+        $changed = $true
+        if (-not $recorded.Contains($action)) { $recorded[$action] = [pscustomobject]@{ File = $File; Action = $action; Kept = $ourVersion; Template = $version } }
+    }
+    if ($changed) { [IO.File]::WriteAllText($path, -join $pieces) }
+    $recorded.Values
+}
+
 # How to run the template's .githooks in this clone: HooksPath when core.hooksPath can point at it, otherwise the
 # Note to warn with. A hooks path turns off the hooks in .git/hooks.
 # A hooks path the clone already has, from any Git config, is never changed: one that names a .githooks folder runs the
@@ -1132,6 +1186,7 @@ try {
     }
     $versionFileNew = $false
     $resetCommit = $null
+    $keptPins = @()
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
@@ -1201,6 +1256,11 @@ try {
             if (Test-Path -LiteralPath $full) { [IO.File]::WriteAllText($full, [IO.File]::ReadAllText($full).TrimEnd("`r", "`n") + $keptLines[$file]) }
         }
 
+        # Put back each action pin the project moved past the new version's (Restore-NewerPin, #495), so the update never downgrades one.
+        if ($resetCommit) {
+            $keptPins = @(foreach ($change in $reset) { if ($change.Kind -eq 'modified') { Restore-NewerPin $change.File $resetCommit $head } })
+        }
+
         # Drop the reset commit but keep its changes, and any conflict, in the index and the working tree.
         if ($resetCommitted) { git update-ref HEAD $head; if ($LASTEXITCODE) { throw 'Removing the reset commit failed.' } }
     }
@@ -1259,6 +1319,7 @@ try {
     $restored = @($reset | Where-Object { $_.Kind -eq 'added' -and $_.File -in $differs } | ForEach-Object File)
     $refreshed = @($refreshed | Where-Object { $_ -in $differs })
     if ($edited) { ''; 'Local edits discarded — these files are the template''s; make the change in a project file instead:'; $edited | ForEach-Object { "  $_" } }
+    if ($keptPins) { ''; 'Kept — action pins this project moved past the template''s, such as a Dependabot bump; the template''s older pin would downgrade them:'; $keptPins | ForEach-Object { "  $($_.File): $($_.Action) $($_.Kept), where the template pins $($_.Template)" } }
     if ($restored) { ''; 'Restored — these files are the template''s, so the project can''t delete them:'; $restored | ForEach-Object { "  $_" } }
     if ($droppedTextRules) { ''; "Left out of the lines .gitattributes kept from this repository at adoption: its catch-all text rule ($($droppedTextRules -join '; ')). Git uses the last rule that matches, so the rule overrode the template's binary rules, such as *.png binary and *.ico binary, and git add dropped the CR of each CR LF pair in a binary file it staged. Check the binary files committed while the rule applied, and replace any that no longer open." }
     if ($refreshed) { ''; 'Refreshed — these files are the template''s, but earlier template versions never updated them; a local edit to one is discarded, so make the change in a project file instead:'; $refreshed | ForEach-Object { "  $_" } }
