@@ -222,6 +222,9 @@ Write-Text (Join-Path $published 'src/Foo.Tests/Foo.Tests.csproj') '<Project Sdk
 Write-Text (Join-Path $published 'src/Tool/Tool.csproj') '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>'
 Write-Text (Join-Path $published 'src/Broken/Broken.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
 Write-Text (Join-Path $published 'src/Named/Named.csproj') '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><PackageId>Other.Name</PackageId></PropertyGroup></Project>'
+Write-Text (Join-Path $published '.claude/worktrees/wt/src/Ghost/Ghost.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
+$nestedPublished = Join-Path $Work 'bin/repo/.claude/worktrees/wt'
+Write-Text (Join-Path $nestedPublished 'src/Foo/Foo.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
 . ([scriptblock]::Create($updateFunctions['Get-PublishedPackageVersion'].Extent.Text))
 $queried = [Collections.Generic.List[string]]::new()
 $fetch = {
@@ -243,12 +246,18 @@ foreach ($source in $publishedCalls.Keys) {
     Check "${source}: Get-PublishedPackageVersion: only the packable project is named, with the newest stable version" ($foo.Count -eq 1 -and $foo[0].Version -eq '1.1.0' -and -not ($versions | Where-Object { $_.Id -in 'Foo.Tests', 'Tool' })) "Got '$($versions | ForEach-Object { "$($_.Id) $($_.Version)" })'"
     Check "${source}: Get-PublishedPackageVersion: a lookup that throws yields nothing" (-not ($versions | Where-Object Id -eq 'Broken')) "Got '$($versions | ForEach-Object { $_.Id })'"
     Check "${source}: Get-PublishedPackageVersion: a PackageId is queried in lower case" ($queried -contains 'https://api.nuget.org/v3-flatcontainer/other.name/index.json') "Queried '$($queried -join ', ')'"
+    Check "${source}: Get-PublishedPackageVersion: a project under .claude is not queried" (-not ($queried | Where-Object { $_ -match '/ghost/' })) "Queried '$($queried -join ', ')'"
+    Push-Location $nestedPublished
+    try { $nested = @(& $publishedCalls[$source]) }
+    finally { Pop-Location }
+    Check "${source}: Get-PublishedPackageVersion: run from a plan's worktree in a clone below a folder named bin, the packable project is named" (@($nested | Where-Object Id -eq 'Foo').Count -eq 1) "Got '$($nested | ForEach-Object { "$($_.Id) $($_.Version)" })'"
 }
 
 # Get-PackageMetadataDrift: Fetch stands in for nuget.org and Evaluate for MSBuild.
 $drift = Join-Path $Work 'drift'
 Write-Text (Join-Path $drift 'src/Foo/Foo.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
 Write-Text (Join-Path $drift 'src/Fresh/Fresh.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
+Write-Text (Join-Path $drift '.claude/worktrees/wt/src/Ghost/Ghost.csproj') '<Project Sdk="Microsoft.NET.Sdk" />'
 $driftFetch = {
     param($Uri)
     if ($Uri -match '/fresh/') { return @{ versions = @() } }
@@ -288,6 +297,8 @@ $baselineCases = [ordered]@{
     'Directory.Build.props with the property gives true'     = @{ Files = @{ 'Directory.Build.props' = '<Project><PropertyGroup><PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion></PropertyGroup></Project>' }; Expect = $true }
     'a project file with the property gives true'            = @{ Files = @{ 'src/A/A.csproj' = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion></PropertyGroup></Project>' }; Expect = $true }
     'a project file under obj with the property gives false' = @{ Files = @{ 'src/A/obj/A.csproj' = '<Project><PropertyGroup><PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion></PropertyGroup></Project>' }; Expect = $false }
+    'a project file under .claude with the property gives false' = @{ Files = @{ '.claude/worktrees/wt/src/A/A.csproj' = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion></PropertyGroup></Project>' }; Expect = $false }
+    'run from a plan''s worktree in a clone below a folder named bin, a project file with the property gives true' = @{ Root = 'bin/repo/.claude/worktrees/wt'; Files = @{ 'src/A/A.csproj' = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion></PropertyGroup></Project>' }; Expect = $true }
 }
 $baselineIndex = 0
 foreach ($name in $baselineCases.Keys) {
@@ -296,8 +307,9 @@ foreach ($name in $baselineCases.Keys) {
     foreach ($source in $sources.Keys) {
         $folder = Join-Path $Work "baseline-$source-$baselineIndex"
         New-Item -ItemType Directory -Path $folder -Force | Out-Null
-        foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $folder $relative) $case.Files[$relative] }
-        Push-Location $folder
+        $at = if ($case.Root) { Join-Path $folder $case.Root } else { $folder }
+        foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $at $relative) $case.Files[$relative] }
+        Push-Location $at
         try { $result = & $sources[$source] 'Test-PackageValidationBaseline' }
         finally { Pop-Location }
         Check "${source}: Test-PackageValidationBaseline: $name" ($result -eq $case.Expect) "Got '$result'; expected '$($case.Expect)'"
@@ -313,6 +325,8 @@ $headerCases = [ordered]@{
     'a file without the header is named' = @{ Files = @{ '.editorconfig' = $editorconfig; 'src/B.cs' = "class B { }`n" }; Expect = 'src/B.cs' }
     'an old region header is named' = @{ Files = @{ '.editorconfig' = $editorconfig; 'src/C.cs' = "#region Copyright Preamble`n// old`n#endregion`nclass C { }`n" }; Expect = 'src/C.cs' }
     'bin, obj, Migrations, generated and designer files are skipped' = @{ Files = @{ '.editorconfig' = $editorconfig; 'src/bin/D.cs' = "class X { }`n"; 'src/obj/D.cs' = "class X { }`n"; 'src/Migrations/D.cs' = "class X { }`n"; 'src/E.g.cs' = "class X { }`n"; 'src/F.Designer.cs' = "class X { }`n"; 'src/G.cs' = "class G { }`n" }; Expect = 'src/G.cs' }
+    '.claude folders are skipped' = @{ Files = @{ '.editorconfig' = $editorconfig; '.claude/worktrees/wt/src/B.cs' = "class B { }`n"; 'src/G.cs' = "class G { }`n" }; Expect = 'src/G.cs' }
+    'run from a plan''s worktree in a clone below a folder named bin, a file without the header is named' = @{ Root = 'bin/repo/.claude/worktrees/wt'; Files = @{ '.editorconfig' = $editorconfig; 'src/B.cs' = "class B { }`n" }; Expect = 'src/B.cs' }
     'two files are listed in order' = @{ Files = @{ '.editorconfig' = $editorconfig; 'src/B.cs' = "class B { }`n"; 'src/A.cs' = "class A { }`n" }; Expect = 'src/A.cs,src/B.cs' }
     'no header setting gives nothing' = @{ Files = @{ '.editorconfig' = "[*.cs]`nindent_size = 4`n"; 'src/B.cs' = "class B { }`n" }; Expect = '' }
     'no .editorconfig gives nothing' = @{ Files = @{ 'src/B.cs' = "class B { }`n" }; Expect = '' }
@@ -324,8 +338,9 @@ foreach ($source in $sources.Keys) {
         $case = $headerCases[$name]
         $folder = Join-Path $Work "header-$source-$headerIndex"
         New-Item -ItemType Directory -Path $folder -Force | Out-Null
-        foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $folder $relative) $case.Files[$relative] }
-        Push-Location $folder
+        $at = if ($case.Root) { Join-Path $folder $case.Root } else { $folder }
+        foreach ($relative in $case.Files.Keys) { Write-Text (Join-Path $at $relative) $case.Files[$relative] }
+        Push-Location $at
         try { $result = @(& $sources[$source] 'Get-CSharpFileWithoutHeader' | Sort-Object) -join ',' }
         finally { Pop-Location }
         Check "${source}: Get-CSharpFileWithoutHeader: $name" ($result -eq $case.Expect) "Got '$result'; expected '$($case.Expect)'"

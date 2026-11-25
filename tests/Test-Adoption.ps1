@@ -73,6 +73,10 @@ $updateOwnable = @(git -C $repoRoot ls-files -- template/ | ForEach-Object { Con
 $adoptOwnable = @(Get-OwnableFile (Join-Path $repoRoot 'template') | Sort-Object -Unique)
 $onlyOne = @(Compare-Object $updateOwnable $adoptOwnable | ForEach-Object { "$($_.InputObject) $($_.SideIndicator)" })
 Check 'unit: Get-OwnableFile and Update-Project.ps1 agree on which files a project can own' ($updateOwnable.Count -gt 50 -and -not $onlyOne.Count) "update=$($updateOwnable.Count) adopt=$($adoptOwnable.Count) $($onlyOne -join '; ')"
+$msbuild = New-TestFolder 'bin/msbuild' @{ 'Directory.Build.props' = "<Project />`n"; 'src/A/A.csproj' = "<Project />`n"; 'src/A/obj/B.csproj' = "<Project />`n"; '.claude/worktrees/wt/src/C/C.csproj' = "<Project />`n" }
+$found = @(Get-MSBuildFile $msbuild | ForEach-Object { [IO.Path]::GetRelativePath($msbuild, $_.FullName) -replace '\\', '/' } | Sort-Object) -join ','
+$inWorktree = @(Get-MSBuildFile (Join-Path $msbuild '.claude/worktrees/wt') | ForEach-Object Name) -join ','
+Check 'unit: Get-MSBuildFile skips bin, obj and .claude folders below the folder it scans, also in a clone below a folder named bin, and reads a plan''s worktree' ($found -eq 'Directory.Build.props,src/A/A.csproj' -and $inWorktree -eq 'C.csproj') "$found | $inWorktree"
 
 $demo = New-TestFolder 'demo' @{
     'src/NCode.Demo.slnx'   = '<Solution />'
