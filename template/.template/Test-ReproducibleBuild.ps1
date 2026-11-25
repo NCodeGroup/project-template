@@ -59,9 +59,7 @@ if (Test-Path -LiteralPath $output) {
 }
 
 foreach ($pass in 'first', 'second') {
-    $skipped = [IO.Path]::DirectorySeparatorChar + 'artifacts' + [IO.Path]::DirectorySeparatorChar,
-        [IO.Path]::DirectorySeparatorChar + 'node_modules' + [IO.Path]::DirectorySeparatorChar,
-        [IO.Path]::DirectorySeparatorChar + '.git' + [IO.Path]::DirectorySeparatorChar
+    $skipped = @('artifacts', 'node_modules', '.git', '.claude' | ForEach-Object { [IO.Path]::DirectorySeparatorChar + $_ + [IO.Path]::DirectorySeparatorChar })
     Get-ChildItem -LiteralPath $root -Directory -Recurse -Force |
         Where-Object { $_.Name -in 'bin', 'obj' } |
         Where-Object {
