@@ -9,6 +9,8 @@
     after gh repo create the baseline gets the repository, the signed-in user and the template's required checks; that
     -Owner names the owner and the signed-in user isn't read; that -NoBaseline creates the repository and runs no
     baseline; and that a baseline that fails warns with the command to run it again and the run succeeds.
+    It also checks that a local clone of the template as -Template has the first commit name the clone's origin remote
+    as _src_path.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -53,7 +55,7 @@ Write-Text (Join-Path $bin 'copier.ps1') @'
 Add-Content -LiteralPath $env:NEW_PROJECT_TEST_CALLS -Value ("copier " + ($args -join ' '))
 $dest = $args[-1]
 New-Item -ItemType Directory -Force $dest | Out-Null
-[IO.File]::WriteAllText((Join-Path $dest '.copier-answers.yml'), "_commit: v0.1.0`ngit_host: $env:NEW_PROJECT_TEST_HOST`n")
+[IO.File]::WriteAllText((Join-Path $dest '.copier-answers.yml'), "_commit: v0.1.0`n_src_path: $($args[-2])`ngit_host: $env:NEW_PROJECT_TEST_HOST`n")
 exit 0
 '@
 # The stand-in for gh. It records its arguments, answers the signed-in user, and fails reading it, or prints nothing and succeeds, when asked to.
@@ -80,12 +82,12 @@ $calls = Join-Path $Work 'calls.log'
 
 # Runs the copy of New-Project.ps1 in a child pwsh, as a person would, and returns its output, exit code and the calls
 # the stand-ins recorded.
-function Invoke-NewProject([string]$Name, [string]$GitHost, [string]$Fail = '', [string[]]$Extra = @()) {
+function Invoke-NewProject([string]$Name, [string]$GitHost, [string]$Fail = '', [string[]]$Extra = @(), [string]$Template = 'stand-in') {
     if (Test-Path -LiteralPath $calls) { Remove-Item -LiteralPath $calls -Force }
     $dest = Join-Path $Work $Name
     $env:NEW_PROJECT_TEST_HOST = $GitHost
     $env:NEW_PROJECT_TEST_FAIL = $Fail
-    $output = & pwsh -NoProfile -File $newProject -Path $dest -Template stand-in -CreateRemote @Extra 2>&1 | Out-String
+    $output = & pwsh -NoProfile -File $newProject -Path $dest -Template $Template -CreateRemote @Extra 2>&1 | Out-String
     $exitCode = $LASTEXITCODE
     [pscustomobject]@{
         Output   = $output
@@ -139,6 +141,14 @@ try {
     Check 'gitlab -NoBaseline: the project is created and the baseline isn''t run' ($r.ExitCode -eq 0 -and [bool]($r.Calls -like 'glab repo create gl-none *') -and -not [bool]($r.Calls -like 'Set-*')) "calls=$($r.Calls -join '|') output=$($r.Output)"
     $r = Invoke-NewProject 'gl-fail' 'gitlab' 'baseline'
     Check 'gitlab failed: a baseline that fails warns with the command to run it again and the run succeeds' ($r.ExitCode -eq 0 -and (Compress $r.Output).Contains((Compress "Couldn't protect the GitLab project: Stand-in baseline failed. Run it again with:")) -and (Compress $r.Output).Contains((Compress "Set-GitLabBaseline.ps1 -Path '$($r.Path)'"))) "calls=$($r.Calls -join '|') output=$($r.Output)"
+
+    # 3. A local clone of the template.
+    $clone = Join-Path $Work 'template-clone'
+    git init -q $clone
+    git -C $clone remote add origin https://example.invalid/fork/project-template.git
+    $r = Invoke-NewProject 'gh-clone' 'github' '' @('-NoBaseline') $clone
+    $answers = (git -C $r.Path show HEAD:.copier-answers.yml) -join "`n"
+    Check 'local clone: the first commit names the clone''s origin as the template''s address' ($r.ExitCode -eq 0 -and $answers.Contains('_src_path: https://example.invalid/fork/project-template.git') -and (Compress $r.Output).Contains((Compress 'the origin remote of'))) "answers=$answers output=$($r.Output)"
 }
 finally {
     foreach ($savedName in $savedNames) { [Environment]::SetEnvironmentVariable($savedName, $saved[$savedName]) }

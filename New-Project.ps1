@@ -8,6 +8,9 @@
     project name, description, stack, git host (GitHub or GitLab), and build and test commands — and records the
     answers in .copier-answers.yml. -Data answers questions in advance so they aren't asked; -Defaults takes the
     default for every other question and asks nothing (project_name has no default, so pass it in -Data).
+    When -Template is a local clone of the template, such as ., the answers name the clone's origin remote as the
+    template's address instead of its folder, so the project updates from any PC; a clone without an origin address
+    keeps the folder, with a warning.
 
     Then initializes git on `main`, enables the template's Git hooks (core.hooksPath .githooks) and commits everything
     as the first commit. When Git already has a hooks path for the new repository, such as a global one, or hooks
@@ -72,6 +75,7 @@ if ($Defaults) { $copierArgs += '--defaults' }
 foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
 $copierArgs += $Template, $Path
 Invoke-Copier @copierArgs
+Set-TemplateSource (Resolve-Path -LiteralPath $Path).Path $Template
 
 Push-Location $Path
 try {
