@@ -1180,6 +1180,7 @@ try {
     }
     $versionFileNew = $false
     $resetCommit = $null
+    $keptPins = @()
     try {
         # Reset the template-owned files to the project's current version; what changes was edited or deleted here. A file the project owns is left out, so its copy is never overwritten.
         $exclude = foreach ($file in $projectOwned + $merged + $ownedFiles) { '--exclude', "/$file" }
@@ -1249,6 +1250,12 @@ try {
             if (Test-Path -LiteralPath $full) { [IO.File]::WriteAllText($full, [IO.File]::ReadAllText($full).TrimEnd("`r", "`n") + $keptLines[$file]) }
         }
 
+        # Put back each action pin the project moved past the new version's (Restore-NewerPin, #495), so the update never downgrades one.
+        if ($resetCommit) {
+            $pinConflicts = @(git -c core.quotePath=false diff --name-only --diff-filter=U)
+            $keptPins = @(foreach ($change in $reset) { if ($change.Kind -eq 'modified' -and $change.File -notin $pinConflicts) { Restore-NewerPin $change.File $resetCommit $head } })
+        }
+
         # Drop the reset commit but keep its changes, and any conflict, in the index and the working tree.
         if ($resetCommitted) { git update-ref HEAD $head; if ($LASTEXITCODE) { throw 'Removing the reset commit failed.' } }
     }
@@ -1307,6 +1314,7 @@ try {
     $restored = @($reset | Where-Object { $_.Kind -eq 'added' -and $_.File -in $differs } | ForEach-Object File)
     $refreshed = @($refreshed | Where-Object { $_ -in $differs })
     if ($edited) { ''; 'Local edits discarded — these files are the template''s; make the change in a project file instead:'; $edited | ForEach-Object { "  $_" } }
+    if ($keptPins) { ''; 'Kept — action pins this project moved past the template''s, such as a Dependabot bump; the template''s older pin would downgrade them:'; $keptPins | ForEach-Object { "  $($_.File): $($_.Action) $($_.Kept), where the template pins $($_.Template)" } }
     if ($restored) { ''; 'Restored — these files are the template''s, so the project can''t delete them:'; $restored | ForEach-Object { "  $_" } }
     if ($droppedTextRules) { ''; "Left out of the lines .gitattributes kept from this repository at adoption: its catch-all text rule ($($droppedTextRules -join '; ')). Git uses the last rule that matches, so the rule overrode the template's binary rules, such as *.png binary and *.ico binary, and git add dropped the CR of each CR LF pair in a binary file it staged. Check the binary files committed while the rule applied, and replace any that no longer open." }
     if ($refreshed) { ''; 'Refreshed — these files are the template''s, but earlier template versions never updated them; a local edit to one is discarded, so make the change in a project file instead:'; $refreshed | ForEach-Object { "  $_" } }
