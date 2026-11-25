@@ -290,6 +290,21 @@ $gone = -not (Test-Path -LiteralPath (Join-Path $folder '.github/prompts/execute
 $after = & $workflow -Path $folder -Phase Detect
 Check 'unit: workflow install adapter' ($detected -eq $true -and $gone -and $out.Count -eq 1 -and $after -eq $false) "$detected | $($out -join ' / ') | $after"
 
+$withOrigin = New-Fixture 'source-origin' @{ 'README.md' = "t`n" } 'https://example.invalid/fork/project-template.git'
+$sourceProject = New-TestFolder 'source-project' @{ '.copier-answers.yml' = "# Written by Copier`n_commit: v0.1.0`n_src_path: first part`n  second part`nproject_name: Demo`n" }
+$note = @(Set-TemplateSource $sourceProject $withOrigin)
+$sourceAnswers = Get-Content -Raw -LiteralPath (Join-Path $sourceProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource records a local clone''s origin' ($sourceAnswers -eq "# Written by Copier`n_commit: v0.1.0`n_src_path: https://example.invalid/fork/project-template.git`nproject_name: Demo`n" -and $note[0].Contains('the origin remote of')) "$sourceAnswers | $($note -join ' / ')"
+$plainFolder = New-TestFolder 'source-plain' @{ 'README.md' = "t`n" }
+$plainAnswersText = "# Written by Copier`n_commit: v0.1.0`n_src_path: $plainFolder`nproject_name: Demo`n"
+$plainProject = New-TestFolder 'source-project2' @{ '.copier-answers.yml' = $plainAnswersText }
+$out = @(Set-TemplateSource $plainProject $plainFolder 3>&1)
+$plainAnswers = Get-Content -Raw -LiteralPath (Join-Path $plainProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource warns for a folder without an origin address and leaves the answers' ($plainAnswers -eq $plainAnswersText -and $out.Count -eq 1 -and $out[0] -is [Management.Automation.WarningRecord] -and $out[0].Message.Contains('which only this PC has')) "$plainAnswers | $($out -join ' / ')"
+$url = @(Set-TemplateSource $plainProject 'https://github.com/NCodeGroup/project-template.git' 3>&1)
+$urlAnswers = Get-Content -Raw -LiteralPath (Join-Path $plainProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource leaves an address alone' ($url.Count -eq 0 -and $urlAnswers -eq $plainAnswersText) "$($url -join ' / ') | $urlAnswers"
+
 if (-not $UnitOnly) {
     $tpl = Join-Path $Work 'template-repo'
     $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
