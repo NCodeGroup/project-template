@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Marcin Polewski
+# SPDX-License-Identifier: MIT
+
 <#
 .SYNOPSIS
     Keep one open GitHub issue that says a newer project template version is out, with its release notes.

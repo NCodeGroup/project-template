@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Marcin Polewski
+# SPDX-License-Identifier: MIT
+
 <#
 .SYNOPSIS
     Tag and publish the release the changelog's newest section names, once the remote has no tag for it.
