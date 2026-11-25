@@ -566,8 +566,9 @@ function Get-AssemblyVersionFloor {
 # together; tests keep the two equal.
 function Get-PublishedPackageVersion {
     param([scriptblock]$Fetch = { param($Uri) Invoke-RestMethod -Uri $Uri -TimeoutSec 20 })
+    $root = (Get-Location).ProviderPath
     foreach ($file in Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue) {
-        if ([IO.Path]::GetRelativePath((Get-Location).ProviderPath, $file.FullName) -match '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
+        if ([IO.Path]::GetRelativePath($root, $file.FullName) -match '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
         $text = Get-Content -LiteralPath $file.FullName -Raw
         if ($text -match '<IsPackable>\s*false') { continue }
         $id = if ($text -match '<PackageId>\s*([^<\s]+)\s*</PackageId>') { $Matches[1] } else { $file.BaseName }
@@ -638,7 +639,8 @@ function Get-PackageMetadataDrift {
 # template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests keep the two equal.
 function Test-PackageValidationBaseline {
     if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match 'PackageValidationBaselineVersion') { return $true }
-    @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { [IO.Path]::GetRelativePath((Get-Location).ProviderPath, $_.FullName) -notmatch '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
+    $root = (Get-Location).ProviderPath
+    @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { [IO.Path]::GetRelativePath($root, $_.FullName) -notmatch '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
 }
 
 # The stale NuGet logistics an older library carries, found under the current folder, as Kind and Message in a fixed
@@ -733,8 +735,9 @@ function Get-CSharpFileWithoutHeader {
     $setting = [regex]::Match([IO.File]::ReadAllText((Join-Path (Get-Location).Path '.editorconfig')), '(?m)^file_header_template\s*=\s*(.+?)\r?$')
     if (-not $setting.Success) { return }
     $header = (($setting.Groups[1].Value -split '\\n') | ForEach-Object { "// $_" }) -join "`n"
+    $root = (Get-Location).ProviderPath
     foreach ($file in Get-ChildItem -LiteralPath . -Filter *.cs -File -Recurse -ErrorAction SilentlyContinue) {
-        if ([IO.Path]::GetRelativePath((Get-Location).ProviderPath, $file.FullName) -match '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude|Migrations)[\\/]' -or $file.Name -match '\.(g|generated|designer)\.cs$') { continue }
+        if ([IO.Path]::GetRelativePath($root, $file.FullName) -match '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude|Migrations)[\\/]' -or $file.Name -match '\.(g|generated|designer)\.cs$') { continue }
         $text = ([IO.File]::ReadAllText($file.FullName).TrimStart([char]0xFEFF)) -replace "`r`n", "`n"
         if (-not $text.StartsWith("$header`n")) { [IO.Path]::GetRelativePath((Get-Location).Path, $file.FullName) -replace '\\', '/' }
     }
