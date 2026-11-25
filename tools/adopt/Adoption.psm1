@@ -647,7 +647,7 @@ function Test-PackageValidationBaseline {
 # together; tests keep the two equal.
 function Get-NuGetLogistics {
     $root = (Get-Location).ProviderPath
-    $excluded = 'bin', 'obj', 'node_modules', 'artifacts', '.git'
+    $excluded = 'bin', 'obj', 'node_modules', 'artifacts', '.git', '.claude'
     $found = [Collections.Generic.List[object]]::new()
     $pending = [Collections.Generic.Stack[string]]::new()
     $pending.Push($root)

@@ -858,7 +858,7 @@ function Get-PackageMetadataDrift {
 # A deliberate copy of tools/adopt/Adoption.psm1's Get-NuGetLogistics: change both, or tests\Test-NuGetLogistics.ps1 fails.
 function Get-NuGetLogistics {
     $root = (Get-Location).ProviderPath
-    $excluded = 'bin', 'obj', 'node_modules', 'artifacts', '.git'
+    $excluded = 'bin', 'obj', 'node_modules', 'artifacts', '.git', '.claude'
     $found = [Collections.Generic.List[object]]::new()
     $pending = [Collections.Generic.Stack[string]]::new()
     $pending.Push($root)
