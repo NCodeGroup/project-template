@@ -111,6 +111,12 @@ try {
     # A local edit the target version also makes, in a file whose other lines the target version also changes: the
     # update keeps it and lists nothing there (#488).
     Edit-File .claude/commands/plan-tests.md 'description: "Plan tests for risky or untested code"' 'description: "Plan tests, updated in v0.2.0"'
+    # Dependabot moves an action pin of a template-owned workflow past the template's: the update keeps it (#495).
+    $scorecard = Join-Path $project '.github/workflows/scorecard.yml'
+    $scorecardText = [IO.File]::ReadAllText($scorecard)
+    $bumpedText = [regex]::Replace($scorecardText, 'upload-sarif@[0-9a-f]{40} # v[0-9.]+', 'upload-sarif@0123456789abcdef0123456789abcdef01234567 # v999.0.0')
+    if ($bumpedText -ceq $scorecardText) { throw "No upload-sarif pin in $scorecard." }
+    [IO.File]::WriteAllText($scorecard, $bumpedText)
     Remove-Item -LiteralPath .claude/commands/plan-docs.md, .vscode/extensions.json, .claude/commands/analyze-decision.md
     Invoke-Git add -A; Invoke-Git commit -q -m 'Local edits'
     $projectOwnedHashes = (Get-FileHash -LiteralPath AGENTS.md, README.md).Hash -join ','
@@ -133,6 +139,7 @@ try {
     Edit-File .claude/commands/plan-feature.md 'description: "Plan a new feature for the executor model to build"' 'description: "Plan a new feature, updated in v0.2.0"'
     Edit-File .claude/commands/plan-tests.md 'description: "Plan tests for risky or untested code"' 'description: "Plan tests, updated in v0.2.0"'
     Edit-File .claude/commands/plan-tests.md 'argument-hint: "[Module, feature or folder to cover]"' 'argument-hint: "[Module, feature or folder to cover, in v0.2.0]"'
+    Edit-File .github/workflows/scorecard.yml 'timeout-minutes: 15' 'timeout-minutes: 20'
     Remove-Item -LiteralPath .claude/commands/analyze-decision.md
     Set-Content -LiteralPath $added 'Added in v0.2.0.' -NoNewline
     # A new version of the update script, which the project's v0.1.0 copy must hand the update over to.
@@ -176,6 +183,7 @@ try {
     Check 'update: deleted template-owned file restored and reported' ((Test-Path -LiteralPath .claude/commands/plan-docs.md) -and $output -match '(?s)Restored.*\n  \.claude/commands/plan-docs\.md')
     Check 'update: lists neither a local edit the new version also makes nor a deleted file it also deletes (#432)' ((Select-String -LiteralPath .claude/commands/plan-feature.md -SimpleMatch 'Plan a new feature, updated in v0.2.0' -Quiet) -and $output -notmatch '(?m)^  \.claude/commands/(plan-feature|analyze-decision)\.md\r?$') $output.Trim()
     Check 'update: lists no local edit the new version keeps beside changes of its own to the file (#488)' ((Select-String -LiteralPath .claude/commands/plan-tests.md -SimpleMatch 'Plan tests, updated in v0.2.0' -Quiet) -and (Select-String -LiteralPath .claude/commands/plan-tests.md -SimpleMatch 'folder to cover, in v0.2.0' -Quiet) -and $output -notmatch '(?m)^  \.claude/commands/plan-tests\.md\r?$') $output.Trim()
+    Check 'update: keeps an action pin the project moved past the new version''s and lists it as kept, not as a discarded edit (#495)' ((Select-String -LiteralPath .github/workflows/scorecard.yml -SimpleMatch 'upload-sarif@0123456789abcdef0123456789abcdef01234567 # v999.0.0' -Quiet) -and (Select-String -LiteralPath .github/workflows/scorecard.yml -SimpleMatch 'timeout-minutes: 20' -Quiet) -and $output -match '(?m)^  \.github/workflows/scorecard\.yml: github/codeql-action/upload-sarif v999\.0\.0, where the template pins v' -and $output -notmatch '(?m)^  \.github/workflows/scorecard\.yml\r?$') $output.Trim()
     Check 'update: file removed from the template deleted' (-not (Test-Path -LiteralPath .claude/commands/analyze-decision.md))
     Check 'update: file added to the template created' ([bool](git ls-files -- $added))
     Check 'update: no conflict markers or .rej files' (-not (git grep -lE '^(<<<<<<<|>>>>>>>) ') -and -not (Get-ChildItem -Recurse -Filter '*.rej' -File))
