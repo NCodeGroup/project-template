@@ -719,7 +719,7 @@ function Get-CSharpFileWithoutHeader {
     if (-not $setting.Success) { return }
     $header = (($setting.Groups[1].Value -split '\\n') | ForEach-Object { "// $_" }) -join "`n"
     foreach ($file in Get-ChildItem -LiteralPath . -Filter *.cs -File -Recurse -ErrorAction SilentlyContinue) {
-        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git|Migrations)[\\/]' -or $file.Name -match '\.(g|generated|designer)\.cs$') { continue }
+        if ([IO.Path]::GetRelativePath((Get-Location).ProviderPath, $file.FullName) -match '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude|Migrations)[\\/]' -or $file.Name -match '\.(g|generated|designer)\.cs$') { continue }
         $text = ([IO.File]::ReadAllText($file.FullName).TrimStart([char]0xFEFF)) -replace "`r`n", "`n"
         if (-not $text.StartsWith("$header`n")) { [IO.Path]::GetRelativePath((Get-Location).Path, $file.FullName) -replace '\\', '/' }
     }
@@ -793,7 +793,7 @@ function Get-AssemblyVersionFloor {
 function Get-PublishedPackageVersion {
     param([scriptblock]$Fetch = { param($Uri) Invoke-RestMethod -Uri $Uri -TimeoutSec 20 })
     foreach ($file in Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue) {
-        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
+        if ([IO.Path]::GetRelativePath((Get-Location).ProviderPath, $file.FullName) -match '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
         $text = Get-Content -LiteralPath $file.FullName -Raw
         if ($text -match '<IsPackable>\s*false') { continue }
         $id = if ($text -match '<PackageId>\s*([^<\s]+)\s*</PackageId>') { $Matches[1] } else { $file.BaseName }
@@ -820,7 +820,7 @@ function Get-PackageMetadataDrift {
     )
     $root = (Get-Location).ProviderPath
     foreach ($file in Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue) {
-        if ($file.FullName -match '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
+        if ([IO.Path]::GetRelativePath($root, $file.FullName) -match '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude)[\\/]' -or $file.Name -like '*.Tests.csproj') { continue }
         $text = Get-Content -LiteralPath $file.FullName -Raw
         if ($text -match '<IsPackable>\s*false') { continue }
         $id = if ($text -match '<PackageId>\s*([^<\s]+)\s*</PackageId>') { $Matches[1] } else { $file.BaseName }
@@ -939,7 +939,7 @@ function Get-NuGetLogistics {
 # tools/adopt/Adoption.psm1 in the template has a deliberate copy of this function, not shared code: this script runs on its own, from an older template's copy. Change both together; tests/Test-LibraryRelease.ps1 keeps the two equal.
 function Test-PackageValidationBaseline {
     if ((Test-Path -LiteralPath Directory.Build.props -PathType Leaf) -and (Get-Content -LiteralPath Directory.Build.props -Raw) -match 'PackageValidationBaselineVersion') { return $true }
-    @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|node_modules|artifacts|\.git)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
+    @(Get-ChildItem -LiteralPath . -Filter *.csproj -File -Recurse -ErrorAction SilentlyContinue | Where-Object { [IO.Path]::GetRelativePath((Get-Location).ProviderPath, $_.FullName) -notmatch '(^|[\\/])(bin|obj|node_modules|artifacts|\.git|\.claude)[\\/]' -and (Get-Content -LiteralPath $_.FullName -Raw) -match 'PackageValidationBaselineVersion' }).Count -gt 0
 }
 
 # A deliberate copy of tools/adopt/Adoption.psm1's Update-VersionFile: change both, or tests\Test-LibraryRelease.ps1 fails.
