@@ -4,8 +4,9 @@
 
 .DESCRIPTION
     Builds a class library fixture and runs the script on it: a deterministic build whose package and symbol package
-    match entry by entry, the same fixture once a Directory.Build.targets writes the clock into the Copyright, and a
-    fixture that packs nothing. Prints PASS or FAIL per check and exits 1 on any failure.
+    match entry by entry and whose own .claude folder keeps its build output, the same fixture once a
+    Directory.Build.targets writes the clock into the Copyright, and a fixture that packs nothing. Prints PASS or FAIL
+    per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-reproducible-build-test-<process ID> in
@@ -55,8 +56,12 @@ if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -For
 New-Item -ItemType Directory -Force $Work | Out-Null
 
 $packable = New-Fixture 'packable' '<IncludeSymbols>true</IncludeSymbols><SymbolPackageFormat>snupkg</SymbolPackageFormat>'
+$worktreeOutput = @('bin/Release/keep.txt', 'obj/keep.txt' | ForEach-Object { Join-Path $packable ".claude/worktrees/wt/src/Lib/$_" })
+foreach ($file in $worktreeOutput) { Write-Text $file 'keep' }
 $result = Invoke-Check $packable
 Check 'a deterministic library is reproducible' ($result.Exit -eq 0 -and $result.Output.Contains('Reproducible: 2 packages match')) "exit=$($result.Exit) $($result.Output)"
+$gone = @($worktreeOutput | Where-Object { -not (Test-Path -LiteralPath $_) })
+Check 'the build output of a plan''s worktree under the repository''s own .claude folder is left in place' ($gone.Count -eq 0) "Deleted: $($gone -join ', ')"
 
 Write-Text (Join-Path $packable 'Directory.Build.targets') '<Project><PropertyGroup><Copyright>$([System.DateTime]::UtcNow.Ticks)</Copyright></PropertyGroup></Project>'
 $result = Invoke-Check $packable
