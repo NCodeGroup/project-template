@@ -1087,16 +1087,14 @@ try {
     $from = Get-Answer '_commit'
     $src = Get-Answer '_src_path'
     # The template moved from polewskm/project-template to NCodeGroup/project-template. A project whose answers still name the old
-    # address moves over with this update, so it stops depending on GitHub's redirect. Only the _src_path line changes, and the
-    # update commits it with everything else. Get-TemplateUpdate.ps1 reads the same old address for the weekly notice;
-    # change both together.
+    # address moves over with this update, so it stops depending on GitHub's redirect. Only the _src_path line changes, written
+    # after the hand-over, and the update commits it with everything else. Get-TemplateUpdate.ps1 reads the same old address
+    # for the weekly notice; change both together.
     $movedSource = 'https://github.com/NCodeGroup/project-template.git'
+    $oldSource = $null
     if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?$') {
-        $answersFile = Join-Path $project '.copier-answers.yml'
-        $answersText = [IO.File]::ReadAllText($answersFile)
-        [IO.File]::WriteAllText($answersFile, [regex]::Replace($answersText, '(?m)^_src_path:[^\r\n]*', "_src_path: $movedSource"), [Text.UTF8Encoding]::new($false))
+        $oldSource = $src
         $src = $movedSource
-        "The template moved to $movedSource; .copier-answers.yml now names it."
     }
     # A project created from a local clone of the template names that folder, which no other PC has (#505). When it isn't
     # here, the update moves the project to the template's address: the origin of -TemplateClone when that is an address,
@@ -1142,13 +1140,6 @@ try {
             exit $LASTEXITCODE
         }
     }
-    # Written after the hand-over: the script handed the update makes this move itself and refuses uncommitted changes.
-    if ($localSource) {
-        $answersFile = Join-Path $project '.copier-answers.yml'
-        $answersText = [IO.File]::ReadAllText($answersFile)
-        [IO.File]::WriteAllText($answersFile, [regex]::Replace($answersText, '(?m)^_src_path:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*', "_src_path: $src"), [Text.UTF8Encoding]::new($false))
-        ".copier-answers.yml named the template by $localSource, a folder that isn't on this PC; it now names $src, so the project updates from any PC."
-    }
 
     # copier recopy and the renders below check out the project's version, which Git for Windows refuses when a name
     # in it is one Windows can't hold, such as the uses_node file names of v0.69.0 to v0.75.0: stop before any of them runs.
@@ -1193,6 +1184,19 @@ try {
         catch {
             Write-Warning "Skipped the rewritten-file suggestion: checking for merged files this project rewrote failed: $_"
             $rewritten = @()
+        }
+    }
+    # Written after the hand-over, whose script makes these moves itself and refuses uncommitted changes, and after every
+    # check that can stop the update, so a stopped update leaves the answers as they were.
+    if ($oldSource -or $localSource) {
+        $answersFile = Join-Path $project '.copier-answers.yml'
+        $answersText = [IO.File]::ReadAllText($answersFile)
+        [IO.File]::WriteAllText($answersFile, [regex]::Replace($answersText, '(?m)^_src_path:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*', "_src_path: $src"), [Text.UTF8Encoding]::new($false))
+        if ($oldSource) {
+            "The template moved to $movedSource; .copier-answers.yml now names it."
+        }
+        else {
+            ".copier-answers.yml named the template by $localSource, a folder that isn't on this PC; it now names $src, so the project updates from any PC."
         }
     }
     # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes every path

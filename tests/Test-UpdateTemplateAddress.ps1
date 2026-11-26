@@ -4,13 +4,15 @@
 
 .DESCRIPTION
     A project created from a local clone of the template names that folder, which no other PC has (#505). Renders a
-    project from v0.1.0, points its answers at a folder that doesn't exist, then updates four times: once as is, which
+    project from v0.1.0, points its answers at a folder that doesn't exist, then updates five times: once as is, which
     must move the project to https://github.com/NCodeGroup/project-template.git, once with -TemplateClone, a clone whose
     origin is another address with a user name and token in it, which must move the project to that address without
     them, once with a clone whose origin is a GitHub SSH address, which must move it to that address's https form, and
     once more after a v0.2.0 whose update script differs, which the update must hand over to and that script must make
-    the move. Each of the first three runs, at the newest version already, must commit only the _src_path line; the
-    fourth must commit the move with the v0.2.0 update. Prints PASS or FAIL per check and exits 1 on any failure.
+    the move. The fifth names the old polewskm/project-template address and updates to a v0.3.0 whose update script
+    differs again, which must make that move after the hand-over too. Each of the first three runs, at the newest
+    version already, must commit only the _src_path line; the fourth and the fifth must commit the move with the v0.2.0
+    and v0.3.0 updates. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-address-test-<process ID> in the
@@ -65,12 +67,12 @@ Invoke-Git clone -q $tpl $fork
 Invoke-Git -C $fork remote set-url origin https://template-test:secret@example.invalid/fork/project-template.git
 
 # Names the missing folder in the answers, commits that, then updates with git serving every address from the local snapshot, as a host would.
-function Invoke-AddressUpdate([hashtable]$Extra = @{}) {
+function Invoke-AddressUpdate([hashtable]$Extra = @{}, [string]$Source = $missing) {
     Push-Location $project
     try {
         $answersFile = Join-Path $project '.copier-answers.yml'
         $answers = [IO.File]::ReadAllText($answersFile)
-        [IO.File]::WriteAllText($answersFile, [regex]::Replace($answers, '(?m)^_src_path:[^\r\n]*', "_src_path: $missing"))
+        [IO.File]::WriteAllText($answersFile, [regex]::Replace($answers, '(?m)^_src_path:[^\r\n]*', "_src_path: $Source"))
         if (git status --porcelain) { Invoke-Git commit -q -am 'Name a template folder that isn''t here' }
         $before = git rev-parse HEAD
         $answersBefore = [IO.File]::ReadAllText($answersFile)
@@ -142,6 +144,14 @@ Invoke-Git -C $tpl tag v0.2.0
 $r = Invoke-AddressUpdate
 $subject = git -C $project log -1 --format=%s
 Check 'update: a later version''s script, handed the update, moves a project whose _src_path is a folder that isn''t here' (($r.ExitCode -eq 0) -and $r.Output.Contains('Handing the update over to the v0.2.0 version') -and $r.Output.Contains('Update-Project.ps1 from v0.2.0 is running.') -and $r.Output.Contains("a folder that isn't on this PC; it now names $canonical") -and ($r.AnswersAfter -match "(?m)^_src_path: $([regex]::Escape($canonical))\r?$") -and ($subject -eq 'Update from project-template v0.2.0') -and -not (git -C $project status --porcelain)) "exit=$($r.ExitCode) subject=$subject $($r.Output)"
+# The old polewskm address, with a v0.3.0 whose update script differs again: that move waits for the hand-over too.
+$nextText = [IO.File]::ReadAllText($nextScript)
+[IO.File]::WriteAllText($nextScript, $nextText.Replace("'Update-Project.ps1 from v0.2.0 is running.'", "'Update-Project.ps1 from v0.3.0 is running.'"))
+Invoke-Git -C $tpl commit -q -am 'Another later update script'
+Invoke-Git -C $tpl tag v0.3.0
+$r = Invoke-AddressUpdate @{} 'https://github.com/polewskm/project-template.git'
+$subject = git -C $project log -1 --format=%s
+Check 'update: a later version''s script, handed the update, moves a project on the old polewskm/project-template address' (($r.ExitCode -eq 0) -and $r.Output.Contains('Handing the update over to the v0.3.0 version') -and $r.Output.Contains('Update-Project.ps1 from v0.3.0 is running.') -and $r.Output.Contains("The template moved to $canonical") -and ($r.AnswersAfter -match "(?m)^_src_path: $([regex]::Escape($canonical))\r?$") -and ($subject -eq 'Update from project-template v0.3.0') -and -not (git -C $project status --porcelain)) "exit=$($r.ExitCode) subject=$subject $($r.Output)"
 ''
 $env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Update template address tests: FAILED ($($failures.Count))"; exit 1 }
