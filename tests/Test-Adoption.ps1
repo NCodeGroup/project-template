@@ -309,6 +309,13 @@ $tokenProject = New-TestFolder 'source-project3' @{ '.copier-answers.yml' = "_co
 $tokenNote = @(Set-TemplateSource $tokenProject $withToken)
 $tokenAnswers = Get-Content -Raw -LiteralPath (Join-Path $tokenProject '.copier-answers.yml')
 Check 'unit: Set-TemplateSource leaves the user name and token of an https origin out' ($tokenAnswers -eq "_commit: v0.1.0`n_src_path: https://example.invalid/fork/project-template.git`n" -and -not ($tokenNote -join ' ').Contains('secret')) "$tokenAnswers | $($tokenNote -join ' / ')"
+$nested = Join-Path (Join-Path $withOrigin 'vendor') 'project-template'
+New-Item -ItemType Directory -Force $nested | Out-Null
+$nestedAnswersText = "_commit: v0.1.0`n_src_path: $nested`n"
+$nestedProject = New-TestFolder 'source-project4' @{ '.copier-answers.yml' = $nestedAnswersText }
+$nestedOut = @(Set-TemplateSource $nestedProject $nested 3>&1)
+$nestedAnswers = Get-Content -Raw -LiteralPath (Join-Path $nestedProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource takes no origin from the repository a template folder sits in' ($nestedAnswers -eq $nestedAnswersText -and $nestedOut.Count -eq 1 -and $nestedOut[0] -is [Management.Automation.WarningRecord]) "$nestedAnswers | $($nestedOut -join ' / ')"
 
 if (-not $UnitOnly) {
     $tpl = Join-Path $Work 'template-repo'
