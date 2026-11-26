@@ -48,14 +48,21 @@ notice. Each such mention is an edit that every new release asks for, in files w
    release introduced describes the behavior, not the release. A sample that needs a target framework uses
    `$(TargetFramework)` or a placeholder such as `netN.0`.
 5. Checks hold the rule:
-   - The template's shared build settings (`build/ProjectTemplate.props`) fail the build when a `netN.0` target
-     framework, with or without a platform suffix, has an odd major. The check reads only the project's own
-     properties, so it needs no network and no clock, and a commit builds the same on any day.
-   - The CI step that installs the SDK and test runtimes, which reads Microsoft's release metadata
-     (`releases-index.json`, whose `release-type` and `support-phase` name each channel's), warns while a targeted LTS
-     is in its maintenance phase and fails once it is end of life, naming `/plan-migration`.
-   - The template's own tests fail a prose file the template ships that names a .NET version outside the exceptions of
-     item 4. A project's own prose follows the rule through review.
+   - The template's shared build settings (`build/ProjectTemplate.props`) fail the build with `PT0155` when a
+     `netN.0` target framework, with or without a platform suffix, has an odd major of the yearly even/odd cadence.
+     The check reads only the project's own properties, so it needs no network and no clock, and a commit builds the
+     same on any day.
+   - `build/Test-DotnetSupport.ps1`, which CI runs once it has installed .NET, reads Microsoft's release metadata
+     (`releases-index.json`, whose `release-type` and `support-phase` name each channel's) for the SDK `global.json`
+     pins and every target framework of the projects in the root solutions. It fails a Standard Term Support
+     release, one past its end of support and one the metadata doesn't list, warns for an LTS in its maintenance
+     phase, and names `/plan-migration`.
+   - The template's own tests fail a Markdown file of the template's repository that names a .NET version outside the
+     exceptions of item 4. A project's own prose follows the rule through review.
+6. A project that can't migrate yet opts out until it has: `ProjectTemplateLtsCheck` set to `false` in
+   `Directory.Build.props` turns the build check off, and `-WarnOnly` on CI's `build/Test-DotnetSupport.ps1` step
+   prints its failures as warnings. Both are in files the project owns or merges, so a template update keeps them,
+   and the migration removes them.
 
 .NET Standard and .NET Framework target frameworks are not .NET runtime releases, and this record does not govern them.
 
@@ -86,14 +93,17 @@ notice. Each such mention is an edit that every new release asks for, in files w
 - Dependabot still moves the SDK within its LTS major; nothing about the weekly updates changes.
 - A project's own prose that names a .NET version is rewritten by role the next time it is edited, or in the migration
   to the next LTS, whichever comes first.
+- A project on a release the checks refuse fails its build or CI after the template update that brings them, until
+  it migrates or opts out (item 6).
 - Smells: a target framework or `global.json` SDK with an odd major; a document, record or instruction file edited
-  only because Microsoft shipped a release; a target framework past its end of support.
+  only because Microsoft shipped a release; a target framework past its end of support; an opt-out still set after
+  the migration it waited for.
 
 ## References
 
 - [.NET and .NET Core Support Policy](https://dotnet.microsoft.com/platform/support/policy/dotnet-core) and its release
   metadata, `https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json`.
 - `global.json`, `build/ProjectTemplate.props`, `build/Get-TestRuntimes.ps1`, `build/Install-Dotnet.ps1`,
-  `.github/actions/install-dotnet`, `.github/dependabot.yml`, `/plan-migration`.
+  `build/Test-DotnetSupport.ps1`, `.github/actions/install-dotnet`, `.github/dependabot.yml`, `/plan-migration`.
 - [ADR-0008](0008-external-inputs-are-pinned-and-kept-current.md): external inputs are pinned and kept current; a major
   move is a planned migration. This record extends it with which majors a project moves to.
