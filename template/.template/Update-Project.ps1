@@ -1098,7 +1098,9 @@ try {
     }
     # A project created from a local clone of the template names that folder, which no other PC has. When it isn't
     # here, the update moves the project to the template's address: the origin of -TemplateClone when that is an address,
-    # else NCodeGroup/project-template. Get-TemplateUpdate.ps1 reads such a folder the same way; change both together.
+    # else NCodeGroup/project-template. Get-TemplateUpdate.ps1 reads such a folder the same way, and
+    # Set-TemplateSource in the template's tools/adopt/Adoption.psm1 cleans a clone's origin with the same patterns
+    # (tests/Test-Adoption.ps1 checks); change them together.
     $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'
     $localSource = $null
     if ($src -and $src -notmatch $remoteAddress -and -not (Test-Path -LiteralPath $src -PathType Container)) {

@@ -321,6 +321,26 @@ $sshProject = New-TestFolder 'source-project5' @{ '.copier-answers.yml' = "_comm
 $null = Set-TemplateSource $sshProject $withSsh
 $sshAnswers = Get-Content -Raw -LiteralPath (Join-Path $sshProject '.copier-answers.yml')
 Check 'unit: Set-TemplateSource records a GitHub SSH origin as its https address' ($sshAnswers -eq "_commit: v0.1.0`n_src_path: https://github.com/fork/project-template.git`n") $sshAnswers
+$withSshUrl = New-Fixture 'source-sshurl' @{ 'README.md' = "t`n" } 'ssh://git@gitlab.com/group/project-template.git'
+$sshUrlProject = New-TestFolder 'source-project6' @{ '.copier-answers.yml' = "_commit: v0.1.0`n_src_path: $withSshUrl`n" }
+$null = Set-TemplateSource $sshUrlProject $withSshUrl
+$sshUrlAnswers = Get-Content -Raw -LiteralPath (Join-Path $sshUrlProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource records a GitLab ssh:// origin as its https address' ($sshUrlAnswers -eq "_commit: v0.1.0`n_src_path: https://gitlab.com/group/project-template.git`n") $sshUrlAnswers
+$crlfProject = New-TestFolder 'source-project7' @{ '.copier-answers.yml' = "# Written by Copier`r`n_commit: v0.1.0`r`n_src_path: first part`r`n  second part`r`nproject_name: Demo`r`n" }
+$null = Set-TemplateSource $crlfProject $withOrigin
+$crlfAnswers = Get-Content -Raw -LiteralPath (Join-Path $crlfProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource keeps CRLF line endings and the other answers' ($crlfAnswers -eq "# Written by Copier`r`n_commit: v0.1.0`r`n_src_path: https://example.invalid/fork/project-template.git`r`nproject_name: Demo`r`n") ($crlfAnswers -replace "`r", '\r' -replace "`n", '\n')
+# Set-TemplateSource and Update-Project.ps1 clean a clone's origin and rewrite _src_path with the same patterns.
+$updateScriptText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template/.template/Update-Project.ps1')
+$moduleText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'tools/adopt/Adoption.psm1')
+$originPatterns = @(
+    '''^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'''
+    '''^(https?://)[^/@]*@'', ''$1'''
+    '''^(?:git@(github\.com|gitlab\.com):|ssh://git@(github\.com|gitlab\.com)/)'', ''https://$1$2/'''
+    '''(?m)^_src_path:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*'''
+)
+$apart = @($originPatterns | Where-Object { -not ($updateScriptText.Contains($_) -and $moduleText.Contains($_)) })
+Check 'unit: Set-TemplateSource and Update-Project.ps1 clean a clone''s origin with the same patterns' (-not $apart) ($apart -join ' | ')
 
 if (-not $UnitOnly) {
     $tpl = Join-Path $Work 'template-repo'

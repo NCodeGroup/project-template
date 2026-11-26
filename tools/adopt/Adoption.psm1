@@ -954,6 +954,7 @@ function Get-GitVersioningWorkflowNote {
 # Copier records the folder it rendered from as _src_path, which no other PC has. When $Template is the root of a
 # local clone whose origin remote is an address, write that address to _src_path in $Path's .copier-answers.yml and say
 # so; else warn. $Path is absolute; $Template is as Copier got it, from the current location.
+# Update-Project.ps1 cleans -TemplateClone's origin with the same patterns (tests/Test-Adoption.ps1 checks); change them together.
 function Set-TemplateSource([string]$Path, [string]$Template) {
     $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'
     if ($Template -match $remoteAddress -or -not (Test-Path -LiteralPath $Template -PathType Container)) { return }
