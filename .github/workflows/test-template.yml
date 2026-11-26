@@ -159,6 +159,8 @@ jobs:
             run: ./tests/Test-Coverage.ps1
           - name: Test the file header check every project gets
             run: ./tests/Test-FileHeaders.ps1
+          - name: Check that no Markdown file names a .NET version
+            run: ./tests/Test-DotnetVersionProse.ps1
     defaults:
       run:
         shell: pwsh
