@@ -316,6 +316,11 @@ $nestedProject = New-TestFolder 'source-project4' @{ '.copier-answers.yml' = $ne
 $nestedOut = @(Set-TemplateSource $nestedProject $nested 3>&1)
 $nestedAnswers = Get-Content -Raw -LiteralPath (Join-Path $nestedProject '.copier-answers.yml')
 Check 'unit: Set-TemplateSource takes no origin from the repository a template folder sits in' ($nestedAnswers -eq $nestedAnswersText -and $nestedOut.Count -eq 1 -and $nestedOut[0] -is [Management.Automation.WarningRecord]) "$nestedAnswers | $($nestedOut -join ' / ')"
+$withSsh = New-Fixture 'source-ssh' @{ 'README.md' = "t`n" } 'git@github.com:fork/project-template.git'
+$sshProject = New-TestFolder 'source-project5' @{ '.copier-answers.yml' = "_commit: v0.1.0`n_src_path: $withSsh`n" }
+$null = Set-TemplateSource $sshProject $withSsh
+$sshAnswers = Get-Content -Raw -LiteralPath (Join-Path $sshProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource records a GitHub SSH origin as its https address' ($sshAnswers -eq "_commit: v0.1.0`n_src_path: https://github.com/fork/project-template.git`n") $sshAnswers
 
 if (-not $UnitOnly) {
     $tpl = Join-Path $Work 'template-repo'

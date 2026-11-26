@@ -4,11 +4,12 @@
 
 .DESCRIPTION
     A project created from a local clone of the template names that folder, which no other PC has (#505). Renders a
-    project from v0.1.0, points its answers at a folder that doesn't exist, then updates twice: once as is, which must
-    move the project to https://github.com/NCodeGroup/project-template.git, and once with -TemplateClone, a clone whose
+    project from v0.1.0, points its answers at a folder that doesn't exist, then updates three times: once as is, which
+    must move the project to https://github.com/NCodeGroup/project-template.git, once with -TemplateClone, a clone whose
     origin is another address with a user name and token in it, which must move the project to that address without
-    them. Each run must change only the _src_path line, in the update's own commit. Prints PASS or FAIL per check and
-    exits 1 on any failure.
+    them, and once with a clone whose origin is a GitHub SSH address, which must move it to that address's https form.
+    Each run must change only the _src_path line, in the update's own commit. Prints PASS or FAIL per check and exits 1
+    on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-address-test-<process ID> in the
@@ -73,12 +74,14 @@ function Invoke-AddressUpdate([hashtable]$Extra = @{}) {
         $before = git rev-parse HEAD
         $answersBefore = [IO.File]::ReadAllText($answersFile)
         $snapshot = $tpl -replace '\\', '/'
-        $savedConfig = @{ Count = $env:GIT_CONFIG_COUNT; Key0 = $env:GIT_CONFIG_KEY_0; Value0 = $env:GIT_CONFIG_VALUE_0; Key1 = $env:GIT_CONFIG_KEY_1; Value1 = $env:GIT_CONFIG_VALUE_1 }
-        $env:GIT_CONFIG_COUNT = '2'
+        $savedConfig = @{ Count = $env:GIT_CONFIG_COUNT; Key0 = $env:GIT_CONFIG_KEY_0; Value0 = $env:GIT_CONFIG_VALUE_0; Key1 = $env:GIT_CONFIG_KEY_1; Value1 = $env:GIT_CONFIG_VALUE_1; Key2 = $env:GIT_CONFIG_KEY_2; Value2 = $env:GIT_CONFIG_VALUE_2 }
+        $env:GIT_CONFIG_COUNT = '3'
         $env:GIT_CONFIG_KEY_0 = "url.$snapshot.insteadOf"
         $env:GIT_CONFIG_VALUE_0 = 'https://github.com/NCodeGroup/project-template.git'
         $env:GIT_CONFIG_KEY_1 = "url.$snapshot.insteadOf"
         $env:GIT_CONFIG_VALUE_1 = 'https://example.invalid/fork/project-template.git'
+        $env:GIT_CONFIG_KEY_2 = "url.$snapshot.insteadOf"
+        $env:GIT_CONFIG_VALUE_2 = 'https://github.com/fork/project-template.git'
         try {
             $lines = [Collections.Generic.List[string]]::new()
             try { & (Join-Path $project '.template\Update-Project.ps1') @Extra 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
@@ -87,6 +90,7 @@ function Invoke-AddressUpdate([hashtable]$Extra = @{}) {
             $env:GIT_CONFIG_COUNT = $savedConfig.Count
             $env:GIT_CONFIG_KEY_0 = $savedConfig.Key0; $env:GIT_CONFIG_VALUE_0 = $savedConfig.Value0
             $env:GIT_CONFIG_KEY_1 = $savedConfig.Key1; $env:GIT_CONFIG_VALUE_1 = $savedConfig.Value1
+            $env:GIT_CONFIG_KEY_2 = $savedConfig.Key2; $env:GIT_CONFIG_VALUE_2 = $savedConfig.Value2
         }
         [pscustomobject]@{
             Output = $lines -join "`n"
@@ -124,6 +128,9 @@ Check 'update: moving off the missing folder changes no other answer' ((Get-Othe
 $forkAddress = 'https://example.invalid/fork/project-template.git'
 $r = Invoke-AddressUpdate @{ TemplateClone = $fork }
 Check 'update -TemplateClone: a project whose _src_path is a folder that isn''t here moves to the clone''s origin, without its user name and token' ((Test-MovedTo $r $forkAddress) -and -not $r.AnswersAfter.Contains('secret') -and -not $r.Output.Contains('secret')) "exit=$($r.ExitCode) changed=$($r.Changed -join ',') $($r.Output)"
+Invoke-Git -C $fork remote set-url origin git@github.com:fork/project-template.git
+$r = Invoke-AddressUpdate @{ TemplateClone = $fork }
+Check 'update -TemplateClone: a clone whose origin is a GitHub SSH address moves the project to its https address' (Test-MovedTo $r 'https://github.com/fork/project-template.git') "exit=$($r.ExitCode) changed=$($r.Changed -join ',') $($r.Output)"
 ''
 $env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Update template address tests: FAILED ($($failures.Count))"; exit 1 }

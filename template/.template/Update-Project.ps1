@@ -1106,6 +1106,8 @@ try {
         $cloneOrigin = if ($TemplateClone) { "$(git -C $TemplateClone config --get remote.origin.url 2>$null)".Trim() }
         # An https origin can carry a user name and token, which the committed answers mustn't.
         $cloneOrigin = $cloneOrigin -replace '^(https?://)[^/@]*@', '$1'
+        # CI and a PC without the SSH key can't read an SSH address, so a GitHub or GitLab one becomes its https address.
+        $cloneOrigin = $cloneOrigin -replace '^(?:git@(github\.com|gitlab\.com):|ssh://git@(github\.com|gitlab\.com)/)', 'https://$1$2/'
         $localSource = $src
         $src = if ($cloneOrigin -match $remoteAddress) { $cloneOrigin } else { $movedSource }
         $answersFile = Join-Path $project '.copier-answers.yml'
