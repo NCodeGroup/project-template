@@ -641,7 +641,7 @@ $checks['7.1'] = {
     if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?\z') {
         $src = 'https://github.com/NCodeGroup/project-template.git'
     }
-    # A template folder that isn't here, such as the clone the project was created from on another PC (#505).
+    # A template folder that isn't here, such as the clone the project was created from on another PC.
     if ($src -notmatch '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)' -and -not (Test-Path -LiteralPath $src -PathType Container)) {
         $src = 'https://github.com/NCodeGroup/project-template.git'
     }

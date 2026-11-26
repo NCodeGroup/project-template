@@ -1096,7 +1096,7 @@ try {
         $oldSource = $src
         $src = $movedSource
     }
-    # A project created from a local clone of the template names that folder, which no other PC has (#505). When it isn't
+    # A project created from a local clone of the template names that folder, which no other PC has. When it isn't
     # here, the update moves the project to the template's address: the origin of -TemplateClone when that is an address,
     # else NCodeGroup/project-template. Get-TemplateUpdate.ps1 reads such a folder the same way; change both together.
     $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'

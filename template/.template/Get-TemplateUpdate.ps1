@@ -112,7 +112,7 @@ if (-not $src) { throw '.copier-answers.yml has no _src_path, the address of the
 if ($src -match '^gh:(.+)\z') { $src = "https://github.com/$($Matches[1])" }
 elseif ($src -match '^gl:(.+)\z') { $src = "https://gitlab.com/$($Matches[1])" }
 if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?\z') { $src = 'https://github.com/NCodeGroup/project-template.git' }
-# A project created from a local clone of the template names that folder, which no other PC has (#505): read the
+# A project created from a local clone of the template names that folder, which no other PC has: read the
 # template at its address. Update-Project.ps1 moves the project to it; change both together.
 if ($src -notmatch '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)' -and -not (Test-Path -LiteralPath $src -PathType Container)) {
     "_src_path in .copier-answers.yml names $src, a folder that isn't here, so the template is read at https://github.com/NCodeGroup/project-template.git. The next .\.template\Update-Project.ps1 run moves the project to that address."

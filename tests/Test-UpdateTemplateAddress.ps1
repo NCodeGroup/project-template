@@ -3,7 +3,7 @@
     Test that a project whose .copier-answers.yml names a template folder that isn't on this PC updates, moving to the template's address.
 
 .DESCRIPTION
-    A project created from a local clone of the template names that folder, which no other PC has (#505). Renders a
+    A project created from a local clone of the template names that folder, which no other PC has. Renders a
     project from v0.1.0, points its answers at a folder that doesn't exist, then updates five times: once as is, which
     must move the project to https://github.com/NCodeGroup/project-template.git, once with -TemplateClone, a clone whose
     origin is another address with a user name and token in it, which must move the project to that address without

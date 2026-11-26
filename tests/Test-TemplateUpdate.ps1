@@ -11,12 +11,12 @@
     release notes, leaves it alone when nothing changed, edits and retitles that same issue, closes it once the project
     is current, and ignores tags that aren't versions. Then checks the version from _commit, an existing label, the
     oldest of several open notices, the old address and Copier's shorthands (rewritten to the fixture with Git's
-    insteadOf, so nothing reaches the network), a template folder that isn't here, a changelog too long for one issue, one with no section for the new
-    version, a tag without CHANGELOG.md, a section that brings the body to exactly the 60,000-character limit and one a
-    character longer, a project ahead of the newest tag, and the runs that fail: an unreadable template (with Git's
-    message), no _src_path, no version tags, an unreadable or empty project version, and a failing gh call.
-    Also checks that Get-ChangelogSection takes no section from a heading whose version is in other Unicode digits.
-    Prints PASS or FAIL per check and exits 1 on any failure. The checks take seconds.
+    insteadOf, so nothing reaches the network), a template folder that isn't here, a changelog too long for one issue,
+    one with no section for the new version, a tag without CHANGELOG.md, a section that brings the body to exactly the
+    60,000-character limit and one a character longer, a project ahead of the newest tag, and the runs that fail: an
+    unreadable template (with Git's message), no _src_path, no version tags, an unreadable or empty project version, and
+    a failing gh call. Also checks that Get-ChangelogSection takes no section from a heading whose version is in other
+    Unicode digits. Prints PASS or FAIL per check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notice-test-<process ID> in the
