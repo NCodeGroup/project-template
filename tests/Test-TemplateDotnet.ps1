@@ -394,6 +394,35 @@ try {
     $installedSdk = "$(& (Join-Path $dotnetRoot $(if ($IsWindows) { 'dotnet.exe' } else { 'dotnet' })) --version 2>&1)"
     $pinnedSdk = (Get-Content -Raw -LiteralPath global.json | ConvertFrom-Json).sdk.version
     Check 'dotnet: build/Install-Dotnet.ps1 -SkipSdk installs nothing without an older framework; build/Install-Dotnet.ps1 installs the SDK global.json selects, which dotnet runs from there, and the runtimes build/Get-TestRuntimes.ps1 names, and skips them once they are there' ($installNoneCode -eq 0 -and $installNone.Count -eq 0 -and -not $installNoneCreated -and $installCode -eq 0 -and $installedSdk -match '^\d+\.\d+\.\d+$' -and [version]$installedSdk -ge [version]$pinnedSdk -and ($install -join ' ').Contains("Installed .NET SDK $installedSdk in") -and (Test-Path (Join-Path $dotnetRoot 'shared/Microsoft.NETCore.App/8.0.*')) -and (Test-Path (Join-Path $dotnetRoot 'shared/Microsoft.AspNetCore.App/8.0.*')) -and $installAgainCode -eq 0 -and ($installAgain -join ' ').Contains(".NET SDK $installedSdk is already in") -and ($installAgain -join ' ').Contains('are already in')) "$installedSdk | $($installNone -join ',') | $($install -join ',') | $($installAgain -join ',')"
+
+    # The support script reads the SDK and every target framework of the root solution, against an index that makes net8.0 past its end of support.
+    $sdkChannel = ($pinnedSdk -split '\.')[0..1] -join '.'
+    $index = Join-Path $Work 'support-index.json'
+    [IO.File]::WriteAllText($index, (@{ 'releases-index' = @(
+                @{ 'channel-version' = $sdkChannel; 'release-type' = 'lts'; 'support-phase' = 'active'; 'eol-date' = '2099-11-10' },
+                @{ 'channel-version' = '8.0'; 'release-type' = 'lts'; 'support-phase' = 'eol'; 'eol-date' = '2026-11-10' }
+            ) } | ConvertTo-Json -Depth 5))
+    $previousActions = $env:GITHUB_ACTIONS
+    $env:GITHUB_ACTIONS = ''
+    try {
+        $supportOutput = pwsh -NoProfile -File build/Test-DotnetSupport.ps1 -ReleasesIndex $index 2>&1 | Out-String
+        $supportCode = $LASTEXITCODE
+        $supportWarnOutput = pwsh -NoProfile -File build/Test-DotnetSupport.ps1 -ReleasesIndex $index -WarnOnly 2>&1 | Out-String
+        $supportWarnCode = $LASTEXITCODE
+    }
+    finally { $env:GITHUB_ACTIONS = $previousActions }
+    Check 'dotnet: build/Test-DotnetSupport.ps1 reads the SDK and every target framework of the root solution, fails on one past its end of support and only warns with -WarnOnly' ($supportCode -eq 1 -and $supportOutput.Contains('Error: .NET 8.0 (tests/Legacy.Tests/Legacy.Tests.csproj) reached its end of support on 2026-11-10') -and $supportOutput.Contains("$sdkChannel (global.json, ") -and $supportOutput.Contains('src/Demo/Demo.csproj') -and $supportWarnCode -eq 0 -and $supportWarnOutput.Contains('Warning: .NET 8.0 (tests/Legacy.Tests/Legacy.Tests.csproj)')) "$supportOutput | $supportWarnOutput"
+
+    # A target framework on a Standard Term Support release fails the build, which ProjectTemplateLtsCheck set to false lets through.
+    $stsFramework = "net$([int]($sdkChannel -split '\.')[0] - 1).0"
+    New-Item -ItemType Directory -Force src/Sts | Out-Null
+    [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Sts/Sts.csproj'), "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>$stsFramework</TargetFramework>`n  </PropertyGroup>`n</Project>`n")
+    # CheckEolTargetFramework=false keeps the SDK's own end-of-support warning, an error under TreatWarningsAsErrors, out of the way.
+    $stsOutput = dotnet build src/Sts -p:CheckEolTargetFramework=false 2>&1 | Out-String
+    $stsCode = $LASTEXITCODE
+    $stsOffOutput = dotnet build src/Sts -p:CheckEolTargetFramework=false -p:ProjectTemplateLtsCheck=false 2>&1 | Out-String
+    $stsOffCode = $LASTEXITCODE
+    Check 'dotnet: a target framework on a Standard Term Support release fails the build with PT0155, and builds with ProjectTemplateLtsCheck set to false' ($stsCode -ne 0 -and $stsOutput -match "error PT0155: $([regex]::Escape($stsFramework)) is a Standard Term Support release" -and $stsOffCode -eq 0) ((($stsOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ') + ' || ' + (($stsOffOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | '))
 }
 finally { Pop-Location }
 
