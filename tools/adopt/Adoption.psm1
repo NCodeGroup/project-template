@@ -951,10 +951,10 @@ function Get-GitVersioningWorkflowNote {
     'Nerdbank.GitVersioning fails the build on a shallow clone ("Shallow clone lacks the objects required to calculate version height"), which actions/checkout makes unless fetch-depth is 0, and it ignores -p:Version, so a release would carry version.json''s version, not the tag''s. Set fetch-depth: 0 on each actions/checkout step named, drop each -p:Version, and build a release with -p:PublicRelease=true, as the publish.yml the project template gives a .NET library on GitHub does.'
 }
 
-# Copier records the folder it rendered from as _src_path, which no other PC has. When $Template is the root of a
-# local clone whose origin remote is an address, write that address to _src_path in $Path's .copier-answers.yml and say
-# so; else warn. $Path is absolute; $Template is as Copier got it, from the current location.
-# Update-Project.ps1 cleans -TemplateClone's origin with the same patterns (tests/Test-Adoption.ps1 checks); change them together.
+# Copier records the folder it rendered from as _src_path, which no other PC has. When $Template is the root of a local
+# clone whose origin remote is an address, write that address to _src_path in $Path's .copier-answers.yml and say so;
+# else warn. $Path is absolute; $Template is as Copier got it, from the current location. Update-Project.ps1 cleans
+# -TemplateClone's origin with the same patterns (tests/Test-Adoption.ps1 checks); change them together.
 function Set-TemplateSource([string]$Path, [string]$Template) {
     $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'
     if ($Template -match $remoteAddress -or -not (Test-Path -LiteralPath $Template -PathType Container)) { return }
