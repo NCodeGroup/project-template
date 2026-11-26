@@ -419,6 +419,7 @@ foreach ($case in $cases) {
         else {
             Check "${name}: CI caches NuGet packages in the project folder, keyed on the package versions and the SDK" ($ciText.Contains('NUGET_PACKAGES: $CI_PROJECT_DIR/.nuget/packages') -and $ciText.Contains('files: [Directory.Packages.props, global.json]') -and $ciText.Contains('paths: [.nuget/packages/]')) $ciText
             Check "${name}: CI installs the SDK global.json selects and the runtimes the tests target before it builds" ($ciText -match '(?m)^  before_script:\r?\n    - pwsh -NoProfile -File build/Install-Dotnet\.ps1\r?$' -and $ciText.IndexOf('build/Install-Dotnet.ps1') -lt $ciText.IndexOf('build/dod.ps1')) $ciText
+            Check "${name}: CI checks that the SDK and every target framework are LTS releases Microsoft supports, right after build/Install-Dotnet.ps1" ($ciText -match '(?m)^    - pwsh -NoProfile -File build/Install-Dotnet\.ps1\r?\n    - pwsh -NoProfile -File build/Test-DotnetSupport\.ps1\r?$') $ciText
             Check "${name}: CI keeps the test results and packages, after a failure too" ($ciText -match '(?m)^  artifacts:\r?\n    when: always\r?\n    paths: \[artifacts/test-results/, artifacts/packages/\]\r?\n    expire_in: 14 days\r?$') $ciText
         }
         $libraryWrong = @($libraryOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -ErrorAction SilentlyContinue) -ne $library })
