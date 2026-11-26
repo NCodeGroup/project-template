@@ -290,6 +290,58 @@ $gone = -not (Test-Path -LiteralPath (Join-Path $folder '.github/prompts/execute
 $after = & $workflow -Path $folder -Phase Detect
 Check 'unit: workflow install adapter' ($detected -eq $true -and $gone -and $out.Count -eq 1 -and $after -eq $false) "$detected | $($out -join ' / ') | $after"
 
+$withOrigin = New-Fixture 'source-origin' @{ 'README.md' = "t`n" } 'https://example.invalid/fork/project-template.git'
+$sourceProject = New-TestFolder 'source-project' @{ '.copier-answers.yml' = "# Written by Copier`n_commit: v0.1.0`n_src_path: first part`n  second part`nproject_name: Demo`n" }
+$note = @(Set-TemplateSource $sourceProject $withOrigin)
+$sourceAnswers = Get-Content -Raw -LiteralPath (Join-Path $sourceProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource records a local clone''s origin' ($sourceAnswers -eq "# Written by Copier`n_commit: v0.1.0`n_src_path: https://example.invalid/fork/project-template.git`nproject_name: Demo`n" -and $note[0].Contains('the origin remote of')) "$sourceAnswers | $($note -join ' / ')"
+$plainFolder = New-TestFolder 'source-plain' @{ 'README.md' = "t`n" }
+$plainAnswersText = "# Written by Copier`n_commit: v0.1.0`n_src_path: $plainFolder`nproject_name: Demo`n"
+$plainProject = New-TestFolder 'source-project2' @{ '.copier-answers.yml' = $plainAnswersText }
+$out = @(Set-TemplateSource $plainProject $plainFolder 3>&1)
+$plainAnswers = Get-Content -Raw -LiteralPath (Join-Path $plainProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource warns for a folder without an origin address and leaves the answers' ($plainAnswers -eq $plainAnswersText -and $out.Count -eq 1 -and $out[0] -is [Management.Automation.WarningRecord] -and $out[0].Message.Contains('which only this PC has')) "$plainAnswers | $($out -join ' / ')"
+$url = @(Set-TemplateSource $plainProject 'https://github.com/NCodeGroup/project-template.git' 3>&1)
+$urlAnswers = Get-Content -Raw -LiteralPath (Join-Path $plainProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource leaves an address alone' ($url.Count -eq 0 -and $urlAnswers -eq $plainAnswersText) "$($url -join ' / ') | $urlAnswers"
+$withToken = New-Fixture 'source-token' @{ 'README.md' = "t`n" } 'https://template-test:secret@example.invalid/fork/project-template.git'
+$tokenProject = New-TestFolder 'source-project3' @{ '.copier-answers.yml' = "_commit: v0.1.0`n_src_path: $withToken`n" }
+$tokenNote = @(Set-TemplateSource $tokenProject $withToken)
+$tokenAnswers = Get-Content -Raw -LiteralPath (Join-Path $tokenProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource leaves the user name and token of an https origin out' ($tokenAnswers -eq "_commit: v0.1.0`n_src_path: https://example.invalid/fork/project-template.git`n" -and -not ($tokenNote -join ' ').Contains('secret')) "$tokenAnswers | $($tokenNote -join ' / ')"
+$nested = Join-Path (Join-Path $withOrigin 'vendor') 'project-template'
+New-Item -ItemType Directory -Force $nested | Out-Null
+$nestedAnswersText = "_commit: v0.1.0`n_src_path: $nested`n"
+$nestedProject = New-TestFolder 'source-project4' @{ '.copier-answers.yml' = $nestedAnswersText }
+$nestedOut = @(Set-TemplateSource $nestedProject $nested 3>&1)
+$nestedAnswers = Get-Content -Raw -LiteralPath (Join-Path $nestedProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource takes no origin from the repository a template folder sits in' ($nestedAnswers -eq $nestedAnswersText -and $nestedOut.Count -eq 1 -and $nestedOut[0] -is [Management.Automation.WarningRecord]) "$nestedAnswers | $($nestedOut -join ' / ')"
+$withSsh = New-Fixture 'source-ssh' @{ 'README.md' = "t`n" } 'git@github.com:fork/project-template.git'
+$sshProject = New-TestFolder 'source-project5' @{ '.copier-answers.yml' = "_commit: v0.1.0`n_src_path: $withSsh`n" }
+$null = Set-TemplateSource $sshProject $withSsh
+$sshAnswers = Get-Content -Raw -LiteralPath (Join-Path $sshProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource records a GitHub SSH origin as its https address' ($sshAnswers -eq "_commit: v0.1.0`n_src_path: https://github.com/fork/project-template.git`n") $sshAnswers
+$withSshUrl = New-Fixture 'source-sshurl' @{ 'README.md' = "t`n" } 'ssh://git@gitlab.com/group/project-template.git'
+$sshUrlProject = New-TestFolder 'source-project6' @{ '.copier-answers.yml' = "_commit: v0.1.0`n_src_path: $withSshUrl`n" }
+$null = Set-TemplateSource $sshUrlProject $withSshUrl
+$sshUrlAnswers = Get-Content -Raw -LiteralPath (Join-Path $sshUrlProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource records a GitLab ssh:// origin as its https address' ($sshUrlAnswers -eq "_commit: v0.1.0`n_src_path: https://gitlab.com/group/project-template.git`n") $sshUrlAnswers
+$crlfProject = New-TestFolder 'source-project7' @{ '.copier-answers.yml' = "# Written by Copier`r`n_commit: v0.1.0`r`n_src_path: first part`r`n  second part`r`nproject_name: Demo`r`n" }
+$null = Set-TemplateSource $crlfProject $withOrigin
+$crlfAnswers = Get-Content -Raw -LiteralPath (Join-Path $crlfProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource keeps CRLF line endings and the other answers' ($crlfAnswers -eq "# Written by Copier`r`n_commit: v0.1.0`r`n_src_path: https://example.invalid/fork/project-template.git`r`nproject_name: Demo`r`n") ($crlfAnswers -replace "`r", '\r' -replace "`n", '\n')
+# Set-TemplateSource and Update-Project.ps1 clean a clone's origin and rewrite _src_path with the same patterns.
+$updateScriptText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template/.template/Update-Project.ps1')
+$moduleText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'tools/adopt/Adoption.psm1')
+$originPatterns = @(
+    '''^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'''
+    '''^(https?://)[^/@]*@'', ''$1'''
+    '''^(?:git@(github\.com|gitlab\.com):|ssh://git@(github\.com|gitlab\.com)/)'', ''https://$1$2/'''
+    '''(?m)^_src_path:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*'''
+)
+$apart = @($originPatterns | Where-Object { -not ($updateScriptText.Contains($_) -and $moduleText.Contains($_)) })
+Check 'unit: Set-TemplateSource and Update-Project.ps1 clean a clone''s origin with the same patterns' (-not $apart) ($apart -join ' | ')
+
 if (-not $UnitOnly) {
     $tpl = Join-Path $Work 'template-repo'
     $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
@@ -317,6 +369,8 @@ if (-not $UnitOnly) {
     $count = git -C $plain rev-list --count HEAD
     $status = git -C $plain status --porcelain
     Check 'plain: one commit, nothing left over' ($subject -eq 'Adopt project-template v0.1.0' -and $count -eq '2' -and -not $status) "$subject | $count | $status"
+    $plainSource = (git -C $plain show HEAD:.copier-answers.yml | Select-String -Pattern '^_src_path:\s*(.+?)\s*$' | Select-Object -First 1).Matches.Groups[1].Value.Trim("'", '"')
+    Check 'plain: the adoption names the template by its folder and warns that the folder has no origin address' (($plainSource -eq $tpl) -and (($out -replace '\s+', ' ').Contains('which only this PC has')) -and $out.Contains($tpl)) "$plainSource | $out"
     Check 'plain: leaves core.hooksPath alone when the clone has hooks in .git/hooks, and warns' (-not (git -C $plain config core.hooksPath) -and $out.Contains('has hooks of its own in .git/hooks (pre-commit)')) $out
     Check 'plain: a GitLab origin gets the GitLab baseline command, not the GitHub one' (-not $out.Contains('Set-RepositoryBaseline') -and $out -match "Set-GitLabBaseline\.ps1 -Path '[^']*plain'") $out
     Check 'plain: README.md untouched' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'README.md')) -eq "# Plain`n") ''

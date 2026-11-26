@@ -57,6 +57,8 @@ jobs:
             run: ./tests/Test-UpdateConflictStaging.ps1
           - name: Test the update's exit code
             run: ./tests/Test-UpdateExitCode.ps1
+          - name: Test updating a project whose template folder isn't here
+            run: ./tests/Test-UpdateTemplateAddress.ps1
           - name: Test updating .NET libraries
             run: ./tests/Test-UpdateLibrary.ps1
           - name: Test the license warning

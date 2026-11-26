@@ -951,4 +951,28 @@ function Get-GitVersioningWorkflowNote {
     'Nerdbank.GitVersioning fails the build on a shallow clone ("Shallow clone lacks the objects required to calculate version height"), which actions/checkout makes unless fetch-depth is 0, and it ignores -p:Version, so a release would carry version.json''s version, not the tag''s. Set fetch-depth: 0 on each actions/checkout step named, drop each -p:Version, and build a release with -p:PublicRelease=true, as the publish.yml the project template gives a .NET library on GitHub does.'
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote, Get-ReleasePolicyAnswer
+# Copier records the folder it rendered from as _src_path, which no other PC has. When $Template is the root of a local
+# clone whose origin remote is an address, write that address to _src_path in $Path's .copier-answers.yml and say so;
+# else warn. $Path is absolute; $Template is as Copier got it, from the current location. Update-Project.ps1 cleans
+# -TemplateClone's origin with the same patterns (tests/Test-Adoption.ps1 checks); change them together.
+function Set-TemplateSource([string]$Path, [string]$Template) {
+    $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'
+    if ($Template -match $remoteAddress -or -not (Test-Path -LiteralPath $Template -PathType Container)) { return }
+    # A folder inside another repository isn't a clone of the template: Git would answer with that repository's origin.
+    $prefix = "$(git -C $Template rev-parse --show-prefix 2>$null)".Trim()
+    $origin = if (-not $LASTEXITCODE -and -not $prefix) { "$(git -C $Template config --get remote.origin.url 2>$null)".Trim() } else { '' }
+    # An https origin can carry a user name and token, which the committed answers mustn't.
+    $origin = $origin -replace '^(https?://)[^/@]*@', '$1'
+    # CI and a PC without the SSH key can't read an SSH address, so a GitHub or GitLab one becomes its https address.
+    $origin = $origin -replace '^(?:git@(github\.com|gitlab\.com):|ssh://git@(github\.com|gitlab\.com)/)', 'https://$1$2/'
+    if ($origin -notmatch $remoteAddress) {
+        Write-Warning "The project names its template by the folder $Template, which only this PC has, because that folder has no origin remote with the template's address. An update on another PC moves it to https://github.com/NCodeGroup/project-template.git."
+        return
+    }
+    $answersFile = Join-Path $Path '.copier-answers.yml'
+    $answersText = [IO.File]::ReadAllText($answersFile)
+    [IO.File]::WriteAllText($answersFile, [regex]::Replace($answersText, '(?m)^_src_path:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*', "_src_path: $origin"), [Text.UTF8Encoding]::new($false))
+    "The project names its template by $origin, the origin remote of $Template, so it updates from any PC."
+}
+
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote, Get-ReleasePolicyAnswer, Set-TemplateSource

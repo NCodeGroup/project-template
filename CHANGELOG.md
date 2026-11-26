@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.114.1] - 2026-11-25
+
+### Fixed
+
+- `New-Project.ps1` and `Adopt-Project.ps1`, given a local clone of the template as `-Template`, such as `.`, record the clone's `origin` remote as the template's address, `_src_path` in `.copier-answers.yml`, leaving out a user name or token and recording an SSH address on github.com or gitlab.com as its `https://` address, instead of the clone's folder, which no other PC has, so the project updates from any PC; a clone without an `origin` address keeps the folder, with a warning ([#505](https://github.com/NCodeGroup/project-template/issues/505)).
+- `.template/Update-Project.ps1` moves a project whose `_src_path` is a folder that isn't on this PC to the template's address, the `origin` remote of `-TemplateClone` when that is an address, recorded the same way, else `https://github.com/NCodeGroup/project-template.git`, says so and commits the change with the update, instead of failing with a message about read access, or with Copier's `Local template must be a directory.` under `-TemplateClone`. A project whose own script is older updates with `.\.template\Update-Project.ps1 -TemplateClone <a clone of the template>`, which hands the update over to this version. `tests/Test-UpdateTemplateAddress.ps1` checks both moves ([#505](https://github.com/NCodeGroup/project-template/issues/505)).
+- `.template/Get-TemplateUpdate.ps1`, the weekly update notice, and row 7.1 of `tools/Get-AdoptionChecklist.ps1` read the template at `https://github.com/NCodeGroup/project-template.git` when `_src_path` is a folder that isn't there, so such a project gets its update issue ([#505](https://github.com/NCodeGroup/project-template/issues/505)).
+- `.template/Update-Project.ps1` writes its move of `_src_path`, from the old `polewskm/project-template` address or from a folder that isn't on this PC, after it hands the update over to a later version's script and after every check that can stop the update, so the later script no longer stops with `has uncommitted changes` and a stopped update leaves `.copier-answers.yml` as it was ([#505](https://github.com/NCodeGroup/project-template/issues/505)).
+- `/plan-template-update` reads the template's address in `_src_path` as the update notice does, `gh:` and `gl:` shorthands, the old `polewskm/project-template` address and a folder that isn't on this PC included, and passes `-TemplateClone` to its trial run and its update step, so a project whose `_src_path` names a folder that isn't on this PC can plan its update ([#505](https://github.com/NCodeGroup/project-template/issues/505)).
+
 ## [0.114.0] - 2026-11-25
 
 ### Added
@@ -1926,7 +1936,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.114.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.114.1...HEAD
+[0.114.1]: https://github.com/NCodeGroup/project-template/compare/v0.114.0...v0.114.1
 [0.114.0]: https://github.com/NCodeGroup/project-template/compare/v0.113.4...v0.114.0
 [0.113.4]: https://github.com/NCodeGroup/project-template/compare/v0.113.3...v0.113.4
 [0.113.3]: https://github.com/NCodeGroup/project-template/compare/v0.113.2...v0.113.3

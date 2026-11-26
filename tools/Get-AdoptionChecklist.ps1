@@ -641,6 +641,10 @@ $checks['7.1'] = {
     if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?\z') {
         $src = 'https://github.com/NCodeGroup/project-template.git'
     }
+    # A template folder that isn't here, such as the clone the project was created from on another PC.
+    if ($src -notmatch '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)' -and -not (Test-Path -LiteralPath $src -PathType Container)) {
+        $src = 'https://github.com/NCodeGroup/project-template.git'
+    }
     $r = Invoke-Tool 'git' @('ls-remote', '--tags', '--refs', '--', $src)
     if ($r.ExitCode) { return New-Result 'unreadable' "couldn't read the template's tags at ${src}: $($r.Error)" }
     $newest = $null

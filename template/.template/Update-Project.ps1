@@ -13,6 +13,11 @@
     target version's copy of this script differs from this one, it hands the update over to that copy: the
     newest update logic always does the update, including replacing this file.
 
+    When that address is a folder that isn't on this PC, such as the clone of the template a project was created from
+    on another PC, the update moves the project to the template's address: the origin remote of -TemplateClone, a
+    clone of the template to read instead of cloning one, when that is an address, else
+    https://github.com/NCodeGroup/project-template.git. It says so and commits the change with the update.
+
     Every file in the project has one of three owners (copier.yml, and the template README's "What a Project Gets"):
 
       Template-owned  Replaced by the new version. A local edit to one is discarded and a deleted one is
@@ -121,8 +126,9 @@ param(
     [string]$Ref,
     [hashtable]$Data = @{},
     [switch]$NoCommit,
-    # Set by the version that hands the update over; not for direct use.
+    # A clone of the template to read instead of cloning one; the version that hands the update over passes it.
     [string]$TemplateClone,
+    # Set by the version that hands the update over; not for direct use.
     [switch]$HandedOff
 )
 $ErrorActionPreference = 'Stop'
@@ -1081,16 +1087,30 @@ try {
     $from = Get-Answer '_commit'
     $src = Get-Answer '_src_path'
     # The template moved from polewskm/project-template to NCodeGroup/project-template. A project whose answers still name the old
-    # address moves over with this update, so it stops depending on GitHub's redirect. Only the _src_path line changes, and the
-    # update commits it with everything else. Get-TemplateUpdate.ps1 reads the same old address for the weekly notice;
-    # change both together.
+    # address moves over with this update, so it stops depending on GitHub's redirect. Only the _src_path line changes, written
+    # after the hand-over, and the update commits it with everything else. Get-TemplateUpdate.ps1 reads the same old address
+    # for the weekly notice; change both together.
     $movedSource = 'https://github.com/NCodeGroup/project-template.git'
+    $oldSource = $null
     if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?$') {
-        $answersFile = Join-Path $project '.copier-answers.yml'
-        $answersText = [IO.File]::ReadAllText($answersFile)
-        [IO.File]::WriteAllText($answersFile, [regex]::Replace($answersText, '(?m)^_src_path:[^\r\n]*', "_src_path: $movedSource"), [Text.UTF8Encoding]::new($false))
+        $oldSource = $src
         $src = $movedSource
-        "The template moved to $movedSource; .copier-answers.yml now names it."
+    }
+    # A project created from a local clone of the template names that folder, which no other PC has. When it isn't here,
+    # the update moves the project to the template's address: the origin of -TemplateClone when that is an address, else
+    # NCodeGroup/project-template. Get-TemplateUpdate.ps1 reads such a folder the same way, and
+    # Set-TemplateSource in the template's tools/adopt/Adoption.psm1 cleans a clone's origin with the same patterns
+    # (tests/Test-Adoption.ps1 checks); change them together.
+    $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'
+    $localSource = $null
+    if ($src -and $src -notmatch $remoteAddress -and -not (Test-Path -LiteralPath $src -PathType Container)) {
+        $cloneOrigin = if ($TemplateClone) { "$(git -C $TemplateClone config --get remote.origin.url 2>$null)".Trim() }
+        # An https origin can carry a user name and token, which the committed answers mustn't.
+        $cloneOrigin = $cloneOrigin -replace '^(https?://)[^/@]*@', '$1'
+        # CI and a PC without the SSH key can't read an SSH address, so a GitHub or GitLab one becomes its https address.
+        $cloneOrigin = $cloneOrigin -replace '^(?:git@(github\.com|gitlab\.com):|ssh://git@(github\.com|gitlab\.com)/)', 'https://$1$2/'
+        $localSource = $src
+        $src = if ($cloneOrigin -match $remoteAddress) { $cloneOrigin } else { $movedSource }
     }
 
     if ($ownClone) {
@@ -1166,6 +1186,19 @@ try {
         catch {
             Write-Warning "Skipped the rewritten-file suggestion: checking for merged files this project rewrote failed: $_"
             $rewritten = @()
+        }
+    }
+    # Written after the hand-over, whose script makes these moves itself and refuses uncommitted changes, and after every
+    # check that can stop the update, so a stopped update leaves the answers as they were.
+    if ($oldSource -or $localSource) {
+        $answersFile = Join-Path $project '.copier-answers.yml'
+        $answersText = [IO.File]::ReadAllText($answersFile)
+        [IO.File]::WriteAllText($answersFile, [regex]::Replace($answersText, '(?m)^_src_path:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*', "_src_path: $src"), [Text.UTF8Encoding]::new($false))
+        if ($oldSource) {
+            "The template moved to $movedSource; .copier-answers.yml now names it."
+        }
+        else {
+            ".copier-answers.yml named the template by $localSource, a folder that isn't on this PC; it now names $src, so the project updates from any PC."
         }
     }
     # Copier writes the template's .gitignore over the project's before merging the project's edits back, then passes every path
