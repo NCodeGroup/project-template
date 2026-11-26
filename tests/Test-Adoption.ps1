@@ -369,6 +369,8 @@ if (-not $UnitOnly) {
     $count = git -C $plain rev-list --count HEAD
     $status = git -C $plain status --porcelain
     Check 'plain: one commit, nothing left over' ($subject -eq 'Adopt project-template v0.1.0' -and $count -eq '2' -and -not $status) "$subject | $count | $status"
+    $plainSource = (git -C $plain show HEAD:.copier-answers.yml | Select-String -Pattern '^_src_path:\s*(.+?)\s*$' | Select-Object -First 1).Matches.Groups[1].Value.Trim("'", '"')
+    Check 'plain: the adoption names the template by its folder and warns that the folder has no origin address' (($plainSource -eq $tpl) -and (($out -replace '\s+', ' ').Contains('which only this PC has')) -and $out.Contains($tpl)) "$plainSource | $out"
     Check 'plain: leaves core.hooksPath alone when the clone has hooks in .git/hooks, and warns' (-not (git -C $plain config core.hooksPath) -and $out.Contains('has hooks of its own in .git/hooks (pre-commit)')) $out
     Check 'plain: a GitLab origin gets the GitLab baseline command, not the GitHub one' (-not $out.Contains('Set-RepositoryBaseline') -and $out -match "Set-GitLabBaseline\.ps1 -Path '[^']*plain'") $out
     Check 'plain: README.md untouched' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'README.md')) -eq "# Plain`n") ''
