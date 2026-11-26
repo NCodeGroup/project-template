@@ -4,12 +4,13 @@
 
 .DESCRIPTION
     A project created from a local clone of the template names that folder, which no other PC has (#505). Renders a
-    project from v0.1.0, points its answers at a folder that doesn't exist, then updates three times: once as is, which
+    project from v0.1.0, points its answers at a folder that doesn't exist, then updates four times: once as is, which
     must move the project to https://github.com/NCodeGroup/project-template.git, once with -TemplateClone, a clone whose
     origin is another address with a user name and token in it, which must move the project to that address without
-    them, and once with a clone whose origin is a GitHub SSH address, which must move it to that address's https form.
-    Each run must change only the _src_path line, in the update's own commit. Prints PASS or FAIL per check and exits 1
-    on any failure.
+    them, once with a clone whose origin is a GitHub SSH address, which must move it to that address's https form, and
+    once more after a v0.2.0 whose update script differs, which the update must hand over to and that script must make
+    the move. Each run must change only the _src_path line, in the update's own commit. Prints PASS or FAIL per check
+    and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-address-test-<process ID> in the
@@ -63,7 +64,7 @@ $fork = Join-Path $Work 'fork'
 Invoke-Git clone -q $tpl $fork
 Invoke-Git -C $fork remote set-url origin https://template-test:secret@example.invalid/fork/project-template.git
 
-# Names the missing folder in the answers, commits that, then updates with git serving both addresses from the local snapshot, as a host would.
+# Names the missing folder in the answers, commits that, then updates with git serving every address from the local snapshot, as a host would.
 function Invoke-AddressUpdate([hashtable]$Extra = @{}) {
     Push-Location $project
     try {
@@ -131,6 +132,16 @@ Check 'update -TemplateClone: a project whose _src_path is a folder that isn''t 
 Invoke-Git -C $fork remote set-url origin git@github.com:fork/project-template.git
 $r = Invoke-AddressUpdate @{ TemplateClone = $fork }
 Check 'update -TemplateClone: a clone whose origin is a GitHub SSH address moves the project to its https address' (Test-MovedTo $r 'https://github.com/fork/project-template.git') "exit=$($r.ExitCode) changed=$($r.Changed -join ',') $($r.Output)"
+# A later version whose update script differs: the update hands over to it, and that script makes the move.
+$nextScript = Join-Path $tpl 'template/.template/Update-Project.ps1'
+$nextText = [IO.File]::ReadAllText($nextScript)
+if (-not $nextText.Contains("`$ErrorActionPreference = 'Stop'`n")) { throw "No `$ErrorActionPreference line in $nextScript." }
+[IO.File]::WriteAllText($nextScript, $nextText.Replace("`$ErrorActionPreference = 'Stop'`n", "`$ErrorActionPreference = 'Stop'`n'Update-Project.ps1 from v0.2.0 is running.'`n"))
+Invoke-Git -C $tpl commit -q -am 'A later update script'
+Invoke-Git -C $tpl tag v0.2.0
+$r = Invoke-AddressUpdate
+$subject = git -C $project log -1 --format=%s
+Check 'update: a later version''s script, handed the update, moves a project whose _src_path is a folder that isn''t here' (($r.ExitCode -eq 0) -and $r.Output.Contains('Handing the update over to the v0.2.0 version') -and $r.Output.Contains('Update-Project.ps1 from v0.2.0 is running.') -and $r.Output.Contains("a folder that isn't on this PC; it now names $canonical") -and ($r.AnswersAfter -match "(?m)^_src_path: $([regex]::Escape($canonical))\r?$") -and ($subject -eq 'Update from project-template v0.2.0') -and -not (git -C $project status --porcelain)) "exit=$($r.ExitCode) subject=$subject $($r.Output)"
 ''
 $env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Update template address tests: FAILED ($($failures.Count))"; exit 1 }

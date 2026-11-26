@@ -1102,6 +1102,7 @@ try {
     # here, the update moves the project to the template's address: the origin of -TemplateClone when that is an address,
     # else NCodeGroup/project-template. Get-TemplateUpdate.ps1 reads such a folder the same way; change both together.
     $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'
+    $localSource = $null
     if ($src -and $src -notmatch $remoteAddress -and -not (Test-Path -LiteralPath $src -PathType Container)) {
         $cloneOrigin = if ($TemplateClone) { "$(git -C $TemplateClone config --get remote.origin.url 2>$null)".Trim() }
         # An https origin can carry a user name and token, which the committed answers mustn't.
@@ -1110,10 +1111,6 @@ try {
         $cloneOrigin = $cloneOrigin -replace '^(?:git@(github\.com|gitlab\.com):|ssh://git@(github\.com|gitlab\.com)/)', 'https://$1$2/'
         $localSource = $src
         $src = if ($cloneOrigin -match $remoteAddress) { $cloneOrigin } else { $movedSource }
-        $answersFile = Join-Path $project '.copier-answers.yml'
-        $answersText = [IO.File]::ReadAllText($answersFile)
-        [IO.File]::WriteAllText($answersFile, [regex]::Replace($answersText, '(?m)^_src_path:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*', "_src_path: $src"), [Text.UTF8Encoding]::new($false))
-        ".copier-answers.yml named the template by $localSource, a folder that isn't on this PC; it now names $src, so the project updates from any PC."
     }
 
     if ($ownClone) {
@@ -1144,6 +1141,13 @@ try {
             & $next -Path $project -Ref $to -Data $Data -NoCommit:$NoCommit -TemplateClone $TemplateClone -HandedOff
             exit $LASTEXITCODE
         }
+    }
+    # Written after the hand-over: the script handed the update makes this move itself and refuses uncommitted changes.
+    if ($localSource) {
+        $answersFile = Join-Path $project '.copier-answers.yml'
+        $answersText = [IO.File]::ReadAllText($answersFile)
+        [IO.File]::WriteAllText($answersFile, [regex]::Replace($answersText, '(?m)^_src_path:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*', "_src_path: $src"), [Text.UTF8Encoding]::new($false))
+        ".copier-answers.yml named the template by $localSource, a folder that isn't on this PC; it now names $src, so the project updates from any PC."
     }
 
     # copier recopy and the renders below check out the project's version, which Git for Windows refuses when a name
