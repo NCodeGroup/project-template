@@ -47,6 +47,10 @@ jobs:
 {% raw %}          key: ${{ runner.os }}-nuget-${{ hashFiles('Directory.Packages.props', 'global.json', '.config/dotnet-tools.json', '**/*.csproj') }}
           restore-keys: |
             ${{ runner.os }}-nuget-{% endraw %}
+      # The SDK and every target framework are LTS releases Microsoft supports (ADR-0155). A project that can't
+      # migrate yet adds -WarnOnly until it has.
+      - name: Check .NET support
+        run: ./build/Test-DotnetSupport.ps1
 {%- elif stack == 'python' %}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
