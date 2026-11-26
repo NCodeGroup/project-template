@@ -9,8 +9,8 @@
     origin is another address with a user name and token in it, which must move the project to that address without
     them, once with a clone whose origin is a GitHub SSH address, which must move it to that address's https form, and
     once more after a v0.2.0 whose update script differs, which the update must hand over to and that script must make
-    the move. Each run must change only the _src_path line, in the update's own commit. Prints PASS or FAIL per check
-    and exits 1 on any failure.
+    the move. Each of the first three runs, at the newest version already, must commit only the _src_path line; the
+    fourth must commit the move with the v0.2.0 update. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-address-test-<process ID> in the
