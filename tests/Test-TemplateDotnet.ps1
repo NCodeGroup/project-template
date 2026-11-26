@@ -3,7 +3,7 @@
     Render the template's .NET cases and check that the .NET layer builds, tests and packs.
 
 .DESCRIPTION
-    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), checks that each fresh render passes dotnet csharpier check . before anything formats it, runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
+    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Then runs build/Test-DotnetSupport.ps1 against a stand-in releases index, offline. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), checks that each fresh render passes dotnet csharpier check . before anything formats it, runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
 
 .EXAMPLE
     .\tests\Test-TemplateDotnet.ps1
@@ -12,7 +12,7 @@
     Render nothing and run no .NET check; exit 0.
 
 .PARAMETER InstallerOnly
-    Run only the installer checks, offline: render nothing and build nothing.
+    Run only the offline checks of build/Install-Dotnet.ps1 and build/Test-DotnetSupport.ps1: render nothing and build nothing.
 
 .PARAMETER FormatOnly
     Run the installer checks, offline, then render the two cases and run only the check that each fresh render passes CSharpier's check: build nothing.
@@ -209,6 +209,47 @@ $dir = New-StubInstallDir 'notfound'
 $missing = Invoke-StubInstaller $mergeMetadata @{} @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($notFound) }
 $missingOk = $missing.Error.Contains('404') -and $missing.Calls.Count -eq 1 -and -not $missing.Sleeps
 Check 'installer: build/Install-Dotnet.ps1 gives every request a 30-second answer and 60-second stall timeout, tries a failed or stalled one twice more, 5 and then 10 seconds later, or after the Retry-After of a 429 or 503 up to 60 seconds, each plus up to a second at random, retries a 408, and fails at once on a 404' ($retriedOk -and $throttledOk -and $gaveUpOk -and $missingOk) "$($retried.Error) $($retried.Calls -join ',') $($retried.Sleeps -join ',') | $($throttled.Error) $($throttled.Sleeps -join ',') | $($gaveUp.Error) $($gaveUp.Sleeps -join ',') | $($missing.Error) $($missing.Calls.Count)"
+$support = Join-Path (Split-Path -Parent $PSScriptRoot) 'template/build/Test-DotnetSupport.ps1'
+$supportIndex = Join-Path $stubRoot 'releases-index.json'
+[IO.File]::WriteAllText($supportIndex, (@{ 'releases-index' = @(
+            @{ 'channel-version' = '10.0'; 'release-type' = 'lts'; 'support-phase' = 'active'; 'eol-date' = '2028-11-14' },
+            @{ 'channel-version' = '11.0'; 'release-type' = 'sts'; 'support-phase' = 'active'; 'eol-date' = '2028-11-14' },
+            @{ 'channel-version' = '8.0'; 'release-type' = 'lts'; 'support-phase' = 'eol'; 'eol-date' = '2026-11-10' },
+            @{ 'channel-version' = '6.0'; 'release-type' = 'lts'; 'support-phase' = 'maintenance'; 'eol-date' = '2027-05-11' }
+        ) } | ConvertTo-Json -Depth 5))
+
+function Invoke-Support([string]$Sdk, [string]$GitHubActions = '', [switch]$WarnOnly) {
+    $dir = Join-Path $stubRoot "support-$Sdk-$GitHubActions-$([int][bool]$WarnOnly)"
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    if ($Sdk) { [IO.File]::WriteAllText((Join-Path $dir 'global.json'), "{`"sdk`":{`"version`":`"$Sdk`"}}") }
+    $arguments = @('-NoProfile', '-File', $support, '-Root', $dir, '-ReleasesIndex', $supportIndex)
+    if ($WarnOnly) { $arguments += '-WarnOnly' }
+    $previous = $env:GITHUB_ACTIONS
+    $env:GITHUB_ACTIONS = $GitHubActions
+    try {
+        $printed = (pwsh @arguments 2>&1 | Out-String).Trim()
+        [pscustomobject]@{ Printed = $printed; ExitCode = $LASTEXITCODE }
+    }
+    finally { $env:GITHUB_ACTIONS = $previous }
+}
+
+$r = Invoke-Support '10.0.100'
+Check 'support: build/Test-DotnetSupport.ps1 passes an active LTS pinned in global.json' ($r.ExitCode -eq 0 -and $r.Printed.Contains('10.0 (global.json): LTS, supported until 2028-11-14') -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
+$r = Invoke-Support '11.0.100'
+Check 'support: build/Test-DotnetSupport.ps1 fails a Standard Term Support release' ($r.ExitCode -eq 1 -and $r.Printed.Contains('Error: .NET 11.0 (global.json) is a Standard Term Support release') -and $r.Printed.Contains('.NET support: FAILED (1)')) $r.Printed
+$r = Invoke-Support '8.0.404'
+Check 'support: build/Test-DotnetSupport.ps1 fails an LTS release past its end of support' ($r.ExitCode -eq 1 -and $r.Printed.Contains('Error: .NET 8.0 (global.json) reached its end of support on 2026-11-10')) $r.Printed
+$r = Invoke-Support '6.0.100'
+Check 'support: build/Test-DotnetSupport.ps1 warns, without failing, for an LTS release in maintenance' ($r.ExitCode -eq 0 -and $r.Printed.Contains('Warning: .NET 6.0 (global.json) ends its support on 2027-05-11')) $r.Printed
+$warned = Invoke-Support '6.0.100' 'true'
+$errored = Invoke-Support '8.0.404' 'true'
+Check 'support: build/Test-DotnetSupport.ps1 prints workflow annotations on GitHub Actions' ($warned.Printed.Contains('::warning::.NET 6.0 (global.json)') -and $errored.Printed.Contains('::error::.NET 8.0 (global.json)')) "$($warned.Printed) | $($errored.Printed)"
+$r = Invoke-Support '8.0.404' -WarnOnly
+Check 'support: build/Test-DotnetSupport.ps1 reports a failure as a warning and exits 0 with -WarnOnly' ($r.ExitCode -eq 0 -and $r.Printed.Contains('Warning: .NET 8.0 (global.json) reached its end of support') -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
+$r = Invoke-Support '99.0.100'
+Check 'support: build/Test-DotnetSupport.ps1 fails a channel Microsoft''s release metadata lacks' ($r.ExitCode -eq 1 -and $r.Printed.Contains('Microsoft''s release metadata lists no .NET 99.0 (global.json).')) $r.Printed
+$r = Invoke-Support ''
+Check 'support: build/Test-DotnetSupport.ps1 passes a repository without global.json' ($r.ExitCode -eq 0 -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
 if ($InstallerOnly) {
     ''
     if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
