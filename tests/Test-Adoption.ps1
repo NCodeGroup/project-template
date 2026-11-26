@@ -304,6 +304,11 @@ Check 'unit: Set-TemplateSource warns for a folder without an origin address and
 $url = @(Set-TemplateSource $plainProject 'https://github.com/NCodeGroup/project-template.git' 3>&1)
 $urlAnswers = Get-Content -Raw -LiteralPath (Join-Path $plainProject '.copier-answers.yml')
 Check 'unit: Set-TemplateSource leaves an address alone' ($url.Count -eq 0 -and $urlAnswers -eq $plainAnswersText) "$($url -join ' / ') | $urlAnswers"
+$withToken = New-Fixture 'source-token' @{ 'README.md' = "t`n" } 'https://template-test:secret@example.invalid/fork/project-template.git'
+$tokenProject = New-TestFolder 'source-project3' @{ '.copier-answers.yml' = "_commit: v0.1.0`n_src_path: $withToken`n" }
+$tokenNote = @(Set-TemplateSource $tokenProject $withToken)
+$tokenAnswers = Get-Content -Raw -LiteralPath (Join-Path $tokenProject '.copier-answers.yml')
+Check 'unit: Set-TemplateSource leaves the user name and token of an https origin out' ($tokenAnswers -eq "_commit: v0.1.0`n_src_path: https://example.invalid/fork/project-template.git`n" -and -not ($tokenNote -join ' ').Contains('secret')) "$tokenAnswers | $($tokenNote -join ' / ')"
 
 if (-not $UnitOnly) {
     $tpl = Join-Path $Work 'template-repo'

@@ -958,6 +958,8 @@ function Set-TemplateSource([string]$Path, [string]$Template) {
     $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'
     if ($Template -match $remoteAddress -or -not (Test-Path -LiteralPath $Template -PathType Container)) { return }
     $origin = "$(git -C $Template config --get remote.origin.url 2>$null)".Trim()
+    # An https origin can carry a user name and token, which the committed answers mustn't.
+    $origin = $origin -replace '^(https?://)[^/@]*@', '$1'
     if ($origin -notmatch $remoteAddress) {
         Write-Warning "The project names its template by the folder $Template, which only this PC has, because that folder has no origin remote with the template's address. An update on another PC moves it to https://github.com/NCodeGroup/project-template.git."
         return

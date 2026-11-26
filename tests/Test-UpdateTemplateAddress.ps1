@@ -6,8 +6,9 @@
     A project created from a local clone of the template names that folder, which no other PC has (#505). Renders a
     project from v0.1.0, points its answers at a folder that doesn't exist, then updates twice: once as is, which must
     move the project to https://github.com/NCodeGroup/project-template.git, and once with -TemplateClone, a clone whose
-    origin is another address, which must move the project to that address. Each run must change only the _src_path
-    line, in the update's own commit. Prints PASS or FAIL per check and exits 1 on any failure.
+    origin is another address with a user name and token in it, which must move the project to that address without
+    them. Each run must change only the _src_path line, in the update's own commit. Prints PASS or FAIL per check and
+    exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-address-test-<process ID> in the
@@ -59,7 +60,7 @@ finally { Pop-Location }
 $missing = Join-Path $Work 'missing-template'
 $fork = Join-Path $Work 'fork'
 Invoke-Git clone -q $tpl $fork
-Invoke-Git -C $fork remote set-url origin https://example.invalid/fork/project-template.git
+Invoke-Git -C $fork remote set-url origin https://template-test:secret@example.invalid/fork/project-template.git
 
 # Names the missing folder in the answers, commits that, then updates with git serving both addresses from the local snapshot, as a host would.
 function Invoke-AddressUpdate([hashtable]$Extra = @{}) {
@@ -122,7 +123,7 @@ Check 'update: moving off the missing folder changes no other answer' ((Get-Othe
 
 $forkAddress = 'https://example.invalid/fork/project-template.git'
 $r = Invoke-AddressUpdate @{ TemplateClone = $fork }
-Check 'update -TemplateClone: a project whose _src_path is a folder that isn''t here moves to the clone''s origin' (Test-MovedTo $r $forkAddress) "exit=$($r.ExitCode) changed=$($r.Changed -join ',') $($r.Output)"
+Check 'update -TemplateClone: a project whose _src_path is a folder that isn''t here moves to the clone''s origin, without its user name and token' ((Test-MovedTo $r $forkAddress) -and -not $r.AnswersAfter.Contains('secret') -and -not $r.Output.Contains('secret')) "exit=$($r.ExitCode) changed=$($r.Changed -join ',') $($r.Output)"
 ''
 $env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Update template address tests: FAILED ($($failures.Count))"; exit 1 }

@@ -1104,6 +1104,8 @@ try {
     $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'
     if ($src -and $src -notmatch $remoteAddress -and -not (Test-Path -LiteralPath $src -PathType Container)) {
         $cloneOrigin = if ($TemplateClone) { "$(git -C $TemplateClone config --get remote.origin.url 2>$null)".Trim() }
+        # An https origin can carry a user name and token, which the committed answers mustn't.
+        $cloneOrigin = $cloneOrigin -replace '^(https?://)[^/@]*@', '$1'
         $localSource = $src
         $src = if ($cloneOrigin -match $remoteAddress) { $cloneOrigin } else { $movedSource }
         $answersFile = Join-Path $project '.copier-answers.yml'
