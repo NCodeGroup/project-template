@@ -35,7 +35,7 @@ Give every `Invoke-RestMethod` call `-TimeoutSec 30`, bound every download the s
    - Any other check under 10: its `details` lines and the `reason`.
 9. Write the prompt, as plain text, to `best-practices-prompt.txt` at the repository root:
    - not registered: the map's registration prompt, with OWNER/REPO replaced by the repository's path, SHA by the recorded commit's, and under ANSWERS one line per verified answer, `<level> <id>: <Met, Unmet or N/A> - <justification with its link>`;
-   - registered: the map's update prompt, with one block per saved answer from step 7 that changes;
+   - registered: the map's update prompt, with one block per saved answer from step 7 that changes.
    The file is never committed: when `git check-ignore -q best-practices-prompt.txt` exits non-zero, append the line `best-practices-prompt.txt` to `info/exclude` in the folder `git rev-parse --path-format=absolute --git-common-dir` prints.
 10. Reply with the file's path; per level, how many answers are Met, Unmet, N/A and open; first any SUGGESTED criterion still `?` that keeps passing below 100%; and every MUST criterion that keeps a level from being earned, the Person ones first, with why and the repository change that would clear it. Keep `require_2FA` and `secure_2FA` Unmet and ask me to confirm the organization's two-factor setting; autofill's Met is not evidence. Add the Scorecard table (check, score, action, who). End with these next steps, in this order:
    1. Land the repository changes.
