@@ -62,6 +62,12 @@ Check 'tag-release.yml is named Tag and publish release, not Release' ($template
 $policyJob = [regex]::Match($templateWorkflow, '(?ms)^  policy:\r?\n.*?(?=^  (?:test|release):\r?$)').Value
 Check 'tag-release.yml reads the release policy on main in a job with no permission of its own and no persisted token' ($policyJob -and $policyJob.Contains("if: github.ref == 'refs/heads/main'") -and $policyJob -notmatch 'permissions:' -and $policyJob.Contains('persist-credentials: false') -and $policyJob.Contains('./.template/Publish-Release.ps1 -Policy') -and $policyJob.Contains('release: ${{ steps.policy.outputs.release }}')) $policyJob
 Check 'tag-release.yml runs its one write job after the policy and test jobs, only for release: tag or tag+release' ($templateWorkflow -match '(?m)^    needs: \[policy, test\]\r?\n    if: needs\.policy\.outputs\.release == ''tag'' \|\| needs\.policy\.outputs\.release == ''tag\+release''\r?$' -and [regex]::Matches($templateWorkflow, '(?m)^\s+contents: write\r?$').Count -eq 1)
+$publishAst = [Management.Automation.Language.Parser]::ParseFile($script, [ref]$null, [ref]$null)
+$updateAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template/.template/Update-Project.ps1'), [ref]$null, [ref]$null)
+$isEvents = { param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-WorkflowEvents' }
+$eventsCopy = $publishAst.Find($isEvents, $true)
+$eventsOriginal = $updateAst.Find($isEvents, $true)
+Check 'Publish-Release.ps1''s Get-WorkflowEvents is Update-Project.ps1''s, character for character' ($eventsCopy -and $eventsOriginal -and $eventsCopy.Extent.Text -eq $eventsOriginal.Extent.Text)
 
 $temp = Join-Path ([IO.Path]::GetTempPath()) "publish-release-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $temp | Out-Null

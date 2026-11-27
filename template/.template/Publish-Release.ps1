@@ -34,9 +34,11 @@
     done, and a run that stopped after the tag publishes the release the next time. -WhatIf says what it would do and
     pushes and publishes nothing.
 
-    A .NET library's .github/workflows/publish.yml runs on a published release, but a release made with the workflow's
-    GITHUB_TOKEN starts no other workflow. So after it publishes a release, it starts publish.yml with a workflow_dispatch
-    event for the tag, when the project has that workflow, and fails when the workflow has no workflow_dispatch trigger.
+    A .NET library's publishing workflow runs on a published release, but a release made with the workflow's GITHUB_TOKEN
+    starts no other workflow. So after it publishes a release, it starts each workflow the nuget_publisher answer in
+    .copier-answers.yml names, a library's own, or else .github/workflows/publish.yml, when the project has it, with a
+    workflow_dispatch event on the tag, passing the tag as the tag input when the workflow declares one. It fails, naming
+    the trigger, when one of them has no workflow_dispatch trigger.
 
 .PARAMETER Commit
     The commit to tag: in the workflow, the commit the push made main point to.
@@ -133,6 +135,71 @@ function Get-RemoteTag([string]$Name) {
     $refs = @(& git ls-remote --tags --refs $Name)
     if ($LASTEXITCODE) { throw "Can't read the tags of $Name (git ls-remote exited $LASTEXITCODE)." }
     @($refs | ForEach-Object { if ($_ -match '\trefs/tags/(?<tag>.+)$') { $Matches.tag } })
+}
+
+# The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, the keys or items
+# indented below it, or - items at its own indent, with quotes, comments and blank lines allowed. A mapping in braces, or
+# no on: key, gives none.
+# A copy of .template/Update-Project.ps1's, itself a copy of tools/Set-RepositoryBaseline.ps1's; tests/Test-PublishRelease.ps1 checks they match.
+function Get-WorkflowEvents([string]$Text) {
+    $lines = @($Text -split '\r?\n')
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -notmatch '^(on|"on"|''on''):(.*)$') { continue }
+        $rest = ($Matches[2] -replace '(^|\s)#.*$', '').Trim()
+        $names = if ($rest.StartsWith('[')) { $rest.Trim('[', ']') -split ',' }
+        elseif ($rest.StartsWith('{')) { @() }
+        elseif ($rest) { @($rest) }
+        else {
+            $indent = -1
+            @(for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                $line = $lines[$j]
+                if ($line -match '^\s*(#.*)?$') { continue }
+                $null = $line -match '^(\s*)(.*)$'
+                $lead = $Matches[1].Length
+                $item = $Matches[2]
+                # A line at column 0 ends the block, unless it is a - item of a sequence at the key's own indent.
+                if (-not $lead -and -not ($indent -le 0 -and $item -match '^-(\s|$)')) { break }
+                if ($indent -lt 0) { $indent = $lead }
+                if ($lead -ne $indent) { continue }
+                if ($item -match '^-\s*([^\s#]+)') { $Matches[1] }
+                elseif ($item -match '^([^\s:#]+)\s*:') { $Matches[1] }
+            })
+        }
+        return @($names | ForEach-Object { $_.Trim().Trim('"', "'") } | Where-Object { $_ -match '^[A-Za-z_]+$' })
+    }
+    @()
+}
+
+# Whether a workflow's workflow_dispatch block declares a tag input, as the template's publish.yml does: only then does the dispatch pass the tag as inputs[tag], since GitHub refuses an input the workflow doesn't declare.
+function Test-DispatchTagInput([string]$Text) {
+    $lines = @($Text -split '\r?\n')
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -notmatch '^(\s+)workflow_dispatch\s*:\s*(#.*)?$') { continue }
+        $indent = $Matches[1].Length
+        for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+            $line = $lines[$j]
+            if ($line -match '^\s*(#.*)?$') { continue }
+            $null = $line -match '^(\s*)'
+            if ($Matches[1].Length -le $indent) { break }
+            if ($line -match '^\s+tag\s*:') { return $true }
+        }
+        return $false
+    }
+    $false
+}
+
+# The workflows that publish a .NET library's packages: those the nuget_publisher answer in .copier-answers.yml names, a library's own, or else the template's publish.yml; only those the project has.
+function Get-PackagePublisher([string]$Root) {
+    $named = @()
+    $answers = Join-Path $Root '.copier-answers.yml'
+    if (Test-Path -LiteralPath $answers) {
+        $answerLine = @(Get-Content -LiteralPath $answers | Where-Object { $_ -match '^nuget_publisher:\s*(?<value>.*?)\s*$' }) | Select-Object -First 1
+        if ($answerLine -and $answerLine -match '^nuget_publisher:\s*(?<value>.*?)\s*$') {
+            $named = @($Matches.value.Trim("'", '"') -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        }
+    }
+    if (-not $named.Count) { $named = @('.github/workflows/publish.yml') }
+    @($named | Where-Object { Test-Path -LiteralPath (Join-Path $Root $_) -PathType Leaf })
 }
 
 $root = (& git rev-parse --show-toplevel)
@@ -238,15 +305,28 @@ if ($release -eq 'tag+release') {
     }
 }
 
-# A .NET library's publish.yml runs on a published release, but a release made with the workflow's GITHUB_TOKEN starts no other workflow; a workflow_dispatch event does.
-$publishWorkflow = Join-Path $root '.github/workflows/publish.yml'
-if ($publishedNow -and (Test-Path -LiteralPath $publishWorkflow)) {
-    if ((Get-Content -LiteralPath $publishWorkflow -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
-        throw "Published the release $version, but .github/workflows/publish.yml has no workflow_dispatch trigger, so nothing publishes its packages: a release made with the workflow's token starts no other workflow. Add the trigger with a tag input, as the project template's publish.yml has it, then run Publish packages from the Actions tab with the tag $version."
+# A release made with the workflow's GITHUB_TOKEN starts no other workflow, so a .NET library's publishing workflows, which run on a published release, are started through workflow_dispatch (the template's ADR-0137).
+if ($publishedNow) {
+    $untriggered = [Collections.Generic.List[string]]::new()
+    foreach ($workflow in @(Get-PackagePublisher $root)) {
+        $text = Get-Content -LiteralPath (Join-Path $root $workflow) -Raw
+        if (@(Get-WorkflowEvents $text) -notcontains 'workflow_dispatch') { $untriggered.Add($workflow); continue }
+        $name = Split-Path -Leaf $workflow
+        if ($PSCmdlet.ShouldProcess($version, "Start $name")) {
+            $dispatch = @('api', "repos/{owner}/{repo}/actions/workflows/$name/dispatches", '-f', "ref=$version")
+            if (Test-DispatchTagInput $text) { $dispatch += '-f', "inputs[tag]=$version" }
+            & $Gh @dispatch --silent
+            if ($LASTEXITCODE) { throw "Starting $name for $version failed (gh api exited $LASTEXITCODE): run it from the Actions tab on the tag $version." }
+            "Started $name for $version."
+        }
     }
-    if ($PSCmdlet.ShouldProcess($version, 'Start publish.yml')) {
-        & $Gh api 'repos/{owner}/{repo}/actions/workflows/publish.yml/dispatches' -f "ref=$version" -f "inputs[tag]=$version" --silent
-        if ($LASTEXITCODE) { throw "Starting publish.yml for $version failed (gh api exited $LASTEXITCODE): run Publish packages from the Actions tab with the tag $version." }
-        "Started publish.yml for $version."
+    if ($untriggered.Count) {
+        throw (@($untriggered | ForEach-Object {
+            if ($_ -eq '.github/workflows/publish.yml') {
+                "Published the release $version, but .github/workflows/publish.yml has no workflow_dispatch trigger, so nothing publishes its packages: a release made with the workflow's token starts no other workflow. Add the trigger with a tag input, as the project template's publish.yml has it, then run Publish packages from the Actions tab with the tag $version."
+            } else {
+                "Published the release $version, but $_, which the nuget_publisher answer in .copier-answers.yml names as this library's publishing workflow, has no workflow_dispatch trigger, so nothing publishes its packages: a release made with the workflow's token starts no other workflow. Add a workflow_dispatch trigger to it, reading the tag from inputs.tag or github.ref_name when the run has no release, then run it from the Actions tab on the tag $version."
+            }
+        }) -join ' ')
     }
 }
