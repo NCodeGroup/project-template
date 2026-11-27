@@ -427,7 +427,7 @@ try {
     $bots = @($policy['review-bots'] -split '[\s,]+' | ForEach-Object { $_ -replace '\[bot\]\z', '' } | Where-Object { $_ })
     $policy['review-bots'] = if ($bots.Count) { $bots -join ',' } else { 'none' }
     if ($policy['max-review-rounds'] -notmatch '^[1-9]\d{0,2}\z') { $policy['max-review-rounds'] = '3' }
-    if ($policy['board'] -ne 'none' -and $policy['board'] -notmatch '^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[1-9]\d{0,9}\z') { $policy['board'] = 'invalid' }
+    if ($policy['board'] -ne 'none' -and $policy['board'] -cnotmatch '^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[1-9][0-9]{0,9}\z') { $policy['board'] = 'invalid' }
     $integrate = $policy['integrate']; $releasePolicy = $policy['release']
     $landing = @(foreach ($key in $policy.Keys) { if ($policy[$key] -match '\s') { "$key=`"$($policy[$key])`"" } else { "$key=$($policy[$key])" } }) -join ' '
 

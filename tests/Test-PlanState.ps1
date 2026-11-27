@@ -209,7 +209,7 @@ $m = @(foreach ($case in $cases) {
         if (-not $r.Ok) { "'$($case.Bots)' and max-review-rounds $($case.Rounds): $($r.Detail)" }
     })
 Check 'local: an empty review-bots keeps the default, one with no login is none, and max-review-rounds takes 1 to 999, else 3' (-not $m) ($m -join '; ')
-$boards = [ordered]@{ 'NCodeGroup/7' = 'NCodeGroup/7'; '`octo-org/12`' = 'octo-org/12'; 'none' = 'none'; 'https://github.com/orgs/NCodeGroup/projects/7' = 'invalid'; 'NCodeGroup/0' = 'invalid'; 'NCodeGroup' = 'invalid'; 'NCodeGroup/7/8' = 'invalid' }
+$boards = [ordered]@{ 'NCodeGroup/7' = 'NCodeGroup/7'; '`octo-org/12`' = 'octo-org/12'; 'none' = 'none'; 'https://github.com/orgs/NCodeGroup/projects/7' = 'invalid'; 'NCodeGroup/0' = 'invalid'; 'NCodeGroup' = 'invalid'; 'NCodeGroup/7/8' = 'invalid'; "NCodeGroup/7`u{0663}" = 'invalid'; "`u{212A}anban-org/7" = 'invalid' }
 $m = @(foreach ($value in $boards.Keys) {
         Write-Text (Join-Path $repo 'AGENTS.md') $agentsText.Replace('- prelude: `nvs use 26`', "- board: $value`n- prelude: ``nvs use 26``")
         $landing = (Get-State $repo -NoFetch)['landing']
