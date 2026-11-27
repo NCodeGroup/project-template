@@ -1,0 +1,75 @@
+name: CodeQL
+
+# CodeQL analyzes the code on every pull request, a fork's too once GitHub runs its workflows (the template's
+# ADR-0039), so the code-scanning rule that tools/Set-RepositoryBaseline.ps1 adds can be met.
+# CodeQL's default setup analyzes no fork's pull request, and GitHub refuses this workflow's results while it is on,
+# so the baseline turns it off (the template's ADR-0042).
+# The project owns this file, so a language its code needs goes in the detect step.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  # The code-scanning rule waits for CodeQL in a merge queue too.
+  merge_group:
+    types: [checks_requested]
+  schedule:
+    - cron: '41 4 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  languages:
+    name: CodeQL languages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      languages: ${{ steps.detect.outputs.languages }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Detect the languages to analyze
+        id: detect
+        shell: pwsh
+        run: |
+          # actions analyzes the workflows, which every project has; each other language needs a tracked file in it.
+          $files = @(git ls-files)
+          $languages = [Collections.Generic.List[string]]::new()
+          $languages.Add('actions')
+          if (@($files -match '\.(cs|csx|cshtml|razor)$').Count) { $languages.Add('csharp') }
+          if (@($files -match '\.(js|jsx|mjs|cjs|ts|tsx|mts|cts)$').Count) { $languages.Add('javascript-typescript') }
+          if (@($files -match '\.py$').Count) { $languages.Add('python') }
+          "languages=$(ConvertTo-Json -Compress -InputObject @($languages))" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+          "CodeQL analyzes: $($languages -join ', ')"
+
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    needs: languages
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      # Uploads the results to code scanning.
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(needs.languages.outputs.languages) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          # The extended suite the baseline gave CodeQL's default setup (the template's ADR-0030).
+          queries: security-extended
+      - name: Analyze
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}
