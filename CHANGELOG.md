@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-11-27
+
+### Added
+
+- ADR-0040 records that NCode Review reviews and approves Dependabot's pull requests: `code-review.yml` reviews a pull request Dependabot opens from the repository when it opens and after each push Dependabot makes to it, and no other bot's, and the minor or patch NCode Review pin bump that `code-review-auto-merge.yml` turns auto-merge on for then merges with no person's action where NCode Review's approver is set up. It amends ADR-0006, ADR-0020, ADR-0022 and ADR-0036 ([#519](https://github.com/NCodeGroup/project-template/issues/519), [ADR-0040](template/docs/decisions/project-template/0040-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
+
+### Changed
+
+- `.github/workflows/code-review.yml` also runs on `synchronize`, and reviews a pull request Dependabot opened from the repository when it opens and whenever Dependabot pushes to it, such as a rebase, so a clean review's approval follows Dependabot's latest commit and Dependabot's pull requests no longer wait for a maintainer's `/review` or approval where the ruleset requires one; another bot's pull request and a push by anyone but Dependabot still start no review. The file is the project's own: take the change from the update's listing of the template's changes to it ([#519](https://github.com/NCodeGroup/project-template/issues/519), [ADR-0040](template/docs/decisions/project-template/0040-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
+- `.github/instructions/project-template.instructions.md` says a Dependabot pull request adds no changelog entry, since Dependabot can't write one and its updates ship with the next release, so a review asks for none, and, with NCode Review, that NCode Review reviews and approves Dependabot's pull requests; `CONTRIBUTING.md`, `GOVERNANCE.md`, the header of `.github/workflows/code-review-auto-merge.yml` and ADR-0020's Code-Review row say a maintainer approves only another bot's pull request ([#519](https://github.com/NCodeGroup/project-template/issues/519)).
+
 ## [0.116.0] - 2026-11-27
 
 ### Added
@@ -1993,7 +2004,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.116.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.117.0...HEAD
+[0.117.0]: https://github.com/NCodeGroup/project-template/compare/v0.116.0...v0.117.0
 [0.116.0]: https://github.com/NCodeGroup/project-template/compare/v0.115.4...v0.116.0
 [0.115.4]: https://github.com/NCodeGroup/project-template/compare/v0.115.3...v0.115.4
 [0.115.3]: https://github.com/NCodeGroup/project-template/compare/v0.115.2...v0.115.3
