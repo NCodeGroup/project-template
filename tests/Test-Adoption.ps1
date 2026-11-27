@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Unit-tests the adoption functions and legacy adapters on small inputs and, unless -UnitOnly is given, adopts a
-    Python repository on GitLab and a .NET repository built on the NCodeGroup scaffold from a tagged snapshot of the
+    Python repository on GitHub and a .NET repository built on the NCodeGroup scaffold from a tagged snapshot of the
     working tree, then updates the first to a later template version. tests/Test-AdoptEdgeCases.ps1 adopts the other
     fixture repositories. Prints PASS or FAIL per check and exits 1 on any failure.
 
@@ -371,13 +371,13 @@ if (-not $UnitOnly) {
         '.gitlab-ci.yml'        = "test:`n  script: echo hi`n"
         'web/package.json'      = "{}`n"
         '.nvmrc'                = "v22`n"
-    } 'https://gitlab.com/example/plain.git'
+    } 'https://github.com/example/plain.git'
     Invoke-Git -C $plain tag v1.0.0
     $adopt = Join-Path $repoRoot 'Adopt-Project.ps1'
     [IO.File]::WriteAllText((Join-Path $plain '.git\hooks\pre-commit'), "#!/bin/sh`n")
     $out = & $adopt -Path $plain -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot' } -NoVerify 3>&1 | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $plain '.copier-answers.yml')
-    Check 'plain: answers recorded' ($answersText -match '(?m)^_commit: v0\.1\.0\s*$' -and $answersText -match '(?m)^stack: python\s*$' -and $answersText -match '(?m)^git_host: gitlab\s*$' -and $answersText -match '(?m)^project_name: plain\s*$') "$answersText | $out"
+    Check 'plain: answers recorded' ($answersText -match '(?m)^_commit: v0\.1\.0\s*$' -and $answersText -match '(?m)^stack: python\s*$' -and $answersText -match '(?m)^git_host: github\s*$' -and $answersText -match '(?m)^project_name: plain\s*$') "$answersText | $out"
     Check 'plain: a Python repository with a frontend answers uses_node and carries .nvmrc over to .node-version' ($answersText -match '(?m)^uses_node: true\s*$' -and (Get-Content -Raw -LiteralPath (Join-Path $plain '.node-version')) -eq "22`n" -and $out.Contains('Carried .node-version') -and (Test-Path -LiteralPath (Join-Path $plain '.nvmrc'))) "$answersText | $out"
     $subject = git -C $plain log -1 --format=%s
     $count = git -C $plain rev-list --count HEAD
@@ -386,7 +386,7 @@ if (-not $UnitOnly) {
     $plainSource = (git -C $plain show HEAD:.copier-answers.yml | Select-String -Pattern '^_src_path:\s*(.+?)\s*$' | Select-Object -First 1).Matches.Groups[1].Value.Trim("'", '"')
     Check 'plain: the adoption names the template by its folder and warns that the folder has no origin address' (($plainSource -eq $tpl) -and (($out -replace '\s+', ' ').Contains('which only this PC has')) -and $out.Contains($tpl)) "$plainSource | $out"
     Check 'plain: leaves core.hooksPath alone when the clone has hooks in .git/hooks, and warns' (-not (git -C $plain config core.hooksPath) -and $out.Contains('has hooks of its own in .git/hooks (pre-commit)')) $out
-    Check 'plain: a GitLab origin gets the GitLab baseline command, not the GitHub one' (-not $out.Contains('Set-RepositoryBaseline') -and $out -match "Set-GitLabBaseline\.ps1 -Path '[^']*plain'") $out
+    Check 'plain: a GitHub origin gets the command that protects the default branch' ($out.Contains('Set-RepositoryBaseline.ps1') -and $out.Contains('-Repo plain -Owner example') -and -not $out.Contains('Set-GitLabBaseline')) $out
     Check 'plain: README.md untouched' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'README.md')) -eq "# Plain`n") ''
     Check 'plain: a Keep a Changelog file stays as it is, with no follow-up' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'CHANGELOG.md')) -eq "# Changelog`n`n## [Unreleased]`n`n## [1.0.0] - 2026-01-01`n`n### Added`n`n- First.`n" -and -not $out.Contains('convert CHANGELOG.md') -and -not $out.Contains('backfill CHANGELOG.md')) $out
     Check 'plain: workflow files for claude, copilot only' ((Test-Path -LiteralPath (Join-Path $plain 'CLAUDE.md')) -and (Test-Path -LiteralPath (Join-Path $plain '.github\skills\plan-feature\SKILL.md')) -and -not (Test-Path -LiteralPath (Join-Path $plain '.github\agents\hybrid-planner.agent.md'))) ''
