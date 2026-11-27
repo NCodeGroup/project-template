@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.119.0] - 2026-11-27
+
+### Changed
+
+- `New-Project.ps1` creates projects on GitHub only, as ADR-0040 records: it refuses a `-Data` `git_host` other than `github`, such as `-Data @{ git_host = 'gitlab' }`, before Copier runs, and answers `git_host` `github` itself when `-Data` doesn't, so Copier doesn't ask where the repository is hosted; `-CreateRemote` always runs `gh repo create`, then `tools/Set-RepositoryBaseline.ps1`. `-Visibility internal` stays, for a GitHub organization under an enterprise account ([#529](https://github.com/NCodeGroup/project-template/issues/529), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
+- `Adopt-Project.ps1` adopts only GitHub repositories: it refuses a repository whose `origin` remote isn't on github.com, naming the remote without its user name or token, and a `-Data` `git_host` other than `github`, and answers `git_host` `github` for every repository it adopts; a repository without an `origin` remote is adopted as before. Each refusal says the template is for NCodeGroup's GitHub repositories only ([#529](https://github.com/NCodeGroup/project-template/issues/529), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
+- The plan workflow is GitHub-only: the commands, prompts, skills and agents a project gets call `gh` alone, with no `glab` command, GitLab branch or merge request alternative, and `.template/Get-PlanState.ps1` reads pull requests, branch protection, issues and releases through `gh` alone, prints `host: other` for an `origin` that isn't on github.com, and reads a plan's `Pull request:` line only as `#<number>`. The protected paths still name the `.gitlab` folder and `.gitlab-ci.yml`, which an agent still never changes on a bot's finding ([#530](https://github.com/NCodeGroup/project-template/issues/530), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
+
+### Removed
+
+- `tools/Set-GitLabBaseline.ps1`, which protected a GitLab project, and the GitLab branch of `tools/Get-AdoptionChecklist.ps1`: `docs/adopt.md` and its checklist no longer have step 2.5, On GitLab ([#529](https://github.com/NCodeGroup/project-template/issues/529), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
+
 ## [0.118.0] - 2026-11-27
 
 ### Added
@@ -2026,7 +2038,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.118.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.119.0...HEAD
+[0.119.0]: https://github.com/NCodeGroup/project-template/compare/v0.118.0...v0.119.0
 [0.118.0]: https://github.com/NCodeGroup/project-template/compare/v0.117.2...v0.118.0
 [0.117.2]: https://github.com/NCodeGroup/project-template/compare/v0.117.1...v0.117.2
 [0.117.1]: https://github.com/NCodeGroup/project-template/compare/v0.117.0...v0.117.1
