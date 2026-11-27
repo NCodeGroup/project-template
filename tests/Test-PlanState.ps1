@@ -1203,6 +1203,20 @@ try {
     $r = Test-State (Get-State $pRepo) @{ pr = '6 OPEN'; 'pr-branch-state' = 'ours' }
     Check 'push-state: a push branch one commit ahead of HEAD with the plan''s pull request is ours' $r.Ok $r.Detail
 
+    $pGitLabOrigin = Join-Path $Work 'push/gitlab.com/origin.git'
+    Copy-Item -LiteralPath $pOrigin -Destination $pGitLabOrigin -Recurse
+    Push-Location $pRepo
+    try { Invoke-Git remote set-url origin $pGitLabOrigin }
+    finally { Pop-Location }
+    Set-PushRequests @()
+    Remove-Item -LiteralPath (Join-Path $bin 'pulls-path.txt') -ErrorAction Ignore
+    $r = Test-State (Get-State $pRepo) @{ host = 'other'; 'push-branch' = 'claude/test-abc1'; 'pr-branch' = 'claude/test-abc1'; pr = '-' }
+    $listed = Test-Path -LiteralPath (Join-Path $bin 'pulls-path.txt')
+    Check 'host: a GitLab origin is another host, whose pull requests gh is never asked for' ($r.Ok -and -not $listed) "$($r.Detail) pull request list read: $listed"
+    Push-Location $pRepo
+    try { Invoke-Git remote set-url origin $pOrigin }
+    finally { Pop-Location }
+
     # A new plan right after an earlier plan's pull request from the push branch merged: its empty Plan: commit has that pull request's tree, but none of its work.
     Remove-Item -LiteralPath $pPlan
     Push-Location $pRepo
