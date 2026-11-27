@@ -313,3 +313,23 @@ test('a project with more workflows than one page returns 0, says only the first
   assert.equal(mutations(calls), 3);
   assert.ok(lines.at(-1).startsWith('Add this line'));
 });
+
+for (const limit of ['1', '99']) {
+  test(`--wip-limit ${limit}, a bound of the limit, returns 0, names the five columns and puts the limit in the description`, async () => {
+    const { gh, calls, lines, log } = stand({ graphql: graphqlAnswers() });
+    assert.equal(await main(['--owner', 'NCodeGroup', '--wip-limit', limit], { gh, log }), 0);
+    assert.ok(lines.includes('Status: Backlog, Ready, In progress, In review, Done'));
+    const text = `Kanban: Backlog, Ready, In progress, In review, Done. At most ${limit} stories in progress and in review together.`;
+    assert.equal(sent(calls, 'updateProjectV2(')[0].text, text);
+    assert.ok(lines.includes(`Description: ${text}`));
+  });
+}
+
+test('a gh auth status with no Token scopes line, as for a fine-grained token, skips the scope check and sets up the board', async () => {
+  const auth = { code: 0, stdout: 'github.com\n  - Logged in to github.com account octocat (GH_TOKEN)\n  - Active account: true\n', stderr: '' };
+  const { gh, calls, lines, log } = stand({ auth, graphql: graphqlAnswers() });
+  assert.equal(await main(['--owner', 'NCodeGroup'], { gh, log }), 0);
+  assert.ok(!lines.some((line) => line.includes('gh auth refresh')));
+  assert.ok(sent(calls, 'organization(').length > 0);
+  assert.equal(mutations(calls), 3);
+});
