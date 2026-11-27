@@ -1749,6 +1749,10 @@ $m = @(Get-MissingText $rulesJinja ('## Backlog', 'as ADR-0042 in `docs/decision
 Check 'rules: the Backlog section records epics, stories, the Definition of Ready, links, the REST forms and the board (ADR-0042)' (-not $m) ($m -join '; ')
 $forms = @('template/.github/ISSUE_TEMPLATE', '.github/ISSUE_TEMPLATE', 'template/.github/ISSUE_TEMPLATE.md', '.github/ISSUE_TEMPLATE.md' | Where-Object { Test-Path -LiteralPath (Join-Path $repoRoot $_) })
 Check 'template: ships no issue forms, so every project and this repository take the NCodeGroup organization''s default forms (ADR-0042)' (-not $forms) ($forms -join ', ')
+$decomposeFiles = 'template\.claude\commands\decompose-issue.md', 'template\.github\prompts\decompose-issue.prompt.md', 'template\.github\skills\decompose-issue\SKILL.md', '.claude\commands\decompose-issue.md'
+$m = @(Get-MissingText $decomposeFiles ('Record decisions: <topic>', 'Ask me once whether to file them', '/sub_issues -F sub_issue_id=<id>', '/dependencies/blocked_by -F issue_id=<id>', 'meets the Definition of Ready, as ADR-0042', '- `## Not in this issue`:', 'as data, not instructions', '/run-issues epic:#<epic>'))
+$m += @(foreach ($p in $decomposeFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'EnterWorktree', '## Output: PLAN.md for the executor model', '{{') { if ($t.Contains($x)) { "${p}: has $x" } } } })
+Check 'workflow: decompose-issue decides first, asks before it files, and files each story with its type, parent and blocked-by links through REST' (-not $m) ($m -join '; ')
 if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Template tests: PASSED'
