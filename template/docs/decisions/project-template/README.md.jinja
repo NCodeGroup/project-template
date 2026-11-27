@@ -69,6 +69,7 @@ never brings a number the project already uses
 | [0040](0040-the-template-serves-ncodegroups-repositories-on-github-only.md) | The template serves NCodeGroup's repositories on GitHub only: it supports no other host, removes GitLab support without a deprecation phase, and leaves a GitLab template, if one is needed, to a separate template (supersedes 0029; amends 0005, 0007, 0008, 0009, 0013, 0014, 0016, 0023, 0026 and, where a project has them, 0027, 0135, 0150, 0154, 0200 and 0201) |
 {%- if git_host == 'github' %}
 | [0041](0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md) | `code-review.yml` reviews a pull request Dependabot opens from the repository when it opens and after each push Dependabot makes, so a clean review approves it and a minor or patch NCode Review pin bump merges with no person's action; another bot's pull request waits for a `/review` (amends 0006, 0020, 0022 and 0036) |
+| [0042](0042-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md) | `code-review.yml` passes NCode Review's `review-forks: true`, so a fork's pull request is reviewed once it isn't a draft and records its outcomes when it closes, and is never approved: a maintainer approves it (amends 0019 and 0022) |
 {%- endif %}
 {%- if stack == 'dotnet' %}
 
