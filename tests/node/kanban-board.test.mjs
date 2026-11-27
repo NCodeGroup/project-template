@@ -32,10 +32,15 @@ function stand(answers = {}) {
 
 const project = (number) => ({ id: `P${number}`, number, title: 'Kanban', url: `https://github.com/orgs/NCodeGroup/projects/${number}` });
 
-// The answers of a run on an organization with the given projects, whose project has the given Status options and workflows.
+// The answers of a run on an organization with the given projects, whose project has the given Status options and workflows:
+// the organization query answers projectV2 when it asks for a number, and else one page of projectsV2.
 function graphqlAnswers({ projects = [], options = [], workflows = [], created = project(7) } = {}) {
   return [
-    ['organization(', { organization: { id: 'O1', projectsV2: { nodes: projects } } }],
+    ['organization(', (variables) => ({
+      organization: variables.number === undefined
+        ? { id: 'O1', projectsV2: { nodes: projects, pageInfo: { hasNextPage: false, endCursor: null } } }
+        : { id: 'O1', projectV2: projects.find((candidate) => candidate.number === variables.number) ?? null },
+    })],
     ['repository(owner', { repository: { id: 'R1' } }],
     ['createProjectV2', { createProjectV2: { projectV2: created } }],
     ['linkProjectV2ToRepository', { linkProjectV2ToRepository: { repository: { id: 'R1' } } }],

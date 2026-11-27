@@ -108,8 +108,10 @@ export async function main(argv, { gh, log }) {
     return 0;
   }
 
-  // Runs one GraphQL call; returns its data, or null after logging why it failed.
-  const graphql = (query, variables) => {
+  // Runs one GraphQL call; returns its data, or null after logging why it failed: gh exited non-zero, or its answer
+  // has errors, isn't JSON or has no data object. With notFound, an answer whose only errors are NOT_FOUND returns its
+  // data: GitHub answers so, and gh exits 1, for a project number the organization lacks.
+  const graphql = (query, variables, { notFound = false } = {}) => {
     const result = gh(['api', 'graphql', '--input', '-'], JSON.stringify({ query, variables }));
     let answer;
     try {
@@ -117,24 +119,53 @@ export async function main(argv, { gh, log }) {
     } catch {
       answer = undefined;
     }
-    if (result.code !== 0 || answer?.errors) {
-      const detail = (result.stderr ?? '').trim() || answer?.errors?.[0]?.message || (result.stdout ?? '').trim();
+    const data = answer?.data !== null && typeof answer?.data === 'object' ? answer.data : undefined;
+    const errors = Array.isArray(answer?.errors) ? answer.errors : [];
+    if (notFound && data && errors.length > 0 && errors.every((error) => error?.type === 'NOT_FOUND')) return data;
+    if (result.code !== 0 || answer?.errors || !data) {
+      const detail = (result.stderr ?? '').trim() || errors[0]?.message || (result.stdout ?? '').trim() || 'an answer with no data';
       log(`gh api graphql failed: ${detail}`);
       return null;
     }
-    return answer?.data ?? {};
+    return data;
   };
 
-  const org = graphql(
-    'query($login: String!) { organization(login: $login) { id projectsV2(first: 100) { nodes { id number title url } } } }',
-    { login: owner },
-  );
-  if (!org) return 1;
-  if (!org.organization) {
-    log(`gh api graphql failed: no organization ${owner}.`);
-    return 1;
+  // The organization's id, and the project to adopt: the one --project numbers, looked up by its number, or else the
+  // first whose title is --title, read one page of 100 projects at a time until it is found or no page is left.
+  let orgId;
+  let found;
+  if (values.project !== undefined) {
+    const org = graphql(
+      'query($login: String!, $number: Int!) { organization(login: $login) { id projectV2(number: $number) { id number title url } } }',
+      { login: owner, number: Number(values.project) },
+      { notFound: true },
+    );
+    if (!org) return 1;
+    if (!org.organization) {
+      log(`gh api graphql failed: no organization ${owner}.`);
+      return 1;
+    }
+    orgId = org.organization.id;
+    found = org.organization.projectV2 ?? undefined;
+  } else {
+    let after = null;
+    for (;;) {
+      const org = graphql(
+        'query($login: String!, $after: String) { organization(login: $login) { id projectsV2(first: 100, after: $after) { nodes { id number title url } pageInfo { hasNextPage endCursor } } } }',
+        { login: owner, after },
+      );
+      if (!org) return 1;
+      if (!org.organization) {
+        log(`gh api graphql failed: no organization ${owner}.`);
+        return 1;
+      }
+      orgId = org.organization.id;
+      const page = org.organization.projectsV2;
+      found = (page?.nodes ?? []).find((candidate) => candidate.title === values.title);
+      if (found || !page?.pageInfo?.hasNextPage || !page.pageInfo.endCursor) break;
+      after = page.pageInfo.endCursor;
+    }
   }
-  const projects = org.organization.projectsV2?.nodes ?? [];
 
   let repositoryId;
   if (values.repo !== undefined) {
@@ -151,31 +182,25 @@ export async function main(argv, { gh, log }) {
     }
   }
 
-  let project;
-  if (values.project !== undefined) {
-    project = projects.find((candidate) => candidate.number === Number(values.project));
-    if (!project) {
-      log(`No project #${values.project} in ${owner}.`);
-      return 1;
-    }
+  let project = found;
+  if (values.project !== undefined && !project) {
+    log(`No project #${values.project} in ${owner}.`);
+    return 1;
+  }
+  if (project) {
     log(`Adopted project #${project.number}: ${project.url}`);
   } else {
-    project = projects.find((candidate) => candidate.title === values.title);
-    if (project) {
-      log(`Adopted project #${project.number}: ${project.url}`);
-    } else {
-      const created = graphql(
-        'mutation($ownerId: ID!, $title: String!) { createProjectV2(input: { ownerId: $ownerId, title: $title }) { projectV2 { id number title url } } }',
-        { ownerId: org.organization.id, title: values.title },
-      );
-      if (!created) return 1;
-      project = created.createProjectV2?.projectV2;
-      if (!project) {
-        log('gh api graphql failed: no project was created.');
-        return 1;
-      }
-      log(`Created project #${project.number}: ${project.url}`);
+    const created = graphql(
+      'mutation($ownerId: ID!, $title: String!) { createProjectV2(input: { ownerId: $ownerId, title: $title }) { projectV2 { id number title url } } }',
+      { ownerId: orgId, title: values.title },
+    );
+    if (!created) return 1;
+    project = created.createProjectV2?.projectV2;
+    if (!project) {
+      log('gh api graphql failed: no project was created.');
+      return 1;
     }
+    log(`Created project #${project.number}: ${project.url}`);
   }
 
   if (repositoryId !== undefined) {
@@ -188,7 +213,7 @@ export async function main(argv, { gh, log }) {
   }
 
   const details = graphql(
-    'query($id: ID!) { node(id: $id) { ... on ProjectV2 { field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name color description } } } workflows(first: 50) { nodes { name enabled } } } } }',
+    'query($id: ID!) { node(id: $id) { ... on ProjectV2 { field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name color description } } } workflows(first: 50) { nodes { name enabled } pageInfo { hasNextPage } } } } }',
     { id: project.id },
   );
   if (!details) return 1;
@@ -225,19 +250,30 @@ export async function main(argv, { gh, log }) {
       log(`- ${name}: ${workflow ? 'off' : 'not found'}; turn it on and ${what}`);
     }
   }
+  // A project has far fewer than 50 workflows; when it has more, those past the first 50 weren't read.
+  if (details.node?.workflows?.pageInfo?.hasNextPage) {
+    log('The project has more than 50 workflows, and this read the first 50: check a workflow not found above in its settings.');
+  }
   log(`Add this line to the Landing section of AGENTS.md: - board: ${owner}/${project.number}`);
   return 0;
 }
 
-function gh(args, input) {
-  const result = spawnSync('gh', args, { input, encoding: 'utf8' });
-  return {
-    code: result.status ?? 1,
-    stdout: result.stdout ?? '',
-    stderr: result.error ? result.error.message : (result.stderr ?? ''),
-  };
+// How long one gh call may take before it is stopped and fails.
+const GH_TIMEOUT_MS = 120000;
+
+/**
+ * Runs gh with the argument array and optional standard input, through spawn (spawnSync, or a stand-in in the tests),
+ * and returns { code, stdout, stderr }. A call that can't start, times out or is stopped by a signal fails with code 1.
+ */
+export function runGh(args, input, spawn = spawnSync) {
+  const result = spawn('gh', args, { input, encoding: 'utf8', timeout: GH_TIMEOUT_MS });
+  const stdout = result.stdout ?? '';
+  if (result.error?.code === 'ETIMEDOUT') return { code: 1, stdout, stderr: `gh timed out after ${GH_TIMEOUT_MS / 1000} s` };
+  if (result.error) return { code: 1, stdout, stderr: result.error.message };
+  if (result.signal) return { code: 1, stdout, stderr: `gh was stopped by ${result.signal}` };
+  return { code: result.status ?? 1, stdout, stderr: result.stderr ?? '' };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  process.exitCode = await main(process.argv.slice(2), { gh, log: (line) => console.log(line) });
+  process.exitCode = await main(process.argv.slice(2), { gh: (args, input) => runGh(args, input), log: (line) => console.log(line) });
 }
