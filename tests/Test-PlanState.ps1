@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds a bare origin and a clone in a scratch folder, then walks a plan through its life: no plan, open steps, an
     escalated step, finished steps, a review, a stale review, the Landing section of AGENTS.md and its prelude, valid or not, a push to the default
-    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, analysis worktrees, no plan, and uncommitted changes, then merged GitHub pull requests and GitLab merge requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through stand-ins for gh and glab, with a gh that refuses GitHub's GraphQL API, as a Claude Code cloud session's does, and answers only the REST paths, then a published release and one gh api doesn't find, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open, then the plan an /address-feedback run leaves, which names its pull request on a Pull request: line, on GitHub and GitLab, then a plan pushed through a session's push branch: the clone's plan.pushBranch setting, valid or not, the pull request found through that branch and through the branch the plan was pushed to, other plans' pull requests from it left out, and whether that branch is new, the plan's, landed, busy with another pull request, other work or unknown, then a new plan's empty Plan: commit on an earlier plan's pull request from that branch, merged with a merge commit or by squashing, and the plan's own pull request from it, merged with a merge commit, by squashing or by rebasing. After each move it runs
+    branch, a release tag only the clone has, a tag, an upstream commit, an upstream commit read with and without -NoFetch, a second plan worktree, analysis worktrees, no plan, and uncommitted changes, then merged GitHub pull requests, then the issues of a one-issue plan and a group plan, and an open issue on the Refs: line, then the follow-ups of a merged plan, filed or not, and with follow-ups: none, and whether the default branch takes changes only through pull requests, read through a stand-in for gh, with a gh that refuses GitHub's GraphQL API, as a Claude Code cloud session's does, and answers only the REST paths, then a published release and one gh api doesn't find, then a plan whose release another plan took, before and while its pull request is open, and whose version tag only the clone has or origin can't be asked about, then Keep a Changelog headings, the changelog lines and the headings a section has twice, then the version tags merged into HEAD that the changelog has no section for, then the files that conflict with the default branch, before and while a pull request is open, then the plan an /address-feedback run leaves, which names its pull request on a Pull request: line, then a plan pushed through a session's push branch: the clone's plan.pushBranch setting, valid or not, the pull request found through that branch and through the branch the plan was pushed to, other plans' pull requests from it left out, and whether that branch is new, the plan's, landed, busy with another pull request, other work or unknown, then a new plan's empty Plan: commit on an earlier plan's pull request from that branch, merged with a merge commit or by squashing, and the plan's own pull request from it, merged with a merge commit, by squashing or by rebasing. After each move it runs
     Get-PlanState.ps1, in a runspace of its own in this process that a check compares once with a pwsh of its own, and compares the key: value lines it prints with what the state should be. Prints PASS or FAIL
     per check and exits 1 on any failure.
 
@@ -384,29 +384,11 @@ Write-Text (Join-Path $repo 'scratch.txt') "scratch`n"
 $state = Get-State $repo
 Check 'next: uncommitted changes stop everything' (($state['dirty'] -eq 'yes') -and ($state['next'] -like 'none *')) "dirty='$($state['dirty'])' next='$($state['next'])' expected dirty 'yes' and next 'none *'"
 
-# Stand-ins for gh and glab. glab prints pr.json for 'mr list', and its entry with that iid for 'mr view'; gh refuses pr, issue and release as a Claude Code cloud session's proxy does, and answers the REST paths the state script calls. glab records the arguments of 'mr list' in mr-list-args.txt.
+# A stand-in for gh. It refuses pr, issue and release as a Claude Code cloud session's proxy does, and answers the REST paths the state script calls.
 $bin = Join-Path $Work 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
-foreach ($cli in 'gh', 'glab') {
-    Write-Text (Join-Path $bin "$cli.ps1") @'
-if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1' -and $args[1] -eq 'list' -and $args[0] -eq 'mr') { [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'mr-list-args.txt'), ($args -join ' ')); [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')); exit 0 }
-if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1' -and $args[0] -eq 'mr' -and $args[1] -eq 'view') {
-    $number = "$($args[2])".TrimStart('!')
-    $item = @([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'pr.json')) | ConvertFrom-Json) | Where-Object { "$($_.iid)" -eq $number } | Select-Object -First 1
-    if (-not $item) { exit 1 }
-    ConvertTo-Json -InputObject $item -Depth 5
-    exit 0
-}
-if ((Split-Path -Leaf $PSCommandPath) -eq 'gh.ps1' -and ($args[0] -in 'pr', 'issue', 'release' -or ($args[0] -eq 'api' -and $args[1] -eq 'graphql'))) { [Console]::Error.WriteLine('HTTP 403: GitHub GraphQL is not available from Claude Code sessions'); exit 1 }
-if ((Split-Path -Leaf $PSCommandPath) -eq 'glab.ps1' -and $args[0] -eq 'issue' -and $args[1] -eq 'view') {
-    $file = Join-Path $PSScriptRoot 'issues.json'
-    if (-not (Test-Path $file)) { exit 1 }
-    $issues = [IO.File]::ReadAllText($file) | ConvertFrom-Json
-    $property = $issues.PSObject.Properties["$($args[2])"]
-    if (-not $property) { exit 1 }
-    ConvertTo-Json @{ state = $(if ($property.Value -eq 'OPEN') { 'opened' } else { 'closed' }) }
-    exit 0
-}
+Write-Text (Join-Path $bin 'gh.ps1') @'
+if ($args[0] -in 'pr', 'issue', 'release' -or ($args[0] -eq 'api' -and $args[1] -eq 'graphql')) { [Console]::Error.WriteLine('HTTP 403: GitHub GraphQL is not available from Claude Code sessions'); exit 1 }
 if ($args[0] -eq 'api') {
     $file = Join-Path $PSScriptRoot 'api.json'
     if (-not (Test-Path $file)) { exit 1 }
@@ -447,23 +429,12 @@ if ($args[0] -eq 'api') {
 }
 exit 1
 '@
-}
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'StandInLog.ps1') -Destination (Join-Path $bin 'StandInLog.ps1')
-function Set-MergedRequest([string]$Merge, [string]$Head, [switch]$GitHub, [string]$Newer = '', [string]$Base = 'main') {
-    $item = if ($GitHub) {
-        @{ number = 6; state = 'closed'; merged_at = '2026-01-01T00:00:00Z'; merge_commit_sha = $Merge; head = @{ sha = $Head; ref = 'worktree-merged' }; base = @{ ref = $Base } }
-    }
-    else {
-        @{ iid = 5; state = 'merged'; merge_commit_sha = $null; squash_commit_sha = $Merge; sha = $Head; target_branch = $Base }
-    }
+function Set-MergedRequest([string]$Merge, [string]$Head, [string]$Newer = '', [string]$Base = 'main') {
+    $item = @{ number = 6; state = 'closed'; merged_at = '2026-01-01T00:00:00Z'; merge_commit_sha = $Merge; head = @{ sha = $Head; ref = 'worktree-merged' }; base = @{ ref = $Base } }
     $items = @($item)
     if ($Newer) {
-        $newerItem = if ($GitHub) {
-            @{ number = 8; state = $Newer.ToLowerInvariant(); merged_at = $null; merge_commit_sha = $null; head = @{ sha = $Head; ref = 'worktree-merged' }; base = @{ ref = 'main' } }
-        }
-        else {
-            @{ iid = 8; state = $Newer; merge_commit_sha = $null; squash_commit_sha = $null; sha = $Head }
-        }
+        $newerItem = @{ number = 8; state = $Newer.ToLowerInvariant(); merged_at = $null; merge_commit_sha = $null; head = @{ sha = $Head; ref = 'worktree-merged' }; base = @{ ref = 'main' } }
         $items = @($newerItem, $item)
     }
     Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject $items -Depth 3)
@@ -502,72 +473,53 @@ function New-MergedClone([string]$Dir) {
 $savedPath = $env:PATH
 $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
 try {
-    # 14. A merged merge request on a GitLab origin.
-    $gl = New-MergedClone (Join-Path $Work 'gitlab')
+    # 14. A squash-merged pull request on a GitHub origin.
+    $sq = New-MergedClone (Join-Path $Work 'squash/github.com')
+    Set-HostApi @{}
 
-    Set-MergedRequest $gl.Squash $gl.Head
-    $r = Test-State (Get-State $gl.Repo) @{ host = 'gitlab'; pr = '5 MERGED'; merge = $gl.Squash; ahead = '1'; landed = 'yes'; next = 'finish-plan' }
-    Check 'local: a squash-merged merge request that holds HEAD is landed' $r.Ok $r.Detail
+    Set-MergedRequest $sq.Squash $sq.Head
+    $r = Test-State (Get-State $sq.Repo) @{ host = 'github'; pr = '6 MERGED'; merge = $sq.Squash; ahead = '1'; landed = 'yes'; next = 'finish-plan' }
+    Check 'local: a squash-merged pull request that holds HEAD is landed' $r.Ok $r.Detail
 
-    Set-MergedRequest $gl.Squash $gl.Twin
-    $r = Test-State (Get-State $gl.Repo) @{ landed = 'yes' }
+    Set-MergedRequest $sq.Squash $sq.Twin
+    $r = Test-State (Get-State $sq.Repo) @{ landed = 'yes' }
     Check 'local: a merged head with the same tree as HEAD is landed' $r.Ok $r.Detail
 
-    Set-MergedRequest $gl.Twin $gl.Head
-    $r = Test-State (Get-State $gl.Repo) @{ landed = 'no' }
+    Set-MergedRequest $sq.Twin $sq.Head
+    $r = Test-State (Get-State $sq.Repo) @{ landed = 'no' }
     Check 'local: a merge commit missing from the default branch is not landed' $r.Ok $r.Detail
 
-    Set-MergedRequest $gl.Squash $gl.Head -Newer 'opened'
-    $r = Test-State (Get-State $gl.Repo) @{ pr = '5 MERGED'; merge = $gl.Squash; landed = 'yes' }
-    Check 'local: an older merged merge request that holds HEAD is landed under a newer open one' $r.Ok $r.Detail
+    Set-MergedRequest $sq.Squash $sq.Head -Newer 'OPEN'
+    $r = Test-State (Get-State $sq.Repo) @{ pr = '6 MERGED'; merge = $sq.Squash; landed = 'yes' }
+    Check 'local: an older merged pull request that holds HEAD is landed under a newer open one' $r.Ok $r.Detail
 
-    Set-MergedRequest $gl.Squash $gl.Head
-    Add-Commit $gl.Repo 'f.txt' 'Plan step 2: F'
-    Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo))
-    $state = Get-State $gl.Repo
-    Check 'next: commits after a merged merge request need a new branch' (($state['landed'] -eq 'no') -and ($state['next'] -like 'none pull request #5 merged*')) "landed='$($state['landed'])' next='$($state['next'])' expected landed 'no' and next 'none pull request #5 merged*'"
+    Set-MergedRequest $sq.Squash $sq.Head
+    Add-Commit $sq.Repo 'f.txt' 'Plan step 2: F'
+    Write-Text (Join-Path $sq.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $sq.Repo))
+    $state = Get-State $sq.Repo
+    Check 'next: commits after a merged pull request need a new branch' (($state['landed'] -eq 'no') -and ($state['next'] -like 'none pull request #6 merged*')) "landed='$($state['landed'])' next='$($state['next'])' expected landed 'no' and next 'none pull request #6 merged*'"
 
-    Set-MergedRequest $gl.Squash $gl.Head -Newer 'opened'
-    $r = Test-State (Get-State $gl.Repo) @{ pr = '8 OPEN'; landed = 'no'; next = 'wait pull request #8 is open: run ship-plan again once it merges' }
-    Check 'next: a newer open merge request is waited for when no merged one holds HEAD' $r.Ok $r.Detail
+    Set-MergedRequest $sq.Squash $sq.Head -Newer 'OPEN'
+    $r = Test-State (Get-State $sq.Repo) @{ pr = '8 OPEN'; landed = 'no'; next = 'wait pull request #8 is open: run ship-plan again once it merges' }
+    Check 'next: a newer open pull request is waited for when no merged one holds HEAD' $r.Ok $r.Detail
 
-    Set-MergedRequest $gl.Squash $gl.Head -Base 'release'
-    $r = Test-State (Get-State $gl.Repo) @{ landed = 'no'; next = 'none pull request #5 merged into release, not main: this branch lands once release reaches main; run ship-plan again then' }
-    Check 'next: a merge request merged into another branch waits for that branch' $r.Ok $r.Detail
+    Set-MergedRequest $sq.Squash $sq.Head -Base 'release'
+    $r = Test-State (Get-State $sq.Repo) @{ landed = 'no'; next = 'none pull request #6 merged into release, not main: this branch lands once release reaches main; run ship-plan again then' }
+    Check 'next: a pull request merged into another branch waits for that branch' $r.Ok $r.Detail
 
-    Write-Text (Join-Path $gl.Repo 'AGENTS.md') "# Demo`n`n## Landing`n`n- integrate: direct`n"
-    Push-Location $gl.Repo
+    Write-Text (Join-Path $sq.Repo 'AGENTS.md') "# Demo`n`n## Landing`n`n- integrate: direct`n"
+    Push-Location $sq.Repo
     try { Invoke-Git add AGENTS.md; Invoke-Git commit -q -m 'Add AGENTS.md' }
     finally { Pop-Location }
-    Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo))
-    Set-MergedRequest $gl.Squash $gl.Head
-    $r = Test-State (Get-State $gl.Repo) @{ landed = 'no'; next = 'ship-plan' }
-    Check 'next: with integrate direct, a merged merge request without HEAD leaves the branch to ship-plan' $r.Ok $r.Detail
-
-    Set-HostApi @{ 'projects/:id/protected_branches/main' = @{ push_access_levels = @(@{ access_level = 0 }) } }
-    $r = Test-State (Get-State $gl.Repo) @{ protected = 'host' }
-    Check 'protected: a GitLab protected branch nobody can push to' $r.Ok $r.Detail
-
-    Set-HostApi @{ 'projects/:id/protected_branches/main' = @{ push_access_levels = @(@{ access_level = 40 }) } }
-    $r = Test-State (Get-State $gl.Repo) @{ protected = 'no' }
-    Check 'protected: a GitLab protected branch maintainers can push to is not enough' $r.Ok $r.Detail
-
-    Set-HostApi @{ 'projects/:id/protected_branches/main' = 'raw:<html>Bad Gateway</html>' }
-    $r = Test-State (Get-State $gl.Repo) @{ protected = 'unknown' }
-    Check 'protected: a GitLab protection that cannot be read is unknown, not no' $r.Ok $r.Detail
-
-    Set-HostApi @{ 'projects/:id/protected_branches/main' = 'fail:502' }
-    $r = Test-State (Get-State $gl.Repo) @{ protected = 'unknown' }
-    Check 'protected: a GitLab call that fails with anything but not found is unknown, not no' $r.Ok $r.Detail
-
-    Set-HostApi @{}
-    $r = Test-State (Get-State $gl.Repo) @{ protected = 'no' }
-    Check 'protected: a GitLab branch that is not protected' $r.Ok $r.Detail
+    Write-Text (Join-Path $sq.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $sq.Repo))
+    Set-MergedRequest $sq.Squash $sq.Head
+    $r = Test-State (Get-State $sq.Repo) @{ landed = 'no'; next = 'ship-plan' }
+    Check 'next: with integrate direct, a merged pull request without HEAD leaves the branch to ship-plan' $r.Ok $r.Detail
 
     # 15. A merged pull request on a GitHub origin.
     $gh = New-MergedClone (Join-Path $Work 'github.com')
 
-    Set-MergedRequest $gh.Squash $gh.Head -GitHub
+    Set-MergedRequest $gh.Squash $gh.Head
     $r = Test-State (Get-State $gh.Repo) @{ host = 'github'; pr = '6 MERGED'; merge = $gh.Squash; landed = 'yes' }
     Check 'local: a merged GitHub pull request that holds HEAD is landed' $r.Ok $r.Detail
     $pullsPath = [IO.File]::ReadAllText((Join-Path $bin 'pulls-path.txt'))
@@ -576,7 +528,7 @@ try {
     Remove-Item -LiteralPath (Join-Path $bin 'pr.json')
     $r = Test-State (Get-State $gh.Repo) @{ pr = 'unknown'; merge = '-' }
     Check 'pr: a GitHub pull request list that gh api fails to read is unknown, not none' $r.Ok $r.Detail
-    Set-MergedRequest $gh.Squash $gh.Head -GitHub
+    Set-MergedRequest $gh.Squash $gh.Head
 
     Push-Location $gh.Repo
     try { Invoke-Git branch -m worktree-merged feature/x-y }
@@ -588,11 +540,11 @@ try {
     try { Invoke-Git branch -m feature/x-y worktree-merged }
     finally { Pop-Location }
 
-    Set-MergedRequest $gh.Twin $gh.Head -GitHub
+    Set-MergedRequest $gh.Twin $gh.Head
     $r = Test-State (Get-State $gh.Repo) @{ landed = 'no' }
     Check 'local: a GitHub merge commit missing from the default branch is not landed' $r.Ok $r.Detail
 
-    Set-MergedRequest $gh.Squash $gh.Head -GitHub -Newer 'CLOSED'
+    Set-MergedRequest $gh.Squash $gh.Head -Newer 'CLOSED'
     $r = Test-State (Get-State $gh.Repo) @{ pr = '6 MERGED'; merge = $gh.Squash; landed = 'yes' }
     Check 'local: an older merged GitHub pull request that holds HEAD is landed under a newer closed one' $r.Ok $r.Detail
 
@@ -600,7 +552,7 @@ try {
     Push-Location $ff.Repo
     try { Invoke-Git push -q --force origin "$($ff.Head):refs/heads/main" }
     finally { Pop-Location }
-    Set-MergedRequest $ff.Head $ff.Head -GitHub -Newer 'CLOSED'
+    Set-MergedRequest $ff.Head $ff.Head -Newer 'CLOSED'
     $r = Test-State (Get-State $ff.Repo) @{ pr = '6 MERGED'; merge = $ff.Head; landed = 'yes' }
     Check 'local: a merged pull request is named when HEAD is already on the default branch, under a newer closed one' $r.Ok $r.Detail
 
@@ -646,7 +598,7 @@ try {
     Set-HostApi @{}
 
     # 16. The issues of a one-issue plan and a group plan.
-    Set-MergedRequest $gh.Squash $gh.Head -GitHub
+    Set-MergedRequest $gh.Squash $gh.Head
     Write-Text (Join-Path $gh.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gh.Repo) '#7')
     Set-IssueStates @{ '7' = 'OPEN' }
     $r = Test-State (Get-State $gh.Repo) @{ issue = '#7'; 'issue-state' = 'OPEN'; 'issue-states' = '#7=OPEN'; next = 'ship-plan' }
@@ -730,16 +682,6 @@ try {
     }
     finally { Pop-Location }
     Remove-Item -LiteralPath (Join-Path $gh.Repo 'AGENTS.md')
-
-    Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo) '#7 #8')
-    Set-IssueStates @{ '7' = 'CLOSED'; '8' = 'OPEN' }
-    $r = Test-State (Get-State $gl.Repo) @{ host = 'gitlab'; 'issue-state' = 'OPEN'; 'issue-states' = '#7=CLOSED #8=OPEN' }
-    Check 'issues: a group plan on GitLab reads each issue through glab' $r.Ok $r.Detail
-
-    Write-Text (Join-Path $gl.Repo 'PLAN.md') (New-PlanText 'x' (Get-Head $gl.Repo) '#7')
-    Set-IssueStates @{ '7' = 'CLOSED' }
-    $r = Test-State (Get-State $gl.Repo) @{ 'issue-state' = 'CLOSED'; 'issue-states' = '#7=CLOSED' }
-    Check 'issues: a one-issue plan on GitLab reads its issue' $r.Ok $r.Detail
 }
 finally { $env:PATH = $savedPath }
 
@@ -1117,17 +1059,6 @@ try {
     Write-Text $fPlan ((New-PlanText 'x' (Get-Head $fRepo)) + "`n## Notes`n`nPull request: #43`n")
     $r = Test-State (Get-State $fRepo) @{ feedback = '-' }
     Check 'feedback: a Pull request: line below the plan''s first heading names no pull request' $r.Ok $r.Detail
-
-    $glFeedback = New-MergedClone (Join-Path $Work 'feedback-gitlab')
-    $glPlan = (New-PlanText 'x' (Get-Head $glFeedback.Repo)).Replace("Issue: #7`nRelease: v0.2.0`n", "Pull request: !5`nStart: $($glFeedback.Head)`n")
-    Write-Text (Join-Path $glFeedback.Repo 'PLAN.md') $glPlan
-    Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject @(@{ iid = 5; state = 'opened'; merge_commit_sha = $null; squash_commit_sha = $null; sha = $glFeedback.Head; target_branch = 'main' }) -Depth 3)
-    $r = Test-State (Get-State $glFeedback.Repo) @{ host = 'gitlab'; feedback = '5'; pr = '5 OPEN'; conflicts = '-'; next = 'address-feedback 5' }
-    Check 'feedback: on GitLab a Pull request: !<number> line reads that merge request through glab mr view' $r.Ok $r.Detail
-
-    Write-Text (Join-Path $bin 'pr.json') (ConvertTo-Json -InputObject @(@{ iid = 5; state = 'merged'; merge_commit_sha = $null; squash_commit_sha = $glFeedback.Squash; sha = $glFeedback.Head; target_branch = 'main' }) -Depth 3)
-    $r = Test-State (Get-State $glFeedback.Repo) @{ pr = '5 MERGED'; next = 'none pull request #5 is merged: address-feedback 5 discards this run' }
-    Check 'feedback: on GitLab a feedback plan whose merge request merged is discarded through address-feedback' $r.Ok $r.Detail
 }
 finally { $env:PATH = $savedPath }
 
@@ -1277,15 +1208,20 @@ try {
     $r = Test-State (Get-State $pRepo) @{ pr = '6 OPEN'; 'pr-branch-state' = 'ours' }
     Check 'push-state: a push branch one commit ahead of HEAD with the plan''s pull request is ours' $r.Ok $r.Detail
 
-    $glOrigin = Join-Path $Work 'push/gitlab.com/origin.git'
-    Copy-Item -LiteralPath $pOrigin -Destination $glOrigin -Recurse
+    $pGitLabOrigin = Join-Path $Work 'push/gitlab.com/origin.git'
+    Copy-Item -LiteralPath $pOrigin -Destination $pGitLabOrigin -Recurse
     Push-Location $pRepo
-    try { Invoke-Git remote set-url origin $glOrigin }
+    try { Invoke-Git remote set-url origin $pGitLabOrigin }
     finally { Pop-Location }
     Set-PushRequests @()
-    $r = Test-State (Get-State $pRepo) @{ host = 'gitlab'; 'push-branch' = 'claude/test-abc1'; 'pr-branch' = 'claude/test-abc1' }
-    $mrArgs = [IO.File]::ReadAllText((Join-Path $bin 'mr-list-args.txt'))
-    Check 'push: on GitLab the merge request list asks for the push branch' ($r.Ok -and $mrArgs -match '--source-branch claude/test-abc1( |$)') "$($r.Detail) args: $mrArgs"
+    Remove-Item -LiteralPath (Join-Path $bin 'pulls-path.txt') -ErrorAction Ignore
+    if (Test-Path -LiteralPath (Join-Path $bin 'issue-paths.txt')) { Remove-Item -LiteralPath (Join-Path $bin 'issue-paths.txt') }
+    $otherState = Get-State $pRepo
+    $r = Test-State $otherState @{ host = 'other'; 'push-branch' = 'claude/test-abc1'; 'pr-branch' = 'claude/test-abc1'; pr = '-'; protected = 'unknown' }
+    $listed = Test-Path -LiteralPath (Join-Path $bin 'pulls-path.txt')
+    $issuesRead = Test-Path -LiteralPath (Join-Path $bin 'issue-paths.txt')
+    $issueState = $otherState['issue-state']
+    Check 'host: a GitLab origin is another host, whose pull requests, protection and issues gh is never asked for' ($r.Ok -and -not $listed -and -not $issuesRead -and ($issueState -in 'unknown', '-')) "$($r.Detail) pull request list read: $listed; issue-paths.txt exists: $issuesRead; issue-state: '$issueState'"
     Push-Location $pRepo
     try { Invoke-Git remote set-url origin $pOrigin }
     finally { Pop-Location }

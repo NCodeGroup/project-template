@@ -2,7 +2,7 @@
 
 $script:SkipPath = '(^|[\\/])(bin|obj|node_modules|\.git|\.claude)[\\/]'
 # Folders at the root whose PowerShell files are build or CI helpers, not the project's code.
-$script:HelperPath = '^(\.github|\.gitlab|build|eng|scripts|tools)[\\/]'
+$script:HelperPath = '^(\.github|build|eng|scripts|tools)[\\/]'
 
 function Get-CopierList([string]$CopierYml, [string]$Key) {
     $inList = $false
@@ -109,7 +109,7 @@ function Get-AdoptionAnswers([string]$Path) {
     $answers = [ordered]@{
         stack        = $stack
         project_name = if ($solutions.Count -eq 1) { $solutions[0].BaseName } else { Get-RepositoryName $Path $remote }
-        git_host     = if ($remote -match 'gitlab') { 'gitlab' } else { 'github' }
+        git_host     = 'github'
         # A repository with a history tracks its changes (ADR-0015): an AGENTS.md the template writes for it says pre-release: tracked.
         pre_release  = 'tracked'
     }
@@ -975,4 +975,14 @@ function Set-TemplateSource([string]$Path, [string]$Template) {
     "The project names its template by $origin, the origin remote of $Template, so it updates from any PC."
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote, Get-ReleasePolicyAnswer, Set-TemplateSource
+# The refusal text for a repository or answer that isn't GitHub's: $Reason, then the rule.
+function Get-GitHubOnlyMessage([string]$Reason) {
+    "$Reason The project template is for NCodeGroup's GitHub repositories only (ADR-0040)."
+}
+
+# Whether $Url is a GitHub address: https (with or without credentials), scp-style SSH or ssh://.
+function Test-GitHubRemote([string]$Url) {
+    $Url -match '^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)'
+}
+
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote, Get-ReleasePolicyAnswer, Set-TemplateSource, Get-GitHubOnlyMessage, Test-GitHubRemote
