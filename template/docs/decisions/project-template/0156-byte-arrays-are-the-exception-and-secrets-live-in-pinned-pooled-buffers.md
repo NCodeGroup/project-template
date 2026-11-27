@@ -99,3 +99,55 @@ it is disposed.**
    a secret that must not be readable in the process stays in a key vault or HSM.
 
 Existing `byte[]` surfaces convert as they are touched, not in one sweep.
+
+## Options considered
+
+- [ADR-0112](0112-binary-data-uses-spans-pooled-buffers-and-cleared-secrets.md) alone. Rejected: a transient secret
+  lives in a movable array from the shared pool, and the copy a move leaves is never zeroed.
+- `new byte[]` zeroed in a `finally`. Rejected: the array is movable, and each call allocates.
+- A pinned allocation per call, without a pool. Rejected on hot paths: it costs more than an ordinary allocation and is
+  freed only by a generation 2 collection. Kept for code off hot paths.
+- `SecureString`. Rejected: Microsoft's DE0001 obsoletes it, and it holds `char` values, not bytes.
+- Locking or encrypting memory. Rejected: it takes operating system calls, hibernation saves locked pages, and the key
+  is one more secret to protect.
+- Every project depends on NCode.Buffers. Rejected: the template adds no package, and many projects hold no secret.
+- Spans first, and pinned, pooled, zeroed sensitive buffers through NCode.Buffers (chosen).
+
+## Consequences
+
+- No compaction copies a secret, and `Dispose` clears the one copy the buffer holds.
+- A pool keeps pinned memory alive, and NCode.Buffers gives a 32-byte secret a 4096-byte buffer
+  ([NCode.Buffers ADR-1012](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1012-the-secure-pool-caches-buffers-of-one-4096-byte-page.md)).
+- Every sensitive rental is a `using`, and a forgotten one leaves the secret in memory.
+- A span from an owner is invalid after `Dispose`.
+- A project that handles no secret takes no package and follows rule 1 alone.
+- Smells: a `byte[]` parameter or return outside a test or a framework-bound type; `ArrayPool<byte>.Shared.Rent` near a
+  key, password or token; a `MemoryStream` or `StringBuilder` that holds a secret; `Convert.FromBase64String` of a
+  secret; `.ToArray()` on a sensitive span; a secret in a `string` field.
+
+## References
+
+- [ADR-0112](0112-binary-data-uses-spans-pooled-buffers-and-cleared-secrets.md): binary data uses spans, pooled
+  buffers, and cleared secrets.
+- [ADR-0146](0146-secrets-are-never-logged-compared-in-constant-time-and-shown-once.md): secrets are never logged, are
+  compared in constant time, and are shown once.
+- [ADR-0102](0102-disallowed-apis-are-banned-at-build-time.md): disallowed APIs are banned at build time.
+- [NCode.Buffers](https://github.com/NCodeGroup/Buffers) and its site, <https://buffers.ncode.io/>.
+- [NCode.Buffers ADR-1003](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1003-shipping-code-takes-buffers-and-encodings-through-bufferfactory-and-secureencoding.md):
+  shipping code takes buffers and encodings through `BufferFactory` and `SecureEncoding`.
+- [NCode.Buffers ADR-1012](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1012-the-secure-pool-caches-buffers-of-one-4096-byte-page.md):
+  the secure pool caches buffers of one 4096-byte page.
+- [NCode.Buffers ADR-1015](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1015-the-secure-pools-cache-has-no-size-limit-and-is-dropped-under-memory-pressure.md):
+  the secure pool's cache has no size limit and is dropped under memory pressure.
+- [NCode.Buffers ADR-1018](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1018-the-library-neither-locks-nor-encrypts-memory.md):
+  the library neither locks nor encrypts memory.
+- [NCode.Buffers ADR-1027](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1027-text-base64-hex-and-random-helpers-rent-their-output-and-return-its-owner.md):
+  text, Base64, hex and random helpers rent their output and return its owner.
+- [NCode.Buffers ADR-1028](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1028-growable-writers-streams-and-text-builders-zero-each-buffer-they-outgrow.md):
+  growable writers, streams and text builders zero each buffer they outgrow.
+- [NCode.Buffers ADR-1029](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1029-secret-t-holds-a-secret-it-never-prints.md):
+  `Secret<T>` holds a secret it never prints.
+- [`GC.AllocateArray`](https://learn.microsoft.com/dotnet/api/system.gc.allocatearray)
+- [`GC.AllocateUninitializedArray`](https://learn.microsoft.com/dotnet/api/system.gc.allocateuninitializedarray)
+- [`CryptographicOperations.ZeroMemory`](https://learn.microsoft.com/dotnet/api/system.security.cryptography.cryptographicoperations.zeromemory)
+- [DE0001: `SecureString` should not be used](https://github.com/dotnet/platform-compat/blob/master/docs/DE0001.md)
