@@ -181,8 +181,9 @@ if ($path -match '^orgs/([^/]+)/actions/permissions/workflow$') {
     if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
     Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ default_workflow_permissions = if ($state -eq 'write') { 'write' } else { 'read' }; can_approve_pull_request_reviews = $state -ne 'on' })
 }
-# An organization's fork pull request approval policy: forkApproval is the policy it answers (first_time_contributors_new_to_github
-# unless it says otherwise), notjson, none (an answer without the field) or fail:<code>; one not in orgs is 404.
+# An organization's fork pull request approval policy: forkApproval is the policy it answers
+# (first_time_contributors_new_to_github unless it says otherwise), notjson, none (an answer without the field) or
+# fail:<code>; one not in orgs is 404.
 if ($path -match '^orgs/([^/]+)/actions/permissions/fork-pr-contributor-approval$') {
     $org = $data.orgs[$Matches[1]]
     if (-not $org) { Out-Answer 404 '{"message":"Not Found"}' }

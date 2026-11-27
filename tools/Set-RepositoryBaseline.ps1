@@ -137,14 +137,15 @@
     -OrganizationPolicy, with -Owner alone, first sets the organization's fork pull request approval policy and its
     default workflow token to read-only with GitHub Actions not allowed to approve pull requests, where either is off
     (the template's ADR-0036 and ADR-0039), then creates the same policy once for the organization, on every repository
-    (~ALL), and touches no repository: run it as an
-    organization owner, with a token that has the admin:org scope (gh auth refresh -h github.com -s admin:org). It reads the organization's policies first and updates one of that
-    name in place, keeping the other events it allows, when it isn't active, misses one of those events or doesn't cover both files on every repository, and leaves alone one that does, or an active one that already allows pull_request_target and issue_comment for both files on every repository; -WhatIf prints the body it
-    would post. It exits 1 when it can't read the policies or the API refuses a policy, the fork approval setting or the
-    default token setting.
-    It needs GitHub Team or above, the plans GitHub offers organization event policies on: when GitHub refuses them for
-    the organization's plan, with an answer that asks to upgrade, such as "Upgrade to GitHub Team to enable this
-    feature.", it says so and to run it for each repository instead, with -Repo <name> or -All.
+    (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
+    auth refresh -h github.com -s admin:org). It reads the organization's policies first and updates one of that name in
+    place, keeping the other events it allows, when it isn't active, misses one of those events or doesn't cover both
+    files on every repository, and leaves alone one that does, or an active one that already allows pull_request_target
+    and issue_comment for both files on every repository; -WhatIf prints the body it would post. It exits 1 when it
+    can't read the policies or the API refuses a policy, the fork approval setting or the default token setting. It
+    needs GitHub Team or above, the plans GitHub offers organization event policies on: when GitHub refuses them for the
+    organization's plan, with an answer that asks to upgrade, such as "Upgrade to GitHub Team to enable this feature.",
+    it says so and to run it for each repository instead, with -Repo <name> or -All.
 
     For a repository an organization owns, it also reports the organization's two-factor requirement, as
     "organization two-factor requirement: required", "not required" or "not available" with the reason (GitHub shows
