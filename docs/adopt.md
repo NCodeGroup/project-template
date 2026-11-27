@@ -10,7 +10,6 @@ The `Applies to` values are:
 
 - `every project`
 - `GitHub`
-- `GitLab`
 - `.NET library`
 - `Node.js`
 - `public repository`
@@ -18,9 +17,7 @@ The `Applies to` values are:
 - `with Copilot`
 - `where the project has one`
 
-A step with several values applies where every one of them holds, except that `GitHub, GitLab` means either host.
-
-On GitLab, follow [2.5](#25-on-gitlab) for which steps apply.
+A step with several values applies where every one of them holds.
 
 Commands run in PowerShell 7 from the folder the step's Where names.
 
@@ -46,7 +43,7 @@ Do these once per organization, and once per maintainer's PC for 0.1.
 - **Applies to:** every project
 - **Who:** every maintainer; an organization owner checks 2FA.
 - **Where:** each maintainer's PC; GitHub's Settings > Password and authentication.
-- **Do:** Turn on two-factor authentication on every owner's account. Install PowerShell 7 (7.4 or later), Git with `user.name` and `user.email`, the GitHub CLI, uv and Copier, nvs for Node.js projects and glab for GitLab, as [USAGE.md](../USAGE.md#install-the-tools) and [Set Up Git and GitHub](../USAGE.md#set-up-git-and-github) say. `gh auth login` gives the token `repo`, `read:org` and `gist`, plus `workflow` with HTTPS Git, which lets Git push workflow files. `repo` covers the baseline (with the admin role on the repository) and `Dismiss-ScorecardAlerts.ps1` (its `security_events` scope is part of `repo`). `admin:org`, added with `gh auth refresh -h github.com -s admin:org`, is needed only for 0.2's `-OrganizationPolicy` and NCode Review's organization secrets (0.3, 5.1). Clone NCodeGroup/project-template and run `git pull` in it before each use.
+- **Do:** Turn on two-factor authentication on every owner's account. Install PowerShell 7 (7.4 or later), Git with `user.name` and `user.email`, the GitHub CLI, uv and Copier, and nvs for Node.js projects, as [USAGE.md](../USAGE.md#install-the-tools) and [Set Up Git and GitHub](../USAGE.md#set-up-git-and-github) say. `gh auth login` gives the token `repo`, `read:org` and `gist`, plus `workflow` with HTTPS Git, which lets Git push workflow files. `repo` covers the baseline (with the admin role on the repository) and `Dismiss-ScorecardAlerts.ps1` (its `security_events` scope is part of `repo`). `admin:org`, added with `gh auth refresh -h github.com -s admin:org`, is needed only for 0.2's `-OrganizationPolicy` and NCode Review's organization secrets (0.3, 5.1). Clone NCodeGroup/project-template and run `git pull` in it before each use.
 - **Check:** `gh auth status` shows the account and its token scopes; `copier --version`, `pwsh --version` (7.4 or later), `git config user.email`; USAGE.md's [Check the Setup](../USAGE.md#check-the-setup).
 - **Goes wrong:** a stale project-template clone runs an older script, so run `git pull` first; a `GH_TOKEN` or `GITHUB_TOKEN` in the profile replaces the signed-in account's token and its scopes.
 
@@ -77,9 +74,9 @@ Do 1.1 or 1.2, then 1.3 for Node.js and 1.4.
 - **Applies to:** every project
 - **Who:** a maintainer who may create repositories in the owner.
 - **Where:** a clone of NCodeGroup/project-template.
-- **Do:** Run `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote`. Add `-Owner <org>`, `-Visibility private` and `-Data @{ ... }` as needed. Copier asks the questions [Questions](../README.md#questions) lists and records the answers in `.copier-answers.yml`. Answer `code_review` yes for NCode Review (GitHub only) and `nuget_package` yes for a .NET library. The script runs `git init -b main`, makes the first commit `Create project from project-template <version>`, creates the repository (public by default) and pushes `main`. On GitHub it then runs `tools/Set-RepositoryBaseline.ps1 -RequireChecks 'build-and-test'`, and on GitLab `tools/Set-GitLabBaseline.ps1`, unless you pass `-NoBaseline`. See [Create a Project](../README.md#create-a-project).
+- **Do:** Run `.\New-Project.ps1 -Path C:\src\<name> -CreateRemote`. Add `-Owner <org>`, `-Visibility private` and `-Data @{ ... }` as needed. Copier asks the questions [Questions](../README.md#questions) lists and records the answers in `.copier-answers.yml`. Answer `code_review` yes for NCode Review and `nuget_package` yes for a .NET library. The script runs `git init -b main`, makes the first commit `Create project from project-template <version>`, creates the repository (public by default) and pushes `main`. It then runs `tools/Set-RepositoryBaseline.ps1 -RequireChecks 'build-and-test'`, unless you pass `-NoBaseline`. See [Create a Project](../README.md#create-a-project).
 - **Check:** `Get-Content .template-version` in the project prints the version; `git log -1 --format=%s` shows the first commit; the repository exists on the host.
-- **Goes wrong:** a missing Git `user.name` or `user.email`, or a signed-out `gh` or `glab`; a failed baseline leaves the repository created and prints the command to run again (see [2.1](#21-run-the-baseline)).
+- **Goes wrong:** a missing Git `user.name` or `user.email`, or a signed-out `gh`; a failed baseline leaves the repository created and prints the command to run again (see [2.1](#21-run-the-baseline)).
 
 ### 1.2 An Existing Repository
 
@@ -104,13 +101,11 @@ Do 1.1 or 1.2, then 1.3 for Node.js and 1.4.
 - **Applies to:** every project
 - **Who:** the maintainer.
 - **Where:** the project's folder.
-- **Do:** A new project is already pushed (see [1.1](#11-a-new-project)), so open its first change as a pull request. For an adopted repository, run `git push -u origin adopt-project-template`, then `gh pr create --fill`. Wait for CI, then merge it with a merge commit or by rebasing. The checks that pass here are the ones [2.1](#21-run-the-baseline) requires: the template's CI job is `build-and-test`. On GitLab, open a merge request with `glab mr create --fill` instead.
-- **Check:** `gh pr checks <number>` shows every check passed. On GitLab, `glab ci status` shows the merge request's pipeline passed.
-- **Goes wrong:** a job that runs only on a schedule, a release or with `paths` filters never reports on every pull request, so requiring it blocks merges; `-RequireChecks auto` needs a merged pull request, so merge this one before 2.1. On GitLab, `-RequireChecks` and [2.1](#21-run-the-baseline) don't apply; [2.5](#25-on-gitlab) says what its "Pipelines must succeed" setting needs.
+- **Do:** A new project is already pushed (see [1.1](#11-a-new-project)), so open its first change as a pull request. For an adopted repository, run `git push -u origin adopt-project-template`, then `gh pr create --fill`. Wait for CI, then merge it with a merge commit or by rebasing. The checks that pass here are the ones [2.1](#21-run-the-baseline) requires: the template's CI job is `build-and-test`.
+- **Check:** `gh pr checks <number>` shows every check passed.
+- **Goes wrong:** a job that runs only on a schedule, a release or with `paths` filters never reports on every pull request, so requiring it blocks merges; `-RequireChecks auto` needs a merged pull request, so merge this one before 2.1.
 
 ## 2. Protect the Default Branch and Tags
-
-GitHub runs 2.1 to 2.4; GitLab runs only 2.5.
 
 ### 2.1 Run the Baseline
 
@@ -161,15 +156,6 @@ GitHub runs 2.1 to 2.4; GitLab runs only 2.5.
 - **Check:** the `-WhatIf` run lists nothing to dismiss; `https://scorecard.dev/viewer/?uri=github.com/<owner>/<name>` shows the score.
 - **Goes wrong:** an alert of any other check is the project's to fix, and stays open.
 
-### 2.5 On GitLab
-
-- **Applies to:** GitLab
-- **Who:** a Maintainer of the project, signed in with `glab`.
-- **Where:** a clone of NCodeGroup/project-template.
-- **Do:** Run `.\tools\Set-GitLabBaseline.ps1 -Project <group/name> -WhatIf`, then run it without `-WhatIf`. Add `-Hostname` for a GitLab other than gitlab.com, or `-Path` to point at a clone. It turns on "All threads must be resolved" and "Pipelines must succeed", sets "Squash commits when merging" to "Do not allow", lets no one push to the default branch, and schedules the "Weekly dependency audit" pipeline. A .NET library adds `-BaselineToken`, which protects `v*` tags and creates the `raise-baseline` project access token (valid for a year) in the masked, protected `BASELINE_TOKEN` variable. On GitLab the other steps that apply are 0.1 (with `glab`), [section 1](#1-create-or-adopt), [4.3](#43-the-first-package-validation-baseline) and [7.1](#71-template-updates); the rest are GitHub only. See [Protect the Default Branch](../README.md#protect-the-default-branch).
-- **Check:** the `-WhatIf` run prints `already set` for every setting.
-- **Goes wrong:** a project whose CI runs no pipeline on a merge request can't merge; a protection that names users or groups (GitLab Premium) is left for Settings > Repository > Protected branches; after a year the token expires, so delete `BASELINE_TOKEN` and run the script with `-BaselineToken` again.
-
 ## 3. Releases
 
 This section applies to a project whose `AGENTS.md` Landing section says `release: tag+release`, the default for a .NET library on GitHub, and not to one that says `none`. A .NET library on GitHub that says `none` or `tag` publishes nothing on merge: `Adopt-Project.ps1` and every `.\.template\Update-Project.ps1` run print the one-line change to `- release: tag+release` while it has `.github/workflows/tag-release.yml`.
@@ -203,7 +189,7 @@ This section applies to a project whose `AGENTS.md` Landing section says `releas
 
 ## 4. .NET Libraries on nuget.org
 
-This section is for a .NET library on GitHub with the template's `publish.yml`, whose header ([publish.yml](../template/.github/workflows/publish.yml)) describes the setup. A library whose own workflow runs `nuget push` keeps its own setup. On GitLab, only [4.3](#43-the-first-package-validation-baseline) applies, as [2.5](#25-on-gitlab) says.
+This section is for a .NET library on GitHub with the template's `publish.yml`, whose header ([publish.yml](../template/.github/workflows/publish.yml)) describes the setup. A library whose own workflow runs `nuget push` keeps its own setup.
 
 ### 4.1 Trusted Publishing on nuget.org
 
@@ -225,7 +211,7 @@ This section is for a .NET library on GitHub with the template's `publish.yml`, 
 
 ### 4.3 The First Package Validation Baseline
 
-- **Applies to:** .NET library, GitHub, GitLab
+- **Applies to:** .NET library
 - **Who:** the maintainer, in a plan or pull request.
 - **Where:** the project's `Directory.Build.props`, after its import, or a packable project's `.csproj`.
 - **Do:** Before the first release there is no baseline, so package validation still compares target frameworks. After the first stable release reaches nuget.org, set `<PackageValidationBaselineVersion>` once, by hand, to the last version on nuget.org. `.template\Update-Project.ps1` and `Adopt-Project.ps1` name the version to set ([ADR-0147](../template/docs/decisions/project-template/0147-packages-are-validated-against-the-last-published-package.md)). From then on [4.6](#46-raise-the-baseline-after-a-stable-release) raises it.
@@ -370,8 +356,8 @@ See [Update a Project](../README.md#update-a-project) and [Stay Current](../READ
 - **Applies to:** every project
 - **Who:** a maintainer.
 - **Where:** the project.
-- **Do:** On GitHub, `template-update.yml` keeps one open issue labeled `template-update`, "Update to project-template <version>", every Monday at 07:00 UTC. Run `/plan-issue <number>` on it, or `/plan-template-update`, or `.\.template\Update-Project.ps1` on a branch of its own. The update also says what a `code-review.yml` lacks (a pin before v1.5.0, `approve: true`, `approver-private-key`) and a missing `draft: yes`. On GitLab there is no notice: `copier check-update` in the project tells.
-- **Check:** `gh issue list --label template-update --state open --repo <owner>/<name>` lists nothing once the project is current. On GitLab, `copier check-update` in the project tells no newer version exists.
+- **Do:** `template-update.yml` keeps one open issue labeled `template-update`, "Update to project-template <version>", every Monday at 07:00 UTC. Run `/plan-issue <number>` on it, or `/plan-template-update`, or `.\.template\Update-Project.ps1` on a branch of its own. The update also says what a `code-review.yml` lacks (a pin before v1.5.0, `approve: true`, `approver-private-key`) and a missing `draft: yes`.
+- **Check:** `gh issue list --label template-update --state open --repo <owner>/<name>` lists nothing once the project is current.
 - **Goes wrong:** an update that conflicts stops with the files to fix (see [Resolve a Conflict](../README.md#resolve-a-conflict)).
 
 ### 7.2 Dependabot
