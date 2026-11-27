@@ -3,7 +3,7 @@
     Render the template's .NET cases and check that the .NET layer builds, tests and packs.
 
 .DESCRIPTION
-    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Then runs build/Test-DotnetSupport.ps1 against a stand-in releases index, offline. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), checks that each fresh render passes dotnet csharpier check . before anything formats it, runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
+    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Then runs build/Test-DotnetSupport.ps1 against a stand-in releases index, offline; its fixture solutions need dotnet on PATH. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), checks that each fresh render passes dotnet csharpier check . before anything formats it, runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
 
 .EXAMPLE
     .\tests\Test-TemplateDotnet.ps1
@@ -218,10 +218,23 @@ $supportIndex = Join-Path $stubRoot 'releases-index.json'
             @{ 'channel-version' = '6.0'; 'release-type' = 'lts'; 'support-phase' = 'maintenance'; 'eol-date' = '2027-05-11' }
         ) } | ConvertTo-Json -Depth 5))
 
-function Invoke-Support([string]$Sdk, [string]$GitHubActions = '', [switch]$WarnOnly) {
-    $dir = Join-Path $stubRoot "support-$Sdk-$GitHubActions-$([int][bool]$WarnOnly)"
+function Invoke-Support([string]$Sdk, [string]$GitHubActions = '', [switch]$WarnOnly, [string]$Name = '', [hashtable]$Files = @{}) {
+    $dir = Join-Path $stubRoot "support-$Sdk-$GitHubActions-$([int][bool]$WarnOnly)-$Name"
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     if ($Sdk) { [IO.File]::WriteAllText((Join-Path $dir 'global.json'), "{`"sdk`":{`"version`":`"$Sdk`"}}") }
+    if ($Files.Count) {
+        foreach ($path in $Files.Keys) {
+            $file = Join-Path $dir $path
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $file) | Out-Null
+            [IO.File]::WriteAllText($file, $Files[$path])
+        }
+        Push-Location $dir
+        try {
+            dotnet new sln -n Fixture --no-update-check | Out-Null
+            dotnet sln add @($Files.Keys | Where-Object { $_.EndsWith('.csproj') }) | Out-Null
+        }
+        finally { Pop-Location }
+    }
     $arguments = @('-NoProfile', '-File', $support, '-Root', $dir, '-ReleasesIndex', $supportIndex)
     if ($WarnOnly) { $arguments += '-WarnOnly' }
     $previous = $env:GITHUB_ACTIONS
@@ -250,6 +263,9 @@ $r = Invoke-Support '99.0.100'
 Check 'support: build/Test-DotnetSupport.ps1 fails a channel Microsoft''s release metadata lacks' ($r.ExitCode -eq 1 -and $r.Printed.Contains('Microsoft''s release metadata lists no .NET 99.0 (global.json).')) $r.Printed
 $r = Invoke-Support ''
 Check 'support: build/Test-DotnetSupport.ps1 passes a repository without global.json' ($r.ExitCode -eq 0 -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
+# MSBuild writes an evaluation warning, here MSB4011 naming a path with a brace, to stderr: the script must parse only the JSON on stdout.
+$r = Invoke-Support '' -Name 'braces' -Files @{ 'src/Braces/Braces{1}.props' = '<Project />'; 'src/Braces/Braces.csproj' = '<Project Sdk="Microsoft.NET.Sdk"><Import Project="Braces{1}.props" /><Import Project="Braces{1}.props" /><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>' }
+Check 'support: build/Test-DotnetSupport.ps1 reads the target frameworks of a project MSBuild warns about, parsing only the JSON on stdout' ($r.ExitCode -eq 0 -and $r.Printed.Contains('10.0 (src/Braces/Braces.csproj): LTS, supported until 2028-11-14') -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
 if ($InstallerOnly) {
     ''
     if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
