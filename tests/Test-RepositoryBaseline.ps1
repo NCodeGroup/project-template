@@ -555,6 +555,13 @@ $repos = @{
     codeqlOursRefused = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes)) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml } -WriteFails @{ 'code-scanning/default-setup' = 422 }
     codeqlOursOff = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes)) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml } -CodeQL 'not-configured' -Languages @()
     codeqlOwned = New-Repo -Rulesets @((New-Ruleset 'owner rules')) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml }
+    # No ruleset yet, so the baseline writes one: the rule comes from the workflow, whatever the default setup says.
+    codeqlFresh = New-Repo -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml }
+    codeqlFreshNoLanguage = New-Repo -Languages @() -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml }
+    codeqlFreshOff = New-Repo -CodeQL 'not-configured' -Languages @() -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml }
+    codeqlFreshRefused = New-Repo -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml } -WriteFails @{ 'code-scanning/default-setup' = 422 }
+    codeqlPushOnly = New-Repo -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml.Replace("  pull_request:`n", '') }
+    codeqlAuto = New-Repo -Pulls @((New-Pull 3 'sha3' '2026-10-20T10:00:00Z')) -CheckRuns @{ sha3 = @((New-CheckRun 1 'build-and-test'), (New-CheckRun 2 'CodeQL languages')) } -WorkflowRuns @{ sha3 = @(@{ check_suite_id = 1; name = 'CI'; event = 'pull_request' }) }
 }
 $orgs = @{
     orgEmpty = @{ policies = @() }
@@ -1458,6 +1465,25 @@ try {
     Check 'codeql workflow: a default setup that is off already is reported as already set, with no write for it' ($r.ExitCode -eq 0 -and $r.Output.Contains("codeqlOursOff: ${codeqlLabel}: already set") -and -not @($r.Changes | Where-Object { $_ -like '*default-setup*' }).Count) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'codeqlOwned')
     Check 'codeql workflow: a ruleset of the owner''s, which is left alone, gets the default setup turned off too' ($r.ExitCode -eq 0 -and $r.Output.Contains("codeqlOwned: ${codeqlLabel}: set")) "$($r.Changes -join '|') $($r.Output)"
+
+    # A ruleset the script writes gets the code-scanning rule from the workflow, and the default setup is turned off first.
+    $r = Invoke-Baseline @('-Repo', 'codeqlFresh')
+    $types = @($r.Body.rules.type)
+    Check 'codeql workflow: a new ruleset follows the default setup''s turn-off, then delete-branch-on-merge' (($r.Changes[0..2] -join '|') -eq 'BODY PATCH repos/NCodeGroup/codeqlFresh/code-scanning/default-setup|BODY POST repos/NCodeGroup/codeqlFresh/rulesets|api -X PATCH repos/NCodeGroup/codeqlFresh -F delete_branch_on_merge=true' -and $r.Bodies[0].body.state -eq 'not-configured') ($r.Changes -join '|')
+    Check 'codeql workflow: a new ruleset gets the code-scanning rule, and the suite is not switched' ($types -contains 'code_scanning' -and -not @($r.Changes | Where-Object { $_ -like '*query_suite*' }).Count) "$($types -join ',') $($r.Changes -join '|')"
+    Check 'codeql workflow: the summary names the workflow, and says the default setup is turned off and what it analyzed' ($r.Output.Contains("done: codeqlFresh (main): create 'Protect main' with 0 required check(s), and a code-scanning rule (CodeQL runs in .github/workflows/codeql.yml); turn off CodeQL's default setup, which analyzes actions, csharp, so .github/workflows/codeql.yml can upload CodeQL's results")) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'codeqlFresh', '-WhatIf')
+    Check 'codeql workflow: -WhatIf changes nothing and says it would turn the default setup off' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains('would: codeqlFresh (main)') -and $r.Output.Contains("turn off CodeQL's default setup")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlFreshNoLanguage')
+    Check 'codeql workflow: a default setup that analyzes no language still gets the rule and the turn-off, and no notice about it' ($r.ExitCode -eq 0 -and @($r.Body.rules.type) -contains 'code_scanning' -and ($r.Changes -join '|').Contains('BODY PATCH repos/NCodeGroup/codeqlFreshNoLanguage/code-scanning/default-setup') -and $r.Output -notmatch 'analyzes no language') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlFreshOff')
+    Check 'codeql workflow: a default setup that is off already gets the rule and no default-setup change' ($r.ExitCode -eq 0 -and @($r.Body.rules.type) -contains 'code_scanning' -and -not @($r.Changes | Where-Object { $_ -like '*default-setup*' }).Count) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlFreshRefused')
+    Check 'codeql workflow: a refused turn-off fails the repository, names the way out, and writes nothing else' ($r.Output.Contains("codeqlFreshRefused: FAILED: Couldn't turn off CodeQL's default setup for codeqlFreshRefused (HTTP 422") -and ($r.Changes -join '|') -eq 'BODY PATCH repos/NCodeGroup/codeqlFreshRefused/code-scanning/default-setup') "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlPushOnly')
+    Check 'codeql workflow: a workflow that runs only on push counts for nothing, so the default setup decides and is switched' (($r.Changes -join '|').Contains('query_suite=extended') -and -not ($r.Changes -join '|').Contains('BODY PATCH repos/NCodeGroup/codeqlPushOnly/code-scanning/default-setup')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlAuto', '-RequireChecks', 'auto', '-WhatIf')
+    Check 'codeql workflow: -RequireChecks auto leaves out CodeQL languages' ($r.Output -match ('left out: .*' + [regex]::Escape('CodeQL languages (the code-scanning rule covers it)'))) $r.Output
   }
 }
 finally { $env:PATH = $savedPath }

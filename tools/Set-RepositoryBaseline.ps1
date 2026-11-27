@@ -551,7 +551,18 @@ function Set-BranchRuleset {
     $suite = $null
     $languages = @()
     $languageless = $false
-    if (-not $kept.Count) {
+    $setupOff = $false
+    $setupLanguages = @()
+    if ($CodeQLWorkflows.Count) {
+        # A workflow that runs CodeQL on pull requests meets the rule on every pull request, a fork's too, once CodeQL's
+        # default setup is off (ADR-0042).
+        $setup = Read-DefaultSetup $Name
+        if ($setup.Why) { Write-Host "${Name}: skipped (couldn't read CodeQL's default setup: $($setup.Why))"; return $false }
+        $setupOff = $setup.Status -ne 404 -and $setup.Answer.state -eq 'configured'
+        $setupLanguages = @(Get-SetupLanguages $setup.Answer)
+        $codeql = $true
+    }
+    elseif (-not $kept.Count) {
         $setup = Read-DefaultSetup $Name
         if ($setup.Why) { Write-Host "${Name}: skipped (couldn't read CodeQL's default setup: $($setup.Why))"; return $false }
         $configured = $setup.Status -ne 404 -and $setup.Answer.state -eq 'configured'
@@ -616,10 +627,11 @@ function Set-BranchRuleset {
 
     $verb = if ($own) { 'update' } else { 'create' }
     $scanning = if ($kept.Count) { ', and keeps its code-scanning rule' }
+    elseif ($CodeQLWorkflows.Count) { ", and a code-scanning rule (CodeQL runs in $($CodeQLWorkflows -join ', '))" }
     elseif ($codeql) { ", and a code-scanning rule (CodeQL's default setup analyzes $($languages -join ', '))" }
     elseif ($languageless) { ", and no code-scanning rule (CodeQL's default setup analyzes no language)" }
     else { ", and no code-scanning rule (CodeQL's default setup is not configured)" }
-    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$scanning$(if ($Approver) { ', at least one required approval, as NCode Review approves' })$(if ($lowered) { ", and requires no approval and no approval of the last push, $soleWhy" } elseif ($lastPushOff) { ", and turns off approval of the last push, $lastPushWhy" })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
+    $summary = "$Name ($Branch): $verb '$rulesetName' with $($checks.Count) required check(s)$(if ($checks.Count) { ': ' + ($checks -join ', ') })$scanning$(if ($Approver) { ', at least one required approval, as NCode Review approves' })$(if ($lowered) { ", and requires no approval and no approval of the last push, $soleWhy" } elseif ($lastPushOff) { ", and turns off approval of the last push, $lastPushWhy" })$(if ($setupOff) { "; turn off CodeQL's default setup$(if ($setupLanguages.Count) { ", which analyzes $($setupLanguages -join ', '),"}) so $($CodeQLWorkflows -join ', ') can upload CodeQL's results" })$(if ($suite) { "; switch CodeQL from $suite to extended" })"
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb ruleset and delete-branch-on-merge")) {
         Write-Host "would: $summary"
         if ($autoChecks) {
@@ -634,7 +646,14 @@ function Set-BranchRuleset {
         return $true
     }
 
-    # The suite switch comes first: once the ruleset has its code-scanning rule, a later run reads the default setup only
+    # CodeQL's default setup is turned off before the ruleset is written, as the suite switch is, so a refusal changes
+    # nothing and a later run finds the setup still on and tries again.
+    if ($setupOff) {
+        $result = Set-DefaultSetupOff $Name
+        if ($result.Status -lt 200 -or $result.Status -ge 300) { throw "Couldn't turn off CodeQL's default setup for $Name ($(Get-FailureReason $result)), which keeps $($CodeQLWorkflows -join ', ') from uploading CodeQL's results; its ruleset and delete-branch-on-merge were left as they were. $defaultSetupHint." }
+    }
+
+    # The suite switch comes before the ruleset write too: once the ruleset has its code-scanning rule, a later run reads the default setup only
     # for its notice and never switches it, so a switch that failed after it could never be retried. It sends query_suite
     # alone. GitHub's REST reference, "Update a code scanning default setup configuration" (read 2026-11-16), makes every
     # field optional and describes languages only as "CodeQL languages to be analyzed", without saying what an update
