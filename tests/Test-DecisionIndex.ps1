@@ -112,7 +112,7 @@ function Get-HostExcludedRecord([string]$Copier) {
     foreach ($line in $Copier -split '\r?\n') {
         if ($line -cmatch '^\s*\{% if (.+?) %\}\s*$') { $condition = $Matches[1] }
         elseif ($line -cmatch '^\s*\{% endif %\}\s*$') { $condition = '' }
-        elseif ($condition.Contains('git_host') -and $line -cmatch '^\s*docs/decisions/project-template/(\S+\.md)\s*$') { $Matches[1] }
+        elseif (($condition -cmatch "git_host\s*!=\s*'github'" -or $condition -cmatch "not\s*\(\s*git_host\s*==\s*'github'") -and $line -cmatch '^\s*docs/decisions/project-template/(\S+\.md)\s*$') { $Matches[1] }
     }
 }
 
@@ -311,6 +311,15 @@ $fixtureOrder = (Get-IndexOrderProblem $fixtureIndex) -join '; '
 Check 'index order: a row below the one before it and an Every Project row above 0099 are named' ($fixtureOrder -eq 'Every Project: 0153 is outside 0001-0099; Every Project: 0002 after 0153') "problems: $fixtureOrder"
 $fixtureGitHub = (@(Get-GitHubOnlyRecord $fixtureIndex)) -join ','
 Check 'github-only: the rows inside a git_host == github block are found' ($fixtureGitHub -eq '0002-c.md') "found: $fixtureGitHub"
+
+$fixtureHostCopier = @(
+    "{% if git_host == 'github' %}", '  docs/decisions/project-template/0030-github.md', '{% endif %}',
+    "{% if git_host != 'gitlab' %}", '  docs/decisions/project-template/0031-other.md', '{% endif %}',
+    "{% if git_host != 'github' %}", '  docs/decisions/project-template/0039-fork.md', '{% endif %}',
+    "{% if git_host is defined and not (git_host == 'github' and stack == 'dotnet') %}", '  docs/decisions/project-template/0151-library.md', '{% endif %}'
+) -join "`n"
+$fixtureExcluded = (@(Get-HostExcludedRecord $fixtureHostCopier)) -join ','
+Check 'host exclusion: only conditions that exclude GitHub host records are found' ($fixtureExcluded -eq '0039-fork.md,0151-library.md') "found: $fixtureExcluded"
 
 # The template's own records, in the folder every template update replaces.
 $templateFolder = Join-Path $repoRoot 'template\docs\decisions\project-template'
