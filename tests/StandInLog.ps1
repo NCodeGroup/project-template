@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-    The function the gh and glab stand-ins of the tests dot-source to append a line to their logs.
+    The function the gh stand-ins of the tests dot-source to append a line to their logs.
 
 .DESCRIPTION
-    workflow/Get-PlanState.ps1 makes its gh and glab calls at the same time, in runspaces or processes of their own, and
+    workflow/Get-PlanState.ps1 makes its gh calls at the same time, in runspaces or processes of their own, and
     an append to a file while another is open fails with a sharing violation. Add-StandInLog makes the appends to one
     file take turns through a named mutex whose name comes from the file's full path, in any letter case, so the calls
     that log to one file wait on each other and no others do. A call that finds the mutex abandoned, by a process that

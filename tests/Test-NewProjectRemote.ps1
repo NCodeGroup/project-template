@@ -3,12 +3,14 @@
     Test the baseline calls New-Project.ps1 -CreateRemote makes once it has created and pushed the repository.
 
 .DESCRIPTION
-    Runs a copy of New-Project.ps1, with tools\adopt, from a work-folder template whose baseline scripts are stand-ins
-    that record their arguments, with stand-ins for copier, gh and glab, so it needs no network.
-    Checks that the real baseline scripts take the parameters New-Project.ps1 passes them. For GitHub, it checks that
+    Runs a copy of New-Project.ps1, with tools\adopt, from a work-folder template whose baseline script is a stand-in
+    that records its arguments, with stand-ins for copier and gh, so it needs no network.
+    Checks that the real baseline script takes the parameters New-Project.ps1 passes it. It checks that
     after gh repo create the baseline gets the repository, the signed-in user and the template's required checks; that
     -Owner names the owner and the signed-in user isn't read; that -NoBaseline creates the repository and runs no
     baseline; and that a baseline that fails warns with the command to run it again and the run succeeds.
+    It checks that copier gets git_host=github when -Data names no host, and that -Data @{ git_host = 'gitlab' } stops
+    the script before copier runs.
     It also checks that a local clone of the template as -Template has the first commit name the clone's origin remote
     as _src_path.
     Prints PASS or FAIL per check and exits 1 on any failure.
@@ -43,13 +45,12 @@ New-Item -ItemType Directory -Force (Join-Path $template 'tools') | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot 'New-Project.ps1') -Destination $template
 Copy-Item -LiteralPath (Join-Path $repoRoot 'tools/adopt') -Destination (Join-Path $template 'tools') -Recurse
 
-# The two baseline stand-ins: one here-string, written twice.
+# The baseline stand-in.
 $baselineStandIn = @'
 Add-Content -LiteralPath $env:NEW_PROJECT_TEST_CALLS -Value ("<name> " + ($args -join ' '))
 if ($env:NEW_PROJECT_TEST_FAIL -eq 'baseline') { throw 'Stand-in baseline failed.' }
 '@
 Write-Text (Join-Path $template 'tools/Set-RepositoryBaseline.ps1') $baselineStandIn.Replace('<name>', 'Set-RepositoryBaseline')
-Write-Text (Join-Path $template 'tools/Set-GitLabBaseline.ps1') $baselineStandIn.Replace('<name>', 'Set-GitLabBaseline')
 # The stand-in for copier. It records its arguments and writes the answers file the host test asks for.
 Write-Text (Join-Path $bin 'copier.ps1') @'
 Add-Content -LiteralPath $env:NEW_PROJECT_TEST_CALLS -Value ("copier " + ($args -join ' '))
@@ -66,14 +67,6 @@ if ($args[0] -eq 'api' -and $args[1] -eq 'user') {
     if ($env:NEW_PROJECT_TEST_FAIL -eq 'user-empty') { exit 0 }
     'tester'
 }
-exit 0
-'@
-# The stand-in for glab. It records its arguments and makes a bare repository the project's origin remote.
-Write-Text (Join-Path $bin 'glab.ps1') @'
-Add-Content -LiteralPath $env:NEW_PROJECT_TEST_CALLS -Value ("glab " + ($args -join ' '))
-$origin = Join-Path (Split-Path -Parent $PSScriptRoot) "origins/$($args[2]).git"
-git init -q --bare -b main $origin
-git remote add origin $origin
 exit 0
 '@
 
@@ -98,8 +91,7 @@ function Invoke-NewProject([string]$Name, [string]$GitHost, [string]$Fail = '', 
 }
 
 $repositoryParameters = (Get-Command (Join-Path $repoRoot 'tools/Set-RepositoryBaseline.ps1')).Parameters
-$gitlabParameters = (Get-Command (Join-Path $repoRoot 'tools/Set-GitLabBaseline.ps1')).Parameters
-Check 'stand-ins: the real baseline scripts take the parameters New-Project.ps1 passes' ($repositoryParameters.ContainsKey('Repo') -and $repositoryParameters.ContainsKey('Owner') -and $repositoryParameters.ContainsKey('RequireChecks') -and $gitlabParameters.ContainsKey('Path')) "repository=$($repositoryParameters.Keys -join ',') gitlab=$($gitlabParameters.Keys -join ',')"
+Check 'stand-ins: the real baseline script takes the parameters New-Project.ps1 passes' ($repositoryParameters.ContainsKey('Repo') -and $repositoryParameters.ContainsKey('Owner') -and $repositoryParameters.ContainsKey('RequireChecks')) "repository=$($repositoryParameters.Keys -join ',')"
 
 $savedNames = 'PATH', 'NEW_PROJECT_TEST_CALLS', 'NEW_PROJECT_TEST_HOST', 'NEW_PROJECT_TEST_FAIL', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0', 'GIT_CONFIG_KEY_1', 'GIT_CONFIG_VALUE_1'
 $saved = @{}
@@ -118,6 +110,7 @@ try {
     $r = Invoke-NewProject 'gh-app' 'github'
     $expected = @('gh repo create gh-app --public --source . --remote origin --push', 'gh api user --jq .login', "Set-RepositoryBaseline -Repo gh-app -Owner tester -RequireChecks $checks") -join '|'
     Check 'github: after gh repo create, the baseline gets the repository, the signed-in user and the template''s checks' ($r.ExitCode -eq 0 -and (($r.Calls | Select-Object -Skip 1) -join '|') -eq $expected) "calls=$($r.Calls -join '|') output=$($r.Output)"
+    Check 'github: without git_host in -Data, copier is answered git_host github, so it asks no host question' ([bool]($r.Calls[0] -like 'copier copy *--data git_host=github *')) "calls=$($r.Calls -join '|')"
     $r = Invoke-NewProject 'gh-owner' 'github' '' @('-Owner', 'org')
     $expected = @('gh repo create org/gh-owner --public --source . --remote origin --push', "Set-RepositoryBaseline -Repo gh-owner -Owner org -RequireChecks $checks") -join '|'
     Check 'github owner: -Owner names the owner, and the signed-in user isn''t read' ($r.ExitCode -eq 0 -and (($r.Calls | Select-Object -Skip 1) -join '|') -eq $expected) "calls=$($r.Calls -join '|') output=$($r.Output)"
@@ -130,17 +123,13 @@ try {
     $r = Invoke-NewProject 'gh-user-empty' 'github' 'user-empty'
     Check 'github empty user: a gh that prints no signed-in user warns with the command to run, naming the owner to fill in, and the run succeeds' ($r.ExitCode -eq 0 -and -not [bool]($r.Calls -like 'Set-*') -and (Compress $r.Output).Contains((Compress "Couldn't protect the default branch: Couldn't read the signed-in GitHub user. Run it again with:")) -and (Compress $r.Output).Contains((Compress "Set-RepositoryBaseline.ps1 -Repo gh-user-empty -Owner <owner> -RequireChecks '$checks'"))) "calls=$($r.Calls -join '|') output=$($r.Output)"
 
-    # 2. GitLab.
-    $r = Invoke-NewProject 'gl-app' 'gitlab'
-    $origin = Join-Path $Work 'origins/gl-app.git'
-    $pushed = git --git-dir=$origin rev-parse --verify -q refs/heads/main
-    Check 'gitlab: after glab repo create and the push, the baseline gets the new project''s folder' ($r.ExitCode -eq 0 -and $pushed -and $r.Calls.Count -eq 3 -and $r.Calls[1] -eq 'glab repo create gl-app --public --defaultBranch main' -and $r.Calls[2] -eq "Set-GitLabBaseline -Path $($r.Path)") "calls=$($r.Calls -join '|') output=$($r.Output)"
-    $r = Invoke-NewProject 'gl-group' 'gitlab' '' @('-Owner', 'grp')
-    Check 'gitlab owner: -Owner names the group' ($r.ExitCode -eq 0 -and $r.Calls[1] -eq 'glab repo create gl-group --public --defaultBranch main --group grp' -and $r.Calls[2] -eq "Set-GitLabBaseline -Path $($r.Path)") "calls=$($r.Calls -join '|') output=$($r.Output)"
-    $r = Invoke-NewProject 'gl-none' 'gitlab' '' @('-NoBaseline')
-    Check 'gitlab -NoBaseline: the project is created and the baseline isn''t run' ($r.ExitCode -eq 0 -and [bool]($r.Calls -like 'glab repo create gl-none *') -and -not [bool]($r.Calls -like 'Set-*')) "calls=$($r.Calls -join '|') output=$($r.Output)"
-    $r = Invoke-NewProject 'gl-fail' 'gitlab' 'baseline'
-    Check 'gitlab failed: a baseline that fails warns with the command to run it again and the run succeeds' ($r.ExitCode -eq 0 -and (Compress $r.Output).Contains((Compress "Couldn't protect the GitLab project: Stand-in baseline failed. Run it again with:")) -and (Compress $r.Output).Contains((Compress "Set-GitLabBaseline.ps1 -Path '$($r.Path)'"))) "calls=$($r.Calls -join '|') output=$($r.Output)"
+    # 2. Any host but GitHub.
+    if (Test-Path -LiteralPath $calls) { Remove-Item -LiteralPath $calls -Force }
+    $message = try { & $newProject -Path (Join-Path $Work 'gl-app') -Template 'stand-in' -CreateRemote -Data @{ git_host = 'gitlab' }; '' } catch { $_.Exception.Message }
+    $recorded = @(if (Test-Path -LiteralPath $calls) { Get-Content -LiteralPath $calls })
+    Check 'gitlab: -Data git_host gitlab stops the script with the GitHub-only message' $message.Contains('NCodeGroup''s GitHub repositories only') "message=$message"
+    Check 'gitlab: the script stops before copier runs, so no folder is made' (-not (Test-Path -LiteralPath (Join-Path $Work 'gl-app'))) "message=$message"
+    Check 'gitlab: no stand-in is called' ($recorded.Count -eq 0) "calls=$($recorded -join '|')"
 
     # 3. A local clone of the template.
     $clone = Join-Path $Work 'template-clone'

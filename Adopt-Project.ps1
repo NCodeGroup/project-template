@@ -4,12 +4,12 @@
     apply the template, and commit the result.
 
 .DESCRIPTION
-    Works out the template's answers from what the repository already has (stack, project name, git host, workflow tools, authors,
+    Works out the template's answers from what the repository already has (stack, project name, workflow tools, authors,
     build and test commands), applies -Data over them, and runs `copier copy --overwrite --defaults` into the
     repository (Copier from PATH, or through uvx). The answers are recorded in .copier-answers.yml, so the project
     can update itself with .\.template\Update-Project.ps1 afterwards. When -Template is a local clone of the template, such as ., the answers name the clone's origin remote as the template's address instead of its folder, so the project updates from any PC; a clone without an origin address keeps the folder, with a warning. The answers include pre_release = tracked, so an AGENTS.md the template writes, for a repository that has none, says pre-release: tracked, since the repository has a history (ADR-0015); Copier records that answer nowhere. A repository whose own AGENTS.md the adoption keeps gets the release_policy answer from that file's Landing section, none without a release line, so SECURITY.md describes signed release tags only when something makes them; Copier records that answer nowhere either. A repository that uses Node.js without being a Node.js project answers uses_node, and a .nvmrc without a .node-version gives .node-version its version (ADR-0200). A merged or template-owned file that -Data's project_owned_files names is kept exactly as the repository has it, and later updates show the template's changes to it instead of merging or replacing it; the answer can't name .copier-answers.yml, .template-version or a file in .template/.
 
-    The repository must be the root of a Git repository with no uncommitted changes and no .copier-answers.yml.
+    The repository must be the root of a Git repository with no uncommitted changes and no .copier-answers.yml. Its origin remote, when it has one, must be on GitHub, and -Data can't answer git_host other than github: the template is for NCodeGroup's GitHub repositories only (ADR-0040).
     The result is one commit, "Adopt project-template <version>"; -NoCommit stages it instead. Before committing, the
     build and test commands from the answers run in the repository; if one fails, the adoption stays staged and
     nothing is committed. -NoVerify skips that check. If anything else fails after the template is applied, the
@@ -199,6 +199,13 @@ try {
     if (git status --porcelain) { throw "$project has uncommitted changes. Commit or stash them first." }
     foreach ($key in 'user.name', 'user.email') {
         if (-not (git config $key)) { throw "Git has no $key. Set it with: git config --global $key ""<value>""" }
+    }
+    $originUrl = "$(git remote get-url origin 2>$null)"
+    if ($originUrl -and -not (Test-GitHubRemote $originUrl)) {
+        throw (Get-GitHubOnlyMessage "$project's origin remote, $($originUrl -replace '^(https?://)[^/@]*@', '$1'), isn't on GitHub.")
+    }
+    if ($Data.ContainsKey('git_host') -and "$($Data['git_host'])" -ne 'github') {
+        throw (Get-GitHubOnlyMessage "-Data answers git_host '$($Data['git_host'])'.")
     }
 
     $merged = @(Get-CopierList (Join-Path $PSScriptRoot 'copier.yml') '_merged_files')
@@ -448,9 +455,7 @@ try {
 
     # A GitHub repository's default branch should take changes only through pull requests. The baseline script changes the
     # repository's settings on GitHub, which an adoption that only commits locally shouldn't do on its own, so print it.
-    # On GitLab it prints the command that protects the project.
-    $origin = "$(git remote get-url origin 2>$null)"
-    if ($origin -match '^(?:https://github\.com/|git@github\.com:)([^/]+)/([^/]+?)(?:\.git)?/?$') {
+    if ($originUrl -match '^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/([^/]+?)(?:\.git)?/?$') {
         # The next -match overwrites $Matches.
         $owner, $repo = $Matches[1], $Matches[2]
         $ci = if (Test-Path -LiteralPath .github/workflows/ci.yml) { Get-Content -Raw -LiteralPath .github/workflows/ci.yml } else { '' }
@@ -459,11 +464,6 @@ try {
         "Protect the default branch, so changes reach it only through a pull request. From the template's clone, run:"
         "  $(Join-Path $PSScriptRoot 'tools/Set-RepositoryBaseline.ps1') -Repo $repo -Owner $owner$checks"
         if (-not $checks) { "  (this repository keeps its own CI: add -RequireChecks auto to require the checks that passed on its latest merged pull request, with -WhatIf first to list them, or -RequireChecks '<the jobs that run on pull requests>', comma-separated)" }
-    }
-    elseif ($origin -and (Get-Answer 'git_host') -eq 'gitlab') {
-        ''
-        'Protect the GitLab project: turn on its "All threads must be resolved" and "Pipelines must succeed" merge checks, set "Squash commits when merging" to "Do not allow" and let no one push to the default branch, so a change reaches it only through a merge request whose pipeline passes with every thread resolved. From the template''s clone, signed in to glab as a Maintainer of the project, run:'
-        "  $(Join-Path $PSScriptRoot 'tools/Set-GitLabBaseline.ps1') -Path '$($project.Replace("'", "''"))'"
     }
 
     if ($followUps.Count) {

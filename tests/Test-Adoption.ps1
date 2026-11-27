@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Unit-tests the adoption functions and legacy adapters on small inputs and, unless -UnitOnly is given, adopts a
-    Python repository on GitLab and a .NET repository built on the NCodeGroup scaffold from a tagged snapshot of the
+    Python repository on GitHub and a .NET repository built on the NCodeGroup scaffold from a tagged snapshot of the
     working tree, then updates the first to a later template version. tests/Test-AdoptEdgeCases.ps1 adopts the other
     fixture repositories. Prints PASS or FAIL per check and exits 1 on any failure.
 
@@ -83,12 +83,37 @@ $demo = New-TestFolder 'demo' @{
     'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <Authors>NCode Group</Authors>`n  </PropertyGroup>`n</Project>`n"
 }
 Push-Location $demo
-try { Invoke-Git init -q -b main; Invoke-Git remote add origin https://gitlab.com/example/demo.git }
+try { Invoke-Git init -q -b main; Invoke-Git remote add origin https://github.com/example/demo.git }
 finally { Pop-Location }
 $a = Get-AdoptionAnswers $demo
 $detail = ($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; '
-Check 'unit: Get-AdoptionAnswers works out a .NET repository' (($a.stack -eq 'dotnet') -and ($a.project_name -eq 'NCode.Demo') -and ($a.git_host -eq 'gitlab') -and ($a.author_name -eq 'NCode Group') -and ($a.build_command -eq 'dotnet build src/NCode.Demo.slnx') -and ($a.test_command -eq 'dotnet test src/NCode.Demo.slnx')) $detail
+Check 'unit: Get-AdoptionAnswers works out a .NET repository' (($a.stack -eq 'dotnet') -and ($a.project_name -eq 'NCode.Demo') -and ($a.git_host -eq 'github') -and ($a.author_name -eq 'NCode Group') -and ($a.build_command -eq 'dotnet build src/NCode.Demo.slnx') -and ($a.test_command -eq 'dotnet test src/NCode.Demo.slnx')) $detail
 Check 'unit: Get-AdoptionAnswers answers pre_release tracked, since a repository has a history' ($a.pre_release -eq 'tracked') $detail
+# The refusals come before the adoption touches anything; the fixtures carry a local identity, which the script's own check needs.
+$adoptScript = Join-Path $repoRoot 'Adopt-Project.ps1'
+$gitlabOrigin = New-Fixture 'gitlab-origin' @{ 'README.md' = "t`n" } 'https://user:secret@gitlab.com/example/gitlab-origin.git'
+Invoke-Git -C $gitlabOrigin config user.name template-test
+Invoke-Git -C $gitlabOrigin config user.email template-test@example.invalid
+$gitlabMessage = try { & $adoptScript -Path $gitlabOrigin -Template $repoRoot | Out-Null; '' } catch { $_.Exception.Message }
+$gitlabStatus = "$(git -C $gitlabOrigin status --porcelain)"
+Check 'unit: Adopt-Project.ps1 refuses a repository whose origin isn''t on GitHub, without its credentials, and leaves it alone' ($gitlabMessage.Contains('NCodeGroup''s GitHub repositories only') -and $gitlabMessage.Contains('https://gitlab.com/example/gitlab-origin.git') -and -not $gitlabMessage.Contains('secret') -and -not $gitlabStatus) "$gitlabMessage | $gitlabStatus"
+$githubOrigin = New-Fixture 'github-origin' @{ 'README.md' = "t`n" } 'https://github.com/example/github-origin.git'
+Invoke-Git -C $githubOrigin config user.name template-test
+Invoke-Git -C $githubOrigin config user.email template-test@example.invalid
+$hostMessage = try { & $adoptScript -Path $githubOrigin -Template $repoRoot -Data @{ git_host = 'gitlab' } | Out-Null; '' } catch { $_.Exception.Message }
+$hostStatus = "$(git -C $githubOrigin status --porcelain)"
+Check 'unit: Adopt-Project.ps1 refuses -Data that answers git_host other than github and leaves the repository alone' ($hostMessage.Contains('NCodeGroup''s GitHub repositories only') -and $hostMessage.Contains('git_host ''gitlab''') -and -not $hostStatus) "$hostMessage | $hostStatus"
+$remoteWanted = [ordered]@{
+    'https://github.com/example/x.git'                 = $true
+    'https://user:token@github.com/example/x.git'      = $true
+    'git@github.com:example/x.git'                     = $true
+    'ssh://git@github.com/example/x.git'               = $true
+    'https://gitlab.com/example/x.git'                 = $false
+    'git@gitlab.com:example/x.git'                     = $false
+    'https://github.com.evil.example/example/x.git'    = $false
+}
+$remoteWrong = @($remoteWanted.Keys | Where-Object { [bool](Test-GitHubRemote $_) -ne $remoteWanted[$_] })
+Check 'unit: Test-GitHubRemote accepts GitHub over https, with credentials, scp-style SSH and ssh://, and nothing else' ($remoteWrong.Count -eq 0) ($remoteWrong -join ' | ')
 $apacheText = "                                 Apache License`n                           Version 2.0, January 2004`n"
 $licenseFolders = [ordered]@{
     'license-props' = @{ Files = @{ 'src/A/A.csproj' = "<Project />`n"; 'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <PackageLicenseExpression>MIT</PackageLicenseExpression>`n  </PropertyGroup>`n</Project>`n"; 'LICENSE' = $apacheText }; License = 'MIT' }
@@ -357,13 +382,13 @@ if (-not $UnitOnly) {
         '.gitlab-ci.yml'        = "test:`n  script: echo hi`n"
         'web/package.json'      = "{}`n"
         '.nvmrc'                = "v22`n"
-    } 'https://gitlab.com/example/plain.git'
+    } 'https://github.com/example/plain.git'
     Invoke-Git -C $plain tag v1.0.0
     $adopt = Join-Path $repoRoot 'Adopt-Project.ps1'
     [IO.File]::WriteAllText((Join-Path $plain '.git\hooks\pre-commit'), "#!/bin/sh`n")
     $out = & $adopt -Path $plain -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot' } -NoVerify 3>&1 | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $plain '.copier-answers.yml')
-    Check 'plain: answers recorded' ($answersText -match '(?m)^_commit: v0\.1\.0\s*$' -and $answersText -match '(?m)^stack: python\s*$' -and $answersText -match '(?m)^git_host: gitlab\s*$' -and $answersText -match '(?m)^project_name: plain\s*$') "$answersText | $out"
+    Check 'plain: answers recorded' ($answersText -match '(?m)^_commit: v0\.1\.0\s*$' -and $answersText -match '(?m)^stack: python\s*$' -and $answersText -match '(?m)^git_host: github\s*$' -and $answersText -match '(?m)^project_name: plain\s*$') "$answersText | $out"
     Check 'plain: a Python repository with a frontend answers uses_node and carries .nvmrc over to .node-version' ($answersText -match '(?m)^uses_node: true\s*$' -and (Get-Content -Raw -LiteralPath (Join-Path $plain '.node-version')) -eq "22`n" -and $out.Contains('Carried .node-version') -and (Test-Path -LiteralPath (Join-Path $plain '.nvmrc'))) "$answersText | $out"
     $subject = git -C $plain log -1 --format=%s
     $count = git -C $plain rev-list --count HEAD
@@ -372,7 +397,7 @@ if (-not $UnitOnly) {
     $plainSource = (git -C $plain show HEAD:.copier-answers.yml | Select-String -Pattern '^_src_path:\s*(.+?)\s*$' | Select-Object -First 1).Matches.Groups[1].Value.Trim("'", '"')
     Check 'plain: the adoption names the template by its folder and warns that the folder has no origin address' (($plainSource -eq $tpl) -and (($out -replace '\s+', ' ').Contains('which only this PC has')) -and $out.Contains($tpl)) "$plainSource | $out"
     Check 'plain: leaves core.hooksPath alone when the clone has hooks in .git/hooks, and warns' (-not (git -C $plain config core.hooksPath) -and $out.Contains('has hooks of its own in .git/hooks (pre-commit)')) $out
-    Check 'plain: a GitLab origin gets the GitLab baseline command, not the GitHub one' (-not $out.Contains('Set-RepositoryBaseline') -and $out -match "Set-GitLabBaseline\.ps1 -Path '[^']*plain'") $out
+    Check 'plain: a GitHub origin gets the command that protects the default branch' ($out.Contains('Set-RepositoryBaseline.ps1') -and $out.Contains('-Repo plain -Owner example')) $out
     Check 'plain: README.md untouched' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'README.md')) -eq "# Plain`n") ''
     Check 'plain: a Keep a Changelog file stays as it is, with no follow-up' ((Get-Content -Raw -LiteralPath (Join-Path $plain 'CHANGELOG.md')) -eq "# Changelog`n`n## [Unreleased]`n`n## [1.0.0] - 2026-01-01`n`n### Added`n`n- First.`n" -and -not $out.Contains('convert CHANGELOG.md') -and -not $out.Contains('backfill CHANGELOG.md')) $out
     Check 'plain: workflow files for claude, copilot only' ((Test-Path -LiteralPath (Join-Path $plain 'CLAUDE.md')) -and (Test-Path -LiteralPath (Join-Path $plain '.github\skills\plan-feature\SKILL.md')) -and -not (Test-Path -LiteralPath (Join-Path $plain '.github\agents\hybrid-planner.agent.md'))) ''
