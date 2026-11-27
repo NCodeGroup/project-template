@@ -201,6 +201,7 @@ $actionsAppId = 15368
 $excludedChecks = [ordered]@{
     'Code review' = "advice the person who merges waits for, as the template's ADR-0019 records"
     'CodeQL' = 'the code-scanning rule covers it'
+    'CodeQL languages' = 'the code-scanning rule covers it'
     'Analyze (*)' = 'the code-scanning rule covers it'
 }
 # The Actions event policy that lets the template's code-review workflows start on pull_request_target (Set-EventPolicy).
@@ -790,9 +791,17 @@ function Test-ReleaseAssetWorkflow([string]$Text) {
     [bool](((Get-WorkflowEvents $Text) -contains 'release') -or ($code -match 'gh\s+release\s+upload|upload-release-asset|uploadReleaseAsset|action-gh-release'))
 }
 
-# The workflow files of a repository's default branch that run on a release event or upload release assets, which an
-# immutable release refuses once it is published. Why is the reason a folder or file couldn't be read, or $null.
-function Find-ReleaseAssetWorkflows([string]$Name, [string]$Branch) {
+# A workflow runs CodeQL on pull requests when its top-level on: names pull_request and a line that isn't a comment uses
+# github/codeql-action/analyze, as the template's codeql.yml does: its results then meet the code-scanning rule on every
+# pull request, a fork's too (ADR-0042).
+function Test-CodeQLWorkflow([string]$Text) {
+    $code = $Text -replace '(?m)^\s*#.*$', ''
+    [bool](((Get-WorkflowEvents $Text) -contains 'pull_request') -and ($code -match '(?m)^\s*(-\s+)?uses:\s*[''"]?github/codeql-action/analyze@'))
+}
+
+# The workflow files of a repository's default branch whose text $Match accepts. Why is the reason a folder or file
+# couldn't be read, or $null.
+function Find-MatchingWorkflows([string]$Name, [string]$Branch, [scriptblock]$Match) {
     $list = Invoke-HostApi gh "repos/$Owner/$Name/contents/.github/workflows?ref=$Branch"
     if ($list.Status -eq 404) { return [pscustomobject]@{ Files = @(); Why = $null } }
     $items = $null
@@ -808,10 +817,17 @@ function Find-ReleaseAssetWorkflows([string]$Name, [string]$Branch) {
         if ($read.Status -ne 200) { return [pscustomobject]@{ Files = @(); Why = "couldn't read $($item.path): $(Get-FailureReason $read)" } }
         $text = Get-ContentText $read.Body
         if ($null -eq $text) { return [pscustomobject]@{ Files = @(); Why = "couldn't read $($item.path): the contents API sent no base64 UTF-8 text, such as for a file over 1 MB" } }
-        if (Test-ReleaseAssetWorkflow $text) { $files.Add($item.path) }
+        if (& $Match $text) { $files.Add($item.path) }
     }
     [pscustomobject]@{ Files = @($files); Why = $null }
 }
+
+# The workflow files of a repository's default branch that run on a release event or upload release assets, which an
+# immutable release refuses once it is published. Why is the reason a folder or file couldn't be read, or $null.
+function Find-ReleaseAssetWorkflows([string]$Name, [string]$Branch) { Find-MatchingWorkflows $Name $Branch { param($text) Test-ReleaseAssetWorkflow $text } }
+
+# The workflow files of the default branch that run CodeQL on pull requests (Test-CodeQLWorkflow).
+function Find-CodeQLWorkflows([string]$Name, [string]$Branch) { Find-MatchingWorkflows $Name $Branch { param($text) Test-CodeQLWorkflow $text } }
 
 # Immutable releases already on refuse the files a workflow attaches after a release is published. This script never
 # loosens a setting, so this only reads the workflows and prints a notice with the command that turns them off.
