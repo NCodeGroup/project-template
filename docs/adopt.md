@@ -404,7 +404,7 @@ See [Update a Project](../README.md#update-a-project) and [Stay Current](../READ
 
 ## 8. Checklist
 
-Audit an adopted repository with `.\tools\Get-AdoptionChecklist.ps1 -Path C:\src\<name>`, from a clone of NCodeGroup/project-template, on an up-to-date clone of the repository on its default branch. It changes nothing: it runs each row's check through the clone, `gh` or `glab`, and the `-WhatIf` runs the last column names, prints each row as `done`, `not done`, `unreadable` or `does not apply`, with the reason, then a count of each, and exits 1 when a row is not done. A row that only a web page shows, such as 4.1, is `unreadable` and names the page. The last column names the script whose `-WhatIf` run checks a row on its own.
+Audit an adopted repository with `.\tools\Get-AdoptionChecklist.ps1 -Path C:\src\<name>`, from a clone of NCodeGroup/project-template, on an up-to-date clone of the repository on its default branch. It changes nothing: it runs each row's check through the clone, `gh`, and the `-WhatIf` runs the last column names, prints each row as `done`, `not done`, `unreadable` or `does not apply`, with the reason, then a count of each, and exits 1 when a row is not done. A row that only a web page shows, such as 4.1, is `unreadable` and names the page. The last column names the script whose `-WhatIf` run checks a row on its own.
 
 | Step | Applies to | Shows it is done | Checked by a script |
 | --- | --- | --- | --- |
@@ -414,18 +414,17 @@ Audit an adopted repository with `.\tools\Get-AdoptionChecklist.ps1 -Path C:\src
 | [1.1](#11-a-new-project) | every project | `Get-Content .template-version` prints the version; the repository exists on the host | No |
 | [1.2](#12-an-existing-repository) | every project | `.copier-answers.yml` exists; the last commit is `Adopt project-template <version>` | No |
 | [1.3](#13-nodejs-nvs-and-the-prelude) | Node.js | `./.template/Use-Node.ps1; node --version` prints the `.node-version` major | No |
-| [1.4](#14-first-push-and-first-pull-request) | every project | `gh pr checks <number>` shows every check passed; on GitLab, `glab ci status` shows the merge request's pipeline passed | No |
+| [1.4](#14-first-push-and-first-pull-request) | every project | `gh pr checks <number>` shows every check passed | No |
 | [2.1](#21-run-the-baseline) | GitHub | `-WhatIf` prints no `would set` line | `Set-RepositoryBaseline.ps1 -WhatIf` |
 | [2.2](#22-when-an-approval-is-required) | GitHub | the branch rule's `required_approving_review_count` is `1` where an approval is required and `0` elsewhere | `Set-RepositoryBaseline.ps1 -WhatIf` |
 | [2.3](#23-codeqls-languages) | GitHub | `gh api repos/<owner>/<name>/code-scanning/default-setup` shows `configured` and a language | `Set-RepositoryBaseline.ps1 -WhatIf` |
 | [2.4](#24-scorecard) | GitHub, public repository | the `-WhatIf` run lists nothing to dismiss; the Scorecard viewer shows the score | `Dismiss-ScorecardAlerts.ps1 -WhatIf` |
-| [2.5](#25-on-gitlab) | GitLab | the `-WhatIf` run prints `already set` for every setting | `Set-GitLabBaseline.ps1 -WhatIf` |
 | [3.1](#31-how-a-release-happens) | GitHub | the "Tag and publish release" run passed; `gh release view <tag>` shows the release | No |
 | [3.2](#32-signed-tags) | GitHub, public repository | `gitsign verify-tag` accepts the tag | No |
 | [3.3](#33-immutable-releases) | GitHub | `gh api repos/<owner>/<name>/immutable-releases` shows `"enabled":true` where they apply; `gh release verify <tag>` | `Set-RepositoryBaseline.ps1 -WhatIf` |
 | [4.1](#41-trusted-publishing-on-nugetorg) | .NET library | nuget.org's Trusted Publishing page lists the policy | No |
 | [4.2](#42-the-nuget-environment-and-nuget_user) | .NET library | the `nuget` environment allows `branch main` and `tag v*`; `gh variable list` lists `NUGET_USER` | No |
-| [4.3](#43-the-first-package-validation-baseline) | .NET library, GitHub, GitLab | `git grep PackageValidationBaselineVersion` shows it; `./build/dod.ps1` passes | `.template/Update-Project.ps1`'s notes |
+| [4.3](#43-the-first-package-validation-baseline) | .NET library | `git grep PackageValidationBaselineVersion` shows it; `./build/dod.ps1` passes | `.template/Update-Project.ps1`'s notes |
 | [4.4](#44-publish-a-release) | .NET library | the run's summary says `Published <n> of <n> packages at <version> to nuget.org` | No |
 | [4.5](#45-re-publish-a-release-that-failed) | .NET library | as 4.4 | No |
 | [4.6](#46-raise-the-baseline-after-a-stable-release) | .NET library | the `baseline-<version>` pull request is merged and the issue is closed | No |
@@ -439,7 +438,7 @@ Audit an adopted repository with `.\tools\Get-AdoptionChecklist.ps1 -Path C:\src
 | [6.3](#63-the-documentation-site-and-github-pages) | where the project has one | `gh api repos/<owner>/<name>/pages` prints `workflow <domain> true` | No |
 | [6.4](#64-the-copilot-cloud-agents-environment) | GitHub, with Copilot | `gh run list --workflow copilot-setup-steps.yml --limit 1` shows it passed | No |
 | [6.5](#65-labels) | GitHub | `gh label list --repo <owner>/<name>` lists the labels | No |
-| [7.1](#71-template-updates) | every project | `gh issue list --label template-update --state open` lists nothing once current; on GitLab, `copier check-update` tells no newer version exists | `template-update.yml` |
+| [7.1](#71-template-updates) | every project | `gh issue list --label template-update --state open` lists nothing once current | `template-update.yml` |
 | [7.2](#72-dependabot) | GitHub | Insights > Dependency graph > Dependabot shows recent checks | No |
 | [7.3](#73-rotate-a-key) | GitHub, with NCode Review | the app's page lists only the new key; 5.3's check passes | No |
 

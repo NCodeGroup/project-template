@@ -337,15 +337,15 @@ try {
     $section = ($section -split '(?m)^## ', 2)[0]
     $documented = @([regex]::Matches($section, '(?m)^\| \[(\d\.\d)\]\(') | ForEach-Object { $_.Groups[1].Value })
     $listed = Get-Steps $gh
-    Check 'frame: the rows match docs/adopt.md''s checklist' ($documented.Count -eq 34 -and ($listed -join ',') -eq ($documented -join ',')) "documented=$($documented -join ',') listed=$($listed -join ',')"
+    Check 'frame: the rows match docs/adopt.md''s checklist' ($documented.Count -eq 33 -and ($listed -join ',') -eq ($documented -join ',')) "documented=$($documented -join ',') listed=$($listed -join ',')"
 
-    $expected = @($documented | Where-Object { $_ -notin '1.2', '2.5' })
-    Check 'frame: github applies every row but 1.2 and 2.5' ((Get-Applying $gh) -join ',' -eq ($expected -join ',')) "applies=$((Get-Applying $gh) -join ',') output=$($gh.Output)"
+    $expected = @($documented | Where-Object { $_ -notin '1.2' })
+    Check 'frame: github applies every row but 1.2' ((Get-Applying $gh) -join ',' -eq ($expected -join ',')) "applies=$((Get-Applying $gh) -join ',') output=$($gh.Output)"
 
     $expected = '0.1', '1.2', '1.4', '2.1', '2.2', '2.3', '6.1', '6.5', '7.1', '7.2'
     Check 'frame: private applies only 0.1, 1.2, 1.4, 2.1, 2.2, 2.3, 6.1, 6.5, 7.1 and 7.2' ((Get-Applying $pr) -join ',' -eq ($expected -join ',')) "applies=$((Get-Applying $pr) -join ',') output=$($pr.Output)"
 
-    Check 'frame: github ends with its count and exits 0' ($gh.ExitCode -eq 0 -and $gh.Output -match '(?m)^NCodeGroup/sample: \d+ done, 0 not done, \d+ unreadable, 2 do not apply\r?$') "exit=$($gh.ExitCode) output=$($gh.Output)"
+    Check 'frame: github ends with its count and exits 0' ($gh.ExitCode -eq 0 -and $gh.Output -match '(?m)^NCodeGroup/sample: \d+ done, 0 not done, \d+ unreadable, 1 do not apply\r?$') "exit=$($gh.ExitCode) output=$($gh.Output)"
 
     $bare = Invoke-Checklist (Join-Path $Work 'bare') $calls
     Check 'frame: a folder without .copier-answers.yml fails' ($bare.ExitCode -eq 1 -and $bare.Output -match [regex]::Escape('.copier-answers.yml')) "exit=$($bare.ExitCode) output=$($bare.Output)"
@@ -450,7 +450,7 @@ try {
     }
     Check 'row 4.1 unreadable: github names the trusted publishing page' ($gh.Output -match '(?m)^4\.1 .+nuget\.org/account/trustedpublishing') "output=$($gh.Output)"
 
-    # The remaining rows: 2.5, 6.2, 6.3, 6.5, 7.2, 7.3
+    # The remaining rows: 6.2, 6.3, 6.5, 7.2, 7.3
     foreach ($row in @(
             @('6.2', 'unreadable', 'github', $gh), @('6.3', 'done', 'github', $gh), @('6.5', 'done', 'github', $gh),
             @('7.2', 'unreadable', 'github', $gh), @('7.3', 'unreadable', 'github', $gh),
@@ -458,7 +458,7 @@ try {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
-    Check 'row 7.3 every row checked: github' ($gh.Output -notmatch 'no check for this row yet' -and $gh.Output -match '(?m)^NCodeGroup/sample: 28 done, 0 not done, 4 unreadable, 2 do not apply\r?$') "output=$($gh.Output)"
+    Check 'row 7.3 every row checked: github' ($gh.Output -notmatch 'no check for this row yet' -and $gh.Output -match '(?m)^NCodeGroup/sample: 28 done, 0 not done, 4 unreadable, 1 do not apply\r?$') "output=$($gh.Output)"
     # Values left blank, and an empty workflow file: 3.1, 5.1, 6.2
     $blank = Invoke-Checklist (Join-Path $Work 'blank') $calls
     Check 'row 3.1 does not apply: blank reads release: none' ($blank.Output -match '(?m)^3\.1 .+: does not apply \(AGENTS\.md.s Landing says release: none\)') "output=$($blank.Output)"

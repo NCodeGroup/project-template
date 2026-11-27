@@ -5,8 +5,8 @@
 
 .DESCRIPTION
     The script audits a clone of an adopted repository, on its default branch, against section 8 of docs/adopt.md. It
-    reads the clone's files, commits and tags, and the repository's host (GitHub through gh, GitLab through glab); the
-    host, owner and name come from the clone's origin remote. A clone without .copier-answers.yml isn't adopted, and
+    reads the clone's files, commits and tags, and the repository on GitHub through gh; the owner and name come from
+    the clone's origin remote. A clone without .copier-answers.yml isn't adopted, and
     the script throws.
 
     Each row prints as one line, `<step> <title>: <status>` or `<step> <title>: <status> (<detail>)`, in the table's
@@ -21,7 +21,7 @@
     Where a row's check names something a script can't run as written, the script runs an equivalent read: the
     latest run or merged pull request, the release's assets, or the baseline script's -WhatIf output. Reads are cached,
     so each command runs once even when several rows use it. The script never writes: it runs the baseline and
-    Scorecard scripts only with -WhatIf, and calls gh, glab and git only to read.
+    Scorecard scripts only with -WhatIf, and calls gh and git only to read.
 
     The exit code is 1 when any row is not done, and 0 otherwise: an unreadable row doesn't fail the run. Run the
     script from a project-template clone, where the three scripts it runs with -WhatIf are.
@@ -30,7 +30,7 @@
     A clone of the adopted repository, on its default branch.
 
 .PARAMETER TimeoutSeconds
-    How long each command the script runs (gh, glab, git, gitsign, copier, node, or a sibling script) may take, in
+    How long each command the script runs (gh, git, gitsign, copier, node, or a sibling script) may take, in
     seconds; 300 by default. A command still running then is stopped, with every process it started, and its row is
     unreadable, "timed out after <n> s".
 
@@ -243,24 +243,16 @@ function Invoke-Sibling([string]$Script, [string[]]$Arguments) {
 # The GitHub repository, from gh api.
 function Get-Repo { Get-Cached 'repo' { Read-Gh @('api', "repos/$slug") } }
 
-# Facts about the repository, read once. The row checks read $hostName and $encoded, so they are script-scoped.
+# Facts about the repository, read once.
 $originRead = Invoke-Tool 'git' @('-C', $Path, 'remote', 'get-url', 'origin')
 if ($originRead.ExitCode) { throw "Couldn't read the origin remote of ${Path}: $($originRead.Error)" }
 $origin = $originRead.Out.Trim()
 if ($origin -notmatch '^(?:(?:https?|ssh)://)?(?:[^@/]+@)?(?<host>[\w.-]+\.[\w-]+)(?::[0-9]+)?[:/](?<path>[\w.-]+(?:/[\w.-]+?)+?)(?:\.git)?/?\z') {
     throw "Couldn't tell the repository from the origin remote of ${Path}: '$origin'."
 }
-$script:hostName = $Matches['host']
 $originPath = $Matches['path']
-$gitHost = if ((Get-Answer 'git_host') -eq 'gitlab') { 'gitlab' } else { 'github' }
-if ($gitHost -eq 'github') {
-    $owner, $name = $originPath -split '/'
-    $slug = "$owner/$name"
-}
-else {
-    $project = $originPath
-    $script:encoded = [uri]::EscapeDataString($project)
-}
+$owner, $name = $originPath -split '/'
+$slug = "$owner/$name"
 $release = if ((Get-FileText 'AGENTS.md') -match '(?m)^- release:[ \t]*(\S+)') { $Matches[1] } else { 'none' }
 $rootSubject = @(Get-GitLines @('log', '--max-parents=0', '--format=%s'))[-1]
 
@@ -271,7 +263,7 @@ $rows = @(
     @('1.1', 'A New Project'), @('1.2', 'An Existing Repository'), @('1.3', 'Node.js: nvs and the Prelude'),
     @('1.4', 'First Push and First Pull Request'),
     @('2.1', 'Run the Baseline'), @('2.2', 'When an Approval Is Required'), @('2.3', "CodeQL's Languages"),
-    @('2.4', 'Scorecard'), @('2.5', 'On GitLab'),
+    @('2.4', 'Scorecard'),
     @('3.1', 'How a Release Happens'), @('3.2', 'Signed Tags'), @('3.3', 'Immutable Releases'),
     @('4.1', 'Trusted Publishing on nuget.org'), @('4.2', 'The nuget Environment and NUGET_USER'),
     @('4.3', 'The First Package Validation Baseline'), @('4.4', 'Publish a Release'),
@@ -288,10 +280,6 @@ $rows = @(
 # The reason a row's Applies to doesn't hold for this repository; $null when it holds.
 function Get-NotApplying([string]$Step) {
     $section = $Step.Split('.')[0]
-    if ($gitHost -eq 'gitlab') {
-        if ($Step -notin '0.1', '1.1', '1.2', '1.3', '1.4', '2.5', '4.3', '7.1') { return 'GitHub only' }
-    }
-    elseif ($Step -eq '2.5') { return 'GitLab only' }
     if (($Step -in '0.2', '0.3') -and (Get-Repo).owner.type -ne 'Organization') {
         return 'the owner is not an organization'
     }
@@ -427,11 +415,9 @@ $checks = @{}
 
 $checks['0.1'] = {
     $parts = @()
-    $auth = if ($gitHost -eq 'gitlab') { Invoke-Tool 'glab' @('auth', 'status', '--hostname', $hostName) }
-    else { Invoke-Tool 'gh' @('auth', 'status') }
+    $auth = Invoke-Tool 'gh' @('auth', 'status')
     if ($auth.ExitCode) {
-        $tool = if ($gitHost -eq 'gitlab') { 'glab' } else { 'gh' }
-        $why = if ($auth.ExitCode -eq -1) { $auth.Error } else { "$tool isn't signed in" }
+        $why = if ($auth.ExitCode -eq -1) { $auth.Error } else { "gh isn't signed in" }
         $parts += New-Result 'not done' $why
     }
     $copier = Invoke-Tool 'copier' @('--version')
@@ -447,14 +433,8 @@ $checks['0.1'] = {
 $checks['1.1'] = {
     $version = "$(Get-FileText '.template-version')".Trim()
     if (-not $version) { return New-Result 'not done' 'no .template-version' }
-    if ($gitHost -eq 'gitlab') {
-        $r = Invoke-Tool 'glab' @('api', '--hostname', $hostName, "projects/$encoded")
-        if ($r.ExitCode) { throw "couldn't read ${project}: $($r.Error)" }
-    }
-    else {
-        # Get-Repo throws when gh can't read the repository, which makes the row unreadable.
-        $null = Get-Repo
-    }
+    # Get-Repo throws when gh can't read the repository, which makes the row unreadable.
+    $null = Get-Repo
     New-Result 'done' "template $version"
 }
 
@@ -662,20 +642,6 @@ $checks['7.1'] = {
 }
 
 $checks['1.4'] = {
-    if ($gitHost -eq 'gitlab') {
-        $list = Invoke-Tool 'glab' @('api', '--hostname', $hostName,
-            "projects/$encoded/merge_requests?state=merged&order_by=updated_at&per_page=1")
-        if ($list.ExitCode) { throw "glab api merge_requests failed: $($list.Error)" }
-        $merged = if ($list.Out.Trim()) { @($list.Out | ConvertFrom-Json) } else { @() }
-        if (-not $merged.Count) { return New-Result 'not done' 'no merged merge request yet' }
-        $iid = $merged[0].iid
-        $r = Invoke-Tool 'glab' @('api', '--hostname', $hostName, "projects/$encoded/merge_requests/$iid")
-        if ($r.ExitCode) { throw "glab api merge_requests/$iid failed: $($r.Error)" }
-        $status = ($r.Out | ConvertFrom-Json).head_pipeline.status
-        if ($status -eq 'success') { return New-Result 'done' "!$iid's pipeline passed" }
-        $shown = if ($status) { $status } else { 'none' }
-        return New-Result 'not done' "!$iid's pipeline: $shown"
-    }
     $pull = @(Get-MergedPulls) | Select-Object -First 1
     if (-not $pull) { return New-Result 'not done' 'no merged pull request yet' }
     $number = $pull.number
@@ -799,20 +765,6 @@ $checks['4.7'] = {
     New-Result 'done' "$tag has its packages, provenance and SBOM"
 }
 
-$checks['2.5'] = {
-    $extra = @()
-    if ((Get-Answer 'nuget_package') -eq 'true') { $extra += '-BaselineToken' }
-    $run = Invoke-Sibling 'Set-GitLabBaseline.ps1' (@('-Path', $Path, '-WhatIf') + $extra)
-    if ($run.ExitCode) {
-        return New-Result 'unreadable' "the -WhatIf run exited $($run.ExitCode): $(Get-LastLine $run)"
-    }
-    $set = @($run.Lines | Where-Object { $_ -match 'would set' })
-    if ($set.Count) { return New-Result 'not done' "$($set.Count) setting(s) to set: $($set -join '; ')" }
-    $unavailable = @($run.Lines | Where-Object { $_ -match 'not available' })
-    if ($unavailable.Count) { return New-Result 'unreadable' ($unavailable -join '; ') }
-    New-Result 'done'
-}
-
 $checks['6.2'] = {
     New-Result 'unreadable' "only https://app.codecov.io/gh/$slug shows the latest commit"
 }
@@ -862,8 +814,7 @@ foreach ($row in $rows) {
     if ($result.Detail) { $line += " ($($result.Detail))" }
     Write-Host $line
 }
-$label = if ($gitHost -eq 'gitlab') { $project } else { $slug }
-Write-Host ("${label}: $($counts['done']) done, $($counts['not done']) not done, " +
+Write-Host ("${slug}: $($counts['done']) done, $($counts['not done']) not done, " +
     "$($counts['unreadable']) unreadable, $($counts['does not apply']) do not apply")
 if ($counts['not done']) { exit 1 }
 exit 0
