@@ -20,7 +20,10 @@
     checks that it starts publish.yml once, on
     the tag, after publishing the release when publish.yml has a workflow_dispatch trigger, starts nothing on a second
     run or without a publish.yml, and fails naming the trigger when publish.yml has none, and fails naming publish.yml
-    and the tag when starting it fails. Also checks that with pre-release: untracked the release notes stop at the link
+    and the tag when starting it fails. Also checks that with a nuget_publisher answer in .copier-answers.yml it starts
+    the workflow the answer names instead of publish.yml, with the tag as input only when its workflow_dispatch trigger
+    declares a tag input, and fails naming the workflow, the answer and the trigger when it has none. Also checks that
+    with pre-release: untracked the release notes stop at the link
     reference definitions and at the next ## heading. Also checks that release.yml runs the script on a push to main
     that changes CHANGELOG.md, with contents: write and the merged commit. Also checks that -Policy prints the release
     policy and does nothing else, and that tag-release.yml is named Tag and publish release, reads the policy in a
@@ -69,7 +72,7 @@ $standIn = Join-Path $temp 'gh.ps1'
 # printing gh's 404 message, or a 401 one when PUBLISH_RELEASE_TEST_LOOKUP_ERROR is set; `api
 # repos/{owner}/{repo}/releases -f tag_name=<tag> ... -F body=@<file>` copies the notes to it, `api
 # repos/{owner}/{repo}/commits/<sha>/pulls` prints pulls.json (or [], or a 500 when PUBLISH_RELEASE_TEST_PULLS_ERROR is set),
-# the publish.yml dispatch succeeds (or prints a 500 when PUBLISH_RELEASE_TEST_DISPATCH_ERROR is set), and every call is logged.
+# a workflow's dispatch succeeds (or prints a 500 when PUBLISH_RELEASE_TEST_DISPATCH_ERROR is set), and every call is logged.
 Set-Content -LiteralPath $standIn -Encoding utf8NoBOM -Value @'
 $releases = $env:PUBLISH_RELEASE_TEST_RELEASES
 Add-Content -LiteralPath (Join-Path $releases 'calls.log') -Value ($args -join ' ')
@@ -90,7 +93,7 @@ if ($args[0] -eq 'api' -and $args[1] -match '^repos/\{owner\}/\{repo\}/commits/[
     if (Test-Path -LiteralPath $pulls) { Get-Content -Raw -LiteralPath $pulls } else { '[]' }
     exit 0
 }
-if ($args[0] -eq 'api' -and $args[1] -eq 'repos/{owner}/{repo}/actions/workflows/publish.yml/dispatches') {
+if ($args[0] -eq 'api' -and $args[1] -match '^repos/\{owner\}/\{repo\}/actions/workflows/[^/]+/dispatches$') {
     if ($env:PUBLISH_RELEASE_TEST_DISPATCH_ERROR) { 'gh: Server Error (HTTP 500)'; exit 1 }
     exit 0
 }
@@ -434,6 +437,24 @@ try {
     Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
     $run = Invoke-Publish $work
     Check 'publish.yml without workflow_dispatch: it publishes the release, then fails and names the trigger' ($run.Code -ne 0 -and (Test-Path -LiteralPath (Join-Path $releases 'v0.2.0')) -and $run.Output -match 'workflow_dispatch' -and -not (@(Get-Calls) -match 'dispatches')) ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
+
+    $publisherAnswers = "nuget_publisher: .github/workflows/main.yml`n"
+    $mainNoInputs = "name: Release`non:`n  release:`n    types: [published]`n  workflow_dispatch:`njobs: {}`n"
+
+    $work = New-Clone 'publisher-dispatch' '- release: tag+release' -Files @{ '.copier-answers.yml' = $publisherAnswers; '.github/workflows/main.yml' = $publishWith }
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $run = Invoke-Publish $work
+    Check 'nuget_publisher with a tag input: it starts the workflow the answer names once, on the tag, with the tag as input, and not publish.yml' ($run.Code -eq 0 -and (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/actions/workflows/main\.yml/dispatches -f ref=v0\.2\.0 -f inputs\[tag\]=v0\.2\.0 --silent$').Count -eq 1 -and -not (@(Get-Calls) -match 'publish\.yml/dispatches')) ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
+
+    $work = New-Clone 'publisher-no-inputs' '- release: tag+release' -Files @{ '.copier-answers.yml' = $publisherAnswers; '.github/workflows/main.yml' = $mainNoInputs }
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $run = Invoke-Publish $work
+    Check 'nuget_publisher without a tag input: it starts the workflow once, on the tag, with no input' ($run.Code -eq 0 -and (@(Get-Calls) -match '^api repos/\{owner\}/\{repo\}/actions/workflows/main\.yml/dispatches -f ref=v0\.2\.0 --silent$').Count -eq 1) ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
+
+    $work = New-Clone 'publisher-no-dispatch' '- release: tag+release' -Files @{ '.copier-answers.yml' = $publisherAnswers; '.github/workflows/main.yml' = $publishWithout }
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $run = Invoke-Publish $work
+    Check 'nuget_publisher without workflow_dispatch: it publishes the release, then fails and names the workflow, the answer and the trigger' ($run.Code -ne 0 -and (Test-Path -LiteralPath (Join-Path $releases 'v0.2.0')) -and $run.Output -match 'main\.yml' -and $run.Output -match 'nuget_publisher' -and $run.Output -match 'workflow_dispatch' -and -not (@(Get-Calls) -match 'dispatches')) ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
 
     $notesChangelogBase = "# Changelog`n`n## [Unreleased]`n`n### Added`n`n- The product does a thing.`n`n"
     $stopCases = @(
