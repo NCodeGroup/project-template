@@ -1,6 +1,6 @@
 # 0201. Biome lints and formats JavaScript and TypeScript
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0040)
 - **Date:** 2026-11-16
 
 ## Context

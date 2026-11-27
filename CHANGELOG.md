@@ -6,11 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.117.1] - 2026-11-27
+## [0.117.2] - 2026-11-27
 
 ### Changed
 
 - The `code-review.yml` a GitHub project with NCode Review gets, and this repository's own, pin `NCodeGroup/code-review` to the full commit SHA of v1.6.0 in both jobs, with the tag in a comment (they pinned v1.5.0). With v1.5.1's fix, reviewers see the decision records in `docs/decisions/project-template/` under ids such as `project-template ADR-0150`. With v1.6.0's learned guidance, reviewers leave template-owned and Copier-generated files to the template and check `.copier-answers.yml` and `AGENTS.md` before they call an edit a template-ownership violation. The action's inputs are unchanged, so a project's own `code-review.yml` needs only the new pin, which Dependabot's `ncode-review` group proposes. v1.6.0 is pinned before it is three days old by [ADR-0009](template/docs/decisions/project-template/0009-new-dependency-versions-wait-a-cooldown.md)'s commented exception, which goes once 2026-11-30 has passed.
+
+## [0.117.1] - 2026-11-27
+
+### Changed
+
+- ADR-0040 records that the template serves NCodeGroup's repositories on GitHub only: it supports no other host, a GitLab template, if one is ever needed, is a separate template there, and the stories of [#527](https://github.com/NCodeGroup/project-template/issues/527) remove GitLab support without a deprecation phase, since every project made from the template answers `git_host: github`. It supersedes record 0029, which only a GitLab project gets, and amends ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0013, ADR-0014, ADR-0016, ADR-0023 and ADR-0026 and, where a project has them, records 0027, 0135, 0150, 0154, 0200 and 0201, whose GitLab passages don't apply; their status lines and index rows name it. `README.md`, `USAGE.md`, `AGENTS.md` and `CONTRIBUTING.md` say the template is for NCodeGroup's repositories on GitHub ([#528](https://github.com/NCodeGroup/project-template/issues/528), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
+
+### Fixed
+
+- Each amendment between the template's decision records shows on both sides: the status lines of ADR-0014, ADR-0016 and, in a .NET library, record 0135 name every record that amends them, each record's index row names the same records as its status line, and the rows of 0022, 0034 and 0138 name the records they amend; `tests/Test-Template.ps1` checks it, and each supersession, in every rendered project ([#528](https://github.com/NCodeGroup/project-template/issues/528)).
 
 ## [0.117.0] - 2026-11-27
 
@@ -2005,7 +2015,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.117.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.117.2...HEAD
+[0.117.2]: https://github.com/NCodeGroup/project-template/compare/v0.117.1...v0.117.2
 [0.117.1]: https://github.com/NCodeGroup/project-template/compare/v0.117.0...v0.117.1
 [0.117.0]: https://github.com/NCodeGroup/project-template/compare/v0.116.0...v0.117.0
 [0.116.0]: https://github.com/NCodeGroup/project-template/compare/v0.115.4...v0.116.0
