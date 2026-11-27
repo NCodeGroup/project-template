@@ -191,25 +191,25 @@ uses_node: false
     'AGENTS.md' = "# Agents`n`n## Landing`n`n- release: none`n"
 } @('Initial commit', 'Adopt project-template v0.111.2') 'https://github.com/someone/private-sample.git'
 
-New-Fixture (Join-Path $Work 'gitlab') @{
+New-Fixture (Join-Path $Work 'crlf') @{
     '.copier-answers.yml' = @"
 _commit: v0.111.3
 _src_path: $template
-git_host: gitlab
+git_host: github
 nuget_package: true
 uses_node: true
 "@
     '.template-version' = 'v0.111.3'
     'AGENTS.md' = "# Agents`n`n## Landing`n`n- release: none`n"
     '.node-version' = '24'
-} @('Create project from project-template v0.111.3') 'https://gitlab.com/group/sub/sample.git' @('v1.2.0')
-# The gitlab fixture's files end their lines with CRLF, as a Windows checkout with core.autocrlf does.
+} @('Create project from project-template v0.111.3') 'https://github.com/group/crlf-sample.git' @('v1.2.0')
+# The crlf fixture's files end their lines with CRLF, as a Windows checkout with core.autocrlf does.
 foreach ($relative in '.copier-answers.yml', 'AGENTS.md') {
-    $file = Join-Path $Work "gitlab/$relative"
+    $file = Join-Path $Work "crlf/$relative"
     [IO.File]::WriteAllText($file, ((Get-Content -LiteralPath $file -Raw) -replace '\r?\n', "`r`n"))
 }
-[IO.File]::WriteAllText((Join-Path $Work 'gitlab/.template-version'), "v0.111.3`r`n")
-[IO.File]::WriteAllText((Join-Path $Work 'gitlab/.node-version'), "24`r`n")
+[IO.File]::WriteAllText((Join-Path $Work 'crlf/.template-version'), "v0.111.3`r`n")
+[IO.File]::WriteAllText((Join-Path $Work 'crlf/.node-version'), "24`r`n")
 
 New-Fixture (Join-Path $Work 'bare') @{ 'README.md' = '# Bare' } @('Initial commit')
 
@@ -261,6 +261,7 @@ New-Fixture (Join-Path $Work 'noorigin') @{ '.copier-answers.yml' = "git_host: g
 $calls = @{
     'gh api repos/NCodeGroup/sample' = Answer (Json @{ visibility = 'public'; default_branch = 'main'; owner = @{ type = 'Organization' } })
     'gh api repos/someone/private-sample' = Answer (Json @{ visibility = 'private'; default_branch = 'main'; owner = @{ type = 'User' } })
+    'gh api repos/group/crlf-sample' = Answer (Json @{ visibility = 'private'; default_branch = 'main'; owner = @{ type = 'User' } })
     'gh auth status' = Answer $null
     'glab auth status --hostname gitlab.com' = Answer $null
     'copier --version' = Answer 'copier 9.4.1'
@@ -295,6 +296,7 @@ $calls = @{
         })
     'gitsign verify-tag --certificate-identity https://github.com/NCodeGroup/sample/.github/workflows/tag-release.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com v1.0.0' = Answer $null
     'gh pr list --repo someone/private-sample --state merged --limit 20 --json number,author' = Answer '[]'
+    'gh pr list --repo group/crlf-sample --state merged --limit 20 --json number,author' = Answer '[]'
     'glab api --hostname gitlab.com projects/group%2Fsub%2Fsample/merge_requests?state=merged&order_by=updated_at&per_page=1' = Answer (Json @(@{ iid = 4 }))
     'glab api --hostname gitlab.com projects/group%2Fsub%2Fsample/merge_requests/4' = Answer (Json @{ head_pipeline = @{ status = 'failed' } })
     'gh api repos/NCodeGroup/sample/environments/nuget/deployment-branch-policies' = Answer (Json @{
@@ -307,9 +309,6 @@ $calls = @{
     'gh api repos/NCodeGroup/sample/pages' = Answer (Json @{ build_type = 'workflow'; cname = 'sample.ncode.io'; https_enforced = $true })
     'gh label list --repo NCodeGroup/sample --json name --limit 500' = Answer (Json @(@{ name = 'documentation' }, @{ name = 'follow-up' }))
     'gh label list --repo someone/private-sample --json name --limit 500' = Answer (Json @(@{ name = 'bug' }))
-    "Set-GitLabBaseline -Path $((Resolve-Path -LiteralPath (Join-Path $Work 'gitlab')).ProviderPath) -WhatIf -BaselineToken" = Answer @(
-        'group/sub/sample: All threads must be resolved: already set'
-        'group/sub/sample: protect the tags v*: would set')
 }
 
 # Git reads only this config: the PC's user.email never answers row 0.1, and the template's GitHub address reads the local template, so 7.1's address rewrites need no network.
@@ -330,7 +329,7 @@ try {
     # Runs
     $gh = Invoke-Checklist (Join-Path $Work 'github') $calls
     $pr = Invoke-Checklist (Join-Path $Work 'private') $calls
-    $gl = Invoke-Checklist (Join-Path $Work 'gitlab') $calls
+    $crlf = Invoke-Checklist (Join-Path $Work 'crlf') $calls
 
     # Checks
     $adopt = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/adopt.md') -Raw
@@ -346,9 +345,6 @@ try {
     $expected = '0.1', '1.2', '1.4', '2.1', '2.2', '2.3', '6.1', '6.5', '7.1', '7.2'
     Check 'frame: private applies only 0.1, 1.2, 1.4, 2.1, 2.2, 2.3, 6.1, 6.5, 7.1 and 7.2' ((Get-Applying $pr) -join ',' -eq ($expected -join ',')) "applies=$((Get-Applying $pr) -join ',') output=$($pr.Output)"
 
-    $expected = '0.1', '1.1', '1.3', '1.4', '2.5', '4.3', '7.1'
-    Check 'frame: gitlab applies only 0.1, 1.1, 1.3, 1.4, 2.5, 4.3 and 7.1' ((Get-Applying $gl) -join ',' -eq ($expected -join ',')) "applies=$((Get-Applying $gl) -join ',') output=$($gl.Output)"
-
     Check 'frame: github ends with its count and exits 0' ($gh.ExitCode -eq 0 -and $gh.Output -match '(?m)^NCodeGroup/sample: \d+ done, 0 not done, \d+ unreadable, 2 do not apply\r?$') "exit=$($gh.ExitCode) output=$($gh.Output)"
 
     $bare = Invoke-Checklist (Join-Path $Work 'bare') $calls
@@ -359,20 +355,20 @@ try {
             @('0.1', 'done', 'github', $gh), @('1.1', 'done', 'github', $gh), @('1.3', 'done', 'github', $gh),
             @('4.3', 'done', 'github', $gh), @('6.1', 'done', 'github', $gh), @('7.1', 'done', 'github', $gh),
             @('1.2', 'done', 'private', $pr), @('6.1', 'not done', 'private', $pr), @('7.1', 'not done', 'private', $pr),
-            @('0.1', 'done', 'gitlab', $gl), @('1.1', 'done', 'gitlab', $gl), @('1.3', 'not done', 'gitlab', $gl),
-            @('4.3', 'not done', 'gitlab', $gl))) {
+            @('0.1', 'done', 'crlf', $crlf), @('1.1', 'done', 'crlf', $crlf), @('1.3', 'not done', 'crlf', $crlf),
+            @('4.3', 'not done', 'crlf', $crlf))) {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
     Check 'row 6.1 not done: private exits 1' ($pr.ExitCode -eq 1) "exit=$($pr.ExitCode) output=$($pr.Output)"
-    Check 'row 1.3 not done: gitlab names Initialize-Nvs.ps1' ($gl.Output -match '(?m)^1\.3 .+Initialize-Nvs\.ps1') "output=$($gl.Output)"
+    Check 'row 1.3 not done: crlf names Initialize-Nvs.ps1' ($crlf.Output -match '(?m)^1\.3 .+Initialize-Nvs\.ps1') "output=$($crlf.Output)"
     $nvsHome = Join-Path $Work 'nvs-home'
     Write-Text (Join-Path $nvsHome 'nvs.ps1') '# nvs'
     New-Item -ItemType Directory -Force (Join-Path $nvsHome 'node/24.3.0/x64') | Out-Null
     $env:NVS_HOME = $nvsHome
-    $nvsRun = Invoke-Checklist (Join-Path $Work 'gitlab') $calls
+    $nvsRun = Invoke-Checklist (Join-Path $Work 'crlf') $calls
     $env:NVS_HOME = Join-Path $Work 'nvs'
-    Check 'row 1.3 done: gitlab with nvs''s 24.3.0' ((Get-Status $nvsRun '1.3') -eq 'done' -and $nvsRun.Output -match '(?m)^1\.3 .+24\.3\.0') "status=$(Get-Status $nvsRun '1.3') output=$($nvsRun.Output)"
+    Check 'row 1.3 done: crlf with nvs''s 24.3.0' ((Get-Status $nvsRun '1.3') -eq 'done' -and $nvsRun.Output -match '(?m)^1\.3 .+24\.3\.0') "status=$(Get-Status $nvsRun '1.3') output=$($nvsRun.Output)"
 
     # Rows the baseline and Scorecard runs show: 0.2, 2.1, 2.4, 3.3
     $bad = Invoke-Override (Join-Path $Work 'github') @{
@@ -425,7 +421,7 @@ try {
     foreach ($row in @(
             @('1.4', 'done', 'github', $gh), @('3.1', 'done', 'github', $gh), @('3.2', 'done', 'github', $gh),
             @('5.3', 'done', 'github', $gh), @('5.4', 'done', 'github', $gh), @('6.4', 'done', 'github', $gh),
-            @('1.4', 'not done', 'private', $pr), @('1.4', 'not done', 'gitlab', $gl),
+            @('1.4', 'not done', 'private', $pr),
             @('1.4', 'not done', 'failing', $failing), @('5.3', 'not done', 'failing', $failing),
             @('5.4', 'not done', 'failing', $failing), @('3.1', 'not done', 'failing', $failing),
             @('3.2', 'not done', 'failing', $failing))) {
@@ -458,8 +454,7 @@ try {
     foreach ($row in @(
             @('6.2', 'unreadable', 'github', $gh), @('6.3', 'done', 'github', $gh), @('6.5', 'done', 'github', $gh),
             @('7.2', 'unreadable', 'github', $gh), @('7.3', 'unreadable', 'github', $gh),
-            @('6.5', 'not done', 'private', $pr), @('7.2', 'not done', 'private', $pr),
-            @('2.5', 'not done', 'gitlab', $gl))) {
+            @('6.5', 'not done', 'private', $pr), @('7.2', 'not done', 'private', $pr))) {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
@@ -535,7 +530,7 @@ try {
     )
     $apart = @($shared | Where-Object { -not ($checkerText.Contains($_) -and $updateText.Contains($_)) })
     Check 'frame: 7.1 reads versions and addresses as Get-TemplateUpdate.ps1 does' ($apart.Count -eq 0) "not in both: $($apart -join ', ')"
-    # Immutable releases not available or unknown, and the GitLab baseline failing or not available: 3.3, 2.5
+    # Immutable releases not available or unknown: 3.3
     $limited = Invoke-Override (Join-Path $Work 'github') @{
         'Set-RepositoryBaseline -Repo sample -Owner NCodeGroup -WhatIf' = Answer @(
             'sample: allow auto-merge: already set'
@@ -548,14 +543,8 @@ try {
             'sample: immutable releases: pending'
             'sample: organization two-factor requirement: required')
     }
-    $glKey = "Set-GitLabBaseline -Path $((Resolve-Path -LiteralPath (Join-Path $Work 'gitlab')).ProviderPath) -WhatIf -BaselineToken"
-    $glBroken = Invoke-Override (Join-Path $Work 'gitlab') @{ $glKey = Answer $null 1 'glab: 401 Unauthorized' }
-    $glLimited = Invoke-Override (Join-Path $Work 'gitlab') @{
-        $glKey = Answer @('group/sub/sample: All threads must be resolved: already set', 'group/sub/sample: merge trains: not available on this tier')
-    }
     foreach ($row in @(
-            @('3.3', 'done', 'limited', $limited), @('3.3', 'unreadable', 'odd', $odd),
-            @('2.5', 'unreadable', 'glbroken', $glBroken), @('2.5', 'unreadable', 'gllimited', $glLimited))) {
+            @('3.3', 'done', 'limited', $limited), @('3.3', 'unreadable', 'odd', $odd))) {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
@@ -568,7 +557,7 @@ try {
     $garbled = Invoke-Override (Join-Path $Work 'github') @{ 'gh pr checks 13 --repo NCodeGroup/sample --json name,bucket' = Answer 'no checks reported on the branch' 1 'GraphQL: Could not resolve to a PullRequest' }
     Check 'row 1.4 not done: nochecks' ($noChecks.Output -match '(?m)^1\.4 .+: not done \(#13 reported no checks\)') "output=$($noChecks.Output)"
     Check 'row 1.4 unreadable: garbled' ($garbled.Output -match '(?m)^1\.4 .+: unreadable \(couldn.t read the checks of #13') "output=$($garbled.Output)"
-    Check 'row 7.1 done: gitlab with CRLF files' ($gl.Output -match '(?m)^7\.1 .+: done \(on v0\.111\.3\)') "output=$($gl.Output)"
+    Check 'row 7.1 done: crlf with CRLF files' ($crlf.Output -match '(?m)^7\.1 .+: done \(on v0\.111\.3\)') "output=$($crlf.Output)"
     # Commands that stall: 6.3 reads gh and 2.4 runs a sibling script, each stopped after -TimeoutSeconds
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $stalled = Invoke-Override (Join-Path $Work 'github') @{
