@@ -28,6 +28,8 @@ call with `-f`, `-F`, `--field`, `--raw-field` or `--input` and no method as the
 An optional graphql-refused.txt makes it refuse gh api graphql and the pr, issue, release and repo commands as a Claude Code cloud session's proxy does (logged as GRAPHQL), so a command must use the REST routes below.
 api repos/<owner>/<repo>/pulls/<number>, its /ccr/review_threads, /comments and /reviews (the last two paged by per_page and page) answer the pull request and its review threads, comments and reviews from prs.json, threads.json and reviews.json.
 api repos/<owner>/<repo>/issues/<number>/comments (GET paged, POST a body), pulls/<number>/comments/<id>/replies (POST, to a thread's first comment) save and answer comments and thread replies as the pr comment command and the GraphQL reply do; /ccr resolve, auto-merge and draft routes, and a PATCH of pulls/<number> under forbidden.txt's pr edit, are refused (FORBIDDEN).
+api repos/<owner>/<repo>/issues/<number> also gives an issue's REST id (900000 plus its number, unless its entry in issues.json has an id), its html_url, its type as type.name from the entry's type key (Epic, Feature, Bug or Task, else null), its parent_issue_url from its parent key, its sub_issues_summary, counted over the issues whose parent key is its number, and its issue_dependencies_summary, counted over its blocked_by key, a list of issue numbers; api repos/<owner>/<repo>/issues/<number>/sub_issues and its /dependencies/blocked_by (paged by per_page and page) list those issues, each with its id, number, title, state and html_url. api repos/<owner>/<repo> answers the repository fixture/app, as a command reads its full_name.
+An optional board.json holds the organization's one GitHub Project, {"owner", "number", "fields", "items", "moves"}, which the REST Projects API routes serve: api orgs/<owner>/projectsV2/<number>/fields answers its fields (a page after the first is empty); a POST of orgs/<owner>/projectsV2/<number>/items with -f type=Issue -f owner=fixture -f repo=app -F number=<an issue in issues.json> adds the issue's item, or answers the one it has; and -X PATCH of .../items/<item id> --input <file>, whose first fields entry names the Status field's id and one of its options' id as its value, sets the item's status to that option's name, appends {number, status} to moves and logs MOVE #<number> <status>. A call for another project, or without board.json, fails as not found (NOTFOUND); any other projectsV2 call, or an edit that names another field or option, is unsupported (UNSUPPORTED).
 #>
 $ErrorActionPreference = 'Stop'
 $script:CallArgs = $args
@@ -300,6 +302,22 @@ function Get-ApiMethod {
     return $method
 }
 
+# An issue of issues.json as GitHub's REST lists give it: its id is its entry's id, else 900000 plus its number, so a call
+# that passes a number where GitHub takes an id finds nothing.
+function Get-IssueEntry([string]$Number, $Issues) {
+    $issue = $Issues[$Number]
+    $id = if ($issue.ContainsKey('id')) { [long]$issue.id } else { 900000 + [long]$Number }
+    return @{ id = $id; number = [int]$Number; title = $issue.title; state = "$($issue.state)".ToLowerInvariant(); html_url = "https://github.com/fixture/app/issues/$Number" }
+}
+# The numbers of an issue's sub-issues: the issues of issues.json whose parent key is its number, lowest first.
+function Get-SubIssueNumbers([string]$Number, $Issues) {
+    return @(@($Issues.Keys) | Where-Object { "$($Issues[$_].parent)" -eq $Number } | Sort-Object { [int]$_ })
+}
+# The numbers of the issues an issue is blocked by: those of its blocked_by key that issues.json holds, in that order.
+function Get-BlockerNumbers([string]$Number, $Issues) {
+    return @(@($Issues[$Number].blocked_by) | Where-Object { $null -ne $_ -and $Issues.ContainsKey("$_") } | ForEach-Object { "$_" })
+}
+
 if ("$($args[0])" -eq '--version') { 'gh version 2.99.0 (stand-in)'; exit 0 }
 
 $forbiddenFile = Join-Path $hostDir 'forbidden.txt'
@@ -429,8 +447,86 @@ if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/issues/(\d+)$') {
     $issues = Read-Json 'issues.json' @{}
     if (-not $issues.ContainsKey($number)) { Stop-Call NOTFOUND "gh stand-in: no issue $number" }
     $issue = $issues[$number]
-    Write-Result @{ number = [int]$number; title = $issue.title; body = $issue.body; state = "$($issue.state)".ToLowerInvariant(); labels = $issue.labels }
+    $result = Get-IssueEntry $number $issues
+    $result.body = $issue.body
+    $result.labels = $issue.labels
+    $result.type = $(if ($issue.type) { @{ name = "$($issue.type)" } } else { $null })
+    $result.parent_issue_url = $(if ($issue.parent) { "https://api.github.com/repos/fixture/app/issues/$($issue.parent)" } else { $null })
+    $subs = @(Get-SubIssueNumbers $number $issues)
+    $done = @($subs | Where-Object { "$($issues[$_].state)" -ne 'OPEN' }).Count
+    $result.sub_issues_summary = @{ total = $subs.Count; completed = $done; percent_completed = $(if ($subs.Count) { [int](100 * $done / $subs.Count) } else { 0 }) }
+    $blockers = @(Get-BlockerNumbers $number $issues)
+    $blocking = @(@($issues.Keys) | Where-Object { @(Get-BlockerNumbers $_ $issues) -contains $number })
+    $result.issue_dependencies_summary = @{
+        blocked_by = @($blockers | Where-Object { "$($issues[$_].state)" -eq 'OPEN' }).Count; total_blocked_by = $blockers.Count
+        blocking = @($blocking | Where-Object { "$($issues[$_].state)" -eq 'OPEN' }).Count; total_blocking = $blocking.Count
+    }
+    Write-Result $result
     exit 0
+}
+if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/issues/(\d+)/(sub_issues|dependencies/blocked_by)(\?.*)?$') {
+    $number = $Matches[1]
+    $list = $Matches[2]
+    $issues = Read-Json 'issues.json' @{}
+    if (-not $issues.ContainsKey($number)) { Stop-Call NOTFOUND "gh stand-in: no issue $number" }
+    $found = $(if ($list -eq 'sub_issues') { @(Get-SubIssueNumbers $number $issues) } else { @(Get-BlockerNumbers $number $issues) })
+    Write-Result @(Get-Page @($found | ForEach-Object { Get-IssueEntry $_ $issues }))
+    exit 0
+}
+# The repository itself, as a command reads its owner and name with gh api repos/{owner}/{repo} --jq .full_name.
+$repoPath = @($args | Select-Object -Skip 1 | Where-Object { "$_" -match '^/?repos/[^/]+/[^/?]+$' }) | Select-Object -First 1
+if ("$($args[0])" -eq 'api' -and $repoPath -and (Get-ApiMethod) -eq 'GET') {
+    Write-Result @{ id = 700001; name = 'app'; full_name = 'fixture/app'; owner = @{ login = 'fixture'; type = 'Organization' }; html_url = 'https://github.com/fixture/app'; default_branch = 'main' }
+    exit 0
+}
+
+# The REST Projects API on host/board.json, the organization's one GitHub Project: its fields, an issue's item, and a move of
+# that item's Status, which board.json's moves and a MOVE line in calls.log record.
+$boardPath = @($args | Select-Object -Skip 1 | Where-Object { "$_" -match '^/?orgs/[^/]+/projectsV2/' }) | Select-Object -First 1
+if ("$($args[0])" -eq 'api' -and $boardPath) {
+    $path = "$boardPath".TrimStart('/')
+    $board = Read-Json 'board.json' $null
+    if (-not $board -or $path -notmatch "^orgs/$([regex]::Escape("$($board.owner)"))/projectsV2/$($board.number)/(fields|items)(?:/(\d+))?(?:\?.*)?$") { Stop-Call NOTFOUND "gh stand-in: no project for $path" }
+    $kind = $Matches[1]
+    $itemId = $Matches[2]
+    $method = Get-ApiMethod
+    if ($kind -eq 'fields' -and -not $itemId -and $method -eq 'GET') {
+        if ($path -match '[?&]page=(\d+)' -and [long]$Matches[1] -gt 1) { Write-Result @(); exit 0 }
+        Write-Result @($board.fields)
+        exit 0
+    }
+    $issues = Read-Json 'issues.json' @{}
+    $items = @($board.items | Where-Object { $_ })
+    if ($kind -eq 'items' -and -not $itemId -and $method -eq 'POST') {
+        $number = "$(Get-Field 'number')"
+        if ("$(Get-Field 'type')" -ne 'Issue' -or "$(Get-Field 'owner')" -ne 'fixture' -or "$(Get-Field 'repo')" -ne 'app' -or -not $issues.ContainsKey($number)) { Stop-Call UNSUPPORTED "gh stand-in: unsupported item: $($args -join ' ')" }
+        $item = $items | Where-Object { "$($_.number)" -eq $number } | Select-Object -First 1
+        if (-not $item) {
+            $item = @{ id = 5001 + $items.Count; number = [int]$number; status = $null }
+            $board.items = @($items) + @($item)
+            Write-Json 'board.json' $board
+        }
+        Write-Result @{ id = $item.id; node_id = "PVTI_$($item.id)"; content_type = 'Issue'; content = (Get-IssueEntry $number $issues); status = $item.status }
+        exit 0
+    }
+    if ($kind -eq 'items' -and $itemId -and $method -eq 'PATCH') {
+        $inputFile = Get-Option '--input'
+        $sent = $null
+        try { $sent = ConvertFrom-Json -InputObject (Get-Content -Raw -LiteralPath $inputFile) -AsHashtable } catch { Stop-Call UNSUPPORTED "gh stand-in: an item edit needs --input with a JSON file: $($args -join ' ')" }
+        $item = $items | Where-Object { "$($_.id)" -eq $itemId } | Select-Object -First 1
+        $status = @($board.fields | Where-Object { $_.name -eq 'Status' }) | Select-Object -First 1
+        $change = @($sent.fields) | Select-Object -First 1
+        $option = $(if ($status -and $change) { @($status.options | Where-Object { "$($_.id)" -eq "$($change.value)" }) | Select-Object -First 1 })
+        if (-not $item -or -not $option -or "$($change.id)" -ne "$($status.id)") { Stop-Call UNSUPPORTED "gh stand-in: unsupported item edit: $($args -join ' ')" }
+        $item.status = "$($option.name)"
+        $board.items = $items
+        $board.moves = @($board.moves | Where-Object { $_ }) + @(@{ number = $item.number; status = $item.status })
+        Write-Json 'board.json' $board
+        Add-StandInLog $callsLog "MOVE #$($item.number) $($item.status)"
+        Write-Result @{ id = $item.id; node_id = "PVTI_$($item.id)"; content_type = 'Issue'; status = $item.status }
+        exit 0
+    }
+    Stop-Call UNSUPPORTED "gh stand-in: unsupported call: $($args -join ' ')"
 }
 if ($restGet -and $apiPath -match '^repos/[^/]+/[^/]+/releases/tags/[^/]+$') {
     Stop-Call NOTFOUND 'gh stand-in: no release'
