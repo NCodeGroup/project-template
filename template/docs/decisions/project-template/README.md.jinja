@@ -63,6 +63,9 @@ never brings a number the project already uses
 {%- endif %}
 | [0037](0037-best-practices-reports-scorecard-and-answers-for-the-default-branch.md) | `/best-practices` reports the Scorecard checks under 10 with their actions, finds an existing registration by URL, and answers for the default branch's tip (amends {% if git_host == 'github' %}0020 and {% endif %}0025) |
 | [0038](0038-the-templates-scripts-carry-the-templates-copyright-and-license.md) | Every script the template owns, in `.template/`, `build/`, `.claude/hooks/` and `.githooks/`, carries the template's copyright line and `SPDX-License-Identifier: MIT`, which a project's header check leaves alone{% if stack != 'dotnet' %} (amends 0027){% endif %} |
+{%- if git_host == 'github' %}
+| [0039](0039-fork-pull-request-workflows-run-for-established-contributors.md) | The repository baseline and explicit organization policy require fork workflow approval only for contributors new to GitHub, preserving the stricter policy for projects that need it |
+{%- endif %}
 {%- if stack == 'dotnet' %}
 
 ## .NET

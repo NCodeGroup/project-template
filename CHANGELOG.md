@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-11-27
+
+### Added
+
+- `tools/Set-RepositoryBaseline.ps1` sets the repository's fork pull request workflow approval policy to `first_time_contributors_new_to_github`, so established GitHub contributors can get workflow feedback without waiting for approval; `-OrganizationPolicy` sets the organization default to the same policy. Both preserve the stricter `all_external_contributors` policy, which projects with self-hosted runners or secret-bearing `pull_request` workflows must retain; the automation does not inspect for those risks, and prints a notice saying so wherever it raises, or with `-WhatIf` would raise, a policy ([#518](https://github.com/NCodeGroup/project-template/issues/518), [ADR-0039](template/docs/decisions/project-template/0039-fork-pull-request-workflows-run-for-established-contributors.md)).
+
 ## [0.116.0] - 2026-11-27
 
 ### Added
