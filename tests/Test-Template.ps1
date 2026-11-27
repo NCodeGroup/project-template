@@ -317,6 +317,13 @@ foreach ($case in $cases) {
     Check "${name}: .copier-answers.yml records nuget_publisher only when it is answered, and never release_policy" ($answersText -notmatch '(?m)^release_policy:' -and (($answersText -match '(?m)^nuget_publisher: \.github/workflows/main\.yml\r?$') -eq [bool]$case.Data.nuget_publisher)) $answersText
     $startsWant = if ($case.Data.nuget_publisher) { 'for a .NET library starts `' + $case.Data.nuget_publisher + '`, the workflow that publishes its packages, through its `workflow_dispatch` trigger;' } else { 'for a .NET library starts `.github/workflows/publish.yml`;' }
     Check "${name}: AGENTS.md's Landing section says tag-release.yml starts the nuget_publisher workflow when it is answered, else publish.yml" ($agentsReleaseText.Contains($startsWant)) $startsWant
+    $rulesText = [IO.File]::ReadAllText((Join-Path $dest '.github\instructions\project-template.instructions.md'))
+    $releasesBullet = [regex]::Match($rulesText, '(?m)^- Releases: .*$').Value
+    $ownPublishing = [bool]$case.Data.nuget_publisher
+    $releasesOk = if ($case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true' -and $case.Host -eq 'github') {
+        $releasesBullet.Contains('With `release: tag+release` in `AGENTS.md`''s Landing section, `.github/workflows/tag-release.yml` tags each release and publishes its GitHub release as its pull request merges') -and ($releasesBullet.Contains('`nuget` environment') -ne $ownPublishing) -and ($rulesText.Contains('`.github/workflows/raise-baseline.yml`') -ne $ownPublishing) -and (-not $ownPublishing -or $releasesBullet.Contains('`' + $case.Data.nuget_publisher + '`, the project''s own workflow'))
+    } else { -not $releasesBullet -and -not $rulesText.Contains('raise-baseline.yml') }
+    Check "${name}: the template rules' Releases bullet says how a .NET library on GitHub publishes, naming its own publishing workflow when nuget_publisher is answered, and no other project has it" $releasesOk $releasesBullet
     if ($case.Data.nuget_publisher) {
         $ownPublisher = $case.Data.nuget_publisher
         $stalePhrases = 'publish.yml', 'trusted publishing', '`nuget` environment', 'provenance', 'raise-baseline.yml', 'intoto'

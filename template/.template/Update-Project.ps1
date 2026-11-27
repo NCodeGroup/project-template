@@ -261,7 +261,7 @@ function Get-PublisherDispatchNote {
 }
 
 # A .NET library on GitHub whose AGENTS.md says release: none or tag, or has no release line, publishes nothing as a release's pull request merges, though the template gives it tag+release and the workflows that publish on merge (the template's ADR-0016 and ADR-0137). AGENTS.md is the project's, so the note names the line to change and the update never changes it. Nothing while a workflow the nuget_publisher answer names doesn't exist or has no workflow_dispatch trigger, through which tag-release.yml would start it.
-# Adopt-Project.ps1 has a copy; tests/Test-UpdateNotes.ps1 keeps the copies equal.
+# The template's Adopt-Project.ps1 has a copy; tests/Test-UpdateNotes.ps1 keeps the copies equal.
 function Get-ReleasePolicyNote {
     if ((Get-Answer 'nuget_package') -ne 'true' -or (Get-Answer 'git_host') -ne 'github' -or -not (Test-Path -LiteralPath .github/workflows/tag-release.yml)) { return }
     $policy = Get-ReleasePolicyAnswer
