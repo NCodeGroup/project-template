@@ -23,6 +23,15 @@
       - switches CodeQL's default setup, when it read it as configured with a language to analyze, to the extended query
         suite, before it writes the ruleset, so a switch that fails leaves the repository for the next run to retry. The
         switch sends the query suite alone and names no language, so it never runs on a setup that analyzes none;
+      - where a .yml or .yaml file in the default branch's .github/workflows runs CodeQL on pull_request (its top-level
+        on: names pull_request and it uses github/codeql-action/analyze), as the template's codeql.yml does, counts that
+        workflow as CodeQL's setup: a ruleset it creates or rewrites gets the code-scanning rule whatever the default
+        setup says, and no suite switch. It turns CodeQL's default setup off, which analyzes no pull request from a fork
+        and makes GitHub refuse the workflow's results, before it writes the ruleset, so a refusal fails the repository
+        and changes nothing. On a run that leaves the ruleset alone it reports the change as set, already set, would set
+        or not available, with the languages the default setup analyzed, and goes on, and it prints neither the suite
+        notice nor the no-language warning (the template's ADR-0042). A refusal names the fix: an organization's
+        security configuration that sets code scanning is set to "Enabled with advanced setup allowed";
       - turns on "delete branch on merge";
       - adds a "Protect release tags" ruleset on the tags matching v* (refs/tags/v*): no deletion and no update, so a
         tag is never moved, with no bypass. A release tag names one published package set, so it never changes;
@@ -119,7 +128,7 @@
     -RequireChecks auto names them for you, for each repository: it reads the check runs on the head commit of the latest
     pull request merged into the default branch and requires the GitHub Actions jobs that a pull_request event ran there
     and that passed (a job that ran more than once counts by its latest run). It leaves out, and lists with the reason,
-    the review bot's advisory "Code review" and its pull_request_target job (the template's ADR-0019), CodeQL (the code-scanning rule covers it)
+    the review bot's advisory "Code review" and its pull_request_target job (the template's ADR-0019), CodeQL and its CodeQL languages job (the code-scanning rule covers them)
     and its Analyze jobs, a check another app reports, and any job that was skipped, neutral, failed or didn't finish,
     since a skipped required check counts as passing. A repository with no merged pull request, or none of whose checks
     qualify, is skipped with the reason and nothing changed. With -WhatIf it lists the checks and prints the command

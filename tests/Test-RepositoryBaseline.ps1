@@ -67,6 +67,10 @@
     assets, can't be read, or -SkipImmutableReleases is given; that a repository whose releases are already
     immutable gets a notice with the command that turns them off where a workflow needs them off;
     that -All skips archived repositories and forks;
+    that a workflow that runs CodeQL on pull requests gets the code-scanning rule and CodeQL's default setup turned
+    off before the ruleset is written, a refusal failing the repository with nothing changed, while a ruleset left
+    alone gets the turn-off reported as set, already set, would set or not available without failing the run, a
+    CodeQL workflow that runs only on push counts for nothing, and -RequireChecks auto leaves out CodeQL languages;
     and that bad parameters stop it; and that the approval policy for fork pull request workflows is set to
     first_time_contributors_new_to_github, on a repository and, with -OrganizationPolicy, on the organization, where
     first_time_contributors is raised with a PUT of that policy alone, shown by -WhatIf without a write, each with a
