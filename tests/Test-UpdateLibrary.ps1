@@ -23,10 +23,12 @@
                      so the update says release.yml has no workflow_dispatch trigger.
       headerless     A C# file without the header .editorconfig sets, and one with it. Turning csharp_format on with
                      -Data counts the first, names it, and not the second.
-      headerless-ordinary  The same two files; an ordinary update prints no header note.
+      headerless-ordinary  The same two files, and an AGENTS.md that says release: none; an ordinary update prints no
+                     header note, and names the change to - release: tag+release.
       with-trigger   The template's own publish.yml, with its workflow_dispatch trigger. The update adds tag-release.yml
                      and prints no workflow_dispatch warning, and none for the release follow-ups, which that
                      publish.yml calls. It keeps release-provenance.yml and records no nuget_publisher.
+                     Its AGENTS.md says release: tag+release, so it gets no release-line note.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -155,6 +157,11 @@ foreach ($fixture in $headerless, $plain) {
         if ($editorconfig -notmatch '(?m)^file_header_template\s*=\s*(.+?)\r?$') { throw "$fixture/.editorconfig has no file_header_template." }
         $header = (($Matches[1] -split '\\n') | ForEach-Object { "// $_" }) -join "`n"
         [IO.File]::WriteAllText((Join-Path $fixture 'src/Demo/Headed.cs'), "$header`nnamespace Demo;`n")
+        # headerless-ordinary's AGENTS.md says release: none, so its update names the change to tag+release.
+        if ($fixture -eq $plain) {
+            $agentsFile = Join-Path $fixture 'AGENTS.md'
+            [IO.File]::WriteAllText($agentsFile, ([IO.File]::ReadAllText($agentsFile) -replace '(?m)^- release: tag\+release(?=\r?$)', '- release: none'))
+        }
         Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
         if ($fixture -eq $headerless) {
             $on = Invoke-Update $headerless @{ csharp_format = 'true' }
@@ -163,6 +170,7 @@ foreach ($fixture in $headerless, $plain) {
         else {
             $ordinary = Invoke-Update $plain
             Check 'headerless-ordinary: an ordinary update prints no header note' ($ordinary.ExitCode -eq 0 -and -not $ordinary.Output.Contains('csharp_format is on')) $ordinary.Output
+            Check 'headerless-ordinary: with release: none, the update names the change to release: tag+release' ($ordinary.Output.Contains("AGENTS.md's Landing section says release: none,") -and $ordinary.Output.Contains("`n  - release: tag+release")) $ordinary.Output
         }
     }
     finally { Pop-Location }
@@ -182,6 +190,7 @@ try {
     Check 'with-trigger: the update adds version.json, has no PublicRelease warning, and names the file that references Nerdbank.GitVersioning' ($result.Output.Contains('Added version.json') -and $result.Output.Contains('Its version is 0.1.0') -and -not $result.Output.Contains('packs without -p:PublicRelease=true') -and $result.Output.Contains('These files reference Nerdbank.GitVersioning') -and $result.Output.Contains('which build/ProjectTemplate.props references too, as a library''s does once version.json exists') -and $result.Output.Contains('Directory.Build.props')) $result.Output
     Check 'with-trigger: the update says to delete the AssemblyVersion that Directory.Build.props sets' ($result.Output.Contains('Directory.Build.props sets AssemblyVersion') -and $result.Output.Contains('delete it from Directory.Build.props')) $result.Output
     Check 'with-trigger: a library that publishes through publish.yml keeps the release follow-ups and records no nuget_publisher' ((Test-Path -LiteralPath .github/workflows/release-provenance.yml) -and -not (Select-String -LiteralPath .copier-answers.yml -Pattern '^nuget_publisher:' -Quiet)) $result.Output
+    Check 'with-trigger: with release: tag+release, no release-line note' ($result.ExitCode -eq 0 -and -not $result.Output.Contains("AGENTS.md's Landing section says release:")) $result.Output
 }
 finally { Pop-Location }
 
