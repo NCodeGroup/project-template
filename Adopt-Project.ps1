@@ -455,8 +455,7 @@ try {
 
     # A GitHub repository's default branch should take changes only through pull requests. The baseline script changes the
     # repository's settings on GitHub, which an adoption that only commits locally shouldn't do on its own, so print it.
-    $origin = "$(git remote get-url origin 2>$null)"
-    if ($origin -match '^(?:https://github\.com/|git@github\.com:)([^/]+)/([^/]+?)(?:\.git)?/?$') {
+    if ($originUrl -match '^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/([^/]+?)(?:\.git)?/?$') {
         # The next -match overwrites $Matches.
         $owner, $repo = $Matches[1], $Matches[2]
         $ci = if (Test-Path -LiteralPath .github/workflows/ci.yml) { Get-Content -Raw -LiteralPath .github/workflows/ci.yml } else { '' }
