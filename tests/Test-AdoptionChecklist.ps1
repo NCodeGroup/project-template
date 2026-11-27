@@ -3,8 +3,8 @@
     Test that tools\Get-AdoptionChecklist.ps1 reports every row of docs/adopt.md's Checklist, and changes nothing.
 
 .DESCRIPTION
-    Runs the script against small git repositories, one adopted on GitHub, one private on GitHub and one on GitLab,
-    with stand-ins for gh, glab, copier, gitsign, node and the three sibling scripts it runs with -WhatIf. A stand-in
+    Runs the script against small git repositories, one adopted on GitHub, one private on GitHub and one whose files end their lines with CRLF,
+    with stand-ins for gh, copier, gitsign, node and the two sibling scripts it runs with -WhatIf. A stand-in
     answers by the exact command line (its base name, then its arguments joined by single spaces) from a JSON file the
     suite writes per run, and records every command line in a log. Checks the frame: that the rows match the
     Checklist table of docs/adopt.md, which rows apply to each repository, the summary line and the exit code, and that
@@ -42,7 +42,7 @@ $tools = Join-Path $Work 'tools'
 New-Item -ItemType Directory -Force $bin, $tools | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot 'tools/Get-AdoptionChecklist.ps1') -Destination $tools
 
-# The stand-in for gh, glab, copier, gitsign, node and the three sibling scripts. It answers by its command line (its
+# The stand-in for gh, copier, gitsign, node and the two sibling scripts. It answers by its command line (its
 # base name, then its arguments joined by single spaces) from the JSON at ADOPTION_CHECKLIST_DATA (each key: out, the
 # lines it prints; err, what it writes to the error stream; exit, its exit code; sleep, the seconds it waits before it
 # answers), and appends the line to the log at ADOPTION_CHECKLIST_LOG.
@@ -63,8 +63,8 @@ foreach ($line in @($answer.out)) { $line }
 if ($answer.err) { Write-Error -Message $answer.err -ErrorAction Continue }
 exit ([int]$answer.exit)
 '@
-foreach ($name in 'gh', 'glab', 'copier', 'gitsign', 'node') { Write-Text (Join-Path $bin "$name.ps1") $standIn }
-foreach ($name in 'Set-RepositoryBaseline', 'Dismiss-ScorecardAlerts', 'Set-GitLabBaseline') {
+foreach ($name in 'gh', 'copier', 'gitsign', 'node') { Write-Text (Join-Path $bin "$name.ps1") $standIn }
+foreach ($name in 'Set-RepositoryBaseline', 'Dismiss-ScorecardAlerts') {
     Write-Text (Join-Path $tools "$name.ps1") $standIn
 }
 
@@ -263,10 +263,8 @@ $calls = @{
     'gh api repos/someone/private-sample' = Answer (Json @{ visibility = 'private'; default_branch = 'main'; owner = @{ type = 'User' } })
     'gh api repos/group/crlf-sample' = Answer (Json @{ visibility = 'private'; default_branch = 'main'; owner = @{ type = 'User' } })
     'gh auth status' = Answer $null
-    'glab auth status --hostname gitlab.com' = Answer $null
     'copier --version' = Answer 'copier 9.4.1'
     'node --version' = Answer 'v26.1.0'
-    'glab api --hostname gitlab.com projects/group%2Fsub%2Fsample' = Answer '{}'
     'Set-RepositoryBaseline -Repo sample -Owner NCodeGroup -WhatIf' = Answer @(
         'sample: allow auto-merge: already set'
         'sample: immutable releases: already set'
@@ -297,8 +295,6 @@ $calls = @{
     'gitsign verify-tag --certificate-identity https://github.com/NCodeGroup/sample/.github/workflows/tag-release.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com v1.0.0' = Answer $null
     'gh pr list --repo someone/private-sample --state merged --limit 20 --json number,author' = Answer '[]'
     'gh pr list --repo group/crlf-sample --state merged --limit 20 --json number,author' = Answer '[]'
-    'glab api --hostname gitlab.com projects/group%2Fsub%2Fsample/merge_requests?state=merged&order_by=updated_at&per_page=1' = Answer (Json @(@{ iid = 4 }))
-    'glab api --hostname gitlab.com projects/group%2Fsub%2Fsample/merge_requests/4' = Answer (Json @{ head_pipeline = @{ status = 'failed' } })
     'gh api repos/NCodeGroup/sample/environments/nuget/deployment-branch-policies' = Answer (Json @{
             total_count = 2
             branch_policies = @(@{ name = 'main'; type = 'branch' }, @{ name = 'v*'; type = 'tag' })
@@ -323,8 +319,8 @@ $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
 $savedNvsHome = $env:NVS_HOME
 $env:NVS_HOME = Join-Path $Work 'nvs'
 try {
-    $stray = @('gh', 'glab', 'copier', 'gitsign', 'node' | Where-Object { $found = (Get-Command $_ -ErrorAction SilentlyContinue | Select-Object -First 1).Source; -not $found -or (Split-Path -Parent $found) -ne $bin })
-    Check 'stand-ins: gh, glab, copier, gitsign and node run from the suite bin' ($stray.Count -eq 0) "not from ${bin}: $($stray -join ', ')"
+    $stray = @('gh', 'copier', 'gitsign', 'node' | Where-Object { $found = (Get-Command $_ -ErrorAction SilentlyContinue | Select-Object -First 1).Source; -not $found -or (Split-Path -Parent $found) -ne $bin })
+    Check 'stand-ins: gh, copier, gitsign and node run from the suite bin' ($stray.Count -eq 0) "not from ${bin}: $($stray -join ', ')"
 
     # Runs
     $gh = Invoke-Checklist (Join-Path $Work 'github') $calls
@@ -587,12 +583,10 @@ try {
             'gh api [^ ]+'
             'gh auth status'
             'gh (?:pr list|pr checks|run list|secret list|variable list|label list) .+'
-            'glab auth status --hostname [^ ]+'
-            'glab api --hostname [^ ]+ [^ ]+'
             'copier --version'
             'node --version'
             'gitsign verify-tag .+'
-            '(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts|Set-GitLabBaseline) .*-WhatIf(?: .*)?'
+            '(?:Set-RepositoryBaseline|Dismiss-ScorecardAlerts) .*-WhatIf(?: .*)?'
         ) -join '|') + ')\z'
     $writes = @($allCalls | Where-Object { $_ -cnotmatch $reads })
     Check 'read-only: every command line the stand-ins got is a read' ($allCalls.Count -gt 0 -and $writes.Count -eq 0) "not reads: $($writes -join '; ')"
