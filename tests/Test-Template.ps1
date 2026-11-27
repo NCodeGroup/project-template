@@ -228,7 +228,7 @@ $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\Pro
 $nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', '.template\install-nvs.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'docs\decisions\project-template\0147-*.md', 'docs\decisions\project-template\0149-*.md', 'docs\decisions\project-template\0152-*.md', 'build\Update-PublicApi.ps1', 'docs\api-compatibility.md'
-$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml', '.github\workflows\scorecard.yml'; gitlab = @('.gitlab-ci.yml') }
+$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml', '.github\workflows\scorecard.yml', '.github\workflows\codeql.yml'; gitlab =@('.gitlab-ci.yml') }
 # tests\Test-TemplateDotnet.ps1 renders the dotnet and dotnet-library-apache cases again with the same answers: change both together.
 $cases = @(
     @{ Name = 'dotnet'; Stack = 'dotnet'; Host = 'github' }
@@ -733,6 +733,47 @@ foreach ($case in $cases) {
         $scorecard = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\scorecard.yml') -Raw
         $uses = [regex]::Matches($scorecard, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
         Check "${name}: the Scorecard workflow pins each action to a full commit SHA with its tag in a comment, publishes its results with the OIDC and code scanning permissions, and reads contents by default" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and $scorecard.Contains('ossf/scorecard-action@') -and $scorecard.Contains('publish_results: true') -and $scorecard.Contains('id-token: write') -and $scorecard.Contains('security-events: write') -and $scorecard -match '(?m)^permissions:\r?\n  contents: read\r?$') $scorecard
+        # The CodeQL workflow: every GitHub project gets it, and it runs on every pull request, a fork's too.
+        $codeqlWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\codeql.yml') -Raw
+        $uses = [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        Check "${name}: the CodeQL workflow pins each action to a full commit SHA with its tag in a comment, and every checkout persists no credentials" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: actions/checkout@').Count -gt 0 -and [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: actions/checkout@').Count -eq [regex]::Matches($codeqlWorkflow, '(?m)^\s+persist-credentials: false\r?$').Count) $codeqlWorkflow
+        Check "${name}: the CodeQL workflow reads contents by default and writes security events in its analyze job only" ($codeqlWorkflow -match '(?m)^permissions:\r?\n  contents: read\r?$' -and [regex]::Matches($codeqlWorkflow, 'security-events: write').Count -eq 1) $codeqlWorkflow
+        Check "${name}: the CodeQL workflow runs on pull requests and in the merge queue, picks its languages in a CodeQL languages job, and analyzes each with the extended queries and no build" ($codeqlWorkflow.Contains('pull_request:') -and $codeqlWorkflow.Contains('merge_group:') -and $codeqlWorkflow.Contains('queries: security-extended') -and $codeqlWorkflow.Contains('build-mode: none') -and $codeqlWorkflow.Contains('name: CodeQL languages') -and $codeqlWorkflow.Contains('language: ${{ fromJSON(needs.languages.outputs.languages) }}')) $codeqlWorkflow
+        # The detect step that picks the languages, run once: every GitHub render has the same file.
+        if (-not $codeqlDetectRan) {
+            $codeqlDetectRan = $true
+            $detect = Get-StepScript $codeqlWorkflow 'detect'
+            $detectCases = [ordered]@{
+                'a tracked C# file and a Python file' = @{ Files = @('src/a.cs', 'tools/b.py', 'README.md'); Expected = 'languages=["actions","csharp","python"]' }
+                'no source file' = @{ Files = @('README.md'); Expected = 'languages=["actions"]' }
+            }
+            $detectNumber = 0
+            foreach ($scenario in $detectCases.Keys) {
+                $detectNumber++
+                $detectRepo = Join-Path $Work "codeql-detect-$detectNumber"
+                New-Item -ItemType Directory -Force $detectRepo | Out-Null
+                Push-Location -LiteralPath $detectRepo
+                try {
+                    git init -q
+                    if ($LASTEXITCODE) { throw 'git init failed.' }
+                    foreach ($file in $detectCases[$scenario].Files) {
+                        $filePath = Join-Path $detectRepo $file
+                        New-Item -ItemType Directory -Force (Split-Path -Parent $filePath) | Out-Null
+                        Set-Content -LiteralPath $filePath -Value 'x'
+                    }
+                    git add -A
+                    if ($LASTEXITCODE) { throw 'git add failed.' }
+                    $env:GITHUB_OUTPUT = Join-Path $detectRepo 'github-output.txt'
+                    $detectError = ''
+                    try { & ([scriptblock]::Create($detect)) | Out-Null } catch { $detectError = "$_" }
+                    $detected = if (Test-Path -LiteralPath $env:GITHUB_OUTPUT) { (Get-Content -LiteralPath $env:GITHUB_OUTPUT -Raw).Trim() } else { '' }
+                    Remove-Item -LiteralPath $env:GITHUB_OUTPUT -Force -ErrorAction SilentlyContinue
+                    Remove-Item Env:GITHUB_OUTPUT
+                }
+                finally { Pop-Location }
+                Check "${name}: the CodeQL workflow's detect step picks the languages for $scenario" ($detect -and -not $detectError -and $detected -eq $detectCases[$scenario].Expected) "output=$detected error=$detectError"
+            }
+        }
         # The code review auto-merge workflow: every GitHub project gets it, and it merges nothing where no Dependabot pull
         # request moves the NCode Review pin.
         $autoMerge = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\code-review-auto-merge.yml') -Raw
