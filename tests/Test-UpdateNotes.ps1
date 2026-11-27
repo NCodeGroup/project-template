@@ -34,6 +34,7 @@
                 double quotes, none without the line or outside that section, and nothing for a value
                 .template\Publish-Release.ps1 refuses or without AGENTS.md. tools\adopt\Adoption.psm1's copy answers the same.
       publisher-dispatch Get-PublisherDispatchNote names each workflow the nuget_publisher answer names that has no workflow_dispatch trigger, in a block or a flow sequence, when AGENTS.md says release: tag+release and tag-release.yml exists, and nothing with release: none or without the answer.
+      publish-dispatch The condition of the publish.yml workflow_dispatch warning, in Update-Project.ps1 and in Adopt-Project.ps1, holds for a publish.yml without the trigger and not for one with it, in a block or a flow sequence, and the two agree.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.5.0, passes
@@ -372,6 +373,43 @@ $publisherDispatchNote = & {
     }
 }
 $publisherDispatchNote
+
+# publish-dispatch: the condition of the publish.yml workflow_dispatch warning, taken from each script's text and run from
+# inside each fixture folder, which is also the project.
+$publishDispatch = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'Get-WorkflowEvents') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $conditionPattern = '(?m)^\s*if \((\(Test-Path -LiteralPath \.github/workflows/tag-release\.yml\) -and \(Test-Path -LiteralPath \.github/workflows/publish\.yml\) -and [^\r\n]*)\) \{\r?$'
+    $updateCondition = [regex]::Match((Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template\.template\Update-Project.ps1')), $conditionPattern).Groups[1].Value
+    $adoptCondition = [regex]::Match((Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Adopt-Project.ps1')), $conditionPattern).Groups[1].Value
+    Check 'publish-dispatch: Update-Project.ps1 and Adopt-Project.ps1 each have the condition of the publish.yml workflow_dispatch warning' ($updateCondition -and $adoptCondition) "update [$updateCondition], adopt [$adoptCondition]"
+    if (-not ($updateCondition -and $adoptCondition)) { return }
+    $updateWarns = [scriptblock]::Create($updateCondition)
+    $adoptWarns = [scriptblock]::Create($adoptCondition)
+    $noTrigger = "name: Publish`non:`n  release:`n    types: [published]`n"
+    $publishCases = [ordered]@{
+        'no trigger'    = @{ Publish = $noTrigger; Want = $true }
+        'block trigger' = @{ Publish = "$noTrigger  workflow_dispatch:`n    inputs:`n      tag:`n        required: true`n"; Want = $false }
+        'flow trigger'  = @{ Publish = "name: Publish`non: [release, workflow_dispatch]`n"; Want = $false }
+    }
+    foreach ($name in $publishCases.Keys) {
+        $case = $publishCases[$name]
+        $folder = Join-Path $Work "publish-dispatch-$($name -replace '\W+', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        [IO.File]::WriteAllText((Join-Path $workflows 'tag-release.yml'), "name: Tag and publish release`n")
+        [IO.File]::WriteAllText((Join-Path $workflows 'publish.yml'), $case.Publish)
+        Push-Location $folder
+        try { $got = [bool](& $updateWarns); $adoptGot = [bool](& $adoptWarns) }
+        finally { Pop-Location }
+        Check "publish-dispatch: $name" ($got -eq $case.Want) "warns [$got], want [$($case.Want)]"
+        Check "publish-dispatch: ${name}: the adoption warns the same" ($adoptGot -eq $got) "update [$got], adopt [$adoptGot]"
+    }
+}
+$publishDispatch
 
 # badge: Get-BadgeReminder, run from inside each fixture folder, which is also the project.
 $badgeReminder = & {
