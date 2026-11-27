@@ -1766,6 +1766,12 @@ $m += @(Get-MissingText ('template\.claude\commands\plan-issue.md', 'template\.c
 $m += @(Get-MissingText $shipFiles 'to `In review` on the board')
 $m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- board: none', '`board`: `none`'))
 Check 'workflow: with a board, triage moves ready issues to Ready, a plan snapshot to In progress and a pull request to In review, and AGENTS.md documents board' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ($triageFiles + $shipFiles + $decomposeFiles) 'is never read as an empty list')
+$m += @(Get-MissingText $triageFiles ('its readiness is `not judged: its blockers couldn''t be read`', 'When the read of the epic''s sub-issues fails, stop and say so'))
+$m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('leave that entry out, naming the issue and the call that failed', 'to run again once the read works'))
+$m += @(Get-MissingText $issuePlanFiles ('one page at a time from page 1 until a page holds fewer than 100 entries', 'When that read fails, stop and say so, naming the issue and the call that failed'))
+$m += @(Get-MissingText $decomposeFiles ('or when the read of its sub-issues fails, naming the call that failed', 'a read of the epic''s sub-issues or of a story''s blockers among them, stop filing'))
+Check 'workflow: a failed read of blockers or sub-issues is never an empty list: run-issues leaves the entry out, triage doesn''t judge it ready, plan-issue and decompose-issue stop (ADR-0042)' (-not $m) ($m -join '; ')
 if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Template tests: PASSED'
