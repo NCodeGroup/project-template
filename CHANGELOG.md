@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.115.2] - 2026-11-27
+
+### Added
+
+- ADR-0156 makes spans and memory the way .NET code passes bytes, with `byte[]` only at a call to an API that takes or returns nothing else, in a type a framework binds that needs one and in tests, and keeps every buffer that may hold a secret pinned on the Pinned Object Heap, pooled, owned by one disposable and zeroed with `CryptographicOperations.ZeroMemory` on dispose, through NCode.Buffers in a project that handles secrets. The Memory and Performance section of `.github/instructions/csharp.instructions.md` says the same ([ADR-0156](template/docs/decisions/project-template/0156-byte-arrays-are-the-exception-and-secrets-live-in-pinned-pooled-buffers.md)).
+
+### Changed
+
+- ADR-0112 is amended by ADR-0156: a buffer that may hold a secret, a transient one too, comes from a pool of pinned arrays and is zeroed on dispose, not from `ArrayPool<byte>.Shared` returned with `clearArray: true` ([ADR-0156](template/docs/decisions/project-template/0156-byte-arrays-are-the-exception-and-secrets-live-in-pinned-pooled-buffers.md)).
+
 ## [0.115.1] - 2026-11-26
 
 ### Fixed
@@ -1960,7 +1970,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.115.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.115.2...HEAD
+[0.115.2]: https://github.com/NCodeGroup/project-template/compare/v0.115.1...v0.115.2
 [0.115.1]: https://github.com/NCodeGroup/project-template/compare/v0.115.0...v0.115.1
 [0.115.0]: https://github.com/NCodeGroup/project-template/compare/v0.114.1...v0.115.0
 [0.114.1]: https://github.com/NCodeGroup/project-template/compare/v0.114.0...v0.114.1

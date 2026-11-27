@@ -81,7 +81,7 @@ never brings a number the project already uses
 | [0109](0109-a-lost-concurrency-race-is-a-store-neutral-exception.md) | A lost optimistic-concurrency race surfaces as one store-neutral exception |
 | [0110](0110-shared-state-is-changed-by-read-modify-write.md) | Shared stored state changes through one read-modify-write operation that retries a lost race |
 | [0111](0111-failures-carry-a-machine-readable-code.md) | A failure that callers act on carries a stable machine-readable code |
-| [0112](0112-binary-data-uses-spans-pooled-buffers-and-cleared-secrets.md) | Binary data uses spans, caller-owned writers, pooled buffers and cleared secrets |
+| [0112](0112-binary-data-uses-spans-pooled-buffers-and-cleared-secrets.md) | Binary data uses spans, caller-owned writers, pooled buffers and cleared secrets (amended by 0156) |
 | [0113](0113-metrics-have-one-owner-per-signal-and-bounded-dimensions.md) | Each metric signal has one owner, and every attribute comes from a bounded vocabulary |
 | [0114](0114-one-activity-source-named-like-its-meter.md) | A project traces only its own mechanisms, through one activity source named like its meter |
 | [0115](0115-a-host-logs-to-standard-output.md) | A host logs to standard output, as one JSON line per entry where a collector reads it |
@@ -98,6 +98,7 @@ never brings a number the project already uses
 | [0146](0146-secrets-are-never-logged-compared-in-constant-time-and-shown-once.md) | Secrets never reach diagnostics, are compared in constant time, and are shown once and stored hashed |
 | [0148](0148-csharp-is-formatted-in-the-gate-and-files-carry-the-spdx-header.md) | CSharpier checks C# in the gate when the project's tool manifest names it, and a file without the SPDX header fails the build (amends 0117) |
 | [0155](0155-dotnet-code-targets-only-lts-releases-and-prose-names-no-dotnet-version.md) | Target frameworks and the SDK are LTS releases Microsoft supports, a project moves to a new LTS before the older one's end of support, and only files that pin a .NET version name one (extends 0008) |
+| [0156](0156-byte-arrays-are-the-exception-and-secrets-live-in-pinned-pooled-buffers.md) | Bytes travel as spans and memory, with `byte[]` only where an API or a framework needs one; a secret lives in a pinned, pooled buffer zeroed on dispose, through NCode.Buffers (amends 0112) |
 
 ## ASP.NET Core
 
