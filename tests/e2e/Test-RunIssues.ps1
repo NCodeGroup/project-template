@@ -35,7 +35,7 @@
     its first round. review-with-footer: the stand-in saves each pull request comment and thread reply, but no issue comment, with a Claude Code cloud session's footer, and the run's /review comment still asks NCode Review for its review, as NCode Review sets the footer aside; NCode Review's review of the first push carries a request of the owner's, so the run pushes a second round and comments /review again, leaves each /review comment with its footer, and must never answer its own /review comments.
     push-branch: the prompt carries push-branch:claude/fixture-push-a1b2, and origin's push branch still holds the head of pull request #2, which main has as a squash commit; the run must record the push branch, restart it from its plan, push its commits and its fix round there, never push its own branch, and open the draft pull request from the push branch. max-review-rounds is 1 and there is no review of the first push, as in max-rounds.
     fix-now: the run's question is answered with "fix the follow-ups in the same pull request before merge"; max-review-rounds is the default 3 and there is no review of the first push; the run must fix NCode Review's blocker on behavior main already had and its nit in the draft pull request, reply "Autopilot: fixed in" on the blocker and "Autopilot: fixed in" or "Autopilot: not changed" on the nit, never reply "Autopilot: left as a follow-up", and leave neither in the plan's Follow-ups.
-    blocked-board: the prompt is /run-issues #1 #2 #3 wait:0, where #2 is blocked by #1, an entry ahead of it, and #3 by #4, an open issue outside the run, and the Landing section's board is fixture/7, which the stand-in serves from host/board.json; the run must leave #3 out, hold #2 behind #1, which doesn't land in the run, plan neither, and move #1 on the board to In progress once its plan snapshot is posted and to In review once its draft pull request opens. max-review-rounds is 1 and there is no review of the first push, as in max-rounds. Run all six.
+    blocked-board: the prompt is /run-issues #1 #2 #3 #5 wait:0, where #2 is blocked by #1, an entry ahead of it, #3 by #4, an open issue outside the run, and the read of #5's blocked-by links fails, and the Landing section's board is fixture/7, which the stand-in serves from host/board.json; the run must leave #3 out, leave #5 out and name it, hold #2 behind #1, which doesn't land in the run, plan none of #2, #3 and #5, and move #1 on the board to In progress once its plan snapshot is posted and to In review once its draft pull request opens. max-review-rounds is 1 and there is no review of the first push, as in max-rounds. Run all six.
 
 .PARAMETER Tool
     claude, the default, runs each prompt in headless Claude Code; copilot runs it in the Copilot CLI. The fixture
@@ -130,11 +130,13 @@ if (-not $CheckOnly) {
         }
     }
     if ($Scenario -eq 'blocked-board') {
-        # #2 is blocked by #1, an entry ahead of it, so it waits for #1 to land; #3 is blocked by #4, an open issue outside the run, so the run leaves it out.
+        # #2 is blocked by #1, an entry ahead of it, so it waits for #1 to land; #3 is blocked by #4, an open issue outside the run, so the run leaves it out;
+        # the read of #5's blocked-by links fails (blocked_by_fails), so the run leaves it out too, never reading the failure as no blockers.
         $more = [ordered]@{
             '2' = @('Greet a list of names', "## What`n``Get-Greeting -Name Ada, Grace`` should greet each name on a line of its own.`n`n## Done when`n- ``Get-Greeting -Name Ada, Grace`` returns ``Hello, Ada!`` and ``Hello, Grace!```n- ``tests/Test-Greeting.ps1`` checks it`n", @(1))
             '3' = @('Greet in French', "## What`n``Get-Greeting -Language fr -Name Ada`` should return ``Bonjour, Ada !``.`n`n## Done when`n- ``tests/Test-Greeting.ps1`` checks it`n", @(4))
             '4' = @('Choose the greeting languages', "## What`nDecide which languages ``Get-Greeting`` speaks.`n", @())
+            '5' = @('Greet in German', "## What`n``Get-Greeting -Language de -Name Ada`` should return ``Hallo, Ada!``.`n`n## Done when`n- ``tests/Test-Greeting.ps1`` checks it`n", @())
         }
         foreach ($n in $more.Keys) {
             $issues[$n] = @{
@@ -142,6 +144,7 @@ if (-not $CheckOnly) {
                 labels = @(@{ name = 'enhancement' }); assignees = @(); author = @{ login = 'fixture-owner' }; blocked_by = @($more[$n][2])
             }
         }
+        $issues['5'].blocked_by_fails = $true
         # The organization's board, fixture/7, with ADR-0042's Status columns and no items yet.
         $options = @('Backlog', 'Ready', 'In progress', 'In review', 'Done' | ForEach-Object { @{ id = 'opt-' + $_.ToLowerInvariant().Replace(' ', '-'); name = $_ } })
         $board = @{ owner = 'fixture'; number = 7; fields = @(@{ id = 101; name = 'Title'; data_type = 'title' }, @{ id = 102; name = 'Status'; data_type = 'single_select'; options = $options }); items = @(); moves = @() }
@@ -334,7 +337,7 @@ if (-not $CheckOnly) {
     Invoke-Git --git-dir=$origin update-ref -d refs/heads/probe
     Remove-Item -LiteralPath $probe -Recurse -Force
     if ($Scenario -eq 'blocked-board') {
-        # The stand-in, in a folder of its own with the fixture's issues and board, lists the blockers of #2 and #3 and records a move on the board.
+        # The stand-in, in a folder of its own with the fixture's issues and board, lists the blockers of #2 and #3, fails the read of #5's, and records a move on the board.
         $boardProbe = Join-Path $Work 'gh-board-probe'
         New-Item -ItemType Directory -Force (Join-Path $boardProbe 'host') | Out-Null
         Copy-StandIn gh $boardProbe
@@ -342,6 +345,10 @@ if (-not $CheckOnly) {
         $boardGh = Join-Path $boardProbe 'gh.ps1'
         $blockedBy = @(pwsh -NoProfile -File $boardGh api 'repos/{owner}/{repo}/issues/2/dependencies/blocked_by?per_page=100&page=1' | Out-String | ConvertFrom-Json)
         $outside = @(pwsh -NoProfile -File $boardGh api 'repos/{owner}/{repo}/issues/3/dependencies/blocked_by?per_page=100&page=1' | Out-String | ConvertFrom-Json)
+        $null = pwsh -NoProfile -File $boardGh api 'repos/{owner}/{repo}/issues/5/dependencies/blocked_by?per_page=100&page=1' 2>$null
+        $unreadableCode = $LASTEXITCODE
+        $unreadable = @(Get-Content -LiteralPath (Join-Path $boardProbe 'host/calls.log') | Where-Object { $_ -match '^UNREADABLE api \S*issues/5/dependencies/blocked_by' })
+        Check 'fixture: the stand-in fails the read of #5''s blocked-by links, with exit 1 and an UNREADABLE line in calls.log' ($unreadableCode -eq 1 -and $unreadable.Count -eq 1) "exit: $unreadableCode; UNREADABLE lines: $($unreadable.Count)"
         $status = @(pwsh -NoProfile -File $boardGh api 'orgs/fixture/projectsV2/7/fields?per_page=100&page=1' | Out-String | ConvertFrom-Json | Where-Object { $_.name -eq 'Status' }) | Select-Object -First 1
         $item = pwsh -NoProfile -File $boardGh api orgs/fixture/projectsV2/7/items -f type=Issue -f owner=fixture -f repo=app -F number=1 | Out-String | ConvertFrom-Json
         $moveFile = Join-Path $boardProbe 'move.json'
@@ -365,7 +372,7 @@ if (-not $CheckOnly) {
     # New-Agent reads Copilot's token before Use-FixtureEnvironment puts the gh stand-in first on PATH.
     $agent = New-Agent -Tool $Tool -Claude $Claude -Copilot $Copilot -Model $Model -MaxBudgetUsd $MaxBudgetUsd -TimeoutMinutes $TimeoutMinutes -App $app -Work $Work
     Use-FixtureEnvironment $Work $bin {
-        $prompt = if ($Scenario -eq 'push-branch') { "/run-issues #1 wait:0 push-branch:$pushBranch" } elseif ($Scenario -eq 'blocked-board') { '/run-issues #1 #2 #3 wait:0' } else { '/run-issues #1 wait:0' }
+        $prompt = if ($Scenario -eq 'push-branch') { "/run-issues #1 wait:0 push-branch:$pushBranch" } elseif ($Scenario -eq 'blocked-board') { '/run-issues #1 #2 #3 #5 wait:0' } else { '/run-issues #1 wait:0' }
         Invoke-Agent $agent -Prompt $prompt -Index 1
         $prs = @(Get-Content -Raw -LiteralPath (Join-Path $hostDir 'prs.json') | ConvertFrom-Json | Where-Object { $_ -and $_.state -eq 'OPEN' })
         if ($prs.Count -eq 0 -and $agent.SessionId) {
@@ -497,18 +504,18 @@ Use-FixtureEnvironment $Work $bin {
     Check 'the /review comment got no answer' ($slash -and $slashAnswers.Count -eq 0) "$(if ($slash) { "answers: $($slashAnswers.Count)" } else { 'no /review comment' })"
     if ($Scenario -eq 'blocked-board') {
         $blockerReads = @($calls | ForEach-Object { if ($_ -match '^CALL api .*repos/\S+/issues/(\d+)/dependencies/blocked_by') { $Matches[1] } } | Sort-Object -Unique)
-        Check 'the run read the blocked-by links of #2 and #3' ($blockerReads -contains '2' -and $blockerReads -contains '3') "issues whose blockers it read: $($blockerReads -join ', ')"
-        $heldSnapshots = @($comments | Where-Object { $_ -and $_.kind -eq 'issue' -and "$($_.number)" -in '2', '3' -and "$($_.body)" -match '^Plan snapshot\.' })
-        $heldPrs = @(Read-HostJson $hostDir 'prs.json' | Where-Object { $_ -and "$($_.body)" -match '(?mi)^(Closes|Fixes|Resolves) #[23]\b' })
-        $heldBranches = @(git --git-dir=$origin for-each-ref --format='%(refname:short)' refs/heads | Where-Object { $_ -match '(^|[/-])issue-[23]$' })
-        $heldTrees = @('issue-2', 'issue-3' | Where-Object { Test-Path -LiteralPath (Join-Path $app ".claude/worktrees/$_") })
-        Check 'the run planned neither #2, blocked by #1, which hasn''t landed, nor #3, blocked by #4, which is outside the run' ($heldSnapshots.Count -eq 0 -and $heldPrs.Count -eq 0 -and $heldBranches.Count -eq 0 -and $heldTrees.Count -eq 0) "plan snapshots: $($heldSnapshots.Count); pull requests: $($heldPrs.Count); branches: $($heldBranches -join ', '); worktrees: $($heldTrees -join ', ')"
+        Check 'the run read the blocked-by links of #2, #3 and #5' ($blockerReads -contains '2' -and $blockerReads -contains '3' -and $blockerReads -contains '5') "issues whose blockers it read: $($blockerReads -join ', ')"
+        $heldSnapshots = @($comments | Where-Object { $_ -and $_.kind -eq 'issue' -and "$($_.number)" -in '2', '3', '5' -and "$($_.body)" -match '^Plan snapshot\.' })
+        $heldPrs = @(Read-HostJson $hostDir 'prs.json' | Where-Object { $_ -and "$($_.body)" -match '(?mi)^(Closes|Fixes|Resolves) #[235]\b' })
+        $heldBranches = @(git --git-dir=$origin for-each-ref --format='%(refname:short)' refs/heads | Where-Object { $_ -match '(^|[/-])issue-[235]$' })
+        $heldTrees = @('issue-2', 'issue-3', 'issue-5' | Where-Object { Test-Path -LiteralPath (Join-Path $app ".claude/worktrees/$_") })
+        Check 'the run planned none of #2, blocked by #1, which hasn''t landed, #3, blocked by #4, which is outside the run, and #5, whose blockers couldn''t be read' ($heldSnapshots.Count -eq 0 -and $heldPrs.Count -eq 0 -and $heldBranches.Count -eq 0 -and $heldTrees.Count -eq 0) "plan snapshots: $($heldSnapshots.Count); pull requests: $($heldPrs.Count); branches: $($heldBranches -join ', '); worktrees: $($heldTrees -join ', ')"
         $boardState = Read-HostJson $hostDir 'board.json'
         $moves = [string[]]@(if ($boardState) { @($boardState.moves) | Where-Object { $_ } | ForEach-Object { "#$($_.number) $($_.status)" } })
         $inProgress = [array]::IndexOf($moves, '#1 In progress')
         $inReview = [array]::LastIndexOf($moves, '#1 In review')
         $moveLines = @($calls | Where-Object { $_ -match '^MOVE #' })
-        Check 'the board moved #1 to In progress, then to In review, moved neither #2 nor #3, and calls.log records each move' ($inProgress -ge 0 -and $inReview -gt $inProgress -and @($moves | Where-Object { $_ -match '^#[23] ' }).Count -eq 0 -and $moveLines.Count -eq $moves.Count) "moves: $($moves -join ', '); MOVE lines: $($moveLines.Count)"
+        Check 'the board moved #1 to In progress, then to In review, moved none of #2, #3 and #5, and calls.log records each move' ($inProgress -ge 0 -and $inReview -gt $inProgress -and @($moves | Where-Object { $_ -match '^#[235] ' }).Count -eq 0 -and $moveLines.Count -eq $moves.Count) "moves: $($moves -join ', '); MOVE lines: $($moveLines.Count)"
     }
     # The test checks the recommendation only in minor-round, max-rounds and push-branch, whose last review is predictable.
     if ($Scenario -notin 'review-with-footer', 'fix-now') {
