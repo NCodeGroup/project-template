@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - ADR-0040 records that the template serves NCodeGroup's repositories on GitHub only: it supports no other host, a GitLab template, if one is ever needed, is a separate template there, and GitLab support is removed without a deprecation phase, since every project made from the template answers `git_host: github`. It supersedes record 0029, which only a GitLab project gets, and amends ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0013, ADR-0014, ADR-0016, ADR-0023 and ADR-0026 and, where a project has them, records 0027, 0135, 0150, 0154, 0200 and 0201, whose GitLab passages don't apply; their status lines and index rows name it. `README.md`, `USAGE.md`, `AGENTS.md` and `CONTRIBUTING.md` say the template is for NCodeGroup's repositories on GitHub ([#528](https://github.com/NCodeGroup/project-template/issues/528), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
 
+### Fixed
+
+- Each amendment between the template's decision records shows on both sides: the status lines of ADR-0014, ADR-0016 and, in a .NET library, record 0135 name every record that amends them, each record's index row names the same records as its status line, and the rows of 0022, 0034 and 0138 name the records they amend; `tests/Test-Template.ps1` checks it in every rendered project ([#528](https://github.com/NCodeGroup/project-template/issues/528)).
+
 ## [0.117.0] - 2026-11-27
 
 ### Added
