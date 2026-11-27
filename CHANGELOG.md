@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.115.4] - 2026-11-27
+
+### Fixed
+
+- Python, Node.js, PowerShell and other projects no longer get ADR-0155, the .NET record on LTS releases, which their decision index never lists: `copier.yml` excludes it as it does every .NET record ([#514](https://github.com/NCodeGroup/project-template/issues/514), [ADR-0155](template/docs/decisions/project-template/0155-dotnet-code-targets-only-lts-releases-and-prose-names-no-dotnet-version.md)).
+
 ## [0.115.3] - 2026-11-27
 
 ### Changed
@@ -1977,7 +1983,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.115.3...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.115.4...HEAD
+[0.115.4]: https://github.com/NCodeGroup/project-template/compare/v0.115.3...v0.115.4
 [0.115.3]: https://github.com/NCodeGroup/project-template/compare/v0.115.2...v0.115.3
 [0.115.2]: https://github.com/NCodeGroup/project-template/compare/v0.115.1...v0.115.2
 [0.115.1]: https://github.com/NCodeGroup/project-template/compare/v0.115.0...v0.115.1

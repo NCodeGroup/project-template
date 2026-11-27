@@ -122,6 +122,7 @@ _exclude:
     docs/decisions/project-template/0145-outbound-calls-are-bounded-and-caller-supplied-urls-are-guarded.md
     docs/decisions/project-template/0146-secrets-are-never-logged-compared-in-constant-time-and-shown-once.md
     docs/decisions/project-template/0148-csharp-is-formatted-in-the-gate-and-files-carry-the-spdx-header.md
+    docs/decisions/project-template/0155-dotnet-code-targets-only-lts-releases-and-prose-names-no-dotnet-version.md
     docs/decisions/project-template/0156-byte-arrays-are-the-exception-and-secrets-live-in-pinned-pooled-buffers.md
     {% endif %}
   - |-
