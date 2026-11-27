@@ -82,11 +82,14 @@
 .PARAMETER ForkApprovalOnly
     Runs only the fork workflow approval policy checks, which take seconds where the whole suite takes minutes.
 
+.PARAMETER CodeQLWorkflowOnly
+    Runs only the CodeQL workflow checks, which take seconds where the whole suite takes minutes.
+
 .EXAMPLE
     .\tests\Test-RepositoryBaseline.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-baseline-test-$PID"), [switch]$ForkApprovalOnly)
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-baseline-test-$PID"), [switch]$ForkApprovalOnly, [switch]$CodeQLWorkflowOnly)
 $ErrorActionPreference = 'Stop'
 $ownWork = -not $PSBoundParameters.ContainsKey('Work')
 trap { "Kept the work folder: $Work"; break }
@@ -383,6 +386,7 @@ $reviewWorkflows = @('.github/workflows/code-review.yml', '.github/workflows/cod
 $dispatchYaml = "name: Code review`n`non:`n  pull_request_target:`n    types: [opened, reopened, ready_for_review, closed]`n  issue_comment:`n    types: [created]`n  workflow_dispatch:`n`npermissions: {}`n`njobs:`n  review:`n    runs-on: ubuntu-latest`n"
 $approveYaml = "on:`n  pull_request_target:`njobs:`n  review:`n    steps:`n      - uses: NCodeGroup/code-review@x`n        with:`n          approve: true`n"
 $approverYaml = $approveYaml + "          approver-private-key: `${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}`n"
+$codeqlYaml = "on:`n  push:`n    branches: [main]`n  pull_request:`njobs:`n  analyze:`n    steps:`n      - uses: github/codeql-action/analyze@x`n"
 $repos = @{
     fresh = New-Repo
     freshApprover = New-Repo -Workflows @('.github/workflows/code-review.yml') -WorkflowText @{ '.github/workflows/code-review.yml' = $approveYaml }
@@ -546,6 +550,11 @@ $repos = @{
     forkRefused = New-Repo -Security @{ 'actions/permissions/fork-pr-contributor-approval' = 'first_time_contributors' } -WriteFails @{ 'actions/permissions/fork-pr-contributor-approval' = 403 }
     orgOwned = New-Repo -OwnerType 'Organization'
     userOwned = New-Repo -OwnerType 'User'
+    # A workflow that runs CodeQL on pull requests (ADR-0042), beside a ruleset of ours, one of the owner's, and the setup's states.
+    codeqlOurs = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes)) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml }
+    codeqlOursRefused = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes)) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml } -WriteFails @{ 'code-scanning/default-setup' = 422 }
+    codeqlOursOff = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes)) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml } -CodeQL 'not-configured' -Languages @()
+    codeqlOwned = New-Repo -Rulesets @((New-Ruleset 'owner rules')) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml }
 }
 $orgs = @{
     orgEmpty = @{ policies = @() }
@@ -624,7 +633,7 @@ function Read-PrintedCommand([string]$Output) {
 $savedPath = $env:PATH
 $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
 try {
-  if (-not $ForkApprovalOnly) {
+  if (-not $ForkApprovalOnly -and -not $CodeQLWorkflowOnly) {
     # 1. -WhatIf.
     $r = Invoke-Baseline @('-Repo', 'fresh', '-WhatIf')
     Check 'whatif: changes nothing' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output -match "would: fresh \(main\): create 'Protect main'") "changes=$($r.Changes -join '|') output=$($r.Output)"
@@ -1373,6 +1382,7 @@ try {
     }
   }
 
+  if (-not $CodeQLWorkflowOnly) {
     # 9. The approval policy for fork pull request workflows, on a repository and, with -OrganizationPolicy, the organization.
     $forkLabel = 'fork pull request workflows approved only for first-time contributors new to GitHub'
     $forkSegment = 'actions/permissions/fork-pr-contributor-approval'
@@ -1430,6 +1440,25 @@ try {
     }
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgForkRefused')
     Check 'fork approval: a refused organization write fails the run, and the event policy is still created' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("organization orgForkRefused: ${orgForkLabel}: not available (HTTP 403") -and ($r.Changes -join '|') -eq "BODY PUT orgs/orgForkRefused/$forkSegment|BODY POST orgs/orgForkRefused/actions/policies") "$($r.Changes -join '|') $($r.Output)"
+  }
+
+  if (-not $ForkApprovalOnly) {
+    # 10. A workflow that runs CodeQL on pull requests (ADR-0042). Where the ruleset is left alone, CodeQL's default setup
+    # is turned off and reported like a security setting; a refusal never fails the run.
+    $codeqlLabel = "CodeQL's default setup off, so .github/workflows/codeql.yml analyzes every pull request, a fork's too"
+    $r = Invoke-Baseline @('-Repo', 'codeqlOurs')
+    $put = @($r.Bodies | Where-Object { $_.path -eq 'repos/NCodeGroup/codeqlOurs/code-scanning/default-setup' })
+    Check 'codeql workflow: a ruleset left alone gets CodeQL''s default setup turned off with one PATCH, and the languages it analyzed are named' ($r.ExitCode -eq 0 -and $put.Count -eq 1 -and $put[0].method -eq 'PATCH' -and $put[0].body.state -eq 'not-configured' -and $r.Output.Contains("codeqlOurs: ${codeqlLabel}: set (it analyzes actions, csharp;")) "$($r.Changes -join '|') $($r.Output)"
+    Check 'codeql workflow: a ruleset left alone gets no notice about the suite, and its repository is not switched' (-not $r.Output.Contains("notice: CodeQL's default setup runs") -and -not @($r.Changes | Where-Object { $_ -like '*query_suite*' }).Count) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlOurs', '-WhatIf')
+    Check 'codeql workflow: -WhatIf says it would turn the default setup off and changes nothing' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains("codeqlOurs: ${codeqlLabel}: would set (it analyzes")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlOursRefused')
+    Check 'codeql workflow: a refusal is reported with the way out, and never fails the run' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output.Contains("codeqlOursRefused: ${codeqlLabel}: not available (HTTP 422: Stand-in refused code-scanning/default-setup). Where the organization's security configuration")) "$($r.ExitCode) $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlOursOff')
+    Check 'codeql workflow: a default setup that is off already is reported as already set, with no write for it' ($r.ExitCode -eq 0 -and $r.Output.Contains("codeqlOursOff: ${codeqlLabel}: already set") -and -not @($r.Changes | Where-Object { $_ -like '*default-setup*' }).Count) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlOwned')
+    Check 'codeql workflow: a ruleset of the owner''s, which is left alone, gets the default setup turned off too' ($r.ExitCode -eq 0 -and $r.Output.Contains("codeqlOwned: ${codeqlLabel}: set")) "$($r.Changes -join '|') $($r.Output)"
+  }
 }
 finally { $env:PATH = $savedPath }
 

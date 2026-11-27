@@ -385,7 +385,9 @@ function Set-Baseline([string]$Name) {
         Write-Host "${Name}: code-review.yml passes approve: true, but one person has write access, and GitHub counts toward a required approval neither the author's approval nor NCode Review's, whose app has no write access: the ruleset requires no approval and no approval of the last push (the template's ADR-0034 and ADR-0036)"
     }
     # A repository skipped for its default branch gets nothing else either: the reason printed says what to fix first.
-    if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets -Approver $approver -SoleWriter ($soleWriter -and -not $review.ApproverApp))) { return }
+    $codeqlWorkflows = Find-CodeQLWorkflows $Name $info.default_branch
+    if ($codeqlWorkflows.Why) { Write-Host "${Name}: couldn't read the workflows to look for one that runs CodeQL on pull requests ($($codeqlWorkflows.Why)); CodeQL's default setup decides the code-scanning rule" }
+    if (-not (Set-BranchRuleset $Name $info.default_branch $rulesets -Approver $approver -SoleWriter ($soleWriter -and -not $review.ApproverApp) -CodeQLWorkflows @($codeqlWorkflows.Files))) { return }
     Set-TagRuleset $Name $rulesets
     Set-SecuritySettings $Name $info
     Set-AutoMerge $Name $info
@@ -469,11 +471,33 @@ function Write-CodeScanningNotice([string]$Name, $Ruleset) {
     Write-Host "${Name}: notice: CodeQL's default setup runs $suite, not the extended one the baseline uses, and this script doesn't switch a repository whose ruleset already has a code-scanning rule. To switch it by hand: gh api -X PATCH repos/$Owner/$Name/code-scanning/default-setup -f query_suite=extended. The extended suite can raise new alerts, and the ruleset's code-scanning rule may then block merges on them."
 }
 
+$defaultSetupHint = "Where the organization's security configuration sets code scanning, an owner sets it to 'Enabled with advanced setup allowed' or leaves code scanning out of it; then run this again"
+
+function Set-DefaultSetupOff([string]$Name) { Invoke-HostWrite PATCH "repos/$Owner/$Name/code-scanning/default-setup" @{ state = 'not-configured' } }
+
+# CodeQL's default setup analyzes no pull request from a fork, and GitHub refuses a CodeQL workflow's results while it is
+# on, so where the default branch has a workflow that runs CodeQL on pull requests it is turned off (ADR-0042). It is
+# reported like a security setting: a run that leaves the ruleset alone never fails on a refusal.
+function Disable-DefaultSetup {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$Name, [string[]]$Files)
+    $label = "CodeQL's default setup off, so $($Files -join ', ') analyzes every pull request, a fork's too"
+    $setup = Read-DefaultSetup $Name
+    if ($setup.Why) { Write-Host "${Name}: ${label}: not available (couldn't read it: $($setup.Why))"; return }
+    if ($setup.Status -eq 404 -or $setup.Answer.state -ne 'configured') { Write-Host "${Name}: ${label}: already set"; return }
+    $analyzed = @(Get-SetupLanguages $setup.Answer)
+    $note = if ($analyzed.Count) { " (it analyzes $($analyzed -join ', '); add any of those the workflow doesn't analyze to it)" } else { '' }
+    if (-not $PSCmdlet.ShouldProcess($Name, "turn off $label")) { Write-Host "${Name}: ${label}: would set$note"; return }
+    $result = Set-DefaultSetupOff $Name
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${Name}: ${label}: set$note" }
+    else { Write-Host "${Name}: ${label}: not available ($(Get-FailureReason $result)). $defaultSetupHint." }
+}
+
 # The default branch's ruleset, the suite switch and delete-branch-on-merge. Returns $false when it skips the
 # repository, which then changes nothing, and $true otherwise: done, shown by -WhatIf, or left alone.
 function Set-BranchRuleset {
     [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Name, [string]$Branch, [object[]]$Rulesets, [bool]$Approver = $false, [bool]$SoleWriter = $false)
+    param([string]$Name, [string]$Branch, [object[]]$Rulesets, [bool]$Approver = $false, [bool]$SoleWriter = $false, [string[]]$CodeQLWorkflows = @())
     $own = $null
     $others = @()
     foreach ($full in $Rulesets) {
@@ -487,8 +511,10 @@ function Set-BranchRuleset {
         foreach ($full in $others) { Write-Host "${Name}: left alone ('$($full.name)' already requires pull requests)"; Enable-ThreadResolution $Name $full; if ($SoleWriter) { Write-SoleWriterNotice $Name $full } }
         if ($own) {
             Enable-ThreadResolution $Name $own -Strict -Approver:$Approver -SoleWriter:$SoleWriter
-            if ($own.rules.type -contains 'code_scanning') { Write-CodeScanningNotice $Name $own }
+            if ($CodeQLWorkflows.Count) { Disable-DefaultSetup $Name $CodeQLWorkflows }
+            elseif ($own.rules.type -contains 'code_scanning') { Write-CodeScanningNotice $Name $own }
         }
+        elseif ($CodeQLWorkflows.Count) { Disable-DefaultSetup $Name $CodeQLWorkflows }
         return $true
     }
 
@@ -496,7 +522,8 @@ function Set-BranchRuleset {
     if ($own -and -not $RequireChecks.Count) {
         Write-Host "${Name}: left alone (already has '$rulesetName')"
         Enable-ThreadResolution $Name $own -Strict -Approver:$Approver -SoleWriter:$SoleWriter
-        if ($own.rules.type -contains 'code_scanning') { Write-CodeScanningNotice $Name $own }
+        if ($CodeQLWorkflows.Count) { Disable-DefaultSetup $Name $CodeQLWorkflows }
+        elseif ($own.rules.type -contains 'code_scanning') { Write-CodeScanningNotice $Name $own }
         return $true
     }
     $checks = @($RequireChecks)
