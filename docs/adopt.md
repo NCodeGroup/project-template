@@ -142,10 +142,10 @@ Do 1.1 or 1.2, then 1.3 for Node.js and 1.4.
 
 - **Applies to:** GitHub
 - **Who:** an admin of the repository.
-- **Where:** the repository's Settings > Advanced Security > CodeQL analysis.
-- **Do:** Set up default setup with the repository's languages. Then run [2.1](#21-run-the-baseline) again with the same `-RequireChecks`, which adds the code-scanning rule and switches the setup to the extended query suite.
-- **Check:** `gh api repos/<owner>/<name>/code-scanning/default-setup --jq '.state + " " + (.languages | join(","))'` prints `configured` and at least one language.
-- **Goes wrong:** an organization's security configuration can turn default setup on with no language, as on NCodeGroup/docs and NCodeGroup/brand; the baseline then leaves the rule out and says why, and a rule kept from an older run blocks every pull request until a language is set up ([ADR-0030](../template/docs/decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md)).
+- **Where:** `.github/workflows/codeql.yml`; the repository's Settings > Advanced Security > CodeQL analysis.
+- **Do:** With `.github/workflows/codeql.yml`, which every GitHub project gets, run [2.1](#21-run-the-baseline) once it is on the default branch: the baseline turns CodeQL's default setup off and adds the code-scanning rule. Add to the workflow's detect step any language the default setup analyzed that it doesn't pick. Without the workflow, set up default setup with the repository's languages. Then run [2.1](#21-run-the-baseline) again with the same `-RequireChecks`, which adds the code-scanning rule and switches the setup to the extended query suite.
+- **Check:** with the workflow, `gh api repos/<owner>/<name>/code-scanning/default-setup --jq .state` prints `not-configured` and the workflow's latest run on the default branch passed. Without it, `gh api repos/<owner>/<name>/code-scanning/default-setup --jq '.state + " " + (.languages | join(","))'` prints `configured` and at least one language.
+- **Goes wrong:** an organization's security configuration can turn default setup on with no language, as on NCodeGroup/docs and NCodeGroup/brand; the baseline then leaves the rule out and says why, and a rule kept from an older run blocks every pull request until a language is set up ([ADR-0030](../template/docs/decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md)). An organization's security configuration that enforces default setup refuses to turn it off, and an owner sets its code scanning to "Enabled with advanced setup allowed" ([ADR-0042](../template/docs/decisions/project-template/0042-a-fork-pull-request-merges-without-a-bypass.md)).
 
 ### 2.4 Scorecard
 
@@ -403,7 +403,7 @@ Audit an adopted repository with `.\tools\Get-AdoptionChecklist.ps1 -Path C:\src
 | [1.4](#14-first-push-and-first-pull-request) | every project | `gh pr checks <number>` shows every check passed | No |
 | [2.1](#21-run-the-baseline) | GitHub | `-WhatIf` prints no `would set` line | `Set-RepositoryBaseline.ps1 -WhatIf` |
 | [2.2](#22-when-an-approval-is-required) | GitHub | the branch rule's `required_approving_review_count` is `1` where an approval is required and `0` elsewhere | `Set-RepositoryBaseline.ps1 -WhatIf` |
-| [2.3](#23-codeqls-languages) | GitHub | `gh api repos/<owner>/<name>/code-scanning/default-setup` shows `configured` and a language | `Set-RepositoryBaseline.ps1 -WhatIf` |
+| [2.3](#23-codeqls-languages) | GitHub | `.github/workflows/codeql.yml` is on the default branch and `gh api repos/<owner>/<name>/code-scanning/default-setup` shows `not-configured`; without it, `configured` and a language | `Set-RepositoryBaseline.ps1 -WhatIf` |
 | [2.4](#24-scorecard) | GitHub, public repository | the `-WhatIf` run lists nothing to dismiss; the Scorecard viewer shows the score | `Dismiss-ScorecardAlerts.ps1 -WhatIf` |
 | [3.1](#31-how-a-release-happens) | GitHub | the "Tag and publish release" run passed; `gh release view <tag>` shows the release | No |
 | [3.2](#32-signed-tags) | GitHub, public repository | `gitsign verify-tag` accepts the tag | No |

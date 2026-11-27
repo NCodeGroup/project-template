@@ -224,6 +224,8 @@ New-GitHubVariant 'publisher' @{
     '.copier-answers.yml' = "$($githubFiles['.copier-answers.yml'])`nnuget_publisher: publish-nuget.yml`n"
 }
 
+New-GitHubVariant 'codeql' @{ '.github/workflows/codeql.yml' = "on:`n  pull_request:`njobs:`n  analyze:`n    steps:`n      - uses: github/codeql-action/analyze@x`n" }
+
 New-GitHubVariant 'noemail' @{}
 Invoke-Git (Join-Path $Work 'noemail') @('config', '--unset', 'user.email')
 
@@ -395,9 +397,14 @@ try {
         'gh api repos/NCodeGroup/sample/collaborators?affiliation=all&permission=push&per_page=100' = Answer (Json @(@{ login = 'a'; type = 'User' }, @{ login = 'b'; type = 'Bot' }))
         'gh secret list --org NCodeGroup --json name' = Answer $null 1 'gh: Forbidden (HTTP 403)'
     }
+    $codeqlOn = Invoke-Override (Join-Path $Work 'codeql') @{}
+    $codeqlOff = Invoke-Override (Join-Path $Work 'codeql') @{
+        'gh api repos/NCodeGroup/sample/code-scanning/default-setup' = Answer (Json @{ state = 'not-configured'; languages = @() })
+    }
     foreach ($row in @(
             @('2.2', 'done', 'github', $gh), @('5.2', 'done', 'github', $gh), @('2.3', 'done', 'github', $gh),
             @('5.1', 'done', 'github', $gh), @('0.3', 'done', 'github', $gh),
+            @('2.3', 'not done', 'codeql, default setup on', $codeqlOn), @('2.3', 'done', 'codeql, default setup off', $codeqlOff),
             @('2.2', 'not done', 'private', $pr), @('2.3', 'not done', 'private', $pr),
             @('5.1', 'not done', 'nokey', $nokey), @('2.2', 'not done', 'nokey', $nokey),
             @('0.3', 'unreadable', 'nokey', $nokey))) {

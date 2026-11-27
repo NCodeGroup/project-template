@@ -554,7 +554,15 @@ $checks['5.2'] = {
 }
 
 $checks['2.3'] = {
+    $codeqlFile = Get-FileText '.github/workflows/codeql.yml'
     $setup = Read-Gh @('api', "repos/$slug/code-scanning/default-setup")
+    if ("$codeqlFile" -match 'github/codeql-action/analyze@') {
+        if ($setup.state -eq 'configured') {
+            $why = "CodeQL's default setup is on, which refuses .github/workflows/codeql.yml's results: run Set-RepositoryBaseline.ps1"
+            return New-Result 'not done' $why
+        }
+        return New-Result 'done' '.github/workflows/codeql.yml runs CodeQL; the default setup is off'
+    }
     $languages = @($setup.languages | Where-Object { $_ })
     if ($setup.state -eq 'configured' -and $languages.Count) {
         $why = "configured: $($languages -join ', ')"
