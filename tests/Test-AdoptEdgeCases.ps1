@@ -12,6 +12,8 @@
     1 on any failure. A library's kept publish.yml that doesn't call release-provenance.yml and raise-baseline.yml gets
     the warning Update-Project.ps1 prints, word for word (ADR-0151). A kept ci.yml without a workflow_call trigger and with a job that asks for id-token: write gets both of the update's ci.yml notes, and the template's own ci.yml gets neither.
     A repository whose own workflow runs on a release event gets Update-Project.ps1's note on SECURITY.md's immutable-releases paragraph (ADR-0028).
+    A library whose kept AGENTS.md has no release line gets Update-Project.ps1's note with the one-line change to
+    - release: tag+release; a library whose AGENTS.md the template writes, with release: tag+release, doesn't.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-adopt-edge-test-<process ID> in the
@@ -110,10 +112,13 @@ Check 'ci-existing: a repository that isn''t a library gets no follow-up warning
 $libraryCalls = New-Fixture 'library-calls' @{
     'README.md'                     = "# Library Calls`n"
     'Lib.csproj'                    = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n</Project>`n"
+    'AGENTS.md'                     = "# Library Calls`n`nOwn rules.`n"
     '.github/workflows/publish.yml' = "name: Publish`non:`n  release:`n    types: [published]`n  workflow_dispatch:`n    inputs:`n      tag:`n        required: true`n        type: string`njobs:`n  provenance:`n    uses: ./.github/workflows/release-provenance.yml`n  baseline:`n    uses: ./.github/workflows/raise-baseline.yml`n"
 } 'https://github.com/example/library-calls.git'
 $callsOut = & $adopt -Path $libraryCalls -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = @('claude'); nuget_package = 'true'; license = 'MIT' } -NoVerify | Out-String
 Check 'library-calls: a kept publish.yml that calls both release follow-ups gets no follow-up warning' (-not $callsOut.Contains('doesn''t call .github/workflows/release-provenance.yml')) $callsOut
+Check 'library-calls: a kept AGENTS.md without a release line gets the update''s note with the one-line change to release: tag+release' ($callsOut.Contains("AGENTS.md's Landing section says release: none,") -and $callsOut.Contains("`n  - release: tag+release")) $callsOut
+Check 'library-publish: the AGENTS.md the template writes says release: tag+release, so no release-line note' (-not $libraryOut.Contains("AGENTS.md's Landing section says release:")) $libraryOut
 
 # Copilot agents and no Hybrid ones, like a public repository: the adoption leaves out the local model's files.
 $copilotOnly = New-Fixture 'copilot-only' @{
