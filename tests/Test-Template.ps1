@@ -315,6 +315,8 @@ foreach ($case in $cases) {
     $agentsReleaseText = [IO.File]::ReadAllText((Join-Path $dest 'AGENTS.md'))
     Check "${name}: AGENTS.md's release line is the release_policy answer, and SECURITY.md says how to verify a release tag exactly when a GitHub project's releases are tagged" ($agentsReleaseText -match "(?m)^- release: $([regex]::Escape($releasePolicy))\r?$" -and ($securityText.Contains('gitsign verify-tag') -eq ($case.Host -eq 'github' -and $releasePolicy -ne 'none')) -and $securityText -notmatch '(?m)^## Verify a Release\r?\n(\r?\n)*(## |\z)') $securityText
     Check "${name}: .copier-answers.yml records nuget_publisher only when it is answered, and never release_policy" ($answersText -notmatch '(?m)^release_policy:' -and (($answersText -match '(?m)^nuget_publisher: \.github/workflows/main\.yml\r?$') -eq [bool]$case.Data.nuget_publisher)) $answersText
+    $startsWant = if ($case.Data.nuget_publisher) { 'for a .NET library starts `' + $case.Data.nuget_publisher + '`, the workflow that publishes its packages, through its `workflow_dispatch` trigger;' } else { 'for a .NET library starts `.github/workflows/publish.yml`;' }
+    Check "${name}: AGENTS.md's Landing section says tag-release.yml starts the nuget_publisher workflow when it is answered, else publish.yml" ($agentsReleaseText.Contains($startsWant)) $startsWant
     if ($case.Data.nuget_publisher) {
         $ownPublisher = $case.Data.nuget_publisher
         $stalePhrases = 'publish.yml', 'trusted publishing', '`nuget` environment', 'provenance', 'raise-baseline.yml', 'intoto'
@@ -343,7 +345,8 @@ foreach ($case in $cases) {
     Check "${name}: every template decision record a Markdown file cites is one the project has" (-not $unknownCitations) ($unknownCitations -join '; ')
     $adr16 = [IO.File]::ReadAllText((Join-Path $dest 'docs\decisions\project-template\0016-releases-are-tagged-and-published-when-their-pull-request-merges.md'))
     $has137 = Test-Path -LiteralPath (Join-Path $dest 'docs\decisions\project-template\0137-the-release-workflow-starts-package-publishing.md')
-    Check "${name}: ADR-0016 cites ADR-0137 exactly when the project has it" (($adr16 -match 'the script starts\s+the project''s `\.github/workflows/publish\.yml`') -and ($adr16.Contains('ADR-0137') -eq $has137)) "has ADR-0137: $has137"
+    $adr16Starts = if ($case.Data.nuget_publisher) { 'the script starts\s+the workflow that publishes the project''s packages, `' + [regex]::Escape($case.Data.nuget_publisher) + '`, through `workflow_dispatch`' } else { 'the script starts\s+the project''s `\.github/workflows/publish\.yml`' }
+    Check "${name}: ADR-0016 cites ADR-0137 exactly when the project has it" (($adr16 -match $adr16Starts) -and ($adr16.Contains('ADR-0137') -eq $has137)) "has ADR-0137: $has137"
     $present = @($dotnetOnly | Where-Object { Test-Path (Join-Path $dest $_) })
     if ($case.Stack -eq 'dotnet') { Check "${name}: .NET layer present" ($present.Count -eq $dotnetOnly.Count) }
     else { Check "${name}: no .NET layer" ($present.Count -eq 0) ($present -join ', ') }

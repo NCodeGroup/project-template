@@ -19,7 +19,8 @@
                      assemblyVersion 2.3 (precision minor) that v2.3.0 shipped, and says so; v0.1.0 predates version.json.
                      Its release.yml has a shallow actions/checkout and builds with /p:Version, so the update names both,
                      which Nerdbank.GitVersioning breaks. It deletes release-provenance.yml and raise-baseline.yml,
-                     records nuget_publisher in .copier-answers.yml and says so.
+                     records nuget_publisher in .copier-answers.yml and says so. Its AGENTS.md says release: tag+release,
+                     so the update says release.yml has no workflow_dispatch trigger.
       headerless     A C# file without the header .editorconfig sets, and one with it. Turning csharp_format on with
                      -Data counts the first, names it, and not the second.
       headerless-ordinary  The same two files; an ordinary update prints no header note.
@@ -130,7 +131,8 @@ try {
     Check 'own-publisher: the update names the stale legacy.sln and asks for a /plan-migration' ($result.ExitCode -eq 0 -and $result.Output.Contains('Stale NuGet logistics') -and $result.Output.Contains('legacy.sln is a .sln') -and ($result.Output -match '(?m)^\s*/plan-migration .*\bsolution\b|(?m)^\s*/plan-migration .*\bSolution\b')) $result.Output
     $versionJson = Get-Content -Raw -LiteralPath version.json | ConvertFrom-Json
     Check 'own-publisher: the update leaves publish.yml out beside release.yml, and says so' ($result.ExitCode -eq 0 -and -not (Test-Path -LiteralPath .github/workflows/publish.yml) -and $result.Output.Contains('Left out .github/workflows/publish.yml: .github/workflows/release.yml already push NuGet packages')) $result.Output
-    Check 'own-publisher: without publish.yml, no workflow_dispatch warning' (-not $result.Output.Contains('has no workflow_dispatch trigger')) $result.Output
+    Check 'own-publisher: without publish.yml, no workflow_dispatch warning' (-not $result.Output.Contains('.github/workflows/publish.yml has no workflow_dispatch trigger')) $result.Output
+    Check 'own-publisher: with release: tag+release, the update says release.yml, its own publishing workflow, has no workflow_dispatch trigger' ($result.Output.Contains('.github/workflows/release.yml publishes this library''s NuGet packages (the nuget_publisher answer) and has no workflow_dispatch trigger')) $result.Output
     Check 'own-publisher: the update adds version.json at the patch after v2.3.0, with the AssemblyVersion v2.3.0 shipped, and says so' (($versionJson.version -eq '2.3.1') -and ($versionJson.assemblyVersion.version -eq '2.3') -and ($versionJson.assemblyVersion.precision -eq 'minor') -and $result.Output.Contains('Added version.json') -and $result.Output.Contains('the patch after v2.3.0') -and -not $result.Output.Contains('<PropertyGroup><AssemblyVersion>')) $result.Output
     Check 'own-publisher: the update names release.yml''s shallow checkout and its /p:Version, which Nerdbank.GitVersioning breaks' ($result.Output.Contains('.github/workflows/release.yml, job push: actions/checkout without fetch-depth: 0') -and $result.Output.Contains('.github/workflows/release.yml, job push: /p:Version="${BUILD_VERSION}"')) $result.Output
     Check 'own-publisher: the update deletes release-provenance.yml and raise-baseline.yml, records nuget_publisher and says so' (-not (Test-Path -LiteralPath .github/workflows/release-provenance.yml) -and -not (Test-Path -LiteralPath .github/workflows/raise-baseline.yml) -and (Select-String -LiteralPath .copier-answers.yml -Pattern '^nuget_publisher: \.github/workflows/release\.yml\s*$' -Quiet) -and $result.Output.Contains('The update also leaves out release-provenance.yml and raise-baseline.yml')) $result.Output

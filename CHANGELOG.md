@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.115.1] - 2026-11-27
+## [0.115.2] - 2026-11-27
 
 ### Added
 
@@ -15,6 +15,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - ADR-0112 is amended by ADR-0156: a buffer that may hold a secret, a transient one too, comes from a pool of pinned arrays and is zeroed on dispose, not from `ArrayPool<byte>.Shared` returned with `clearArray: true` ([ADR-0156](template/docs/decisions/project-template/0156-byte-arrays-are-the-exception-and-secrets-live-in-pinned-pooled-buffers.md)).
+
+## [0.115.1] - 2026-11-26
+
+### Fixed
+
+- `build/Get-TestRuntimes.ps1` parses only the JSON MSBuild prints on stdout, so an evaluation warning on stderr that holds a brace, such as MSB4011 naming a path with one, no longer fails CI's runtime lookup with a JSON parse error that names no project; when MSBuild prints no JSON, the error names the project ([#510](https://github.com/NCodeGroup/project-template/issues/510)).
+
+- A .NET library whose own workflows publish its packages, which its `nuget_publisher` answer names, has them started by `.template/Publish-Release.ps1` after `tag-release.yml` publishes a release, through `workflow_dispatch` on the release's tag, with the tag as the `tag` input when the workflow declares one, instead of a start of `publish.yml`, which such a library doesn't have, so its release reached no package registry and nothing said so. The run fails after publishing the release for such a workflow without `workflow_dispatch`, naming the trigger, or for one the answer names that doesn't exist, naming the answer, and `.template/Update-Project.ps1` and `Adopt-Project.ps1`, with `release: tag+release`, name each one. The `AGENTS.md` Landing section and ADR-0016 a project gets name that workflow instead of `publish.yml`, and ADR-0137 records the start; `AGENTS.md` is project-owned, so the update shows the change ([#508](https://github.com/NCodeGroup/project-template/issues/508)).
+
+- `.template/Update-Project.ps1` gives a library from before v0.63.0 whose `license` answer is blank the license its `package_license` answer still holds, says so and updates, instead of stopping until `-Data @{ license = '<SPDX expression>' }` gives one; a `license` in `-Data` still wins, and a library with neither still stops ([#507](https://github.com/NCodeGroup/project-template/issues/507)).
+
+- The warning `.template/Update-Project.ps1` and `Adopt-Project.ps1` print for a `publish.yml` without a `workflow_dispatch` trigger recognizes the trigger in a flow sequence, such as `on: [release, workflow_dispatch]`, as `.template/Publish-Release.ps1` does, instead of warning about a trigger the workflow has ([#508](https://github.com/NCodeGroup/project-template/issues/508)).
 
 ## [0.115.0] - 2026-11-26
 
@@ -1958,7 +1970,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.115.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.115.2...HEAD
+[0.115.2]: https://github.com/NCodeGroup/project-template/compare/v0.115.1...v0.115.2
 [0.115.1]: https://github.com/NCodeGroup/project-template/compare/v0.115.0...v0.115.1
 [0.115.0]: https://github.com/NCodeGroup/project-template/compare/v0.114.1...v0.115.0
 [0.114.1]: https://github.com/NCodeGroup/project-template/compare/v0.114.0...v0.114.1

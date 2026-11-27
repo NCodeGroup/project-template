@@ -78,24 +78,28 @@
     When the project has version tags merged into HEAD that the changelog (AGENTS.md's Landing changelog key,
     CHANGELOG.md by default) has no section for, it ends with a /plan-migration request to backfill them.
 
-    For a .NET library, it names the AssemblyVersion to set in Directory.Build.props when a release of the current
-    major was built with a higher one than build/ProjectTemplate.props pins (the library's ADR-0136). It leaves
+    For a .NET library, it names the AssemblyVersion to set in Directory.Build.props when a release of the current major
+    was built with a higher one than build/ProjectTemplate.props pins (the library's ADR-0136). It leaves
     .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
     publish. When the project has .github/workflows/tag-release.yml and a publish.yml without a workflow_dispatch
-    trigger, it says what to add. When tag-release.yml runs ci.yml and ci.yml has no workflow_call trigger, it says
-    to add one. When a job of ci.yml, or its top-level permissions, asks for more than contents: read, which
-    tag-release.yml grants it, it names each and says to move such a job into a workflow of its own (the template's
-    ADR-0026). When it has release-provenance.yml or raise-baseline.yml and a publish.yml that
-    doesn't call one of them, or either, it warns that no release gets its provenance or baseline pull request (the template's
-    ADR-0151). When the project has version.json, it also warns about a publish.yml or a
-    .gitlab-ci.yml that packs without -p:PublicRelease=true and, when build/ProjectTemplate.props references
-    Nerdbank.GitVersioning, as a library's does, names the files that reference it themselves (the template's ADR-0138).
+    trigger, it says what to add. With release: tag+release, it also names each workflow the nuget_publisher answer
+    names that has no workflow_dispatch trigger or doesn't exist, which tag-release.yml starts the same way. When
+    tag-release.yml runs ci.yml and ci.yml has no workflow_call trigger, it says to add one. When a job of ci.yml, or
+    its top-level permissions, asks for more than contents: read, which tag-release.yml grants it, it names each and
+    says to move such a job into a workflow of its own (the template's ADR-0026). When it has release-provenance.yml or
+    raise-baseline.yml and a publish.yml that doesn't call one of them, or either, it warns that no release gets its
+    provenance or baseline pull request (the template's ADR-0151). When the project has version.json, it also warns
+    about a publish.yml or a .gitlab-ci.yml that packs without -p:PublicRelease=true and, when
+    build/ProjectTemplate.props references Nerdbank.GitVersioning, as a library's does, names the files that
+    reference it themselves (the template's ADR-0138).
     It also names each job of the project's own workflows, other than publish.yml, that builds, packs, tests without --no-build or pushes packages with an actions/checkout step without fetch-depth: 0 whose folder holds such a step's working directory (its working-directory:, or the job's or the workflow's defaults:), on which Nerdbank.GitVersioning fails the build, or with a -p:Version argument, which it ignores; when it can't tell which checkout a step runs in, it names each shallow checkout of the job.
     Such a library's nuget_publisher answer names its own publishing workflows, so the update also leaves out or deletes release-provenance.yml and raise-baseline.yml, and its documents name those workflows instead of publish.yml.
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     An existing project keeps off the checks a new one starts with until -Data turns them on: csharp_format, node_lint, coverage_gate and file_headers are false when its answers lack them.
-    A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
-    anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
+    A blank license answer beside a package_license answer, which template v0.63.0 replaced with license, takes that
+    value, and the update says so. A NuGet package needs a license: when the answers and -Data give a library none, it
+    stops before it changes anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' }
+    to run.
     When the project has no LICENSE or COPYING file at its root, it warns, also when the project is already up to
     date: for a blank license answer it prints the -Data @{ license = 'Apache-2.0' } that adds one, and for any other
     answer it says to add that license's text (the template's ADR-0024). A project from before the license question
@@ -195,6 +199,13 @@ function Get-LicenseData {
     if (-not $Data.ContainsKey('license') -and -not (Select-String -LiteralPath .copier-answers.yml -Pattern '^license:' -Quiet)) { '--data', 'license=' }
 }
 
+# A library from before template v0.63.0 recorded its packages' license as package_license, which v0.63.0 replaced with license: the value to carry over when the license answer is blank and -Data gives none, else nothing.
+function Get-PackageLicenseAnswer {
+    if ($Data.ContainsKey('license') -or "$(Get-Answer 'license')".Trim()) { return }
+    $value = "$(Get-Answer 'package_license')".Trim()
+    if ($value) { $value }
+}
+
 # No license (ADR-0024): no LICENSE or COPYING file at the project's root. A blank answer gets the command that adds Apache-2.0; any other answer, one the template writes no file for or whose LICENSE.txt was deleted, is told to add that license's text. The template's Adopt-Project.ps1 prints the same lines; tests/Test-LicenseWarning.ps1 keeps them equal.
 function Get-LicenseWarning {
     if (Get-ChildItem -LiteralPath $project -File | Where-Object Name -Match '^(LICEN[CS]E|COPYING)(\.\w+)?$') { return }
@@ -231,6 +242,21 @@ function Get-CiCallNote {
     if ((Test-Path -LiteralPath $ci) -and (Get-Content -LiteralPath $ci -Raw) -match '(?m)^\s+workflow_call:') { return }
     ''
     '.github/workflows/ci.yml is missing or has no workflow_call trigger. .github/workflows/tag-release.yml runs it as a reusable workflow before it tags a release, so until it has that trigger, no release is tagged or published. Add workflow_call: to its on: section, as the ci.yml the project template gives a GitHub project does (the template''s ADR-0026, in docs/decisions/project-template/).'
+}
+
+# A library whose own workflows publish its packages (the nuget_publisher answer), with release: tag+release: tag-release.yml starts each through workflow_dispatch once it publishes a release, so one without that trigger ships no packages (the template's ADR-0137).
+function Get-PublisherDispatchNote {
+    if ((Get-ReleasePolicyAnswer) -ne 'tag+release' -or -not (Test-Path -LiteralPath .github/workflows/tag-release.yml)) { return }
+    foreach ($workflow in @("$(Get-Answer 'nuget_publisher')" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+        if (-not (Test-Path -LiteralPath $workflow -PathType Leaf)) {
+            ''
+            "$workflow, which the nuget_publisher answer names as this library's publishing workflow, doesn't exist. AGENTS.md says release: tag+release, so .github/workflows/tag-release.yml starts each workflow that answer names once it publishes a release, and that run fails for $workflow. Name the workflows that publish this library's packages in the nuget_publisher answer, or restore $workflow (the template's ADR-0137)."
+            continue
+        }
+        if (@(Get-WorkflowEvents (Get-Content -LiteralPath $workflow -Raw)) -contains 'workflow_dispatch') { continue }
+        ''
+        "$workflow publishes this library's NuGet packages (the nuget_publisher answer) and has no workflow_dispatch trigger. AGENTS.md says release: tag+release, so .github/workflows/tag-release.yml publishes each release with the workflow's token, which starts no other workflow, and then starts $workflow through workflow_dispatch on the release's tag; until $workflow has that trigger, that run fails and a release ships no packages. Add workflow_dispatch to its on: section, and read the tag from inputs.tag, when it declares a tag input, or else github.ref_name, when the run has no release (the template's ADR-0137)."
+    }
 }
 
 # The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, the keys or items
@@ -1082,6 +1108,12 @@ try {
     # copier.yml's license validator refuses a NuGet library without a license: stop before anything changes, naming the -Data that gives one.
     $nugetAnswer = if ($Data.ContainsKey('nuget_package')) { "$($Data['nuget_package'])" } else { Get-Answer 'nuget_package' }
     $licenseAnswer = if ($Data.ContainsKey('license')) { "$($Data['license'])" } else { Get-Answer 'license' }
+    $carriedLicense = Get-PackageLicenseAnswer
+    if ($carriedLicense) {
+        $Data['license'] = $carriedLicense
+        $licenseAnswer = $carriedLicense
+        "The license answer is blank: the update takes $carriedLicense from package_license, which template v0.63.0 replaced with license, and records it as the license answer."
+    }
     if ($nugetAnswer -eq 'true' -and -not "$licenseAnswer".Trim()) { throw "A NuGet package needs a license, and $project publishes NuGet packages without a license answer. Run the update with the SPDX license expression its packages carry: .\.template\Update-Project.ps1 -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' }" }
     $head = git rev-parse HEAD
     $from = Get-Answer '_commit'
@@ -1446,10 +1478,11 @@ try {
         "Both .github/workflows/publish.yml and $($publishers -join ', ') push NuGet packages, so a published release runs both. Keep one: delete publish.yml, or move the publishing into it and delete the others."
     }
     # A library's publish.yml without the trigger tag-release.yml starts it with: a release that workflow publishes would ship no packages.
-    if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
+    if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and @(Get-WorkflowEvents (Get-Content -LiteralPath .github/workflows/publish.yml -Raw)) -notcontains 'workflow_dispatch') {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
+    Get-PublisherDispatchNote
     Get-CiCallNote
     Get-CiPermissionNote
     $offered = [bool]@($shown | Where-Object { $_.File -eq 'SECURITY.md' } | ForEach-Object Lines | Where-Object { $_ -match '^\s*\+Releases are immutable' }).Count
