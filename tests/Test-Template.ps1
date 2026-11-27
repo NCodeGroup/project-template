@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
-    uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML, the
+    uncommitted template changes are tested too. Renders every stack, up to one render per processor at once, and checks YAML, the
     pwsh run: blocks and copier.yml's _exclude patterns with the Node.js scripts in tests/node, which use the yaml and nunjucks versions tests/node/package.json
     pins exactly; it installs them with npm ci when tests/node/node_modules doesn't hold what tests/node/package-lock.json locks, so it needs Node.js and npm
     on PATH. It checks those scripts on small fixtures first. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1, sets up Node.js from .node-version and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, that tests/node/package.json pins every package exactly and a Dependabot npm entry keeps them current, that tests/requirements.txt pins only the Python programs the tests run and no Python file outside template/ is in the repository (ADR-0021), that this repository's own .github/workflows/code-review.yml is identical to the template's, that the generated workflow files under template/ and at the repository root
@@ -228,7 +228,7 @@ $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\Pro
 $nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', '.template\install-nvs.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'docs\decisions\project-template\0147-*.md', 'docs\decisions\project-template\0149-*.md', 'docs\decisions\project-template\0152-*.md', 'build\Update-PublicApi.ps1', 'docs\api-compatibility.md'
-$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml', '.github\workflows\scorecard.yml'; gitlab = @('.gitlab-ci.yml') }
+$githubOnly = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml', '.github\workflows\scorecard.yml'
 # tests\Test-TemplateDotnet.ps1 renders the dotnet and dotnet-library-apache cases again with the same answers: change both together.
 $cases = @(
     @{ Name = 'dotnet'; Stack = 'dotnet'; Host = 'github' }
@@ -319,7 +319,7 @@ $renders = @($cases | ForEach-Object -ThrottleLimit ([Environment]::ProcessorCou
     $prefix = @($command | Select-Object -Skip 1)
     $tools = if ($case.Tools) { @($case.Tools) } else { $using:allTools }
     $copierArgs = [Collections.Generic.List[string]]::new()
-    foreach ($a in @($prefix) + @('copy', '--defaults', '--quiet', '--vcs-ref', 'v0.1.0', '--data', "project_name=Test $($case.Name)", '--data', "stack=$($case.Stack)", '--data', "git_host=$($case.Host)", '--data', "workflow_tools=[$($tools -join ', ')]")) { $copierArgs.Add($a) }
+    foreach ($a in @($prefix) + @('copy', '--defaults', '--quiet', '--vcs-ref', 'v0.1.0', '--data', "project_name=Test $($case.Name)", '--data', "stack=$($case.Stack)", '--data', "workflow_tools=[$($tools -join ', ')]")) { $copierArgs.Add($a) }
     foreach ($k in $case.Data.Keys) { $copierArgs.Add('--data'); $copierArgs.Add("$k=$($case.Data[$k])") }
     $copierArgs.Add($using:tplUrl); $copierArgs.Add((Join-Path $using:Work $case.Name))
     # Each render gets a Copier cache of its own: Copier refreshes one shared mirror per template URL without a lock, so parallel copies race on it, and the runspaces share one environment, so the variable is set on Copier's process only.
@@ -352,11 +352,11 @@ foreach ($case in $cases) {
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
     $conduct = [IO.File]::ReadAllText((Join-Path $dest 'CODE_OF_CONDUCT.md'))
-    $conductWant = if ($case.Data.conduct_contact) { 'lists, at ' + $case.Data.conduct_contact + '. All complaints' } elseif ($case.Host -eq 'gitlab') { '**This issue is confidential**' } else { 'choose **Report a vulnerability** and start the title with' }
+    $conductWant = if ($case.Data.conduct_contact) { 'lists, at ' + $case.Data.conduct_contact + '. All complaints' } else { 'choose **Report a vulnerability** and start the title with' }
     Check "${name}: CODE_OF_CONDUCT.md sends a report to the conduct contact, or else to the host's private form" ($conduct.Contains($conductWant) -and $conduct.Contains('version 2.1')) $conductWant
     $governance = [IO.File]::ReadAllText((Join-Path $dest 'GOVERNANCE.md'))
     $governanceHeadings = '## Roles', '## Decisions', '## Releases', '## Continuity', '## Changing This Document'
-    $governanceWantsBot = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
+    $governanceWantsBot = $case.Data.code_review -eq 'true'
     Check "${name}: GOVERNANCE.md has its sections" (-not ($governanceHeadings | Where-Object { -not $governance.Contains($_) }) -and $governance.Contains('ncode-review[bot]') -eq $governanceWantsBot) $governance
     $roadmap = [IO.File]::ReadAllText((Join-Path $dest 'ROADMAP.md'))
     $architecture = [IO.File]::ReadAllText((Join-Path $dest 'docs\architecture.md'))
@@ -366,13 +366,13 @@ foreach ($case in $cases) {
     Check "${name}: GOVERNANCE.md and docs/architecture.md describe how releases are turned on without naming the project's setting" (-not $governance.Contains('release: none') -and -not $architecture.Contains('release: none')) ($governance + $architecture)
     $assurance = [IO.File]::ReadAllText((Join-Path $dest 'docs\assurance-case.md'))
     $assuranceHeadings = '## Security Requirements', '## Threat Model', '## Secure Design Principles Applied', '## Common Weaknesses Countered', '## Evidence'
-    $assuranceWantsPublishing = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package -and $case.Host -eq 'github' -and -not $case.Data.nuget_publisher
+    $assuranceWantsPublishing = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package -and -not $case.Data.nuget_publisher
     Check "${name}: docs/assurance-case.md has its sections" (-not ($assuranceHeadings | Where-Object { -not $assurance.Contains($_) }) -and $assurance.Contains('trusted publishing') -eq $assuranceWantsPublishing) $assurance
     $badge = [IO.File]::ReadAllText((Join-Path $dest 'docs\best-practices-badge.md'))
     Check "${name}: docs/best-practices-badge.md maps the silver criteria" ($badge.Contains('## Toward Silver') -and $badge.Contains('access_continuity') -and $badge.Contains('PROJECT_ID') -ne [bool]$case.Data.best_practices_project -and $badge.Contains('signed_releases') -eq $assuranceWantsPublishing) $badge
     $criteriaText = [IO.File]::ReadAllText((Join-Path $dest 'docs\best-practices-criteria.md'))
     $criteriaRows = [regex]::Matches($criteriaText, '(?m)^\| `[A-Za-z0-9_]+` \| (MUST|SHOULD|SUGGESTED) \| (yes|no) \| (yes|no) \| ').Count
-    Check "${name}: docs/best-practices-criteria.md maps all 145 criteria, says what stops a level and how to check, and holds the registration prompt on GitHub only" ($criteriaRows -eq 145 -and $criteriaText.Contains('## Where a Level Stops') -and $criteriaText.Contains('## Checks') -and $criteriaText.Contains('## Register and Answer') -and $criteriaText.Contains('REPORT AT THE END') -eq ($case.Host -eq 'github')) "$criteriaRows rows"
+    Check "${name}: docs/best-practices-criteria.md maps all 145 criteria, says what stops a level and how to check, and holds the registration prompt" ($criteriaRows -eq 145 -and $criteriaText.Contains('## Where a Level Stops') -and $criteriaText.Contains('## Checks') -and $criteriaText.Contains('## Register and Answer') -and $criteriaText.Contains('REPORT AT THE END')) "$criteriaRows rows"
     $coverageGated = $case.Stack -in 'dotnet', 'python', 'node', 'powershell' -and $case.Data.coverage_gate -ne 'false'
     $coverageCheck = [regex]::Match($criteriaText, '(?m)^- \*\*Coverage\*\* .*$').Value
     Check "${name}: docs/best-practices-criteria.md's Coverage check says CI doesn't gate on coverage exactly when it doesn't, and names Test-Coverage.ps1 exactly when it does" ($coverageCheck -and $coverageCheck.Contains("even when CI doesn't gate on it") -ne $coverageGated -and $coverageCheck.Contains('Test-Coverage.ps1') -eq $coverageGated) $coverageCheck
@@ -389,25 +389,23 @@ foreach ($case in $cases) {
     Check "${name}: docs/best-practices-badge.md and docs/best-practices-criteria.md cite what CONTRIBUTING.md says, never a heading or a list item by number, and CONTRIBUTING.md says it" (-not $byPlace.Count -and -not $criteriaText.Contains('the same item') -and $badge.Contains("says that $testPolicy") -and $criteriaText.Contains("says that $testPolicy") -and $criteriaText.Contains('says to start each change with an issue') -and $criteriaText.Contains('says what a reviewer checks in each') -and $criteriaText.Contains('names the prerequisites') -and $contributingText.Contains('Work on a short-lived branch from the default branch.') -and $contributingText.Contains('is the index of the conventions') -and $contributingText.Contains('A change that adds or changes behavior adds or updates the automated tests that cover it.') -and $contributingText.Contains('Start with an issue that says what should change and why.') -and $contributingText.Contains('A reviewer checks that:')) ($byPlace -join ' || ')
     $testInvocation = @([regex]::Matches($criteriaText, '`([^`]+)`, the test command \[CONTRIBUTING\.md\]') | ForEach-Object { $_.Groups[1].Value })
     Check "${name}: CONTRIBUTING.md names the build and test commands that docs/best-practices-criteria.md's build, test and test_invocation rows cite" ($contributingText -match '(?m)^\| Build \| ' -and $contributingText -match '(?m)^\| Test \| ' -and -not @($testInvocation | Where-Object { -not $contributingText.Contains("| Test | ``$_`` |") }).Count) ($testInvocation -join ', ')
-    $releasePolicy = if ($case.Data.release_policy) { $case.Data.release_policy } elseif ($case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true' -and $case.Host -eq 'github') { 'tag+release' } else { 'none' }
+    $releasePolicy = if ($case.Data.release_policy) { $case.Data.release_policy } elseif ($case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true') { 'tag+release' } else { 'none' }
     $agentsReleaseText = [IO.File]::ReadAllText((Join-Path $dest 'AGENTS.md'))
-    Check "${name}: AGENTS.md's release line is the release_policy answer, and SECURITY.md says how to verify a release tag exactly when a GitHub project's releases are tagged" ($agentsReleaseText -match "(?m)^- release: $([regex]::Escape($releasePolicy))\r?$" -and ($securityText.Contains('gitsign verify-tag') -eq ($case.Host -eq 'github' -and $releasePolicy -ne 'none')) -and $securityText -notmatch '(?m)^## Verify a Release\r?\n(\r?\n)*(## |\z)') $securityText
+    Check "${name}: AGENTS.md's release line is the release_policy answer, and SECURITY.md says how to verify a release tag exactly when the project's releases are tagged" ($agentsReleaseText -match "(?m)^- release: $([regex]::Escape($releasePolicy))\r?$" -and ($securityText.Contains('gitsign verify-tag') -eq ($releasePolicy -ne 'none')) -and $securityText -notmatch '(?m)^## Verify a Release\r?\n(\r?\n)*(## |\z)') $securityText
     Check "${name}: .copier-answers.yml records nuget_publisher only when it is answered, and never release_policy" ($answersText -notmatch '(?m)^release_policy:' -and (($answersText -match '(?m)^nuget_publisher: \.github/workflows/main\.yml\r?$') -eq [bool]$case.Data.nuget_publisher)) $answersText
     $startsWant = if ($case.Data.nuget_publisher) { 'for a .NET library starts `' + $case.Data.nuget_publisher + '`, the workflow that publishes its packages, through its `workflow_dispatch` trigger;' } else { 'for a .NET library starts `.github/workflows/publish.yml`;' }
     Check "${name}: AGENTS.md's Landing section says tag-release.yml starts the nuget_publisher workflow when it is answered, else publish.yml" ($agentsReleaseText.Contains($startsWant)) $startsWant
     $rulesText = [IO.File]::ReadAllText((Join-Path $dest '.github\instructions\project-template.instructions.md'))
     $releasesBullet = [regex]::Match($rulesText, '(?m)^- Releases: .*$').Value
     $ownPublishing = [bool]$case.Data.nuget_publisher
-    $releasesOk = if ($case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true' -and $case.Host -eq 'github') {
+    $releasesOk = if ($case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true') {
         $releasesBullet.Contains('With `release: tag+release` in `AGENTS.md`''s Landing section, `.github/workflows/tag-release.yml` tags each release and publishes its GitHub release as its pull request merges') -and ($releasesBullet.Contains('`nuget` environment') -ne $ownPublishing) -and ($rulesText.Contains('`.github/workflows/raise-baseline.yml`') -ne $ownPublishing) -and (-not $ownPublishing -or $releasesBullet.Contains('`' + $case.Data.nuget_publisher + '`, the project''s own workflow'))
     } else { -not $releasesBullet -and -not $rulesText.Contains('raise-baseline.yml') }
     Check "${name}: the template rules' Releases bullet says how a .NET library on GitHub publishes, naming its own publishing workflow when nuget_publisher is answered, and no other project has it" $releasesOk $releasesBullet
     $dependabotBullet = [regex]::Match($rulesText, '(?m)^- Dependabot opens a pull request each week .*$').Value
-    $reviewsDependabot = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
-    $dependabotOk = if ($case.Host -eq 'github') {
-        $dependabotBullet.Contains('A Dependabot pull request adds no changelog entry: Dependabot can''t write one') -and ($dependabotBullet.Contains('NCode Review reviews it when it opens and after each push Dependabot makes, and approves a clean one (ADR-0041)') -eq $reviewsDependabot) -and ($dependabotBullet.Contains('which `.github/workflows/code-review-auto-merge.yml` merges by itself') -eq $reviewsDependabot) -and ($dependabotBullet.Contains('CI tests it and a person merges it.') -ne $reviewsDependabot)
-    } else { -not $dependabotBullet }
-    Check "${name}: the template rules' Dependabot bullet says NCode Review reviews and approves Dependabot's pull requests and auto-merges its pin bump exactly when the project runs it, and always that a Dependabot pull request adds no changelog entry; a GitLab project has no Dependabot bullet" $dependabotOk $dependabotBullet
+    $reviewsDependabot = $case.Data.code_review -eq 'true'
+    $dependabotOk = $dependabotBullet.Contains('A Dependabot pull request adds no changelog entry: Dependabot can''t write one') -and ($dependabotBullet.Contains('NCode Review reviews it when it opens and after each push Dependabot makes, and approves a clean one (ADR-0041)') -eq $reviewsDependabot) -and ($dependabotBullet.Contains('which `.github/workflows/code-review-auto-merge.yml` merges by itself') -eq $reviewsDependabot) -and ($dependabotBullet.Contains('CI tests it and a person merges it.') -ne $reviewsDependabot)
+    Check "${name}: the template rules' Dependabot bullet says NCode Review reviews and approves Dependabot's pull requests and auto-merges its pin bump exactly when the project runs it, and always that a Dependabot pull request adds no changelog entry" $dependabotOk $dependabotBullet
     if ($case.Data.nuget_publisher) {
         $ownPublisher = $case.Data.nuget_publisher
         $stalePhrases = 'publish.yml', 'trusted publishing', '`nuget` environment', 'provenance', 'raise-baseline.yml', 'intoto'
@@ -584,9 +582,8 @@ foreach ($case in $cases) {
             Check "${name}: the publish workflow calls release-provenance.yml and raise-baseline.yml after its publish job, the baseline for a stable version only" ($workflow.Contains('    uses: ./.github/workflows/release-provenance.yml') -and $workflow.Contains('    uses: ./.github/workflows/raise-baseline.yml') -and [regex]::Matches($workflow, 'needs: \[pack, publish\]').Count -eq 2 -and $workflow.Contains("if: `${{ !contains(needs.pack.outputs.version, '-') }}") -and $workflow.Contains('attestations: write') -and [regex]::Matches($workflow, [regex]::Escape('tag: v${{ needs.pack.outputs.version }}')).Count -eq 2) $workflow
         }
     }
-    $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
-    $wrong = @($hostOnly[$case.Host] | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($hostOnly[$otherHost] | Where-Object { Test-Path (Join-Path $dest $_) })
-    Check "${name}: $($case.Host) files only" (-not $wrong) ($wrong -join ', ')
+    $wrong = @($githubOnly | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @('.gitlab-ci.yml' | Where-Object { Test-Path (Join-Path $dest $_) })
+    Check "${name}: the GitHub files, and no .gitlab-ci.yml" (-not $wrong) ($wrong -join ', ')
     $installActionWanted = $case.Stack -eq 'dotnet' -and $case.Host -eq 'github'
     Check "${name}: the install-dotnet action, and a .github/actions folder, only for a .NET project on GitHub" ((Test-Path -LiteralPath (Join-Path $dest '.github\actions\install-dotnet\action.yml')) -eq $installActionWanted -and (Test-Path -LiteralPath (Join-Path $dest '.github\actions')) -eq $installActionWanted)
     $ciForIndex = Get-Content -LiteralPath (Join-Path $dest $(if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' })) -Raw
