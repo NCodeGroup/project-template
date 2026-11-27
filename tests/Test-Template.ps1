@@ -1759,6 +1759,13 @@ $m += @(Get-MissingText ('template\.claude\commands\plan-issue.md', 'template\.c
 $m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('never runs ahead of that entry', 'naming the blocker'))
 $m += @(Get-MissingText $shipFiles ('link it as a sub-issue of the epic', 'closed the epic''s last open story', 'prompt its retrospective'))
 Check 'workflow: triage, plan-issue, run-issues and ship-plan read and keep the epic hierarchy (ADR-0042)' (-not $m) ($m -join '; ')
+$boardFiles = $triageFiles + $shipFiles + @('template\.claude\commands\plan-issue.md', 'template\.claude\commands\plan-feature.md', 'template\.github\skills\plan-issue\SKILL.md')
+$m = @(Get-MissingText $boardFiles ('board=<owner>/<number>', 'projectsV2/<number>/fields', 'A board move never stops the command'))
+$m += @(Get-MissingText $triageFiles 'to `Ready`')
+$m += @(Get-MissingText ('template\.claude\commands\plan-issue.md', 'template\.claude\commands\plan-feature.md') 'to `In progress` on the board')
+$m += @(Get-MissingText $shipFiles 'to `In review` on the board')
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- board: none', '`board`: `none`'))
+Check 'workflow: with a board, triage moves ready issues to Ready, a plan snapshot to In progress and a pull request to In review, and AGENTS.md documents board' (-not $m) ($m -join '; ')
 if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Template tests: PASSED'
