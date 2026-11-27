@@ -34,6 +34,7 @@
                 double quotes, none without the line or outside that section, and nothing for a value
                 .template\Publish-Release.ps1 refuses or without AGENTS.md. tools\adopt\Adoption.psm1's copy answers the same.
       publisher-dispatch Get-PublisherDispatchNote names each workflow the nuget_publisher answer names that has no workflow_dispatch trigger, in a block or a flow sequence, or doesn't exist, when AGENTS.md says release: tag+release and tag-release.yml exists, and nothing with release: none or without the answer.
+      release-note Get-ReleasePolicyNote names the change to - release: tag+release for a .NET library on GitHub whose AGENTS.md says release: none or tag or has no release line, and nothing with tag+release, on GitLab, without nuget_package or tag-release.yml, or with a nuget_publisher workflow that has no workflow_dispatch trigger or doesn't exist.
       publish-dispatch The condition of the publish.yml workflow_dispatch warning, in Update-Project.ps1 and in Adopt-Project.ps1, holds for a publish.yml without the trigger and not for one with it, in a block or a flow sequence, and the two agree.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
@@ -375,6 +376,50 @@ $publisherDispatchNote = & {
     }
 }
 $publisherDispatchNote
+
+# release-note: Get-ReleasePolicyNote, run from inside each fixture folder, which is also the project.
+$releasePolicyNote = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'Get-Answer', 'Get-ReleasePolicyAnswer', 'Get-WorkflowEvents', 'Get-ReleasePolicyNote') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $noTrigger = "on:`n  release:`n    types: [published]`n"
+    $library = "nuget_package: true`ngit_host: github`n"
+    $own = $library + "nuget_publisher: .github/workflows/release.yml`n"
+    $noteCases = [ordered]@{
+        'release: none'                = @{ Landing = '- release: none'; Answers = $library; Want = @("AGENTS.md's Landing section says release: none,", 'tags nothing, publishes no GitHub release', '  - release: tag+release', '.github/workflows/publish.yml, which publishes the packages', 'ADR-0016 and ADR-0137', 'already tagged and has its GitHub release') }
+        'no release line'              = @{ Landing = '- integrate: pull-request'; Answers = $library; Want = @('says release: none,', '  - release: tag+release') }
+        'release: tag'                 = @{ Landing = '- release: tag'; Answers = $library; Want = @('says release: tag,', 'tags the release but publishes no GitHub release') }
+        'release: tag+release'         = @{ Landing = '- release: tag+release'; Answers = $library }
+        'own publisher with trigger'   = @{ Landing = '- release: none'; Answers = $own; Files = @{ 'release.yml' = "$noTrigger  workflow_dispatch:`n" }; Want = @(".github/workflows/release.yml, this library's own publishing workflow"); Not = @('publish.yml') }
+        'own publisher, no trigger'    = @{ Landing = '- release: none'; Answers = $own; Files = @{ 'release.yml' = $noTrigger } }
+        'own publisher missing'        = @{ Landing = '- release: none'; Answers = $own }
+        'gitlab'                       = @{ Landing = '- release: none'; Answers = "nuget_package: true`ngit_host: gitlab`n" }
+        'not a library'                = @{ Landing = '- release: none'; Answers = "git_host: github`n" }
+        'no tag-release.yml'           = @{ Landing = '- release: none'; Answers = $library; NoTagRelease = $true }
+    }
+    foreach ($name in $noteCases.Keys) {
+        $case = $noteCases[$name]
+        $folder = Join-Path $Work "release-note-$($name -replace '\W+', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), "## Landing`n`n$($case.Landing)`n")
+        [IO.File]::WriteAllText((Join-Path $folder '.copier-answers.yml'), $case.Answers)
+        if (-not $case.NoTagRelease) { [IO.File]::WriteAllText((Join-Path $workflows 'tag-release.yml'), "name: Tag and publish release`n") }
+        foreach ($file in $case.Files.Keys) { [IO.File]::WriteAllText((Join-Path $workflows $file), $case.Files[$file]) }
+        Push-Location $folder
+        try { $note = (Get-ReleasePolicyNote) -join "`n" }
+        finally { Pop-Location }
+        if ($case.Want.Count) {
+            $missing = @($case.Want | Where-Object { -not $note.Contains($_) })
+            $unwanted = @($case.Not | Where-Object { $note.Contains($_) })
+            Check "release-note: $name" (-not $missing.Count -and -not $unwanted.Count) "missing [$($missing -join '], [')], unwanted [$($unwanted -join '], [')] in [$note]"
+        }
+        else { Check "release-note: $name" (-not $note.Trim()) "got [$note]" }
+    }
+}
+$releasePolicyNote
 
 # publish-dispatch: the condition of the publish.yml workflow_dispatch warning, taken from each script's text and run from
 # inside each fixture folder, which is also the project.

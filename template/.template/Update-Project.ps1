@@ -259,6 +259,24 @@ function Get-PublisherDispatchNote {
     }
 }
 
+# A .NET library on GitHub whose AGENTS.md says release: none or tag, or has no release line, publishes nothing as a release's pull request merges, though the template gives it tag+release and the workflows that publish on merge (the template's ADR-0016 and ADR-0137). AGENTS.md is the project's, so the note names the line to change and the update never changes it. Nothing while a workflow the nuget_publisher answer names doesn't exist or has no workflow_dispatch trigger, through which tag-release.yml would start it.
+# Adopt-Project.ps1 has a copy; tests/Test-UpdateNotes.ps1 keeps the copies equal.
+function Get-ReleasePolicyNote {
+    if ((Get-Answer 'nuget_package') -ne 'true' -or (Get-Answer 'git_host') -ne 'github' -or -not (Test-Path -LiteralPath .github/workflows/tag-release.yml)) { return }
+    $policy = Get-ReleasePolicyAnswer
+    if ($policy -notin 'none', 'tag') { return }
+    $publishers = @("$(Get-Answer 'nuget_publisher')" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    foreach ($workflow in $publishers) {
+        if (-not (Test-Path -LiteralPath $workflow -PathType Leaf) -or @(Get-WorkflowEvents (Get-Content -LiteralPath $workflow -Raw)) -notcontains 'workflow_dispatch') { return }
+    }
+    $merge = if ($policy -eq 'none') { 'tags nothing, publishes no GitHub release' } else { 'tags the release but publishes no GitHub release' }
+    $starts = if ($publishers.Count) { "$($publishers -join ', '), this library's own publishing workflow$(if ($publishers.Count -gt 1) { 's' })" } else { '.github/workflows/publish.yml, which publishes the packages to nuget.org once a maintainer approves the nuget environment' }
+    ''
+    "AGENTS.md's Landing section says release: $policy, so merging a release's pull request $merge and starts no publishing workflow. The template gives a .NET library on GitHub release: tag+release, under which .github/workflows/tag-release.yml tags each release and publishes its GitHub release from the changelog as its pull request merges, then starts $starts (the template's ADR-0016 and ADR-0137, in docs/decisions/project-template/). To publish on merge, change the release line of AGENTS.md's Landing section to:"
+    '  - release: tag+release'
+    "The first run after that change publishes nothing while the changelog's newest release section is already tagged and has its GitHub release; when that tag has no GitHub release yet, the run publishes it and starts the publishing workflow for it. SECURITY.md can then say how to verify a release tag's gitsign signature, as the SECURITY.md the template gives a library with release: tag+release does (the template's ADR-0028)."
+}
+
 # The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, the keys or items
 # indented below it, or - items at its own indent, with quotes, comments and blank lines allowed. A mapping in braces, or
 # no on: key, gives none.
