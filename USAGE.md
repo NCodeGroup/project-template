@@ -1,6 +1,6 @@
 # Usage
 
-How to set up a PC for the template's AI workflow — Claude Code on your Claude plan, GitHub Copilot on your Copilot plan — and how to use either, and switch between them, in any project made from the template. Set up once per PC; nothing in a project changes when you switch.
+How to set up a PC for the template's AI workflow — Claude Code on your Claude plan, GitHub Copilot on your Copilot plan — and how to use either, and switch between them, in any project made from the template. Set up once per PC; nothing in a project changes when you switch. Every project made from the template is one of NCodeGroup's repositories on GitHub, the only host the template supports ([ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
 
 ## Table of Contents
 
