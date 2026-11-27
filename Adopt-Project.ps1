@@ -24,8 +24,8 @@
 
     When the nuget_publisher answer names a library's own publishing workflows, the AGENTS.md the adoption leaves says
     release: tag+release and the repository gets .github/workflows/tag-release.yml, it prints the note
-    .\.template\Update-Project.ps1 prints for each of those workflows without a workflow_dispatch trigger:
-    tag-release.yml starts them through that trigger, so until each has it, a release ships no packages.
+    .\.template\Update-Project.ps1 prints for each of those workflows without a workflow_dispatch trigger, or that
+    doesn't exist: tag-release.yml starts them through that trigger, so until each has it, a release ships no packages.
 
     When that publish.yml doesn't call .github/workflows/release-provenance.yml or
     .github/workflows/raise-baseline.yml, or both, which the adoption added and which no longer start on workflow_run,
@@ -149,7 +149,11 @@ function Get-ImmutableReleaseNote([bool]$Offered) {
 function Get-PublisherDispatchNote {
     if ((Get-ReleasePolicyAnswer) -ne 'tag+release' -or -not (Test-Path -LiteralPath .github/workflows/tag-release.yml)) { return }
     foreach ($workflow in @("$(Get-Answer 'nuget_publisher')" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
-        if (-not (Test-Path -LiteralPath $workflow -PathType Leaf)) { continue }
+        if (-not (Test-Path -LiteralPath $workflow -PathType Leaf)) {
+            ''
+            "$workflow, which the nuget_publisher answer names as this library's publishing workflow, doesn't exist. AGENTS.md says release: tag+release, so .github/workflows/tag-release.yml starts each workflow that answer names once it publishes a release, and that run fails for $workflow. Name the workflows that publish this library's packages in the nuget_publisher answer, or restore $workflow (the template's ADR-0137)."
+            continue
+        }
         if (@(Get-WorkflowEvents (Get-Content -LiteralPath $workflow -Raw)) -contains 'workflow_dispatch') { continue }
         ''
         "$workflow publishes this library's NuGet packages (the nuget_publisher answer) and has no workflow_dispatch trigger. AGENTS.md says release: tag+release, so .github/workflows/tag-release.yml publishes each release with the workflow's token, which starts no other workflow, and then starts $workflow through workflow_dispatch on the release's tag; until $workflow has that trigger, that run fails and a release ships no packages. Add workflow_dispatch to its on: section, and read the tag from inputs.tag, when it declares a tag input, or else github.ref_name, when the run has no release (the template's ADR-0137)."

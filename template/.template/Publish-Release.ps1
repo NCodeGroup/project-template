@@ -38,7 +38,8 @@
     starts no other workflow. So after it publishes a release, it starts each workflow the nuget_publisher answer in
     .copier-answers.yml names, a library's own, or else .github/workflows/publish.yml, when the project has it, with a
     workflow_dispatch event on the tag, passing the tag as the tag input when the workflow declares one. It fails, naming
-    the trigger, when one of them has no workflow_dispatch trigger.
+    the trigger, when one of them has no workflow_dispatch trigger, and naming the answer when a workflow the answer
+    names doesn't exist.
 
 .PARAMETER Commit
     The commit to tag: in the workflow, the commit the push made main point to.
@@ -188,18 +189,18 @@ function Test-DispatchTagInput([string]$Text) {
     $false
 }
 
-# The workflows that publish a .NET library's packages: those the nuget_publisher answer in .copier-answers.yml names, a library's own, or else the template's publish.yml; only those the project has.
+# The workflows that publish a .NET library's packages: those the nuget_publisher answer in .copier-answers.yml names, a library's own, whether or not they exist, or else the template's publish.yml when the project has it.
 function Get-PackagePublisher([string]$Root) {
-    $named = @()
     $answers = Join-Path $Root '.copier-answers.yml'
     if (Test-Path -LiteralPath $answers) {
-        $answerLine = @(Get-Content -LiteralPath $answers | Where-Object { $_ -match '^nuget_publisher:\s*(?<value>.*?)\s*$' }) | Select-Object -First 1
-        if ($answerLine -and $answerLine -match '^nuget_publisher:\s*(?<value>.*?)\s*$') {
+        foreach ($line in Get-Content -LiteralPath $answers) {
+            if ($line -notmatch '^nuget_publisher:\s*(?<value>.*?)\s*$') { continue }
             $named = @($Matches.value.Trim("'", '"') -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            if ($named.Count) { return $named }
+            break
         }
     }
-    if (-not $named.Count) { $named = @('.github/workflows/publish.yml') }
-    @($named | Where-Object { Test-Path -LiteralPath (Join-Path $Root $_) -PathType Leaf })
+    @('.github/workflows/publish.yml' | Where-Object { Test-Path -LiteralPath (Join-Path $Root $_) -PathType Leaf })
 }
 
 $root = (& git rev-parse --show-toplevel)
@@ -308,8 +309,11 @@ if ($release -eq 'tag+release') {
 # A release made with the workflow's GITHUB_TOKEN starts no other workflow, so a .NET library's publishing workflows, which run on a published release, are started through workflow_dispatch (the template's ADR-0137).
 if ($publishedNow) {
     $untriggered = [Collections.Generic.List[string]]::new()
+    $missing = [Collections.Generic.List[string]]::new()
     foreach ($workflow in @(Get-PackagePublisher $root)) {
-        $text = Get-Content -LiteralPath (Join-Path $root $workflow) -Raw
+        $path = Join-Path $root $workflow
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { $missing.Add($workflow); continue }
+        $text = Get-Content -LiteralPath $path -Raw
         if (@(Get-WorkflowEvents $text) -notcontains 'workflow_dispatch') { $untriggered.Add($workflow); continue }
         $name = Split-Path -Leaf $workflow
         if ($PSCmdlet.ShouldProcess($version, "Start $name")) {
@@ -320,13 +324,12 @@ if ($publishedNow) {
             "Started $name for $version."
         }
     }
-    if ($untriggered.Count) {
-        throw (@($untriggered | ForEach-Object {
+    $messages = @($missing | ForEach-Object { "Published the release $version, but $_, which the nuget_publisher answer in .copier-answers.yml names as this library's publishing workflow, doesn't exist, so nothing publishes its packages from it. Correct the answer, which .\.template\Update-Project.ps1 sets to the workflows that run nuget push, or restore the workflow, then run it from the Actions tab on the tag $version." }) + @($untriggered | ForEach-Object {
             if ($_ -eq '.github/workflows/publish.yml') {
                 "Published the release $version, but .github/workflows/publish.yml has no workflow_dispatch trigger, so nothing publishes its packages: a release made with the workflow's token starts no other workflow. Add the trigger with a tag input, as the project template's publish.yml has it, then run Publish packages from the Actions tab with the tag $version."
             } else {
                 "Published the release $version, but $_, which the nuget_publisher answer in .copier-answers.yml names as this library's publishing workflow, has no workflow_dispatch trigger, so nothing publishes its packages: a release made with the workflow's token starts no other workflow. Add a workflow_dispatch trigger to it, reading the tag from inputs.tag or github.ref_name when the run has no release, then run it from the Actions tab on the tag $version."
             }
-        }) -join ' ')
-    }
+        })
+    if ($messages.Count) { throw ($messages -join ' ') }
 }
