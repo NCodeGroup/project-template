@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.115.2] - 2026-11-26
+
+### Changed
+
+- ADR-0020 records the Scorecard v5.7.0 runs on NCodeGroup/Buffers, NCodeGroup/PropertyBag and NCodeGroup/code-review, each with one writer and NCode Review's approver, and its Branch-Protection rows and consequences say the ruleset scores 8 where the approver is set up, with one writer too, and 4 with one writer and no approver, instead of about 8 only once a second person has write access; ADR-0035 gives Branch-Protection the same score, and ADR-0037 and `docs/adopt.md` no longer wait on #437 ([#437](https://github.com/NCodeGroup/project-template/issues/437), [ADR-0020](template/docs/decisions/project-template/0020-github-projects-are-scored-by-openssf-scorecard.md.jinja)).
+- `/best-practices` reports Branch-Protection's `required approving review count is 1` and `codeowners review is not required` warnings at 8 as expected, with the Needs-a-person text of ADR-0020's Branch-Protection row, for a ruleset that has what ADR-0022, ADR-0034 and ADR-0036 expect, instead of saying the Scorecard run may predate the change, and never recommends requiring two approvals with one writer ([#437](https://github.com/NCodeGroup/project-template/issues/437)).
+
 ## [0.115.1] - 2026-11-26
 
 ### Fixed
@@ -1960,7 +1967,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.115.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.115.2...HEAD
+[0.115.2]: https://github.com/NCodeGroup/project-template/compare/v0.115.1...v0.115.2
 [0.115.1]: https://github.com/NCodeGroup/project-template/compare/v0.115.0...v0.115.1
 [0.115.0]: https://github.com/NCodeGroup/project-template/compare/v0.114.1...v0.115.0
 [0.114.1]: https://github.com/NCodeGroup/project-template/compare/v0.114.0...v0.114.1
