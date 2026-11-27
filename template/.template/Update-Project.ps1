@@ -78,19 +78,20 @@
     When the project has version tags merged into HEAD that the changelog (AGENTS.md's Landing changelog key,
     CHANGELOG.md by default) has no section for, it ends with a /plan-migration request to backfill them.
 
-    For a .NET library, it names the AssemblyVersion to set in Directory.Build.props when a release of the current
-    major was built with a higher one than build/ProjectTemplate.props pins (the library's ADR-0136). It leaves
+    For a .NET library, it names the AssemblyVersion to set in Directory.Build.props when a release of the current major
+    was built with a higher one than build/ProjectTemplate.props pins (the library's ADR-0136). It leaves
     .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
     publish. When the project has .github/workflows/tag-release.yml and a publish.yml without a workflow_dispatch
     trigger, it says what to add. With release: tag+release, it also names each workflow the nuget_publisher answer
-    names that has no workflow_dispatch trigger or doesn't exist, which tag-release.yml starts the same way. When tag-release.yml runs
-    ci.yml and ci.yml has no workflow_call trigger, it says to add one. When a job of ci.yml, or its top-level permissions, asks for more than contents: read, which
-    tag-release.yml grants it, it names each and says to move such a job into a workflow of its own (the template's
-    ADR-0026). When it has release-provenance.yml or raise-baseline.yml and a publish.yml that
-    doesn't call one of them, or either, it warns that no release gets its provenance or baseline pull request (the template's
-    ADR-0151). When the project has version.json, it also warns about a publish.yml or a
-    .gitlab-ci.yml that packs without -p:PublicRelease=true and, when build/ProjectTemplate.props references
-    Nerdbank.GitVersioning, as a library's does, names the files that reference it themselves (the template's ADR-0138).
+    names that has no workflow_dispatch trigger or doesn't exist, which tag-release.yml starts the same way. When
+    tag-release.yml runs ci.yml and ci.yml has no workflow_call trigger, it says to add one. When a job of ci.yml, or
+    its top-level permissions, asks for more than contents: read, which tag-release.yml grants it, it names each and
+    says to move such a job into a workflow of its own (the template's ADR-0026). When it has release-provenance.yml or
+    raise-baseline.yml and a publish.yml that doesn't call one of them, or either, it warns that no release gets its
+    provenance or baseline pull request (the template's ADR-0151). When the project has version.json, it also warns
+    about a publish.yml or a .gitlab-ci.yml that packs without -p:PublicRelease=true and, when
+    build/ProjectTemplate.props references Nerdbank.GitVersioning, as a library's does, names the files that
+    reference it themselves (the template's ADR-0138).
     It also names each job of the project's own workflows, other than publish.yml, that builds, packs, tests without --no-build or pushes packages with an actions/checkout step without fetch-depth: 0 whose folder holds such a step's working directory (its working-directory:, or the job's or the workflow's defaults:), on which Nerdbank.GitVersioning fails the build, or with a -p:Version argument, which it ignores; when it can't tell which checkout a step runs in, it names each shallow checkout of the job.
     Such a library's nuget_publisher answer names its own publishing workflows, so the update also leaves out or deletes release-provenance.yml and raise-baseline.yml, and its documents name those workflows instead of publish.yml.
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
