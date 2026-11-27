@@ -32,6 +32,12 @@ export const STATUSES = [
 
 const USAGE = 'Usage: node tools/kanban-board.mjs --owner <organization> [--repo <owner/name>] [--project <number> | --title <title>] [--wip-limit <n>]';
 
+// The projects read per page of the organization's list, the workflows read of a project, and the bounds of --wip-limit.
+const PROJECT_PAGE_SIZE = 100;
+const WORKFLOW_PAGE_SIZE = 50;
+const MIN_WIP_LIMIT = 1;
+const MAX_WIP_LIMIT = 99;
+
 // The built-in workflows the board needs: its name, and what to do when it is off.
 const WORKFLOWS = [
   ['Item closed', 'it moves an item to Done'],
@@ -90,7 +96,7 @@ export async function main(argv, { gh, log }) {
     !values.owner ||
     (values.repo !== undefined && !/^[^/\s]+\/[^/\s]+$/.test(values.repo)) ||
     (values.project !== undefined && !(/^\d+$/.test(values.project) && Number(values.project) > 0)) ||
-    !(/^\d+$/.test(wipLimit) && Number(wipLimit) >= 1 && Number(wipLimit) <= 99);
+    !(/^\d+$/.test(wipLimit) && Number(wipLimit) >= MIN_WIP_LIMIT && Number(wipLimit) <= MAX_WIP_LIMIT);
   if (invalid) {
     log(USAGE);
     return 1;
@@ -131,7 +137,7 @@ export async function main(argv, { gh, log }) {
   };
 
   // The organization's id, and the project to adopt: the one --project numbers, looked up by its number, or else the
-  // first whose title is --title, read one page of 100 projects at a time until it is found or no page is left.
+  // first whose title is --title, read one page of PROJECT_PAGE_SIZE projects at a time until it is found or no page is left.
   let orgId;
   let found;
   if (values.project !== undefined) {
@@ -151,7 +157,7 @@ export async function main(argv, { gh, log }) {
     let after = null;
     for (;;) {
       const org = graphql(
-        'query($login: String!, $after: String) { organization(login: $login) { id projectsV2(first: 100, after: $after) { nodes { id number title url } pageInfo { hasNextPage endCursor } } } }',
+        `query($login: String!, $after: String) { organization(login: $login) { id projectsV2(first: ${PROJECT_PAGE_SIZE}, after: $after) { nodes { id number title url } pageInfo { hasNextPage endCursor } } } }`,
         { login: owner, after },
       );
       if (!org) return 1;
@@ -213,7 +219,7 @@ export async function main(argv, { gh, log }) {
   }
 
   const details = graphql(
-    'query($id: ID!) { node(id: $id) { ... on ProjectV2 { field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name color description } } } workflows(first: 50) { nodes { name enabled } pageInfo { hasNextPage } } } } }',
+    `query($id: ID!) { node(id: $id) { ... on ProjectV2 { field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name color description } } } workflows(first: ${WORKFLOW_PAGE_SIZE}) { nodes { name enabled } pageInfo { hasNextPage } } } } }`,
     { id: project.id },
   );
   if (!details) return 1;
@@ -250,9 +256,9 @@ export async function main(argv, { gh, log }) {
       log(`- ${name}: ${workflow ? 'off' : 'not found'}; turn it on and ${what}`);
     }
   }
-  // A project has far fewer than 50 workflows; when it has more, those past the first 50 weren't read.
+  // A project has far fewer than WORKFLOW_PAGE_SIZE workflows; when it has more, those past the first page weren't read.
   if (details.node?.workflows?.pageInfo?.hasNextPage) {
-    log('The project has more than 50 workflows, and this read the first 50: check a workflow not found above in its settings.');
+    log(`The project has more than ${WORKFLOW_PAGE_SIZE} workflows, and this read the first ${WORKFLOW_PAGE_SIZE}: check a workflow not found above in its settings.`);
   }
   log(`Add this line to the Landing section of AGENTS.md: - board: ${owner}/${project.number}`);
   return 0;
