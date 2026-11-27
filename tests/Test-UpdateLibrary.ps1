@@ -24,7 +24,8 @@
       headerless     A C# file without the header .editorconfig sets, and one with it. Turning csharp_format on with
                      -Data counts the first, names it, and not the second.
       headerless-ordinary  The same two files, and an AGENTS.md that says release: none; an ordinary update prints no
-                     header note, and names the change to - release: tag+release.
+                     header note, and names the change to - release: tag+release, and so does a second update,
+                     already up to date.
       with-trigger   The template's own publish.yml, with its workflow_dispatch trigger. The update adds tag-release.yml
                      and prints no workflow_dispatch warning, and none for the release follow-ups, which that
                      publish.yml calls. It keeps release-provenance.yml and records no nuget_publisher.
@@ -141,7 +142,7 @@ try {
 }
 finally { Pop-Location }
 
-# headerless, headerless-ordinary: a C# file without the header .editorconfig sets, and one with it. Turning csharp_format on counts the first and names it; an ordinary update prints no note. Each fixture gets one update, since a second one at the same version stops with "Already up to date".
+# headerless, headerless-ordinary: a C# file without the header .editorconfig sets, and one with it. Turning csharp_format on counts the first and names it; an ordinary update prints no note. headerless gets one update, since a second one at the same version stops with "Already up to date"; headerless-ordinary gets that second one, which still names the change to release: tag+release.
 $headerless = New-Library 'headerless' 'license=MIT'
 $plain = New-Library 'headerless-ordinary' 'license=MIT'
 foreach ($fixture in $headerless, $plain) {
@@ -171,6 +172,9 @@ foreach ($fixture in $headerless, $plain) {
             $ordinary = Invoke-Update $plain
             Check 'headerless-ordinary: an ordinary update prints no header note' ($ordinary.ExitCode -eq 0 -and -not $ordinary.Output.Contains('csharp_format is on')) $ordinary.Output
             Check 'headerless-ordinary: with release: none, the update names the change to release: tag+release' ($ordinary.Output.Contains("AGENTS.md's Landing section says release: none,") -and $ordinary.Output.Contains("`n  - release: tag+release")) $ordinary.Output
+            # A second update finds nothing to change, and still names the change, as the license warning does.
+            $again = Invoke-Update $plain
+            Check 'headerless-ordinary: an update that is already up to date still names the change to release: tag+release' ($again.ExitCode -eq 0 -and $again.Output.Contains('Already up to date') -and $again.Output.Contains("AGENTS.md's Landing section says release: none,")) $again.Output
         }
     }
     finally { Pop-Location }
