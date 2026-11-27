@@ -46,3 +46,56 @@ when returned and dropped under memory pressure
 ([NCode.Buffers ADR-1012](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1012-the-secure-pool-caches-buffers-of-one-4096-byte-page.md),
 [NCode.Buffers ADR-1015](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1015-the-secure-pools-cache-has-no-size-limit-and-is-dropped-under-memory-pressure.md)),
 and a factory that takes `isSensitive` at every rental.
+
+## Decision
+
+**Bytes travel as spans and memory, and `byte[]` appears only where an API or a framework demands one; a buffer that
+may hold a secret is pinned, pooled, owned by one disposable, and zeroed with `CryptographicOperations.ZeroMemory` when
+it is disposed.**
+
+1. `byte[]` is the exception: only at the call to an API that takes or returns nothing else (wrap it at once as
+   `ReadOnlyMemory<byte>`), in a type a framework binds that needs one (an EF Core column, a serialized DTO), and in
+   tests. Inputs are `ReadOnlySpan<byte>`, or `ReadOnlyMemory<byte>` across `await` or in a field; outputs follow
+   [ADR-0112](0112-binary-data-uses-spans-pooled-buffers-and-cleared-secrets.md) rule 1; a byte constant is a
+   `static ReadOnlySpan<byte> Name => "…"u8;` or `=> [0x01, 0x02];` property. Call span overloads:
+   `Encoding.GetBytes(ReadOnlySpan<char>, Span<byte>)`, `Convert.TryFromBase64Chars`, `RandomNumberGenerator.Fill`,
+   `SHA256.HashData(ReadOnlySpan<byte>, Span<byte>)`, `HMACSHA256.HashData` with a destination span,
+   `Rfc2898DeriveBytes.Pbkdf2` and `HKDF.DeriveKey` with an output span.
+2. Sensitivity is stated where the buffer is made: every rental names it (`isSensitive: true` or `false`).
+3. A sensitive buffer never moves: it comes from a pool of Pinned Object Heap arrays, from `GC.AllocateArray<T>` or
+   `GC.AllocateUninitializedArray<T>` with `pinned: true` off hot paths, or from `stackalloc` for a small constant size
+   (ADR-0112's gotchas). Never `new byte[]`, `ArrayPool<T>.Shared` or `MemoryPool<T>.Shared`, even with
+   `clearArray: true`. This replaces ADR-0112 rules 2 and 3 for secrets, transient ones included.
+4. One owner zeroes it: an `IMemoryOwner<T>` or a `ref struct` lifetime in a `using`, whose `Dispose` calls
+   `CryptographicOperations.ZeroMemory`; no finalizer does it. A fill that throws disposes the owner first. Code reads
+   only what it wrote. The element type is `unmanaged`: zeroing works on bytes, and zeroing a reference leaves the
+   object it points to.
+5. No secret goes in a type that copies it: the types and methods the Context lists. A growable sensitive writer copies
+   into a larger pinned buffer and zeroes the old one; a `Stream` that holds a secret overrides the base members.
+6. Secret text is encoded once, at the boundary, into a sensitive buffer, with a throwing encoding; it is not kept as a
+   `string`, and `SecureString` is not used (Microsoft's DE0001).
+7. A secret in a field is a sealed disposable type that owns one sensitive buffer, prints a fixed placeholder such as
+   `[REDACTED]` from `ToString` and the debugger, and compares in fixed time
+   ([ADR-0146](0146-secrets-are-never-logged-compared-in-constant-time-and-shown-once.md)).
+8. A project that handles secrets takes these from NCode.Buffers, not a pool of its own, and may ban the shared pools in
+   shipping code with a `BannedSymbols.<name>.txt`
+   ([ADR-0102](0102-disallowed-apis-are-banned-at-build-time.md)), as
+   [NCode.Buffers ADR-1003](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1003-shipping-code-takes-buffers-and-encodings-through-bufferfactory-and-secureencoding.md)
+   does. It uses:
+   - `BufferFactory.Rent(length, isSensitive: true, out Span<byte> buffer)`.
+   - `SecureMemoryPool<T>.Shared` for an API that takes a `MemoryPool<T>`.
+   - `BufferFactory.CreatePinnedArray(length)` for an API that needs a `T[]`.
+   - `span.GetSecureLifetime()` over a `stackalloc`.
+   - `BufferFactory.CreateContiguousBufferWriter(isSensitive: true)`,
+     `BufferFactory.CreatePooledBufferWriter(isSensitive: true)` and
+     `BufferFactory.CreatePooledStream(isSensitive: true)` for unknown lengths.
+   - `new PooledTextBuilder(isSensitive: true)` and
+     `SecureEncoding.UTF8.RentBytes(chars, isSensitive: true, out Span<byte> bytes)` for text.
+   - `BinaryTextEncoding.RentDecoded(text, format, isSensitive: true, out Span<byte> bytes)` for Base64 and hex.
+   - `BufferFactory.RentRandom(length, isSensitive: true, out Span<byte> key)`.
+   - `Secret.Create<T>(value)` for a field.
+9. Limits: pinning and zeroing neither lock pages nor hide them from a debugger, a dump, swap or hibernation
+   ([NCode.Buffers ADR-1018](https://github.com/NCodeGroup/Buffers/blob/main/docs/decisions/1018-the-library-neither-locks-nor-encrypts-memory.md));
+   a secret that must not be readable in the process stays in a key vault or HSM.
+
+Existing `byte[]` surfaces convert as they are touched, not in one sweep.
