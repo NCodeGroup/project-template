@@ -33,6 +33,8 @@
       release-policy Get-ReleasePolicyAnswer reads the release line of AGENTS.md's Landing section, with or without
                 double quotes, none without the line or outside that section, and nothing for a value
                 .template\Publish-Release.ps1 refuses or without AGENTS.md. tools\adopt\Adoption.psm1's copy answers the same.
+      publisher-dispatch Get-PublisherDispatchNote names each workflow the nuget_publisher answer names that has no workflow_dispatch trigger, in a block or a flow sequence, or doesn't exist, when AGENTS.md says release: tag+release and tag-release.yml exists, and nothing with release: none or without the answer.
+      publish-dispatch The condition of the publish.yml workflow_dispatch warning, in Update-Project.ps1 and in Adopt-Project.ps1, holds for a publish.yml without the trigger and not for one with it, in a block or a flow sequence, and the two agree.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.5.0, passes
@@ -44,8 +46,8 @@
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
                 for an upload named only in a comment line.
       copies    Get-WorkflowEvents and Test-ReleaseAssetWorkflow in Update-Project.ps1 are character for character
-                the ones in tools/Set-RepositoryBaseline.ps1, and Adopt-Project.ps1's copies of those and
-                Get-ImmutableReleaseNote are the ones in Update-Project.ps1.
+                the ones in tools/Set-RepositoryBaseline.ps1, and Adopt-Project.ps1's copies of those,
+                Get-ImmutableReleaseNote and Get-PublisherDispatchNote are the ones in Update-Project.ps1.
       kept-edit Test-EditKept is true when the update keeps every line the project changed in a template-owned file:
                 each line the project adds to the current version's render is in the file the update leaves at least
                 as often as in the project's copy, such as a pin the new version also bumps beside changes of its own,
@@ -60,6 +62,7 @@
                 other Unicode digits, or Git lists the file as conflicted; it throws, naming the file, when Git can't
                 read the project's changes; Test-EditKept then finds the edit kept.
       newest-tag Get-NewestTag picks the newest version tag and ignores a tag in other Unicode digits.
+      package-license The update, run offline against a template clone without tags, takes a blank license answer from package_license, says so and goes on to read the template's tags; without package_license it still stops on the license, and -Data's license wins.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notes-test-<process ID> in the temp
@@ -335,6 +338,81 @@ $releasePolicyAnswer = & {
 }
 $releasePolicyAnswer
 
+# publisher-dispatch: Get-PublisherDispatchNote, run from inside each fixture folder, which is also the project.
+$publisherDispatchNote = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'Get-Answer', 'Get-ReleasePolicyAnswer', 'Get-WorkflowEvents', 'Get-PublisherDispatchNote') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $noTrigger = "on:`n  release:`n    types: [published]`n"
+    $dispatchCases = [ordered]@{
+        'no trigger'         = @{ Release = 'tag+release'; Publisher = '.github/workflows/release.yml'; Files = @{ 'release.yml' = $noTrigger }; Want = @('.github/workflows/release.yml') }
+        'block trigger'      = @{ Release = 'tag+release'; Publisher = '.github/workflows/release.yml'; Files = @{ 'release.yml' = "$noTrigger  workflow_dispatch:`n" }; Want = @() }
+        'flow trigger'       = @{ Release = 'tag+release'; Publisher = '.github/workflows/release.yml'; Files = @{ 'release.yml' = "on: [release, workflow_dispatch]`n" }; Want = @() }
+        'release: none'      = @{ Release = 'none'; Publisher = '.github/workflows/release.yml'; Files = @{ 'release.yml' = $noTrigger }; Want = @() }
+        'two workflows'      = @{ Release = 'tag+release'; Publisher = '.github/workflows/a.yml, .github/workflows/b.yml'; Files = @{ 'a.yml' = "$noTrigger  workflow_dispatch:`n"; 'b.yml' = $noTrigger }; Want = @('.github/workflows/b.yml') }
+        'no nuget_publisher' = @{ Release = 'tag+release'; Publisher = ''; Files = @{ 'release.yml' = $noTrigger }; Want = @() }
+        'missing workflow'   = @{ Release = 'tag+release'; Publisher = '.github/workflows/gone.yml'; Files = @{}; Want = @(); Missing = @('.github/workflows/gone.yml') }
+    }
+    foreach ($name in $dispatchCases.Keys) {
+        $case = $dispatchCases[$name]
+        $folder = Join-Path $Work "publisher-dispatch-$($name -replace '\W+', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), "## Landing`n`n- release: $($case.Release)`n")
+        $answers = "nuget_package: true`n"
+        if ($case.Publisher) { $answers += "nuget_publisher: $($case.Publisher)`n" }
+        [IO.File]::WriteAllText((Join-Path $folder '.copier-answers.yml'), $answers)
+        [IO.File]::WriteAllText((Join-Path $workflows 'tag-release.yml'), "name: Tag and publish release`n")
+        foreach ($file in $case.Files.Keys) { [IO.File]::WriteAllText((Join-Path $workflows $file), $case.Files[$file]) }
+        Push-Location $folder
+        try { $note = (Get-PublisherDispatchNote) -join "`n" }
+        finally { Pop-Location }
+        $named = @([regex]::Matches($note, '(?m)^(\S+) publishes this library''s NuGet packages \(the nuget_publisher answer\) and has no workflow_dispatch trigger\.') | ForEach-Object { $_.Groups[1].Value })
+        $missingNamed = @([regex]::Matches($note, '(?m)^(\S+), which the nuget_publisher answer names as this library''s publishing workflow, doesn''t exist\.') | ForEach-Object { $_.Groups[1].Value })
+        Check "publisher-dispatch: $name" ((($named -join ',') -eq ($case.Want -join ',')) -and (($missingNamed -join ',') -eq (@($case.Missing) -join ','))) "got [$note]"
+    }
+}
+$publisherDispatchNote
+
+# publish-dispatch: the condition of the publish.yml workflow_dispatch warning, taken from each script's text and run from
+# inside each fixture folder, which is also the project.
+$publishDispatch = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'Get-WorkflowEvents') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $conditionPattern = '(?m)^\s*if \((\(Test-Path -LiteralPath \.github/workflows/tag-release\.yml\) -and \(Test-Path -LiteralPath \.github/workflows/publish\.yml\) -and [^\r\n]*)\) \{\r?$'
+    $updateCondition = [regex]::Match((Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template\.template\Update-Project.ps1')), $conditionPattern).Groups[1].Value
+    $adoptCondition = [regex]::Match((Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Adopt-Project.ps1')), $conditionPattern).Groups[1].Value
+    Check 'publish-dispatch: Update-Project.ps1 and Adopt-Project.ps1 each have the condition of the publish.yml workflow_dispatch warning' ($updateCondition -and $adoptCondition) "update [$updateCondition], adopt [$adoptCondition]"
+    if (-not ($updateCondition -and $adoptCondition)) { return }
+    $updateWarns = [scriptblock]::Create($updateCondition)
+    $adoptWarns = [scriptblock]::Create($adoptCondition)
+    $noTrigger = "name: Publish`non:`n  release:`n    types: [published]`n"
+    $publishCases = [ordered]@{
+        'no trigger'    = @{ Publish = $noTrigger; Want = $true }
+        'block trigger' = @{ Publish = "$noTrigger  workflow_dispatch:`n    inputs:`n      tag:`n        required: true`n"; Want = $false }
+        'flow trigger'  = @{ Publish = "name: Publish`non: [release, workflow_dispatch]`n"; Want = $false }
+    }
+    foreach ($name in $publishCases.Keys) {
+        $case = $publishCases[$name]
+        $folder = Join-Path $Work "publish-dispatch-$($name -replace '\W+', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        [IO.File]::WriteAllText((Join-Path $workflows 'tag-release.yml'), "name: Tag and publish release`n")
+        [IO.File]::WriteAllText((Join-Path $workflows 'publish.yml'), $case.Publish)
+        Push-Location $folder
+        try { $got = [bool](& $updateWarns); $adoptGot = [bool](& $adoptWarns) }
+        finally { Pop-Location }
+        Check "publish-dispatch: $name" ($got -eq $case.Want) "warns [$got], want [$($case.Want)]"
+        Check "publish-dispatch: ${name}: the adoption warns the same" ($adoptGot -eq $got) "update [$got], adopt [$adoptGot]"
+    }
+}
+$publishDispatch
+
 # badge: Get-BadgeReminder, run from inside each fixture folder, which is also the project.
 $badgeReminder = & {
     $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
@@ -447,15 +525,48 @@ $immutableNote = & {
     }
     Check 'copies: Get-WorkflowEvents and Test-ReleaseAssetWorkflow match tools/Set-RepositoryBaseline.ps1''s' (-not $differ) "differ: [$($differ -join ', ')]"
     $adoptAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'Adopt-Project.ps1'), [ref]$null, [ref]$null)
-    $adoptDiffer = foreach ($fnName in 'Get-WorkflowEvents', 'Test-ReleaseAssetWorkflow', 'Get-ImmutableReleaseNote') {
+    $adoptDiffer = foreach ($fnName in 'Get-WorkflowEvents', 'Test-ReleaseAssetWorkflow', 'Get-ImmutableReleaseNote', 'Get-PublisherDispatchNote') {
         $isFn = { param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }
         $copy = $adoptAst.Find($isFn, $true)
         $original = $ast.Find($isFn, $true)
         if (-not $copy -or -not $original -or $copy.Extent.Text -ne $original.Extent.Text) { $fnName }
     }
-    Check 'copies: Adopt-Project.ps1''s Get-WorkflowEvents, Test-ReleaseAssetWorkflow and Get-ImmutableReleaseNote match Update-Project.ps1''s' (-not $adoptDiffer) "differ: [$($adoptDiffer -join ', ')]"
+    Check 'copies: Adopt-Project.ps1''s Get-WorkflowEvents, Test-ReleaseAssetWorkflow, Get-ImmutableReleaseNote and Get-PublisherDispatchNote match Update-Project.ps1''s' (-not $adoptDiffer) "differ: [$($adoptDiffer -join ', ')]"
 }
 $immutableNote
+
+# package-license: Update-Project.ps1, run offline against a template clone without tags, on a committed project.
+$packageLicense = & {
+    $tpl = Join-Path $Work 'package-license-template'
+    $null = New-Item -ItemType Directory -Path $tpl -Force
+    git -C $tpl init -q
+    $update = Join-Path $repoRoot 'template\.template\Update-Project.ps1'
+    $licenseCases = [ordered]@{
+        'carried over'       = @{ Answers = "license: ''`npackage_license: Apache-2.0`n"; Data = @{} }
+        'no package_license' = @{ Answers = "license: ''`n"; Data = @{} }
+        '-Data license wins' = @{ Answers = "license: ''`npackage_license: Apache-2.0`n"; Data = @{ license = 'MIT' } }
+    }
+    foreach ($name in $licenseCases.Keys) {
+        $case = $licenseCases[$name]
+        $folder = Join-Path $Work "package-license-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path $folder -Force
+        [IO.File]::WriteAllText((Join-Path $folder '.copier-answers.yml'), "_commit: v0.1.0`n_src_path: $($tpl -replace '\\', '/')`nnuget_package: true`n" + $case.Answers)
+        git -C $folder init -q -b main
+        git -C $folder add -A
+        git -C $folder -c user.name=template-test -c user.email=template-test@example.invalid -c core.hooksPath= commit -q -m 'Create project'
+        $lines = [Collections.Generic.List[string]]::new()
+        try { & $update -Path $folder -TemplateClone $tpl -Data $case.Data 2>&1 | ForEach-Object { $lines.Add("$_") } }
+        catch { $lines.Add("THROWN: $($_.Exception.Message)") }
+        $output = $lines -join "`n"
+        $ok = switch ($name) {
+            'carried over' { $output.Contains('The license answer is blank: the update takes Apache-2.0 from package_license') -and $output.Contains('has no version tags') -and -not $output.Contains('A NuGet package needs a license') }
+            'no package_license' { $output.Contains('THROWN: A NuGet package needs a license') -and -not $output.Contains('from package_license') }
+            default { $output.Contains('has no version tags') -and -not $output.Contains('from package_license') }
+        }
+        Check "package-license: $name" $ok $output
+    }
+}
+$packageLicense
 
 # kept-edit: Test-EditKept, run from inside each fixture folder, a Git repository, which is also the project.
 $keptEdit = & {

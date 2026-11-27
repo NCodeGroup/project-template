@@ -46,8 +46,12 @@ try {
     foreach ($project in @($projects | Select-Object -Unique)) {
         $properties = @(dotnet msbuild $project -getProperty:TargetFramework -getProperty:TargetFrameworks 2>&1)
         if ($LASTEXITCODE) { throw "dotnet msbuild $project failed: $($properties -join "`n")" }
-        $text = $properties -join "`n"
-        $json = ConvertFrom-Json $text.Substring($text.IndexOf('{'), $text.LastIndexOf('}') - $text.IndexOf('{') + 1)
+        # MSBuild writes its warnings to stderr and the JSON to stdout: parse only stdout.
+        $text = @($properties | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join "`n"
+        $start = $text.IndexOf('{')
+        $end = $text.LastIndexOf('}')
+        if ($start -lt 0 -or $end -lt $start) { throw "dotnet msbuild $project printed no JSON properties: $($properties -join "`n")" }
+        $json = ConvertFrom-Json $text.Substring($start, $end - $start + 1)
         foreach ($framework in "$($json.Properties.TargetFrameworks);$($json.Properties.TargetFramework)" -split ';') {
             if ($framework -match '^net(?:coreapp)?(\d+)\.(\d+)') { $channels += "$($Matches[1]).$($Matches[2])" }
         }

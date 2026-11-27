@@ -22,6 +22,11 @@
     .github/workflows/tag-release.yml, it prints the warning .\.template\Update-Project.ps1 prints: the Tag and publish
     release workflow starts publish.yml through that trigger, so until it has one, a release ships no packages.
 
+    When the nuget_publisher answer names a library's own publishing workflows, the AGENTS.md the adoption leaves says
+    release: tag+release and the repository gets .github/workflows/tag-release.yml, it prints the note
+    .\.template\Update-Project.ps1 prints for each of those workflows without a workflow_dispatch trigger, or that
+    doesn't exist: tag-release.yml starts them through that trigger, so until each has it, a release ships no packages.
+
     When that publish.yml doesn't call .github/workflows/release-provenance.yml or
     .github/workflows/raise-baseline.yml, or both, which the adoption added and which no longer start on workflow_run,
     it prints the warning .\.template\Update-Project.ps1 prints (ADR-0151): until publish.yml calls each, no release
@@ -137,6 +142,22 @@ function Get-ImmutableReleaseNote([bool]$Offered) {
     if (-not $files) { return }
     ''
     "$(if ($says) { 'SECURITY.md says' } else { 'The template''s change to SECURITY.md above says' }) releases are immutable, but $($files -join ', ') run on a release event or upload release assets, which an immutable release refuses once it is published, so the template's tools/Set-RepositoryBaseline.ps1 leaves this repository's releases mutable (the template's ADR-0028, in docs/decisions/project-template/). $(if ($says) { 'Delete' } else { 'Leave out' }) the paragraph of its Verify a Release section that starts `"Releases are immutable`"."
+}
+
+# A library whose own workflows publish its packages (the nuget_publisher answer), with release: tag+release: tag-release.yml starts each through workflow_dispatch once it publishes a release, so one without that trigger ships no packages (the template's ADR-0137).
+# A copy of .template/Update-Project.ps1's; tests/Test-UpdateNotes.ps1 keeps the copies equal. Get-ReleasePolicyAnswer comes from tools/adopt/Adoption.psm1.
+function Get-PublisherDispatchNote {
+    if ((Get-ReleasePolicyAnswer) -ne 'tag+release' -or -not (Test-Path -LiteralPath .github/workflows/tag-release.yml)) { return }
+    foreach ($workflow in @("$(Get-Answer 'nuget_publisher')" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+        if (-not (Test-Path -LiteralPath $workflow -PathType Leaf)) {
+            ''
+            "$workflow, which the nuget_publisher answer names as this library's publishing workflow, doesn't exist. AGENTS.md says release: tag+release, so .github/workflows/tag-release.yml starts each workflow that answer names once it publishes a release, and that run fails for $workflow. Name the workflows that publish this library's packages in the nuget_publisher answer, or restore $workflow (the template's ADR-0137)."
+            continue
+        }
+        if (@(Get-WorkflowEvents (Get-Content -LiteralPath $workflow -Raw)) -contains 'workflow_dispatch') { continue }
+        ''
+        "$workflow publishes this library's NuGet packages (the nuget_publisher answer) and has no workflow_dispatch trigger. AGENTS.md says release: tag+release, so .github/workflows/tag-release.yml publishes each release with the workflow's token, which starts no other workflow, and then starts $workflow through workflow_dispatch on the release's tag; until $workflow has that trigger, that run fails and a release ships no packages. Add workflow_dispatch to its on: section, and read the tag from inputs.tag, when it declares a tag input, or else github.ref_name, when the run has no release (the template's ADR-0137)."
+    }
 }
 
 if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw "$Path isn't a folder." }
@@ -358,10 +379,13 @@ try {
     # A publish.yml the repository kept, without the trigger tag-release.yml starts it with: a release that workflow
     # publishes would ship no packages. The warning is .template/Update-Project.ps1's, word for word;
     # tests/Test-AdoptEdgeCases.ps1 keeps the two equal.
-    if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
+    if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and @(Get-WorkflowEvents (Get-Content -LiteralPath .github/workflows/publish.yml -Raw)) -notcontains 'workflow_dispatch') {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
+    # A library whose own workflows publish its packages, without the trigger tag-release.yml starts them with. The note is
+    # .template/Update-Project.ps1's, word for word; tests/Test-UpdateNotes.ps1 keeps the two functions equal.
+    Get-PublisherDispatchNote
     # A publish.yml that doesn't call one of the release follow-ups, or either (ADR-0151): they no longer start on
     # workflow_run, so a release misses what each one it doesn't call makes. The warning is
     # .template/Update-Project.ps1's, word for word; tests/Test-AdoptEdgeCases.ps1 keeps the two equal.
