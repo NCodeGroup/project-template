@@ -350,6 +350,35 @@ foreach ($case in $cases) {
         }
     })
     Check "${name}: every template decision record a Markdown file cites is one the project has" (-not $unknownCitations) ($unknownCitations -join '; ')
+    # Each amendment between two decision records the project has shows on both sides: the amended record's status line names the amending record, the amending record's index row says it amends the other, and each record's index row names the same "amended by" records as its status line.
+    $decisionDir = Join-Path $dest 'docs\decisions\project-template'
+    $noteNumbers = { param([string]$Note, [string]$Kind) @($Note -split '[;,] (?=supersedes|amends|amended by|extends)' | Where-Object { $_.Trim() -match "^$Kind\b" } | ForEach-Object { [regex]::Matches($_, '\b\d{4}\b') } | ForEach-Object Value | Sort-Object -Unique) }
+    $decisionRecords = @{}
+    foreach ($decisionFile in Get-ChildItem -LiteralPath $decisionDir -File -Filter '0*.md') {
+        $decisionLines = @(Get-Content -LiteralPath $decisionFile.FullName)
+        $decisionStatus = @($decisionLines | Where-Object { $_.StartsWith('- **Status:** ') })[0]
+        $decisionNote = if ($decisionStatus -match '^- \*\*Status:\*\* Accepted \((.*)\)$') { $Matches[1] } else { '' }
+        $decisionHeader = ''
+        $decisionAt = [array]::FindIndex([string[]]$decisionLines, [Predicate[string]] { param($line) $line.StartsWith('- **Amends:** ') })
+        if ($decisionAt -ge 0) { $decisionHeader = $decisionLines[$decisionAt]; for ($decisionNext = $decisionAt + 1; $decisionNext -lt $decisionLines.Count -and $decisionLines[$decisionNext] -match '^\s+\S'; $decisionNext++) { $decisionHeader += ' ' + $decisionLines[$decisionNext] } }
+        $decisionRecords[$decisionFile.Name.Substring(0, 4)] = @{ Amends = @(@(& $noteNumbers $decisionNote 'amends') + @([regex]::Matches($decisionHeader, '\b\d{4}\b') | ForEach-Object Value) | Sort-Object -Unique); AmendedBy = @(& $noteNumbers $decisionNote 'amended by') }
+    }
+    $decisionRows = @{}
+    foreach ($decisionLine in Get-Content -LiteralPath (Join-Path $decisionDir 'README.md')) {
+        if ($decisionLine -match '^\| \[(\d{4})\]\(') {
+            $decisionNumber = $Matches[1]
+            $decisionNote = if ($decisionLine -match '\(((?:supersedes|amends|amended by|extends)\b[^()]*)\) \|$') { $Matches[1] } else { '' }
+            $decisionRows[$decisionNumber] = @{ Amends = @(& $noteNumbers $decisionNote 'amends'); AmendedBy = @(& $noteNumbers $decisionNote 'amended by') }
+        }
+    }
+    $amendmentGaps = @(foreach ($decisionNumber in @($decisionRecords.Keys | Sort-Object)) {
+        $decisionRecord = $decisionRecords[$decisionNumber]
+        $decisionRow = $decisionRows[$decisionNumber]
+        foreach ($amendedNumber in @(@($decisionRecord.Amends) + @($decisionRow.Amends) | Sort-Object -Unique)) { if ($decisionRecords.ContainsKey($amendedNumber) -and $decisionNumber -notin $decisionRecords[$amendedNumber].AmendedBy) { "the status line of $amendedNumber doesn't name $decisionNumber, which amends it" } }
+        foreach ($amenderNumber in $decisionRecord.AmendedBy) { if ($decisionRecords.ContainsKey($amenderNumber) -and $decisionNumber -notin $decisionRows[$amenderNumber].Amends) { "the index row of $amenderNumber doesn't say it amends $decisionNumber" } }
+        if (($decisionRecord.AmendedBy -join ', ') -ne ($decisionRow.AmendedBy -join ', ')) { "the index row of $decisionNumber says amended by [$($decisionRow.AmendedBy -join ', ')], its status line [$($decisionRecord.AmendedBy -join ', ')]" }
+    })
+    Check "${name}: each amendment between the project's decision records shows in the amended record's status line and index row and in the amending record's index row" (-not $amendmentGaps) ($amendmentGaps -join '; ')
     $adr16 = [IO.File]::ReadAllText((Join-Path $dest 'docs\decisions\project-template\0016-releases-are-tagged-and-published-when-their-pull-request-merges.md'))
     $has137 = Test-Path -LiteralPath (Join-Path $dest 'docs\decisions\project-template\0137-the-release-workflow-starts-package-publishing.md')
     $adr16Starts = if ($case.Data.nuget_publisher) { 'the script starts\s+the workflow that publishes the project''s packages, `' + [regex]::Escape($case.Data.nuget_publisher) + '`, through `workflow_dispatch`' } else { 'the script starts\s+the project''s `\.github/workflows/publish\.yml`' }
