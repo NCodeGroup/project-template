@@ -7,7 +7,8 @@
     checks that every decision record the template ships in docs/decisions/project-template/ is numbered 0001-0999 and
     linked from the template's index, and that the index lists each table's records in number order, with only records
     numbered 0001-0099 under Every Project, and that copier.yml leaves out of a project on another host every record the
-    index lists only for GitHub. Fixture Git repositories check that a record numbered below 1000 that is new since the
+    index lists only for GitHub, and that the index lists only for GitHub every record copier.yml leaves out of a
+    project on another host. Fixture Git repositories check that a record numbered below 1000 that is new since the
     merge base with origin/main, or with -Base, fails, that a renamed older one passes, and that the check is skipped,
     saying so, without a merge base or in a folder that isn't a repository's root. Prints PASS or FAIL per check and
     exits 1 on any failure. The checks take seconds.
@@ -339,6 +340,8 @@ $githubOnly = @(Get-GitHubOnlyRecord $templateIndex)
 $excluded = @(Get-HostExcludedRecord $copierText)
 $kept = @($githubOnly | Where-Object { $_ -notin $excluded })
 Check "repository: copier.yml leaves every record the index lists only for GitHub out of other hosts' projects" (($githubOnly.Count -gt 0) -and -not $kept) "GitHub-only: $($githubOnly.Count); not excluded: $($kept -join ', ')"
+$listedForAll = @($excluded | Where-Object { $_ -notin $githubOnly })
+Check "repository: the index lists only for GitHub every record copier.yml leaves out of other hosts' projects" (($excluded.Count -gt 0) -and -not $listedForAll) "excluded: $($excluded.Count); listed for every host: $($listedForAll -join ', ')"
 
 $shared = Get-SharedNumber $templateRecords
 Check 'repository: no two template decision records share a number' (($templateRecords.Count -gt 0) -and -not $shared) "records: $($templateRecords.Count); sharing a number: $($shared -join '; ')"
