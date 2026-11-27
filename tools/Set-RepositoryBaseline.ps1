@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
     Gives an NCodeGroup repository the baseline protection: nothing reaches the default branch except through a pull
-    request, no release tag is moved or deleted, and the security settings a public project should have are on.
+    request, no release tag is moved or deleted, and the security settings a public project should have are on. Its
+    fork-pull-request approval policy lets established contributors' workflows run without maintainer approval.
 
 .DESCRIPTION
     For each repository it:
@@ -34,6 +35,11 @@
         actions/upload-release-asset, softprops/action-gh-release or uploadReleaseAsset), such as
         release-provenance.yml, since an immutable release refuses a file attached after it is published, or where a
         workflow can't be read; the line names the files;
+      - sets the repository's fork pull request approval policy to first_time_contributors_new_to_github, so only
+        contributors who are new to GitHub need approval. The stricter all_external_contributors policy is left as it
+        is. Projects with self-hosted runners or pull_request workflows that use secrets must keep that stricter policy
+        (the template's ADR-0039); it checks for neither, so where it raises the policy, here or for the organization
+        with -OrganizationPolicy, it prints a notice saying so;
       - turns on "Allow auto-merge" where it is off, so the template's code-review-auto-merge.yml workflow can turn on
         auto-merge for a Dependabot pull request that only moves the NCode Review pin. Allowing it merges nothing by
         itself: a pull request merges itself only once someone, or that workflow, turns it on, and still waits for what
@@ -128,15 +134,18 @@
     stays on, since the script never loosens a setting. Where they are already on and a workflow runs on a release
     event or uploads release assets, it prints a notice with the command that turns them off.
 
-    -OrganizationPolicy, with -Owner alone, first sets the organization's default workflow token to read-only with
-    GitHub Actions not allowed to approve pull requests, where either is off (the template's ADR-0036), then creates
-    the same policy once for the organization, on every repository (~ALL), and touches no repository: run it as an
-    organization owner, with a token that has the admin:org scope (gh auth refresh -h github.com -s admin:org). It reads the organization's policies first and updates one of that
-    name in place, keeping the other events it allows, when it isn't active, misses one of those events or doesn't cover both files on every repository, and leaves alone one that does, or an active one that already allows pull_request_target and issue_comment for both files on every repository; -WhatIf prints the body it
-    would post. It exits 1 when it can't read the policies or the API refuses the policy or the default token setting.
-    It needs GitHub Team or above, the plans GitHub offers organization event policies on: when GitHub refuses them for
-    the organization's plan, with an answer that asks to upgrade, such as "Upgrade to GitHub Team to enable this
-    feature.", it says so and to run it for each repository instead, with -Repo <name> or -All.
+    -OrganizationPolicy, with -Owner alone, first sets the organization's fork pull request approval policy and its
+    default workflow token to read-only with GitHub Actions not allowed to approve pull requests, where either is off
+    (the template's ADR-0036 and ADR-0039), then creates the same policy once for the organization, on every repository
+    (~ALL), and touches no repository: run it as an organization owner, with a token that has the admin:org scope (gh
+    auth refresh -h github.com -s admin:org). It reads the organization's policies first and updates one of that name in
+    place, keeping the other events it allows, when it isn't active, misses one of those events or doesn't cover both
+    files on every repository, and leaves alone one that does, or an active one that already allows pull_request_target
+    and issue_comment for both files on every repository; -WhatIf prints the body it would post. It exits 1 when it
+    can't read the policies or the API refuses a policy, the fork approval setting or the default token setting. It
+    needs GitHub Team or above, the plans GitHub offers organization event policies on: when GitHub refuses them for the
+    organization's plan, with an answer that asks to upgrade, such as "Upgrade to GitHub Team to enable this feature.",
+    it says so and to run it for each repository instead, with -Repo <name> or -All.
 
     For a repository an organization owns, it also reports the organization's two-factor requirement, as
     "organization two-factor requirement: required", "not required" or "not available" with the reason (GitHub shows
@@ -160,8 +169,9 @@ param(
     # one value for a parameter, so a list has to arrive as one string). Only with -Repo. Or auto, alone, which reads them
     # from each repository's latest merged pull request, and works with -All too.
     [string[]]$RequireChecks = @(),
-    # Sets the organization's default workflow token and creates its Actions event policy for the code-review workflows of
-    # every repository, instead of each repository's own. Only with -Owner; an organization owner runs it, with the admin:org scope, on GitHub Team or above.
+    # Sets the organization's default workflow token, fork pull request approval policy and Actions event policy for the
+    # code-review workflows of every repository, instead of each repository's own. Only with -Owner; an organization
+    # owner runs it, with the admin:org scope, on GitHub Team or above.
     [switch]$OrganizationPolicy,
     # Leaves immutable releases off in each repository, for one whose releases get files after they are published.
     [switch]$SkipImmutableReleases,
@@ -883,6 +893,24 @@ function Get-EventPolicyGaps($Policy, [string[]]$Events) {
     if ($uncovered.Count) { "it doesn't cover $($uncovered -join ', ')" }
 }
 
+# GitHub's approval policy for workflows from fork pull requests: first_time_contributors_new_to_github asks approval
+# only of a contributor new to GitHub, so an established contributor's workflows run without a maintainer's approval.
+# all_external_contributors is stricter and is never replaced, as projects with self-hosted runners or pull_request
+# workflows that use secrets keep it. Only first_time_contributors is raised; a value this script doesn't know, or one
+# it can't read, is reported and left as it is.
+$forkApprovalLabel = 'fork pull request workflows approved only for first-time contributors new to GitHub'
+$forkApprovalPolicy = 'first_time_contributors_new_to_github'
+$forkApprovalNotice = "notice: a repository with a self-hosted runner or a pull_request workflow that uses secrets must keep all_external_contributors, and this script checks for neither (the template's ADR-0039)"
+function Get-ForkApprovalState($Response) {
+    if ($Response.Status -ne 200) { return Get-SettingState $Response { $true } }
+    try { $policy = "$(($Response.Body | ConvertFrom-Json -ErrorAction Stop).approval_policy)" }
+    catch { return "couldn't read it: an answer that is not JSON" }
+    if ($policy -in $forkApprovalPolicy, 'all_external_contributors') { return $true }
+    if ($policy -eq 'first_time_contributors') { return $false }
+    if ($policy) { return "couldn't read it: an approval policy this script doesn't know ('$policy'), left as it is" }
+    "couldn't read it: the answer has no approval_policy"
+}
+
 # Sets one security setting where Get-SettingState read it as off, and prints the outcome on one line. A refusal is
 # reported, not thrown: each setting stands on its own, so the next one is still tried.
 function Set-SecuritySetting {
@@ -910,6 +938,9 @@ function Set-SecuritySettings([string]$Name, $Info) {
     $label = 'read-only workflow token, and Actions not approving pull requests'
     $state = Get-SettingState (Invoke-HostApi gh "$base/actions/permissions/workflow") { param($answer) $answer.default_workflow_permissions -eq 'read' -and -not [bool]$answer.can_approve_pull_request_reviews }
     Set-SecuritySetting $Name $label $state PUT "$base/actions/permissions/workflow" @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false }
+    $state = Get-ForkApprovalState (Invoke-HostApi gh "$base/actions/permissions/fork-pr-contributor-approval")
+    if ($state -is [bool] -and -not $state) { Write-Host "${Name}: $forkApprovalNotice" }
+    Set-SecuritySetting $Name $forkApprovalLabel $state PUT "$base/actions/permissions/fork-pr-contributor-approval" @{ approval_policy = $forkApprovalPolicy }
 
     $features = [ordered]@{ secret_scanning = 'secret scanning'; secret_scanning_push_protection = 'secret scanning push protection' }
     foreach ($feature in $features.Keys) {
@@ -1046,6 +1077,24 @@ function Set-OrganizationWorkflowPermissions {
     return $false
 }
 
+# The organization's default approval policy for workflows from fork pull requests, which repositories without a setting
+# of their own take. Returns $true unless the read or the write failed.
+function Set-OrganizationForkApproval {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+    $path = "orgs/$Owner/actions/permissions/fork-pr-contributor-approval"
+    $state = Get-ForkApprovalState (Invoke-HostApi gh $path)
+    $name = "organization ${Owner}"
+    if ($state -is [string]) { Write-Host "${name}: ${forkApprovalLabel}: not available ($state)"; return $false }
+    if ($state) { Write-Host "${name}: ${forkApprovalLabel}: already set"; return $true }
+    Write-Host "${name}: $forkApprovalNotice"
+    if (-not $PSCmdlet.ShouldProcess($Owner, "turn on $forkApprovalLabel")) { Write-Host "${name}: ${forkApprovalLabel}: would set"; return $true }
+    $result = Invoke-HostWrite PUT $path @{ approval_policy = $forkApprovalPolicy }
+    if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${name}: ${forkApprovalLabel}: set"; return $true }
+    Write-Host "${name}: ${forkApprovalLabel}: not available ($(Get-FailureReason $result))"
+    return $false
+}
+
 # The same policy once for the organization, on every repository (~ALL). Its own policy, by name, is updated in place
 # when it isn't active, misses an event or doesn't cover both files on every repository. Returns $true unless it can't
 # read the policies or the API refuses the policy. It writes only its report lines (and, with -WhatIf, the body) to the host.
@@ -1098,7 +1147,7 @@ function Set-OrganizationEventPolicy {
     return $false
 }
 
-if ($OrganizationPolicy) { $workflow = Set-OrganizationWorkflowPermissions; $policy = Set-OrganizationEventPolicy; if ($workflow -and $policy) { exit 0 } else { exit 1 } }
+if ($OrganizationPolicy) { $workflow = Set-OrganizationWorkflowPermissions; $forkApproval = Set-OrganizationForkApproval; $policy = Set-OrganizationEventPolicy; if ($workflow -and $forkApproval -and $policy) { exit 0 } else { exit 1 } }
 foreach ($name in Get-Targets) {
     try { Set-Baseline $name } catch { Write-Host "${name}: FAILED: $($_.Exception.Message)" -ForegroundColor Red }
 }

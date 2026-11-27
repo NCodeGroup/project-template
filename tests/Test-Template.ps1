@@ -119,9 +119,96 @@ function Invoke-RuntimesStep([string]$Script, [string]$Printed, [string]$Folder)
     if (Test-Path -LiteralPath $output) { [IO.File]::ReadAllText($output).Replace("`r", '') } else { '' }
 }
 
+# Compares the links between the decision records in $Folder, a rendered docs/decisions/project-template: each
+# amendment shows in the amended record's status line and index row and in the amending record's index row, and each
+# supersession in the superseded record's status line and index row and in the superseding record's index row. Only
+# records the folder has are compared. Returns one line per gap, and a line when it reads no record or no index row.
+function Get-DecisionLinkGap([string]$Folder) {
+    $numbers = { param([string]$Text) @([regex]::Matches($Text, '\b\d{4}\b') | ForEach-Object Value | Sort-Object -Unique) }
+    $noteNumbers = { param([string]$Note, [string]$Kind) @($Note -split '[;,] (?=supersedes|amends|amended by|extends)' | Where-Object { $_.Trim() -match "^$Kind\b" } | ForEach-Object { & $numbers $_ } | Sort-Object -Unique) }
+    $records = @{}
+    foreach ($file in Get-ChildItem -LiteralPath $Folder -File -Filter '0*.md') {
+        $lines = @(Get-Content -LiteralPath $file.FullName)
+        $status = [string]@($lines | Where-Object { $_.StartsWith('- **Status:** ') })[0]
+        $note = if ($status -match '^- \*\*Status:\*\* Accepted \((.*)\)$') { $Matches[1] } else { '' }
+        $header = @{ Amends = ''; Supersedes = '' }
+        foreach ($kind in 'Amends', 'Supersedes') {
+            for ($at = 0; $at -lt $lines.Count; $at++) {
+                if ($lines[$at].StartsWith("- **${kind}:** ")) {
+                    $header[$kind] = $lines[$at]
+                    for ($next = $at + 1; $next -lt $lines.Count -and $lines[$next] -match '^\s+\S'; $next++) { $header[$kind] += ' ' + $lines[$next] }
+                    break
+                }
+            }
+        }
+        $records[$file.Name.Substring(0, 4)] = @{
+            Amends       = @(@(& $noteNumbers $note 'amends') + @(& $numbers $header.Amends) | Sort-Object -Unique)
+            AmendedBy    = @(& $noteNumbers $note 'amended by')
+            Supersedes   = @(& $numbers $header.Supersedes)
+            SupersededBy = @(if ($status -match '^- \*\*Status:\*\* Superseded by (\d{4})') { $Matches[1] })
+        }
+    }
+    $rows = @{}
+    $index = Join-Path $Folder 'README.md'
+    if (Test-Path -LiteralPath $index) {
+        foreach ($line in Get-Content -LiteralPath $index) {
+            if ($line -match '^\| \[(\d{4})\]\(') {
+                $number = $Matches[1]
+                $note = if ($line -match '\(((?:supersedes|amends|amended by|extends)\b[^()]*)\) \|$') { $Matches[1] } else { '' }
+                $rows[$number] = @{
+                    Amends       = @(& $noteNumbers $note 'amends')
+                    AmendedBy    = @(& $noteNumbers $note 'amended by')
+                    Supersedes   = @(& $noteNumbers $note 'supersedes')
+                    SupersededBy = @(if ($line -match '\(superseded by \[(\d{4})\]\(') { $Matches[1] })
+                }
+            }
+        }
+    }
+    if (-not $records.Count) { 'no decision record read' }
+    if (-not $rows.Count) { 'no index row read' }
+    foreach ($number in @($records.Keys | Sort-Object)) {
+        $record = $records[$number]
+        $row = $rows[$number]
+        foreach ($amended in @(@($record.Amends) + @($row.Amends) | Sort-Object -Unique)) { if ($records.ContainsKey($amended) -and $number -notin $records[$amended].AmendedBy) { "the status line of $amended doesn't name $number, which amends it" } }
+        foreach ($amender in $record.AmendedBy) { if ($records.ContainsKey($amender) -and $number -notin $rows[$amender].Amends) { "the index row of $amender doesn't say it amends $number" } }
+        if (($record.AmendedBy -join ', ') -ne ($row.AmendedBy -join ', ')) { "the index row of $number says amended by [$($row.AmendedBy -join ', ')], its status line [$($record.AmendedBy -join ', ')]" }
+        foreach ($superseded in @(@($record.Supersedes) + @($row.Supersedes) | Sort-Object -Unique)) { if ($records.ContainsKey($superseded) -and $number -notin $records[$superseded].SupersededBy) { "the status line of $superseded doesn't say it is superseded by $number" } }
+        foreach ($superseder in $record.SupersededBy) { if ($records.ContainsKey($superseder) -and $number -notin $rows[$superseder].Supersedes) { "the index row of $superseder doesn't say it supersedes $number" } }
+        if (($record.SupersededBy -join ', ') -ne ($row.SupersededBy -join ', ')) { "the index row of $number says superseded by [$($row.SupersededBy -join ', ')], its status line [$($record.SupersededBy -join ', ')]" }
+    }
+}
+
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 $tpl = Join-Path $Work 'template-repo'
 $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
+
+# Get-DecisionLinkGap finds no gap in records whose links agree, each kind of gap in records whose links don't, and
+# says so when a folder has no record.
+$linkFiles = @{
+    '0001-a.md' = "# 0001. A`n`n- **Status:** Accepted (amended by 0003)`n"
+    '0002-b.md' = "# 0002. B`n`n- **Status:** Superseded by 0004`n"
+    '0003-c.md' = "# 0003. C`n`n- **Status:** Accepted`n- **Amends:** 0001`n"
+    '0004-d.md' = "# 0004. D`n`n- **Status:** Accepted`n- **Supersedes:** 0002`n"
+    'README.md' = "| ADR | Decision |`n| --- | --- |`n| [0001](0001-a.md) | A (amended by 0003) |`n| [0002](0002-b.md) | B (superseded by [0004](0004-d.md)) |`n| [0003](0003-c.md) | C (amends 0001) |`n| [0004](0004-d.md) | D (supersedes 0002) |`n"
+}
+$linkCases = [ordered]@{
+    'agree'             = @{ Changes = @{}; Expected = @() }
+    'amender left out'  = @{ Changes = @{ '0001-a.md' = "# 0001. A`n`n- **Status:** Accepted`n" }; Expected = @("the status line of 0001 doesn't name 0003, which amends it", 'the index row of 0001 says amended by [0003], its status line []') }
+    'amends left out'   = @{ Changes = @{ 'README.md' = $linkFiles['README.md'].Replace(' C (amends 0001) |', ' C |') }; Expected = @("the index row of 0003 doesn't say it amends 0001") }
+    'superseder left out' = @{ Changes = @{ '0002-b.md' = "# 0002. B`n`n- **Status:** Accepted`n" }; Expected = @("the status line of 0002 doesn't say it is superseded by 0004", 'the index row of 0002 says superseded by [0004], its status line []') }
+    'supersedes left out' = @{ Changes = @{ 'README.md' = $linkFiles['README.md'].Replace(' D (supersedes 0002) |', ' D |') }; Expected = @("the index row of 0004 doesn't say it supersedes 0002") }
+    'no record'         = @{ Changes = @{ '0001-a.md' = $null; '0002-b.md' = $null; '0003-c.md' = $null; '0004-d.md' = $null; 'README.md' = $null }; Expected = @('no decision record read', 'no index row read') }
+}
+foreach ($linkCase in $linkCases.Keys) {
+    $linkFolder = Join-Path $Work "decision-links-$($linkCase.Replace(' ', '-'))"
+    New-Item -ItemType Directory -Force -Path $linkFolder | Out-Null
+    foreach ($linkFile in $linkFiles.Keys) {
+        $linkText = if ($linkCases[$linkCase].Changes.ContainsKey($linkFile)) { $linkCases[$linkCase].Changes[$linkFile] } else { $linkFiles[$linkFile] }
+        if ($null -ne $linkText) { Set-Content -LiteralPath (Join-Path $linkFolder $linkFile) -Value $linkText -NoNewline }
+    }
+    $linkGaps = @(Get-DecisionLinkGap $linkFolder)
+    Check "Get-DecisionLinkGap: $linkCase" ((@($linkGaps | Sort-Object) -join "`n") -ceq (@($linkCases[$linkCase].Expected | Sort-Object) -join "`n")) ($linkGaps -join '; ')
+}
 
 $common = 'AGENTS.md', 'README.md', '.copier-answers.yml', '.template-version', '.gitignore', '.gitattributes', '.editorconfig',
     '.github\instructions\project-template.instructions.md', '.template\Update-Project.ps1', '.template\Get-PlanState.ps1', '.template\Get-TemplateUpdate.ps1', '.template\Publish-Release.ps1', '.template\Test-AdrIndex.ps1', '.template\Test-Coverage.ps1', '.template\Test-FileHeaders.ps1', '.vscode\settings.json', '.vscode\extensions.json',
@@ -350,6 +437,9 @@ foreach ($case in $cases) {
         }
     })
     Check "${name}: every template decision record a Markdown file cites is one the project has" (-not $unknownCitations) ($unknownCitations -join '; ')
+    # Each amendment and supersession between two decision records the project has shows on both sides, as Get-DecisionLinkGap compares them.
+    $decisionLinkGaps = @(Get-DecisionLinkGap (Join-Path $dest 'docs\decisions\project-template'))
+    Check "${name}: each amendment and supersession between the project's decision records shows in the changed record's status line and index row and in the other record's index row" (-not $decisionLinkGaps) ($decisionLinkGaps -join '; ')
     $adr16 = [IO.File]::ReadAllText((Join-Path $dest 'docs\decisions\project-template\0016-releases-are-tagged-and-published-when-their-pull-request-merges.md'))
     $has137 = Test-Path -LiteralPath (Join-Path $dest 'docs\decisions\project-template\0137-the-release-workflow-starts-package-publishing.md')
     $adr16Starts = if ($case.Data.nuget_publisher) { 'the script starts\s+the workflow that publishes the project''s packages, `' + [regex]::Escape($case.Data.nuget_publisher) + '`, through `workflow_dispatch`' } else { 'the script starts\s+the project''s `\.github/workflows/publish\.yml`' }

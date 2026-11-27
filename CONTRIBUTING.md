@@ -1,6 +1,6 @@
 # Contributing
 
-Issues and pull requests are welcome. [README.md](README.md) explains the template, and [AGENTS.md](AGENTS.md) holds the rules every change here follows, for people and coding agents alike.
+Issues and pull requests are welcome. [README.md](README.md) explains the template, and [AGENTS.md](AGENTS.md) holds the rules every change here follows, for people and coding agents alike. The template serves NCodeGroup's repositories on GitHub only ([ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)), so a change that adds support for another host, such as GitLab, isn't taken; the GitLab files and passages the template still has are removed by the stories of [#527](https://github.com/NCodeGroup/project-template/issues/527).
 
 ## Issues
 

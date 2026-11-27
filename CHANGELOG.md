@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.117.0] - 2026-11-27
+## [0.118.0] - 2026-11-27
 
 ### Added
 
@@ -16,6 +16,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `.github/workflows/code-review.yml` also runs on `synchronize`, and reviews a pull request Dependabot opened from the repository when it opens and whenever Dependabot pushes to it, such as a rebase, so a clean review's approval follows Dependabot's latest commit and Dependabot's pull requests no longer wait for a maintainer's `/review` or approval where the ruleset requires one; another bot's pull request and a push by anyone but Dependabot still start no review. The file is the project's own: take the change from the update's listing of the template's changes to it ([#519](https://github.com/NCodeGroup/project-template/issues/519), [ADR-0041](template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
 - `.github/instructions/project-template.instructions.md` says a Dependabot pull request adds no changelog entry, since Dependabot can't write one and its updates ship with the next release, so a review asks for none, and, with NCode Review, that NCode Review reviews and approves Dependabot's pull requests; `CONTRIBUTING.md`, `GOVERNANCE.md`, the header of `.github/workflows/code-review-auto-merge.yml` and ADR-0020's Code-Review row say a maintainer approves only another bot's pull request ([#519](https://github.com/NCodeGroup/project-template/issues/519)).
+
+## [0.117.1] - 2026-11-27
+
+### Changed
+
+- ADR-0040 records that the template serves NCodeGroup's repositories on GitHub only: it supports no other host, a GitLab template, if one is ever needed, is a separate template there, and the stories of [#527](https://github.com/NCodeGroup/project-template/issues/527) remove GitLab support without a deprecation phase, since every project made from the template answers `git_host: github`. It supersedes record 0029, which only a GitLab project gets, and amends ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0013, ADR-0014, ADR-0016, ADR-0023 and ADR-0026 and, where a project has them, records 0027, 0135, 0150, 0154, 0200 and 0201, whose GitLab passages don't apply; their status lines and index rows name it. `README.md`, `USAGE.md`, `AGENTS.md` and `CONTRIBUTING.md` say the template is for NCodeGroup's repositories on GitHub ([#528](https://github.com/NCodeGroup/project-template/issues/528), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
+
+### Fixed
+
+- Each amendment between the template's decision records shows on both sides: the status lines of ADR-0014, ADR-0016 and, in a .NET library, record 0135 name every record that amends them, each record's index row names the same records as its status line, and the rows of 0022, 0034 and 0138 name the records they amend; `tests/Test-Template.ps1` checks it, and each supersession, in every rendered project ([#528](https://github.com/NCodeGroup/project-template/issues/528)).
+
+## [0.117.0] - 2026-11-27
+
+### Added
+
+- `tools/Set-RepositoryBaseline.ps1` sets the repository's fork pull request workflow approval policy to `first_time_contributors_new_to_github`, so established GitHub contributors can get workflow feedback without waiting for approval; `-OrganizationPolicy` sets the organization default to the same policy. Both preserve the stricter `all_external_contributors` policy, which projects with self-hosted runners or secret-bearing `pull_request` workflows must retain; the automation does not inspect for those risks, and prints a notice saying so wherever it raises, or with `-WhatIf` would raise, a policy ([#518](https://github.com/NCodeGroup/project-template/issues/518), [ADR-0039](template/docs/decisions/project-template/0039-fork-pull-request-workflows-run-for-established-contributors.md)).
 
 ## [0.116.0] - 2026-11-27
 
@@ -2004,7 +2020,9 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.117.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.118.0...HEAD
+[0.118.0]: https://github.com/NCodeGroup/project-template/compare/v0.117.1...v0.118.0
+[0.117.1]: https://github.com/NCodeGroup/project-template/compare/v0.117.0...v0.117.1
 [0.117.0]: https://github.com/NCodeGroup/project-template/compare/v0.116.0...v0.117.0
 [0.116.0]: https://github.com/NCodeGroup/project-template/compare/v0.115.4...v0.116.0
 [0.115.4]: https://github.com/NCodeGroup/project-template/compare/v0.115.3...v0.115.4
