@@ -57,8 +57,9 @@ notice. Each such mention is an edit that every new release asks for, in files w
      pins and every target framework of the projects in the root solutions. It fails a Standard Term Support
      release, one past its end of support and one the metadata doesn't list, warns for an LTS in its maintenance
      phase, and names `/plan-migration`.
-   - The template's own tests fail a Markdown file of the template's repository that names a .NET version outside the
-     exceptions of item 4. A project's own prose follows the rule through review.
+   - The template's own tests fail a Markdown file of the template's repository, or a full-line comment in one of its
+     scripts, workflows or project files, that names a .NET version outside the exceptions of item 4. A project's own
+     prose follows the rule through review.
 6. A project that can't migrate yet opts out until it has: `ProjectTemplateLtsCheck` set to `false` in
    `Directory.Build.props` turns the build check off, and `-WarnOnly` on CI's `build/Test-DotnetSupport.ps1` step
    prints its failures as warnings. Both are in files the project owns or merges, so a template update keeps them,
