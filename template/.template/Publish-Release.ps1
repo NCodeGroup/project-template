@@ -34,12 +34,12 @@
     done, and a run that stopped after the tag publishes the release the next time. -WhatIf says what it would do and
     pushes and publishes nothing.
 
-    A .NET library's publishing workflow runs on a published release, but a release made with the workflow's GITHUB_TOKEN
-    starts no other workflow. So after it publishes a release, it starts each workflow the nuget_publisher answer in
-    .copier-answers.yml names, a library's own, or else .github/workflows/publish.yml, when the project has it, with a
-    workflow_dispatch event on the tag, passing the tag as the tag input when the workflow declares one. It fails, naming
-    the trigger, when one of them has no workflow_dispatch trigger, and naming the answer when a workflow the answer
-    names doesn't exist.
+    A .NET library's publishing workflow runs on a published release, but a release made with the workflow's
+    GITHUB_TOKEN starts no other workflow. So after it publishes a release, it starts each workflow the nuget_publisher
+    answer in .copier-answers.yml names, a library's own, or else .github/workflows/publish.yml, when the project has
+    it, with a workflow_dispatch event on the tag, passing the tag as the tag input when the workflow declares one. It
+    fails, naming the trigger, when one of them has no workflow_dispatch trigger, and naming the answer when a workflow
+    the answer names doesn't exist.
 
 .PARAMETER Commit
     The commit to tag: in the workflow, the commit the push made main point to.
