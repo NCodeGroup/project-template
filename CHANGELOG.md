@@ -17,6 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `.github/workflows/code-review.yml` also runs on `synchronize`, and reviews a pull request Dependabot opened from the repository when it opens and whenever Dependabot pushes to it, such as a rebase, so a clean review's approval follows Dependabot's latest commit and Dependabot's pull requests no longer wait for a maintainer's `/review` or approval where the ruleset requires one; another bot's pull request and a push by anyone but Dependabot still start no review. The file is the project's own: take the change from the update's listing of the template's changes to it ([#519](https://github.com/NCodeGroup/project-template/issues/519), [ADR-0041](template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
 - `.github/instructions/project-template.instructions.md` says a Dependabot pull request adds no changelog entry, since Dependabot can't write one and its updates ship with the next release, so a review asks for none, and, with NCode Review, that NCode Review reviews and approves Dependabot's pull requests; `CONTRIBUTING.md`, `GOVERNANCE.md`, the header of `.github/workflows/code-review-auto-merge.yml` and ADR-0020's Code-Review row say a maintainer approves only another bot's pull request ([#519](https://github.com/NCodeGroup/project-template/issues/519)).
 
+## [0.117.2] - 2026-11-27
+
+### Changed
+
+- The `code-review.yml` a GitHub project with NCode Review gets, and this repository's own, pin `NCodeGroup/code-review` to the full commit SHA of v1.6.0 in both jobs, with the tag in a comment (they pinned v1.5.0). With v1.5.1's fix, reviewers see the decision records in `docs/decisions/project-template/` under ids such as `project-template ADR-0150`. With v1.6.0's learned guidance, reviewers leave template-owned and Copier-generated files to the template and check `.copier-answers.yml` and `AGENTS.md` before they call an edit a template-ownership violation. The action's inputs are unchanged, so a project's own `code-review.yml` needs only the new pin, which Dependabot's `ncode-review` group proposes. v1.6.0 is pinned before it is three days old by [ADR-0009](template/docs/decisions/project-template/0009-new-dependency-versions-wait-a-cooldown.md)'s commented exception, which goes once 2026-11-30 has passed.
+
 ## [0.117.1] - 2026-11-27
 
 ### Changed
@@ -2021,7 +2027,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
 [unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.118.0...HEAD
-[0.118.0]: https://github.com/NCodeGroup/project-template/compare/v0.117.1...v0.118.0
+[0.118.0]: https://github.com/NCodeGroup/project-template/compare/v0.117.2...v0.118.0
+[0.117.2]: https://github.com/NCodeGroup/project-template/compare/v0.117.1...v0.117.2
 [0.117.1]: https://github.com/NCodeGroup/project-template/compare/v0.117.0...v0.117.1
 [0.117.0]: https://github.com/NCodeGroup/project-template/compare/v0.116.0...v0.117.0
 [0.116.0]: https://github.com/NCodeGroup/project-template/compare/v0.115.4...v0.116.0
