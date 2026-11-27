@@ -7,8 +7,8 @@
 ## Context
 
 NCodeGroup/NCode.Disposables#95, a pull request from a fork, sat `BLOCKED` with passing CI, a maintainer's approval and
-every thread resolved. It merged once through a temporary `pull_request`-mode bypass for repository admins, removed right
-after. Two causes kept it from merging under the baseline ruleset.
+every thread resolved. It merged once through a temporary `pull_request`-mode bypass for repository admins, removed
+right after. Two causes kept it from merging under the baseline ruleset.
 
 1. The code-scanning rule waits for CodeQL, and CodeQL never analyzes a fork's pull request.
    - CodeQL's default setup runs on pull requests "excluding pull requests from forks" (GitHub Docs, "Code scanning
@@ -50,7 +50,7 @@ after. Two causes kept it from merging under the baseline ruleset.
 3. A fork's author brings its branch up to date, and the maintainer approves it, as ADR-0022 decision 4 says, and never
    updates it. The contributor's update is their push, so the maintainer's approval, which counts because the
    maintainer isn't the author and can write, meets approval of the last push. `/address-feedback` stops on a fork's
-   branch that is behind and says so.
+   pull request and says its author pushes the fixes and brings the branch up to date.
 4. `strict_required_status_checks_policy` and `require_last_push_approval` stay as they are.
 
 ## Options considered

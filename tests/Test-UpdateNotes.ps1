@@ -45,7 +45,7 @@
                 code-review.yml.
       codeql    Get-CodeQLWorkflowNote names codeql.yml, Set-RepositoryBaseline.ps1 and 'Enabled with advanced setup
                 allowed' when the update adds codeql.yml, and says nothing when it modifies it or adds another file.
-      immutableGet-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
+      immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
                 for an upload named only in a comment line.
       copies    Get-WorkflowEvents and Test-ReleaseAssetWorkflow in Update-Project.ps1 are character for character
