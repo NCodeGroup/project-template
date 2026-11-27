@@ -27,7 +27,10 @@
     .\.template\Update-Project.ps1 prints for each of those workflows without a workflow_dispatch trigger, or that
     doesn't exist: tag-release.yml starts them through that trigger, so until each has it, a release ships no packages.
 
-    When the repository is a .NET library on GitHub and the AGENTS.md the adoption leaves says release: none or tag, or has no release line, it prints the note .\.template\Update-Project.ps1 prints with the one-line change to - release: tag+release, unless a workflow the nuget_publisher answer names has no workflow_dispatch trigger or doesn't exist.
+    When the repository is a .NET library on GitHub with .github/workflows/tag-release.yml and the AGENTS.md the
+    adoption leaves says release: none or tag, or has no release line, it prints the note
+    .\.template\Update-Project.ps1 prints with the one-line change to - release: tag+release, unless a workflow the
+    nuget_publisher answer names has no workflow_dispatch trigger or doesn't exist.
 
     When that publish.yml doesn't call .github/workflows/release-provenance.yml or
     .github/workflows/raise-baseline.yml, or both, which the adoption added and which no longer start on workflow_run,
@@ -178,6 +181,8 @@ function Get-ReleasePolicyNote {
     "AGENTS.md's Landing section says release: $policy, so merging a release's pull request $merge and starts no publishing workflow. The template gives a .NET library on GitHub release: tag+release, under which .github/workflows/tag-release.yml tags each release and publishes its GitHub release from the changelog as its pull request merges, then starts $starts (the template's ADR-0016 and ADR-0137, in docs/decisions/project-template/). To publish on merge, change the release line of AGENTS.md's Landing section to:"
     '  - release: tag+release'
     "The first run after that change publishes nothing while the changelog's newest release section is already tagged and has its GitHub release; when that tag has no GitHub release yet, the run publishes it and starts the publishing workflow for it. SECURITY.md can then say how to verify a release tag's gitsign signature, as the SECURITY.md the template gives a library with release: tag+release does (the template's ADR-0028)."
+    "./.template/Publish-Release.ps1 -Policy then prints tag+release, the policy tag-release.yml reads. The change ships nothing, so it gets no Release: line: record it under the changelog's ## [Unreleased] heading as a ### Changed entry, as the template's ADR-0032 item 2 says, such as the one below. Work already under ## [Unreleased] waits until a plan with a Release: line gives it a version section."
+    '  - Merging a release''s pull request now tags the release, publishes its GitHub release and starts the package publishing (release: tag+release in AGENTS.md).'
 }
 
 if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw "$Path isn't a folder." }
