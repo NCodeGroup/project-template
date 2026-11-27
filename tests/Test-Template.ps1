@@ -237,30 +237,21 @@ $cases = @(
     @{ Name = 'powershell'; Stack = 'powershell'; Host = 'github' }
     @{ Name = 'other'; Stack = 'other'; Host = 'github' }
     @{ Name = 'other-code-review'; Stack = 'other'; Host = 'github'; Data = @{ code_review = 'true' } }
-    @{ Name = 'dotnet-gitlab'; Stack = 'dotnet'; Host = 'gitlab' }
     @{ Name = 'dotnet-no-format'; Stack = 'dotnet'; Host = 'github'; Data = @{ csharp_format = 'false' } }
-    @{ Name = 'other-gitlab-code-review'; Stack = 'other'; Host = 'gitlab'; Data = @{ code_review = 'true' } }
-    @{ Name = 'python-gitlab'; Stack = 'python'; Host = 'gitlab' }
-    @{ Name = 'python-no-gate'; Stack = 'python'; Host = 'gitlab'; Data = @{ coverage_gate = 'false'; file_headers = 'false' } }
-    @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
+    @{ Name = 'python-no-gate'; Stack = 'python'; Host = 'github'; Data = @{ coverage_gate = 'false'; file_headers = 'false' } }
     @{ Name = 'node-pnpm'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'pnpm' } }
     @{ Name = 'node-bun'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'bun' } }
     @{ Name = 'node-no-lint'; Stack = 'node'; Host = 'github'; Data = @{ node_lint = 'false' } }
-    @{ Name = 'node-yarn-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'yarn' } }
-    @{ Name = 'node-bun-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'bun' } }
+    @{ Name = 'node-yarn'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'yarn' } }
     @{ Name = 'dotnet-node'; Stack = 'dotnet'; Host = 'github'; Data = @{ uses_node = 'true' } }
-    @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
-    @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
-    @{ Name = 'dotnet-node-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
-    @{ Name = 'python-node-gitlab'; Stack = 'python'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
-    @{ Name = 'powershell-node-gitlab'; Stack = 'powershell'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
-    @{ Name = 'other-node-gitlab'; Stack = 'other'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
+    @{ Name = 'python-node'; Stack = 'python'; Host = 'github'; Data = @{ uses_node = 'true' } }
+    @{ Name = 'powershell-node'; Stack = 'powershell'; Host = 'github'; Data = @{ uses_node = 'true' } }
+    @{ Name = 'other-node'; Stack = 'other'; Host = 'github'; Data = @{ uses_node = 'true' } }
     @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
     @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'Apache-2.0' } }
-    @{ Name = 'dotnet-library-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT' } }
     @{ Name = 'dotnet-library-own-publisher'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; nuget_publisher = '.github/workflows/main.yml'; release_policy = 'none' } }
     @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = '' }; Refused = 'Required for a NuGet package' }
-    @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
+    @{ Name = 'python-copilot'; Stack = 'python'; Host = 'github'; Tools = @('copilot') }
     @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT'; conduct_contact = 'conduct@example.test'; best_practices_project = '16752' } }
     @{ Name = 'python-unlicensed'; Stack = 'python'; Host = 'github'; Data = @{ license = '' } }
     @{ Name = 'python-bad-project-number'; Stack = 'python'; Host = 'github'; Data = @{ best_practices_project = 'abc' }; Refused = 'number at bestpractices.dev, such as 16752' }
@@ -656,7 +647,7 @@ foreach ($case in $cases) {
             'python' { $setup.Contains('uses: actions/setup-python@') -and $setup.Contains('$PSNativeCommandUseErrorActionPreference = $true') -and $setup.Contains('python -m pip install -r requirements.txt') }
             'node' { $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }; $setup.Contains('uses: actions/setup-node@') -and $setup.Contains(@{ npm = 'run: npm ci'; pnpm = 'run: pnpm install --frozen-lockfile'; yarn = 'run: yarn install'; bun = 'run: bun install --frozen-lockfile' }[$pm]) }
             'powershell' { $setup.Contains('Install-Module Pester, PSScriptAnalyzer') }
-            default { $setupUses.Count -eq 1 }
+            default { $setupUses.Count -eq 1 + [int]$usesNode }
         }
         Check "${name}: the Copilot setup workflow installs what CI installs for the stack" $setupOk $setup
         Check "${name}: the Copilot setup workflow sets up Node.js from .node-version exactly when the project uses Node.js" ($setup.Contains('node-version-file: .node-version') -eq $usesNode) $setup
