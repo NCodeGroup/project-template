@@ -28,7 +28,7 @@ name: Code review
 # docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md,
 # 0034-with-one-writer-the-baseline-requires-no-approval.md,
 # 0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md and
-# 0040-ncode-review-reviews-and-approves-dependabots-pull-requests.md say why.
+# 0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md say why.
 #
 # pull_request_target and issue_comment both run this file from the default branch, so a pull request can't change its
 # own review. The engine fetches its code only to read it: nothing from it is built, run or installed.
@@ -59,7 +59,7 @@ jobs:
     # review.
     # A person opening, reopening or marking ready a pull request from the repository starts a review, and so does
     # Dependabot opening one or pushing to its own (synchronize), so the approval follows Dependabot's latest commit
-    # (ADR-0040). Another bot's pull request, and a push by anyone but Dependabot, start nothing; a job its if: skips
+    # (ADR-0041). Another bot's pull request, and a push by anyone but Dependabot, start nothing; a job its if: skips
     # joins no concurrency group, so it cancels no review.
     if: >-
       (github.event_name == 'pull_request_target' && github.event.action != 'closed' &&

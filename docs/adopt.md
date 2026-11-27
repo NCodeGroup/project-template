@@ -308,7 +308,7 @@ This section is for a GitHub project with NCode Review, after [0.3](#03-ncode-re
   - A draft pull request is reviewed when it is marked ready.
   - A push to a ready pull request is reviewed after a comment with `/review` on its first line.
   - A review that doesn't approve dismisses the earlier approval.
-  - NCode Review reviews a pull request Dependabot opens, and again after each push Dependabot makes, and approves a clean one; a maintainer approves another bot's pull request ([ADR-0040](../template/docs/decisions/project-template/0040-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
+  - NCode Review reviews a pull request Dependabot opens, and again after each push Dependabot makes, and approves a clean one; a maintainer approves another bot's pull request ([ADR-0041](../template/docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md)).
   - The `AGENTS.md` Landing line `draft: yes` has `/ship-plan` open drafts, because marking a pull request ready is the person's review ([ADR-0022](../template/docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md.jinja)).
   - Nothing requires the "Code review" check, so the person who merges waits for it ([ADR-0019](../template/docs/decisions/project-template/0019-nothing-requires-the-code-review-check-the-person-who-merges-waits-for-it.md.jinja)).
 - **Check:** the pull request shows the review and the approval.

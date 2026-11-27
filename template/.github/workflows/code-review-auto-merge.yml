@@ -12,7 +12,7 @@ name: Code review auto-merge
 # (docs/decisions/project-template/0022-ncode-reviews-approval-gates-the-merge.md,
 # 0034-with-one-writer-the-baseline-requires-no-approval.md,
 # 0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md and
-# 0040-ncode-review-reviews-and-approves-dependabots-pull-requests.md).
+# 0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md).
 # A major release, which may change the inputs the caller passes, a pull request that updates other dependencies too,
 # and one that changes any other line wait for you. Auto-merge has to be allowed in the repository's settings, which
 # tools/Set-RepositoryBaseline.ps1 in NCodeGroup/project-template turns on. A project without code-review.yml gets no
