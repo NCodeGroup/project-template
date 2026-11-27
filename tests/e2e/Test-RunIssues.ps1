@@ -365,7 +365,7 @@ if (-not $CheckOnly) {
     # New-Agent reads Copilot's token before Use-FixtureEnvironment puts the gh stand-in first on PATH.
     $agent = New-Agent -Tool $Tool -Claude $Claude -Copilot $Copilot -Model $Model -MaxBudgetUsd $MaxBudgetUsd -TimeoutMinutes $TimeoutMinutes -App $app -Work $Work
     Use-FixtureEnvironment $Work $bin {
-        $prompt = if ($Scenario -eq 'push-branch') { "/run-issues #1 wait:0 push-branch:$pushBranch" } else { '/run-issues #1 wait:0' }
+        $prompt = if ($Scenario -eq 'push-branch') { "/run-issues #1 wait:0 push-branch:$pushBranch" } elseif ($Scenario -eq 'blocked-board') { '/run-issues #1 #2 #3 wait:0' } else { '/run-issues #1 wait:0' }
         Invoke-Agent $agent -Prompt $prompt -Index 1
         $prs = @(Get-Content -Raw -LiteralPath (Join-Path $hostDir 'prs.json') | ConvertFrom-Json | Where-Object { $_ -and $_.state -eq 'OPEN' })
         if ($prs.Count -eq 0 -and $agent.SessionId) {
@@ -495,6 +495,21 @@ Use-FixtureEnvironment $Work $bin {
     $slash = $comments | Where-Object { $_ -and $_.key -eq 'slash' } | Select-Object -First 1
     $slashAnswers = @(if ($slash) { @(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and "$($_.body)" -match '^Autopilot:' -and "$($_.body)".Contains($slash.url) } })
     Check 'the /review comment got no answer' ($slash -and $slashAnswers.Count -eq 0) "$(if ($slash) { "answers: $($slashAnswers.Count)" } else { 'no /review comment' })"
+    if ($Scenario -eq 'blocked-board') {
+        $blockerReads = @($calls | ForEach-Object { if ($_ -match '^CALL api .*repos/\S+/issues/(\d+)/dependencies/blocked_by') { $Matches[1] } } | Sort-Object -Unique)
+        Check 'the run read the blocked-by links of #2 and #3' ($blockerReads -contains '2' -and $blockerReads -contains '3') "issues whose blockers it read: $($blockerReads -join ', ')"
+        $heldSnapshots = @($comments | Where-Object { $_ -and $_.kind -eq 'issue' -and "$($_.number)" -in '2', '3' -and "$($_.body)" -match '^Plan snapshot\.' })
+        $heldPrs = @(Read-HostJson $hostDir 'prs.json' | Where-Object { $_ -and "$($_.body)" -match '(?mi)^(Closes|Fixes|Resolves) #[23]\b' })
+        $heldBranches = @(git --git-dir=$origin for-each-ref --format='%(refname:short)' refs/heads | Where-Object { $_ -match '(^|[/-])issue-[23]$' })
+        $heldTrees = @('issue-2', 'issue-3' | Where-Object { Test-Path -LiteralPath (Join-Path $app ".claude/worktrees/$_") })
+        Check 'the run planned neither #2, blocked by #1, which hasn''t landed, nor #3, blocked by #4, which is outside the run' ($heldSnapshots.Count -eq 0 -and $heldPrs.Count -eq 0 -and $heldBranches.Count -eq 0 -and $heldTrees.Count -eq 0) "plan snapshots: $($heldSnapshots.Count); pull requests: $($heldPrs.Count); branches: $($heldBranches -join ', '); worktrees: $($heldTrees -join ', ')"
+        $boardState = Read-HostJson $hostDir 'board.json'
+        $moves = [string[]]@(if ($boardState) { @($boardState.moves) | Where-Object { $_ } | ForEach-Object { "#$($_.number) $($_.status)" } })
+        $inProgress = [array]::IndexOf($moves, '#1 In progress')
+        $inReview = [array]::LastIndexOf($moves, '#1 In review')
+        $moveLines = @($calls | Where-Object { $_ -match '^MOVE #' })
+        Check 'the board moved #1 to In progress, then to In review, moved neither #2 nor #3, and calls.log records each move' ($inProgress -ge 0 -and $inReview -gt $inProgress -and @($moves | Where-Object { $_ -match '^#[23] ' }).Count -eq 0 -and $moveLines.Count -eq $moves.Count) "moves: $($moves -join ', '); MOVE lines: $($moveLines.Count)"
+    }
     # The test checks the recommendation only in minor-round, max-rounds and push-branch, whose last review is predictable.
     if ($Scenario -notin 'review-with-footer', 'fix-now') {
         $recommendations = @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)" -match '(?i)\bmerg' })
