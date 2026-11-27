@@ -287,6 +287,19 @@ try {
 }
 finally { Pop-Location }
 Check 'runtimes: build/Get-TestRuntimes.ps1 reads the target frameworks of a test project MSBuild warns about, parsing only the JSON on stdout' ($runtimesCode -eq 0 -and ($runtimes -join ',') -eq '8.0.x') ($runtimes -join "`n")
+# build/Get-TestRuntimes.ps1 names the project when MSBuild prints no JSON: run in this process, where a dotnet function stands in for the command and prints only a warning.
+$noJsonRoot = Join-Path $stubRoot 'runtimes-no-json'
+New-Item -ItemType Directory -Force -Path (Join-Path $noJsonRoot 'build') | Out-Null
+Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'template/build/Get-TestRuntimes.ps1') -Destination (Join-Path $noJsonRoot 'build')
+[IO.File]::WriteAllText((Join-Path $noJsonRoot 'Fixture.sln'), '')
+$noJsonError = & {
+    function dotnet {
+        $global:LASTEXITCODE = 0
+        if ($args[0] -eq 'sln') { 'Project(s)'; '----------'; 'tests/Quiet.Tests/Quiet.Tests.csproj' } else { 'warning MSB4011: no properties to print' }
+    }
+    try { $null = & (Join-Path $noJsonRoot 'build/Get-TestRuntimes.ps1'); '' } catch { $_.Exception.Message }
+}
+Check 'runtimes: build/Get-TestRuntimes.ps1 fails naming the project when MSBuild prints no JSON' ("$noJsonError".Contains('dotnet msbuild tests/Quiet.Tests/Quiet.Tests.csproj printed no JSON properties')) "$noJsonError"
 if ($InstallerOnly) {
     ''
     if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
