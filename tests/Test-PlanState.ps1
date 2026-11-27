@@ -209,13 +209,13 @@ $m = @(foreach ($case in $cases) {
         if (-not $r.Ok) { "'$($case.Bots)' and max-review-rounds $($case.Rounds): $($r.Detail)" }
     })
 Check 'local: an empty review-bots keeps the default, one with no login is none, and max-review-rounds takes 1 to 999, else 3' (-not $m) ($m -join '; ')
-$boards = [ordered]@{ 'NCodeGroup/7' = 'NCodeGroup/7'; '`octo-org/12`' = 'octo-org/12'; 'none' = 'none'; 'https://github.com/orgs/NCodeGroup/projects/7' = 'invalid'; 'NCodeGroup/0' = 'invalid'; 'NCodeGroup' = 'invalid'; 'NCodeGroup/7/8' = 'invalid'; "NCodeGroup/7`u{0663}" = 'invalid'; "`u{212A}anban-org/7" = 'invalid' }
+$boards = [ordered]@{ 'NCodeGroup/7' = 'NCodeGroup/7'; '`octo-org/12`' = 'octo-org/12'; 'none' = 'none'; 'https://github.com/orgs/NCodeGroup/projects/7' = 'invalid'; 'NCodeGroup/0' = 'invalid'; 'NCodeGroup' = 'invalid'; 'NCodeGroup/7/8' = 'invalid'; "NCodeGroup/7`u{0663}" = 'invalid'; "`u{212A}anban-org/7" = 'invalid'; ('a' * 39 + '/7') = ('a' * 39 + '/7'); ('a' * 40 + '/7') = 'invalid'; 'NCodeGroup/9999999999' = 'NCodeGroup/9999999999'; 'NCodeGroup/10000000000' = 'invalid' }
 $m = @(foreach ($value in $boards.Keys) {
         Write-Text (Join-Path $repo 'AGENTS.md') $agentsText.Replace('- prelude: `nvs use 26`', "- board: $value`n- prelude: ``nvs use 26``")
         $landing = (Get-State $repo -NoFetch)['landing']
         if (-not $landing.Contains(" max-review-rounds=5 board=$($boards[$value]) prelude=")) { "board ${value}: landing='$landing'" }
     })
-Check 'local: the Landing section''s board is none or <owner>/<number>, and any other value prints as invalid' (-not $m) ($m -join '; ')
+Check 'local: the Landing section''s board is none or <owner>/<number>, with an owner of at most 39 characters and a number of at most 10 digits, and any other value prints as invalid' (-not $m) ($m -join '; ')
 Write-Text (Join-Path $repo 'AGENTS.md') $agentsText
 $r = Test-State (Get-State $repo) @{ protected = 'unknown' }
 Check 'protected: protect hook without the hook enabled, on another host, is unknown' $r.Ok $r.Detail
