@@ -31,9 +31,9 @@ through a shell variable ([#521](https://github.com/NCodeGroup/project-template/
    A story is one plan, one worktree, one pull request and at most one release: an issue of type Feature, Bug or
    Task, a sub-issue of its epic when it has one. A subtask is a step of the story's `PLAN.md`, never an issue: the
    plan snapshot on the story shows the steps.
-2. **Types choose the plan.** A Bug is planned as a bugfix. A Feature or a Task, or an issue without a type, takes
-   the kind of plan its labels give. An Epic is never planned: `/decompose-issue` splits it into stories, and so a
-   story too large for one plan.
+2. **Types choose the plan.** A Bug is planned as a bugfix, or as a security plan when its labels say security. A
+   Feature or a Task, or an issue without a type, takes the kind of plan its labels give. An Epic is never planned:
+   `/decompose-issue` splits it into stories, and so a story too large for one plan.
 3. **Links are the record.** A story's place is its parent link and its order is its "blocked by" links. A command
    that files issues makes those links as it files them, and `/triage-issues` reports a "Part of" or "Depends on"
    line without its link. A design, `ROADMAP.md` or any other document links the epic and never copies its stories.
