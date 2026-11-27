@@ -215,7 +215,8 @@ $supportIndex = Join-Path $stubRoot 'releases-index.json'
             @{ 'channel-version' = '10.0'; 'release-type' = 'lts'; 'support-phase' = 'active'; 'eol-date' = '2028-11-14' },
             @{ 'channel-version' = '11.0'; 'release-type' = 'sts'; 'support-phase' = 'active'; 'eol-date' = '2028-11-14' },
             @{ 'channel-version' = '8.0'; 'release-type' = 'lts'; 'support-phase' = 'eol'; 'eol-date' = '2026-11-10' },
-            @{ 'channel-version' = '6.0'; 'release-type' = 'lts'; 'support-phase' = 'maintenance'; 'eol-date' = '2027-05-11' }
+            @{ 'channel-version' = '6.0'; 'release-type' = 'lts'; 'support-phase' = 'maintenance'; 'eol-date' = '2027-05-11' },
+            @{ 'channel-version' = '12.0'; 'release-type' = 'lts'; 'support-phase' = 'preview'; 'eol-date' = '2031-11-11' }
         ) } | ConvertTo-Json -Depth 5))
 
 function Invoke-Support([string]$Sdk, [string]$GitHubActions = '', [switch]$WarnOnly, [string]$Name = '', [hashtable]$Files = @{}) {
@@ -266,6 +267,10 @@ Check 'support: build/Test-DotnetSupport.ps1 passes a repository without global.
 # MSBuild writes an evaluation warning, here MSB4011 naming a path with a brace, to stderr: the script must parse only the JSON on stdout.
 $r = Invoke-Support '' -Name 'braces' -Files @{ 'src/Braces/Braces{1}.props' = '<Project />'; 'src/Braces/Braces.csproj' = '<Project Sdk="Microsoft.NET.Sdk"><Import Project="Braces{1}.props" /><Import Project="Braces{1}.props" /><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>' }
 Check 'support: build/Test-DotnetSupport.ps1 reads the target frameworks of a project MSBuild warns about, parsing only the JSON on stdout' ($r.ExitCode -eq 0 -and $r.Printed.Contains('10.0 (src/Braces/Braces.csproj): LTS, supported until 2028-11-14') -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
+$r = Invoke-Support '12.0.100-preview.1.26000.1'
+Check 'support: build/Test-DotnetSupport.ps1 fails a release in a phase other than active or maintenance, such as preview' ($r.ExitCode -eq 1 -and $r.Printed.Contains('Error: .NET 12.0 (global.json) is a preview release, not one Microsoft supports') -and $r.Printed.Contains('.NET support: FAILED (1)')) $r.Printed
+$r = Invoke-Support '' -Name 'multi' -Files @{ 'src/Multi/Multi.csproj' = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFrameworks>net10.0;netstandard2.0;net48</TargetFrameworks></PropertyGroup></Project>' }
+Check 'support: build/Test-DotnetSupport.ps1 checks only the net channel of a project that also targets netstandard2.0 and net48' ($r.ExitCode -eq 0 -and $r.Printed.Contains('10.0 (src/Multi/Multi.csproj): LTS, supported until 2028-11-14') -and -not $r.Printed.Contains('lists no') -and @($r.Printed -split "`n" | Where-Object { $_ -match '^\d+\.\d+ \(' }).Count -eq 1 -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
 if ($InstallerOnly) {
     ''
     if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
