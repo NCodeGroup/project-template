@@ -57,7 +57,8 @@ comment, each under GitHub's 280-character limit:
   helper again.
 - Once a second person has write access, the Branch-Protection alert is reopened, since two people can meet tier 4's
   two approvals and code owners' review, which [ADR-0020](0020-github-projects-are-scored-by-openssf-scorecard.md)
-  leaves to a person.
+  leaves to a person. With one writer, the approver's one approval
+  ([ADR-0036](0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)) reaches 8 at most.
 
 ## References
 
