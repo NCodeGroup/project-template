@@ -1747,6 +1747,8 @@ Check 'workflow: Invoke-PlanSteps re-checks a step the planner completed after t
 ''
 $m = @(Get-MissingText $rulesJinja ('## Backlog', 'as ADR-0042 in `docs/decisions/project-template/` says', 'takes `sub_issue_id`', 'takes `issue_id`', 'never pipe it into a shell variable'))
 Check 'rules: the Backlog section records epics, stories, the Definition of Ready, links, the REST forms and the board (ADR-0042)' (-not $m) ($m -join '; ')
+$forms = @('template/.github/ISSUE_TEMPLATE', '.github/ISSUE_TEMPLATE', 'template/.github/ISSUE_TEMPLATE.md', '.github/ISSUE_TEMPLATE.md' | Where-Object { Test-Path -LiteralPath (Join-Path $repoRoot $_) })
+Check 'template: ships no issue forms, so every project and this repository take the NCodeGroup organization''s default forms (ADR-0042)' (-not $forms) ($forms -join ', ')
 if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Template tests: PASSED'
