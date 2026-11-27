@@ -42,6 +42,7 @@ Read every issue first, before you read any code. Where these instructions start
 2. Check that each issue is ready to plan; when one issue of a group isn't, stop for the whole group and say which. Stop without changing a file or posting anything, and say why, when:
    - it is closed;
    - it is an Epic, its `type.name` in `gh api repos/{owner}/{repo}/issues/<number>`: say to run decompose-issue with it instead, which splits it into stories that each fit one plan;
+   - the read of its type, `gh api repos/{owner}/{repo}/issues/<number>`, fails, with a non-zero exit, an API error or a refused route: name the issue and the call that failed. A read that fails is never read as an issue without a type, which would plan an Epic;
    - a comment starts with `Plan snapshot.`, so it has a plan already, unless my request says to plan it again;
    - an open pull request names it: `gh pr list --state open --search "<number> in:body"` on GitHub, or `glab mr list --search "#<number>"` on GitLab; open each result, and count it only when its description names this issue;
    - it doesn't say enough to plan, such as a bug with no way to reproduce it or no expected behavior, or a feature that doesn't say what should change. List the questions that need answers.
