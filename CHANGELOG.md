@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.119.0] - 2026-11-27
+
+### Added
+
+- ADR-0042 records how work is planned: an epic, an issue of type Epic, is split into stories of type Feature, Bug or Task, one plan each, whose parent and "blocked by" links record their place and order and whose plan steps stay in `PLAN.md`; a story is planned once it meets the Definition of Ready; work flows through Backlog, Ready, In progress, In review and Done with at most two stories in progress and no sprints; and issue forms come from NCodeGroup's `.github` repository, so the template ships no `.github/ISSUE_TEMPLATE/` and no answer that adds one, a test checks that it stays so, and no project falls back to labels for issue types. It amends ADR-0007. `.github/instructions/project-template.instructions.md` has a Backlog section with its rules, among them the REST forms for sub-issues and "blocked by" links, which take an issue's `id`, and editing an issue body through JSON and a file. A new project's `docs/designs/_template.md` and `ROADMAP.md` link epics instead of listing stories ([#522](https://github.com/NCodeGroup/project-template/issues/522), [#523](https://github.com/NCodeGroup/project-template/issues/523), [ADR-0042](template/docs/decisions/project-template/0042-work-is-planned-as-epics-stories-and-plan-steps-on-a-kanban-flow.md)).
+- `/decompose-issue #<epic>`, in Claude Code, Copilot Chat and Copilot CLI, splits an epic, or an issue too large for one plan, into stories that meet the Definition of Ready: it files a `Record decisions` story first when they need decisions no record makes, asks before it files anything, files each story with its type, as a sub-issue of the epic, with its "blocked by" links, through GitHub's REST API, narrows or links the open follow-up issues they cover, and names the `/run-issues epic:#<epic>` run that takes them ([#524](https://github.com/NCodeGroup/project-template/issues/524), [ADR-0042](template/docs/decisions/project-template/0042-work-is-planned-as-epics-stories-and-plan-steps-on-a-kanban-flow.md)).
+- `tools/kanban-board.mjs` creates or adopts a GitHub Project with the Status columns Backlog, Ready, In progress, In review and Done, links it to a repository, sets its description to the work-in-progress limit, two by default, lists the built-in workflows to turn on, and says so when the `gh` token lacks the `project` scope. A project's Landing section takes a `board: <owner>/<number>` line, `none` by default, which `.template/Get-PlanState.ps1` prints on its `landing` line; with it, `/triage-issues` moves a ready story to Ready, a plan snapshot moves its issues to In progress and `/ship-plan` moves them to In review when it opens the pull request. `AGENTS.md` is the project's own: add the line by hand ([#526](https://github.com/NCodeGroup/project-template/issues/526), [ADR-0042](template/docs/decisions/project-template/0042-work-is-planned-as-epics-stories-and-plan-steps-on-a-kanban-flow.md)).
+
+### Changed
+
+- `/triage-issues` judges readiness by the Definition of Ready, names the open issue that blocks a story, takes the kind of plan from the issue's type before its labels, names `/decompose-issue` for an epic or a large issue, takes `epic:#<number>` for an epic's open stories in the order their "blocked by" links give, and reports a "Part of" line without its parent link, a "Depends on" line without its "blocked by" link, and an open epic whose stories are all closed. `/plan-issue` refuses an epic and asks before planning an issue an open issue blocks, unless the request names that blocker too. `/run-issues` leaves out an entry an open issue outside the run blocks, and plans one an earlier entry blocks only once that entry has landed. `/ship-plan` files a story's follow-ups as sub-issues of its epic, typed Bug or Task, and says when a merge closes an epic's last open story, with the command to close it and a prompt for its retrospective ([#525](https://github.com/NCodeGroup/project-template/issues/525), [ADR-0042](template/docs/decisions/project-template/0042-work-is-planned-as-epics-stories-and-plan-steps-on-a-kanban-flow.md)).
+
 ## [0.118.1] - 2026-11-27
 
 ### Changed
@@ -2032,7 +2044,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.118.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.119.0...HEAD
+[0.119.0]: https://github.com/NCodeGroup/project-template/compare/v0.118.1...v0.119.0
 [0.118.1]: https://github.com/NCodeGroup/project-template/compare/v0.118.0...v0.118.1
 [0.118.0]: https://github.com/NCodeGroup/project-template/compare/v0.117.2...v0.118.0
 [0.117.2]: https://github.com/NCodeGroup/project-template/compare/v0.117.1...v0.117.2
