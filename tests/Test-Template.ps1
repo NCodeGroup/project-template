@@ -411,6 +411,12 @@ foreach ($case in $cases) {
         $releasesBullet.Contains('With `release: tag+release` in `AGENTS.md`''s Landing section, `.github/workflows/tag-release.yml` tags each release and publishes its GitHub release as its pull request merges') -and ($releasesBullet.Contains('`nuget` environment') -ne $ownPublishing) -and ($rulesText.Contains('`.github/workflows/raise-baseline.yml`') -ne $ownPublishing) -and (-not $ownPublishing -or $releasesBullet.Contains('`' + $case.Data.nuget_publisher + '`, the project''s own workflow'))
     } else { -not $releasesBullet -and -not $rulesText.Contains('raise-baseline.yml') }
     Check "${name}: the template rules' Releases bullet says how a .NET library on GitHub publishes, naming its own publishing workflow when nuget_publisher is answered, and no other project has it" $releasesOk $releasesBullet
+    $dependabotBullet = [regex]::Match($rulesText, '(?m)^- Dependabot opens a pull request each week .*$').Value
+    $reviewsDependabot = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
+    $dependabotOk = if ($case.Host -eq 'github') {
+        $dependabotBullet.Contains('A Dependabot pull request adds no changelog entry: Dependabot can''t write one') -and ($dependabotBullet.Contains('NCode Review reviews it when it opens and after each push Dependabot makes, and approves a clean one (ADR-0041)') -eq $reviewsDependabot) -and ($dependabotBullet.Contains('which `.github/workflows/code-review-auto-merge.yml` merges by itself') -eq $reviewsDependabot) -and ($dependabotBullet.Contains('CI tests it and a person merges it.') -ne $reviewsDependabot)
+    } else { -not $dependabotBullet }
+    Check "${name}: the template rules' Dependabot bullet says NCode Review reviews and approves Dependabot's pull requests and auto-merges its pin bump exactly when the project runs it, and always that a Dependabot pull request adds no changelog entry; a GitLab project has no Dependabot bullet" $dependabotOk $dependabotBullet
     if ($case.Data.nuget_publisher) {
         $ownPublisher = $case.Data.nuget_publisher
         $stalePhrases = 'publish.yml', 'trusted publishing', '`nuget` environment', 'provenance', 'raise-baseline.yml', 'intoto'
