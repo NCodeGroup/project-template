@@ -49,10 +49,12 @@ Not written yet.
   them on every {{ pr }}.
 {%- endif %}
 {%- if git_host == 'github' %}
-- **Static analysis:** with CodeQL's default setup configured and analyzing at least one language, the repository
-  ruleset blocks a pull request that adds a CodeQL alert at warning level or above, or a security alert of any severity
+- **Static analysis:** with `.github/workflows/codeql.yml`, which runs CodeQL on every pull request, a fork's too, or
+  else CodeQL's default setup configured and analyzing at least one language, the repository ruleset blocks a pull
+  request that adds a CodeQL alert at warning level or above, or a security alert of any severity
   ([ADR-0005](decisions/project-template/0005-the-default-branch-accepts-changes-only-through-pull-requests.md),
-  [ADR-0030](decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md)).
+  [ADR-0030](decisions/project-template/0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md),
+  [ADR-0042](decisions/project-template/0042-a-fork-pull-request-merges-without-a-bypass.md)).
 - **Review:** every change reaches the default branch through a pull request with passing CI and every conversation
   resolved, and the ruleset refuses force pushes and deletion
   ([ADR-0005](decisions/project-template/0005-the-default-branch-accepts-changes-only-through-pull-requests.md),
