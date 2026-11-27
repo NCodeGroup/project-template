@@ -61,6 +61,7 @@
                 other Unicode digits, or Git lists the file as conflicted; it throws, naming the file, when Git can't
                 read the project's changes; Test-EditKept then finds the edit kept.
       newest-tag Get-NewestTag picks the newest version tag and ignores a tag in other Unicode digits.
+      package-license The update, run offline against a template clone without tags, takes a blank license answer from package_license, says so and goes on to read the template's tags; without package_license it still stops on the license, and -Data's license wins.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-update-notes-test-<process ID> in the temp
@@ -493,6 +494,39 @@ $immutableNote = & {
     Check 'copies: Adopt-Project.ps1''s Get-WorkflowEvents, Test-ReleaseAssetWorkflow and Get-ImmutableReleaseNote match Update-Project.ps1''s' (-not $adoptDiffer) "differ: [$($adoptDiffer -join ', ')]"
 }
 $immutableNote
+
+# package-license: Update-Project.ps1, run offline against a template clone without tags, on a committed project.
+$packageLicense = & {
+    $tpl = Join-Path $Work 'package-license-template'
+    $null = New-Item -ItemType Directory -Path $tpl -Force
+    git -C $tpl init -q
+    $update = Join-Path $repoRoot 'template\.template\Update-Project.ps1'
+    $licenseCases = [ordered]@{
+        'carried over'       = @{ Answers = "license: ''`npackage_license: Apache-2.0`n"; Data = @{} }
+        'no package_license' = @{ Answers = "license: ''`n"; Data = @{} }
+        '-Data license wins' = @{ Answers = "license: ''`npackage_license: Apache-2.0`n"; Data = @{ license = 'MIT' } }
+    }
+    foreach ($name in $licenseCases.Keys) {
+        $case = $licenseCases[$name]
+        $folder = Join-Path $Work "package-license-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path $folder -Force
+        [IO.File]::WriteAllText((Join-Path $folder '.copier-answers.yml'), "_commit: v0.1.0`n_src_path: $($tpl -replace '\\', '/')`nnuget_package: true`n" + $case.Answers)
+        git -C $folder init -q -b main
+        git -C $folder add -A
+        git -C $folder -c user.name=template-test -c user.email=template-test@example.invalid -c core.hooksPath= commit -q -m 'Create project'
+        $lines = [Collections.Generic.List[string]]::new()
+        try { & $update -Path $folder -TemplateClone $tpl -Data $case.Data 2>&1 | ForEach-Object { $lines.Add("$_") } }
+        catch { $lines.Add("THROWN: $($_.Exception.Message)") }
+        $output = $lines -join "`n"
+        $ok = switch ($name) {
+            'carried over' { $output.Contains('The license answer is blank: the update takes Apache-2.0 from package_license') -and $output.Contains('has no version tags') -and -not $output.Contains('A NuGet package needs a license') }
+            'no package_license' { $output.Contains('THROWN: A NuGet package needs a license') -and -not $output.Contains('from package_license') }
+            default { $output.Contains('has no version tags') -and -not $output.Contains('from package_license') }
+        }
+        Check "package-license: $name" $ok $output
+    }
+}
+$packageLicense
 
 # kept-edit: Test-EditKept, run from inside each fixture folder, a Git repository, which is also the project.
 $keptEdit = & {
