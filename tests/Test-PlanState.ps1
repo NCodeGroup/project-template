@@ -380,9 +380,8 @@ Check 'next: uncommitted changes stop everything' (($state['dirty'] -eq 'yes') -
 # A stand-in for gh. It refuses pr, issue and release as a Claude Code cloud session's proxy does, and answers the REST paths the state script calls.
 $bin = Join-Path $Work 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
-foreach ($cli in 'gh') {
-    Write-Text (Join-Path $bin "$cli.ps1") @'
-if ((Split-Path -Leaf $PSCommandPath) -eq 'gh.ps1' -and ($args[0] -in 'pr', 'issue', 'release' -or ($args[0] -eq 'api' -and $args[1] -eq 'graphql'))) { [Console]::Error.WriteLine('HTTP 403: GitHub GraphQL is not available from Claude Code sessions'); exit 1 }
+Write-Text (Join-Path $bin 'gh.ps1') @'
+if ($args[0] -in 'pr', 'issue', 'release' -or ($args[0] -eq 'api' -and $args[1] -eq 'graphql')) { [Console]::Error.WriteLine('HTTP 403: GitHub GraphQL is not available from Claude Code sessions'); exit 1 }
 if ($args[0] -eq 'api') {
     $file = Join-Path $PSScriptRoot 'api.json'
     if (-not (Test-Path $file)) { exit 1 }
@@ -423,7 +422,6 @@ if ($args[0] -eq 'api') {
 }
 exit 1
 '@
-}
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'StandInLog.ps1') -Destination (Join-Path $bin 'StandInLog.ps1')
 function Set-MergedRequest([string]$Merge, [string]$Head, [string]$Newer = '', [string]$Base = 'main') {
     $item = @{ number = 6; state = 'closed'; merged_at = '2026-01-01T00:00:00Z'; merge_commit_sha = $Merge; head = @{ sha = $Head; ref = 'worktree-merged' }; base = @{ ref = $Base } }
@@ -1210,9 +1208,13 @@ try {
     finally { Pop-Location }
     Set-PushRequests @()
     Remove-Item -LiteralPath (Join-Path $bin 'pulls-path.txt') -ErrorAction Ignore
-    $r = Test-State (Get-State $pRepo) @{ host = 'other'; 'push-branch' = 'claude/test-abc1'; 'pr-branch' = 'claude/test-abc1'; pr = '-' }
+    if (Test-Path -LiteralPath (Join-Path $bin 'issue-paths.txt')) { Remove-Item -LiteralPath (Join-Path $bin 'issue-paths.txt') }
+    $otherState = Get-State $pRepo
+    $r = Test-State $otherState @{ host = 'other'; 'push-branch' = 'claude/test-abc1'; 'pr-branch' = 'claude/test-abc1'; pr = '-'; protected = 'unknown' }
     $listed = Test-Path -LiteralPath (Join-Path $bin 'pulls-path.txt')
-    Check 'host: a GitLab origin is another host, whose pull requests gh is never asked for' ($r.Ok -and -not $listed) "$($r.Detail) pull request list read: $listed"
+    $issuesRead = Test-Path -LiteralPath (Join-Path $bin 'issue-paths.txt')
+    $issueState = $otherState['issue-state']
+    Check 'host: a GitLab origin is another host, whose pull requests, protection and issues gh is never asked for' ($r.Ok -and -not $listed -and -not $issuesRead -and ($issueState -in 'unknown', '-')) "$($r.Detail) pull request list read: $listed; issue-paths.txt exists: $issuesRead; issue-state: '$issueState'"
     Push-Location $pRepo
     try { Invoke-Git remote set-url origin $pOrigin }
     finally { Pop-Location }
