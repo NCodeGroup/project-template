@@ -3,7 +3,7 @@
     Render the template's .NET cases and check that the .NET layer builds, tests and packs.
 
 .DESCRIPTION
-    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), checks that each fresh render passes dotnet csharpier check . before anything formats it, runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
+    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Then runs build/Test-DotnetSupport.ps1 against a stand-in releases index, offline; its fixture solutions need dotnet on PATH. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), checks that each fresh render passes dotnet csharpier check . before anything formats it, runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
 
 .EXAMPLE
     .\tests\Test-TemplateDotnet.ps1
@@ -12,7 +12,7 @@
     Render nothing and run no .NET check; exit 0.
 
 .PARAMETER InstallerOnly
-    Run only the installer checks, offline: render nothing and build nothing.
+    Run only the offline checks of build/Install-Dotnet.ps1 and build/Test-DotnetSupport.ps1: render nothing and build nothing.
 
 .PARAMETER FormatOnly
     Run the installer checks, offline, then render the two cases and run only the check that each fresh render passes CSharpier's check: build nothing.
@@ -209,6 +209,68 @@ $dir = New-StubInstallDir 'notfound'
 $missing = Invoke-StubInstaller $mergeMetadata @{} @{ GlobalJson = $globalJson; InstallDir = $dir; Channel = '8.0' } @{ $metadataUrl = @($notFound) }
 $missingOk = $missing.Error.Contains('404') -and $missing.Calls.Count -eq 1 -and -not $missing.Sleeps
 Check 'installer: build/Install-Dotnet.ps1 gives every request a 30-second answer and 60-second stall timeout, tries a failed or stalled one twice more, 5 and then 10 seconds later, or after the Retry-After of a 429 or 503 up to 60 seconds, each plus up to a second at random, retries a 408, and fails at once on a 404' ($retriedOk -and $throttledOk -and $gaveUpOk -and $missingOk) "$($retried.Error) $($retried.Calls -join ',') $($retried.Sleeps -join ',') | $($throttled.Error) $($throttled.Sleeps -join ',') | $($gaveUp.Error) $($gaveUp.Sleeps -join ',') | $($missing.Error) $($missing.Calls.Count)"
+$support = Join-Path (Split-Path -Parent $PSScriptRoot) 'template/build/Test-DotnetSupport.ps1'
+$supportIndex = Join-Path $stubRoot 'releases-index.json'
+[IO.File]::WriteAllText($supportIndex, (@{ 'releases-index' = @(
+            @{ 'channel-version' = '10.0'; 'release-type' = 'lts'; 'support-phase' = 'active'; 'eol-date' = '2028-11-14' },
+            @{ 'channel-version' = '11.0'; 'release-type' = 'sts'; 'support-phase' = 'active'; 'eol-date' = '2028-11-14' },
+            @{ 'channel-version' = '8.0'; 'release-type' = 'lts'; 'support-phase' = 'eol'; 'eol-date' = '2026-11-10' },
+            @{ 'channel-version' = '6.0'; 'release-type' = 'lts'; 'support-phase' = 'maintenance'; 'eol-date' = '2027-05-11' },
+            @{ 'channel-version' = '12.0'; 'release-type' = 'lts'; 'support-phase' = 'preview'; 'eol-date' = '2031-11-11' }
+        ) } | ConvertTo-Json -Depth 5))
+
+function Invoke-Support([string]$Sdk, [string]$GitHubActions = '', [switch]$WarnOnly, [string]$Name = '', [hashtable]$Files = @{}) {
+    $dir = Join-Path $stubRoot "support-$Sdk-$GitHubActions-$([int][bool]$WarnOnly)-$Name"
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    if ($Sdk) { [IO.File]::WriteAllText((Join-Path $dir 'global.json'), "{`"sdk`":{`"version`":`"$Sdk`"}}") }
+    if ($Files.Count) {
+        foreach ($path in $Files.Keys) {
+            $file = Join-Path $dir $path
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $file) | Out-Null
+            [IO.File]::WriteAllText($file, $Files[$path])
+        }
+        Push-Location $dir
+        try {
+            dotnet new sln -n Fixture --no-update-check | Out-Null
+            dotnet sln add @($Files.Keys | Where-Object { $_.EndsWith('.csproj') }) | Out-Null
+        }
+        finally { Pop-Location }
+    }
+    $arguments = @('-NoProfile', '-File', $support, '-Root', $dir, '-ReleasesIndex', $supportIndex)
+    if ($WarnOnly) { $arguments += '-WarnOnly' }
+    $previous = $env:GITHUB_ACTIONS
+    $env:GITHUB_ACTIONS = $GitHubActions
+    try {
+        $printed = (pwsh @arguments 2>&1 | Out-String).Trim()
+        [pscustomobject]@{ Printed = $printed; ExitCode = $LASTEXITCODE }
+    }
+    finally { $env:GITHUB_ACTIONS = $previous }
+}
+
+$r = Invoke-Support '10.0.100'
+Check 'support: build/Test-DotnetSupport.ps1 passes an active LTS pinned in global.json' ($r.ExitCode -eq 0 -and $r.Printed.Contains('10.0 (global.json): LTS, supported until 2028-11-14') -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
+$r = Invoke-Support '11.0.100'
+Check 'support: build/Test-DotnetSupport.ps1 fails a Standard Term Support release' ($r.ExitCode -eq 1 -and $r.Printed.Contains('Error: .NET 11.0 (global.json) is a Standard Term Support release') -and $r.Printed.Contains('.NET support: FAILED (1)')) $r.Printed
+$r = Invoke-Support '8.0.404'
+Check 'support: build/Test-DotnetSupport.ps1 fails an LTS release past its end of support' ($r.ExitCode -eq 1 -and $r.Printed.Contains('Error: .NET 8.0 (global.json) reached its end of support on 2026-11-10')) $r.Printed
+$r = Invoke-Support '6.0.100'
+Check 'support: build/Test-DotnetSupport.ps1 warns, without failing, for an LTS release in maintenance' ($r.ExitCode -eq 0 -and $r.Printed.Contains('Warning: .NET 6.0 (global.json) ends its support on 2027-05-11')) $r.Printed
+$warned = Invoke-Support '6.0.100' 'true'
+$errored = Invoke-Support '8.0.404' 'true'
+Check 'support: build/Test-DotnetSupport.ps1 prints workflow annotations on GitHub Actions' ($warned.Printed.Contains('::warning::.NET 6.0 (global.json)') -and $errored.Printed.Contains('::error::.NET 8.0 (global.json)')) "$($warned.Printed) | $($errored.Printed)"
+$r = Invoke-Support '8.0.404' -WarnOnly
+Check 'support: build/Test-DotnetSupport.ps1 reports a failure as a warning and exits 0 with -WarnOnly' ($r.ExitCode -eq 0 -and $r.Printed.Contains('Warning: .NET 8.0 (global.json) reached its end of support') -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
+$r = Invoke-Support '99.0.100'
+Check 'support: build/Test-DotnetSupport.ps1 fails a channel Microsoft''s release metadata lacks' ($r.ExitCode -eq 1 -and $r.Printed.Contains('Microsoft''s release metadata lists no .NET 99.0 (global.json).')) $r.Printed
+$r = Invoke-Support ''
+Check 'support: build/Test-DotnetSupport.ps1 passes a repository without global.json' ($r.ExitCode -eq 0 -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
+# MSBuild writes an evaluation warning, here MSB4011 naming a path with a brace, to stderr: the script must parse only the JSON on stdout.
+$r = Invoke-Support '' -Name 'braces' -Files @{ 'src/Braces/Braces{1}.props' = '<Project />'; 'src/Braces/Braces.csproj' = '<Project Sdk="Microsoft.NET.Sdk"><Import Project="Braces{1}.props" /><Import Project="Braces{1}.props" /><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>' }
+Check 'support: build/Test-DotnetSupport.ps1 reads the target frameworks of a project MSBuild warns about, parsing only the JSON on stdout' ($r.ExitCode -eq 0 -and $r.Printed.Contains('10.0 (src/Braces/Braces.csproj): LTS, supported until 2028-11-14') -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
+$r = Invoke-Support '12.0.100-preview.1.26000.1'
+Check 'support: build/Test-DotnetSupport.ps1 fails a release in a phase other than active or maintenance, such as preview' ($r.ExitCode -eq 1 -and $r.Printed.Contains('Error: .NET 12.0 (global.json) is a preview release, not one Microsoft supports') -and $r.Printed.Contains('.NET support: FAILED (1)')) $r.Printed
+$r = Invoke-Support '' -Name 'multi' -Files @{ 'src/Multi/Multi.csproj' = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFrameworks>net10.0;netstandard2.0;net48</TargetFrameworks></PropertyGroup></Project>' }
+Check 'support: build/Test-DotnetSupport.ps1 checks only the net channel of a project that also targets netstandard2.0 and net48' ($r.ExitCode -eq 0 -and $r.Printed.Contains('10.0 (src/Multi/Multi.csproj): LTS, supported until 2028-11-14') -and -not $r.Printed.Contains('lists no') -and @($r.Printed -split "`n" | Where-Object { $_ -match '^\d+\.\d+ \(' }).Count -eq 1 -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
 if ($InstallerOnly) {
     ''
     if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
@@ -353,6 +415,46 @@ try {
     $installedSdk = "$(& (Join-Path $dotnetRoot $(if ($IsWindows) { 'dotnet.exe' } else { 'dotnet' })) --version 2>&1)"
     $pinnedSdk = (Get-Content -Raw -LiteralPath global.json | ConvertFrom-Json).sdk.version
     Check 'dotnet: build/Install-Dotnet.ps1 -SkipSdk installs nothing without an older framework; build/Install-Dotnet.ps1 installs the SDK global.json selects, which dotnet runs from there, and the runtimes build/Get-TestRuntimes.ps1 names, and skips them once they are there' ($installNoneCode -eq 0 -and $installNone.Count -eq 0 -and -not $installNoneCreated -and $installCode -eq 0 -and $installedSdk -match '^\d+\.\d+\.\d+$' -and [version]$installedSdk -ge [version]$pinnedSdk -and ($install -join ' ').Contains("Installed .NET SDK $installedSdk in") -and (Test-Path (Join-Path $dotnetRoot 'shared/Microsoft.NETCore.App/8.0.*')) -and (Test-Path (Join-Path $dotnetRoot 'shared/Microsoft.AspNetCore.App/8.0.*')) -and $installAgainCode -eq 0 -and ($installAgain -join ' ').Contains(".NET SDK $installedSdk is already in") -and ($installAgain -join ' ').Contains('are already in')) "$installedSdk | $($installNone -join ',') | $($install -join ',') | $($installAgain -join ',')"
+
+    # The support script reads the SDK and every target framework of the root solution, against an index that makes net8.0 past its end of support.
+    $sdkChannel = ($pinnedSdk -split '\.')[0..1] -join '.'
+    $index = Join-Path $Work 'support-index.json'
+    [IO.File]::WriteAllText($index, (@{ 'releases-index' = @(
+                @{ 'channel-version' = $sdkChannel; 'release-type' = 'lts'; 'support-phase' = 'active'; 'eol-date' = '2099-11-10' },
+                @{ 'channel-version' = '8.0'; 'release-type' = 'lts'; 'support-phase' = 'eol'; 'eol-date' = '2026-11-10' }
+            ) } | ConvertTo-Json -Depth 5))
+    $previousActions = $env:GITHUB_ACTIONS
+    $env:GITHUB_ACTIONS = ''
+    try {
+        $supportOutput = pwsh -NoProfile -File build/Test-DotnetSupport.ps1 -ReleasesIndex $index 2>&1 | Out-String
+        $supportCode = $LASTEXITCODE
+        $supportWarnOutput = pwsh -NoProfile -File build/Test-DotnetSupport.ps1 -ReleasesIndex $index -WarnOnly 2>&1 | Out-String
+        $supportWarnCode = $LASTEXITCODE
+    }
+    finally { $env:GITHUB_ACTIONS = $previousActions }
+    Check 'dotnet: build/Test-DotnetSupport.ps1 reads the SDK and every target framework of the root solution, fails on one past its end of support and only warns with -WarnOnly' ($supportCode -eq 1 -and $supportOutput.Contains('Error: .NET 8.0 (tests/Legacy.Tests/Legacy.Tests.csproj) reached its end of support on 2026-11-10') -and $supportOutput.Contains("$sdkChannel (global.json, ") -and $supportOutput.Contains('src/Demo/Demo.csproj') -and $supportWarnCode -eq 0 -and $supportWarnOutput.Contains('Warning: .NET 8.0 (tests/Legacy.Tests/Legacy.Tests.csproj)')) "$supportOutput | $supportWarnOutput"
+
+    # A target framework on a Standard Term Support release fails the build, which ProjectTemplateLtsCheck set to false lets through.
+    $stsFramework = "net$([int]($sdkChannel -split '\.')[0] - 1).0"
+    New-Item -ItemType Directory -Force src/Sts | Out-Null
+    [IO.File]::WriteAllText((Join-Path (Get-Location) 'src/Sts/Sts.csproj'), "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>$stsFramework</TargetFramework>`n  </PropertyGroup>`n</Project>`n")
+    # CheckEolTargetFramework=false keeps the SDK's own end-of-support warning, an error under TreatWarningsAsErrors, out of the way.
+    $stsOutput = dotnet build src/Sts -p:CheckEolTargetFramework=false 2>&1 | Out-String
+    $stsCode = $LASTEXITCODE
+    $stsOffOutput = dotnet build src/Sts -p:CheckEolTargetFramework=false -p:ProjectTemplateLtsCheck=false 2>&1 | Out-String
+    $stsOffCode = $LASTEXITCODE
+    Check 'dotnet: a target framework on a Standard Term Support release fails the build with PT0155, and builds with ProjectTemplateLtsCheck set to false' ($stsCode -ne 0 -and $stsOutput -match "error PT0155: $([regex]::Escape($stsFramework)) is a Standard Term Support release" -and $stsOffCode -eq 0) ((($stsOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ') + ' || ' + (($stsOffOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | '))
+
+    # PT0155's target reads only the target framework: run it alone, without restore or build, so -windows and netcoreapp3.1 need no targeting pack.
+    $ltsMajor = [int]($sdkChannel -split '\.')[0]
+    $boundaries = [ordered]@{ "net$($ltsMajor - 1).0-windows" = $true; "net${ltsMajor}.0" = $false; "net${ltsMajor}.0-windows" = $false; 'netcoreapp3.1' = $false }
+    $wrongBoundaries = @(foreach ($framework in $boundaries.Keys) {
+            $boundaryOutput = dotnet msbuild src/Sts/Sts.csproj -t:ProjectTemplateLtsTargetFramework "-p:TargetFramework=$framework" 2>&1 | Out-String
+            $boundaryFailed = $LASTEXITCODE -ne 0
+            $reported = $boundaryOutput -match "error PT0155: $([regex]::Escape($framework)) is a Standard Term Support release"
+            if ($boundaryFailed -ne $boundaries[$framework] -or $reported -ne $boundaries[$framework] -or (-not $boundaries[$framework] -and $boundaryOutput.Contains('PT0155'))) { "${framework}: exit $LASTEXITCODE $(($boundaryOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 2) -join ' ')" }
+        })
+    Check 'dotnet: PT0155 fails an odd major with a platform suffix, and leaves an even major, with or without one, and netcoreapp3.1 alone' (-not $wrongBoundaries) ($wrongBoundaries -join ' | ')
 }
 finally { Pop-Location }
 

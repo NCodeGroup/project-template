@@ -27,8 +27,11 @@ build-and-test:
   # The image supplies git and PowerShell. build/Install-Dotnet.ps1 adds to its .NET the SDK global.json selects, as
   # actions/setup-dotnet does on GitHub, and the runtimes build/Get-TestRuntimes.ps1 names, each once its download
   # matches the SHA-512 in Microsoft's release metadata, so dotnet on the PATH builds and tests with them.
+  # build/Test-DotnetSupport.ps1 then checks that the SDK and every target framework are LTS releases Microsoft
+  # supports (ADR-0155); a project that can't migrate yet adds -WarnOnly until it has.
   before_script:
     - pwsh -NoProfile -File build/Install-Dotnet.ps1
+    - pwsh -NoProfile -File build/Test-DotnetSupport.ps1
 {%- elif stack == 'python' %}
   image: python:3
   rules:

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.115.0] - 2026-11-26
+
+### Added
+
+- .NET code targets only LTS releases Microsoft supports, and only the files that pin a .NET version name one ([ADR-0155](template/docs/decisions/project-template/0155-dotnet-code-targets-only-lts-releases-and-prose-names-no-dotnet-version.md)). `build/Test-DotnetSupport.ps1` reads Microsoft's release metadata and fails when the SDK `global.json` pins, or a target framework of a project in the root solutions, is a Standard Term Support release, past its end of support or not listed, and warns for an LTS in its last months of support. CI runs it after installing .NET, in `.github/workflows/ci.yml` and `.gitlab-ci.yml`; `-WarnOnly` turns its failures into warnings. `.template/Test-FileHeaders.ps1` skips it like the other build scripts the template owns.
+
+### Changed
+
+- **Breaking:** A target framework on a Standard Term Support release, an odd-numbered major, fails the build with `PT0155` (`build/ProjectTemplate.props`). Target an LTS release, or set `<ProjectTemplateLtsCheck>false</ProjectTemplateLtsCheck>` in `Directory.Build.props` until the project migrates with `/plan-migration` ([ADR-0155](template/docs/decisions/project-template/0155-dotnet-code-targets-only-lts-releases-and-prose-names-no-dotnet-version.md)).
+- **Breaking:** CI fails when the SDK or a target framework is a Standard Term Support release or past its end of support, as a project still on an LTS whose support has ended finds on its first run. Move to the current LTS with `/plan-migration`, or add `-WarnOnly` to the `build/Test-DotnetSupport.ps1` step of `.github/workflows/ci.yml` or `.gitlab-ci.yml` until it has ([ADR-0155](template/docs/decisions/project-template/0155-dotnet-code-targets-only-lts-releases-and-prose-names-no-dotnet-version.md)).
+- Decision records, docs, instruction files and script help name a .NET release by its role, not its number: ADR-0008, ADR-0120, ADR-0148, ADR-0149, `docs/api-compatibility.md`, the .NET instruction files and the help of `build/Get-TestRuntimes.ps1` and `build/Install-Dotnet.ps1`. The .NET instructions say which releases a project targets and how it opts out, and `tests/Test-DotnetVersionProse.ps1` fails a Markdown file of the template, or a full-line comment in one of its scripts, workflows or project files, that names a .NET version ([ADR-0155](template/docs/decisions/project-template/0155-dotnet-code-targets-only-lts-releases-and-prose-names-no-dotnet-version.md)).
+
 ## [0.114.1] - 2026-11-25
 
 ### Fixed
@@ -1936,7 +1948,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.114.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.115.0...HEAD
+[0.115.0]: https://github.com/NCodeGroup/project-template/compare/v0.114.1...v0.115.0
 [0.114.1]: https://github.com/NCodeGroup/project-template/compare/v0.114.0...v0.114.1
 [0.114.0]: https://github.com/NCodeGroup/project-template/compare/v0.113.4...v0.114.0
 [0.113.4]: https://github.com/NCodeGroup/project-template/compare/v0.113.3...v0.113.4
