@@ -492,31 +492,23 @@ foreach ($case in $cases) {
         $efCommand = 'dotnet ef migrations add InitialCreate --context <Context> --output-dir Migrations/<Name>'
         $efMissing = @(foreach ($doc in @(@{ N = 'rule'; T = $efRule }, @{ N = 'ADR-0143'; T = $migrationsAdr })) { foreach ($t in $efCommand, 'without its `DbContext` or `Context` suffix', '`Migrations/OpenId` for', 'CS0118') { if (-not $doc.T.Contains($t)) { "$($doc.N): $t" } }; if ($doc.T.Contains('Migrations/<Context>')) { "$($doc.N): still Migrations/<Context>" } })
         Check "${name}: the EF Core rule and ADR-0143 keep each context's initial migration in Migrations/<Name>, its class name without the DbContext or Context suffix, so the folder's namespace never hides the class (CS0118)" (-not $efMissing) ($efMissing -join '; ')
-        $ciFile = if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' }
+        $ciFile = '.github\workflows\ci.yml'
         $ciText = Get-Content -LiteralPath (Join-Path $dest $ciFile) -Raw
         Check "${name}: CI runs the Definition of Done for the default commands" ($ciText.Contains('build/dod.ps1') -and -not ($ciText -match '(?m)^\s+(- )?dotnet (build|test)\s*$')) $ciText
         $setupFile = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
-        $historyOk = if ($case.Host -eq 'github') { -not (Test-Path -LiteralPath $setupFile) -or ((Get-Content -LiteralPath $setupFile -Raw).Contains('fetch-depth: 0') -eq $library) } else { ($ciText -match 'NUGET_PACKAGES: \$CI_PROJECT_DIR/\.nuget/packages\r?\n(?:    #.*\r?\n)?    GIT_DEPTH: "0"') -eq $library }
+        $historyOk = -not (Test-Path -LiteralPath $setupFile) -or ((Get-Content -LiteralPath $setupFile -Raw).Contains('fetch-depth: 0') -eq $library)
         Check "${name}: a library's builds fetch the full history Nerdbank.GitVersioning needs" $historyOk $ciText
-        if ($case.Host -eq 'github') {
-            Check "${name}: CI caches NuGet packages, keyed on the restore's inputs" ($ciText.Contains('uses: actions/cache@') -and $ciText.Contains('path: ~/.nuget/packages') -and $ciText.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $ciText.Contains('${{ runner.os }}-nuget-' + "`n")) $ciText
-            Check "${name}: CI installs .NET with the install-dotnet action after the checkout and before the build" ([regex]::Matches($ciText, '(?m)^      - uses: \./\.github/actions/install-dotnet\r?$').Count -eq (1 + [int]$library) -and $ciText.IndexOf('uses: actions/checkout@') -lt $ciText.IndexOf('./.github/actions/install-dotnet') -and $ciText.IndexOf('./.github/actions/install-dotnet') -lt $ciText.IndexOf('build/dod.ps1') -and -not $ciText.Contains('actions/setup-dotnet') -and -not $ciText.Contains('Get-TestRuntimes')) $ciText
-            Check "${name}: CI checks that the SDK and every target framework are LTS releases Microsoft supports, after the install-dotnet action and before the build" ($ciText -match '(?m)^      - name: Check \.NET support\r?\n        run: \./build/Test-DotnetSupport\.ps1\r?$' -and $ciText.IndexOf('./.github/actions/install-dotnet') -lt $ciText.IndexOf('build/Test-DotnetSupport.ps1') -and $ciText.IndexOf('build/Test-DotnetSupport.ps1') -lt $ciText.IndexOf('build/dod.ps1')) $ciText
-            $installAction = Get-Content -LiteralPath (Join-Path $dest '.github\actions\install-dotnet\action.yml') -Raw
-            $actionUses = [regex]::Matches($installAction, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
-            Check "${name}: the install-dotnet action installs the SDK global.json selects, then the runtimes build/Get-TestRuntimes.ps1 names, with actions/setup-dotnet pinned to a full commit SHA, and names the shell of each command" ($installAction -match '(?m)^runs:\r?\n  using: composite\r?$' -and $actionUses.Count -eq 2 -and -not ($actionUses | Where-Object { $_.Groups[1].Value -ne 'actions/setup-dotnet' -or $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and $installAction.IndexOf('global-json-file: global.json') -gt 0 -and $installAction.IndexOf('global-json-file: global.json') -lt $installAction.IndexOf('./build/Get-TestRuntimes.ps1') -and $installAction.Contains("if: steps.runtimes.outputs.channels != ''") -and $installAction.Contains('dotnet-version: ${{ steps.runtimes.outputs.channels }}') -and [regex]::Matches($installAction, '(?m)^\s+run: ').Count -eq [regex]::Matches($installAction, '(?m)^\s+shell: pwsh\r?$').Count) $installAction
-            $runtimesStep = Get-StepScript $installAction 'runtimes'
-            $twoChannels = Invoke-RuntimesStep $runtimesStep "'8.0.x'`n'9.0.x'" $Work
-            $noChannel = Invoke-RuntimesStep $runtimesStep '' $Work
-            Check "${name}: the install-dotnet action's runtimes step passes each channel build/Get-TestRuntimes.ps1 prints to actions/setup-dotnet, and none when it prints none" ($runtimesStep -and $twoChannels -eq "channels<<EOF`n8.0.x`n9.0.x`nEOF`n" -and $noChannel -eq '') "$runtimesStep | $twoChannels | $noChannel"
-            Check "${name}: CI keeps the test results, after a failure too, and for a library the packages, as artifacts" ($ciText -match '(?m)^      - name: Upload test results\r?\n        if: always\(\)\r?\n        uses: actions/upload-artifact@[0-9a-f]{40} # v\d+\.\d+\.\d+\r?\n        with:\r?\n          name: test-results\r?\n          path: artifacts/test-results/\r?$' -and $ciText.Contains('if-no-files-found: ignore') -and $ciText.Contains('retention-days: 14') -and ($ciText.Contains('- name: Upload packages') -eq $library) -and -not $ciText.Contains('codecov')) $ciText
-        }
-        else {
-            Check "${name}: CI caches NuGet packages in the project folder, keyed on the package versions and the SDK" ($ciText.Contains('NUGET_PACKAGES: $CI_PROJECT_DIR/.nuget/packages') -and $ciText.Contains('files: [Directory.Packages.props, global.json]') -and $ciText.Contains('paths: [.nuget/packages/]')) $ciText
-            Check "${name}: CI installs the SDK global.json selects and the runtimes the tests target before it builds" ($ciText -match '(?m)^  before_script:\r?\n    - pwsh -NoProfile -File build/Install-Dotnet\.ps1\r?$' -and $ciText.IndexOf('build/Install-Dotnet.ps1') -lt $ciText.IndexOf('build/dod.ps1')) $ciText
-            Check "${name}: CI checks that the SDK and every target framework are LTS releases Microsoft supports, right after build/Install-Dotnet.ps1" ($ciText -match '(?m)^    - pwsh -NoProfile -File build/Install-Dotnet\.ps1\r?\n    - pwsh -NoProfile -File build/Test-DotnetSupport\.ps1\r?$') $ciText
-            Check "${name}: CI keeps the test results and packages, after a failure too" ($ciText -match '(?m)^  artifacts:\r?\n    when: always\r?\n    paths: \[artifacts/test-results/, artifacts/packages/\]\r?\n    expire_in: 14 days\r?$') $ciText
-        }
+        Check "${name}: CI caches NuGet packages, keyed on the restore's inputs" ($ciText.Contains('uses: actions/cache@') -and $ciText.Contains('path: ~/.nuget/packages') -and $ciText.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $ciText.Contains('${{ runner.os }}-nuget-' + "`n")) $ciText
+        Check "${name}: CI installs .NET with the install-dotnet action after the checkout and before the build" ([regex]::Matches($ciText, '(?m)^      - uses: \./\.github/actions/install-dotnet\r?$').Count -eq (1 + [int]$library) -and $ciText.IndexOf('uses: actions/checkout@') -lt $ciText.IndexOf('./.github/actions/install-dotnet') -and $ciText.IndexOf('./.github/actions/install-dotnet') -lt $ciText.IndexOf('build/dod.ps1') -and -not $ciText.Contains('actions/setup-dotnet') -and -not $ciText.Contains('Get-TestRuntimes')) $ciText
+        Check "${name}: CI checks that the SDK and every target framework are LTS releases Microsoft supports, after the install-dotnet action and before the build" ($ciText -match '(?m)^      - name: Check \.NET support\r?\n        run: \./build/Test-DotnetSupport\.ps1\r?$' -and $ciText.IndexOf('./.github/actions/install-dotnet') -lt $ciText.IndexOf('build/Test-DotnetSupport.ps1') -and $ciText.IndexOf('build/Test-DotnetSupport.ps1') -lt $ciText.IndexOf('build/dod.ps1')) $ciText
+        $installAction = Get-Content -LiteralPath (Join-Path $dest '.github\actions\install-dotnet\action.yml') -Raw
+        $actionUses = [regex]::Matches($installAction, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        Check "${name}: the install-dotnet action installs the SDK global.json selects, then the runtimes build/Get-TestRuntimes.ps1 names, with actions/setup-dotnet pinned to a full commit SHA, and names the shell of each command" ($installAction -match '(?m)^runs:\r?\n  using: composite\r?$' -and $actionUses.Count -eq 2 -and -not ($actionUses | Where-Object { $_.Groups[1].Value -ne 'actions/setup-dotnet' -or $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and $installAction.IndexOf('global-json-file: global.json') -gt 0 -and $installAction.IndexOf('global-json-file: global.json') -lt $installAction.IndexOf('./build/Get-TestRuntimes.ps1') -and $installAction.Contains("if: steps.runtimes.outputs.channels != ''") -and $installAction.Contains('dotnet-version: ${{ steps.runtimes.outputs.channels }}') -and [regex]::Matches($installAction, '(?m)^\s+run: ').Count -eq [regex]::Matches($installAction, '(?m)^\s+shell: pwsh\r?$').Count) $installAction
+        $runtimesStep = Get-StepScript $installAction 'runtimes'
+        $twoChannels = Invoke-RuntimesStep $runtimesStep "'8.0.x'`n'9.0.x'" $Work
+        $noChannel = Invoke-RuntimesStep $runtimesStep '' $Work
+        Check "${name}: the install-dotnet action's runtimes step passes each channel build/Get-TestRuntimes.ps1 prints to actions/setup-dotnet, and none when it prints none" ($runtimesStep -and $twoChannels -eq "channels<<EOF`n8.0.x`n9.0.x`nEOF`n" -and $noChannel -eq '') "$runtimesStep | $twoChannels | $noChannel"
+        Check "${name}: CI keeps the test results, after a failure too, and for a library the packages, as artifacts" ($ciText -match '(?m)^      - name: Upload test results\r?\n        if: always\(\)\r?\n        uses: actions/upload-artifact@[0-9a-f]{40} # v\d+\.\d+\.\d+\r?\n        with:\r?\n          name: test-results\r?\n          path: artifacts/test-results/\r?$' -and $ciText.Contains('if-no-files-found: ignore') -and $ciText.Contains('retention-days: 14') -and ($ciText.Contains('- name: Upload packages') -eq $library) -and -not $ciText.Contains('codecov')) $ciText
         $libraryWrong = @($libraryOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -ErrorAction SilentlyContinue) -ne $library })
         Check "${name}: library decisions only for a library" (-not $libraryWrong) ($libraryWrong -join ', ')
         $license = Join-Path $dest 'LICENSE.txt'
@@ -543,14 +535,14 @@ foreach ($case in $cases) {
         $extensionsText = Get-Content -LiteralPath (Join-Path $dest '.vscode\extensions.json') -Raw
         Check "${name}: .editorconfig indents project files and VS Code recommends CSharpier exactly when csharp_format is not false" ($editorconfig.Contains('[*.{csproj,slnx}]') -eq $wantFormatHere -and $extensionsText.Contains('csharpier.csharpier-vscode') -eq $wantFormatHere) $extensionsText
         $publish = Join-Path $dest '.github\workflows\publish.yml'
-        $wantsPublish = $library -and $case.Host -eq 'github' -and -not $case.Data.nuget_publisher
+        $wantsPublish = $library -and -not $case.Data.nuget_publisher
         Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)
         $provenance = Join-Path $dest '.github\workflows\release-provenance.yml'
         Check "${name}: the release provenance workflow only for a library on GitHub" ((Test-Path -LiteralPath $provenance) -eq $wantsPublish)
         Check "${name}: build/Update-Baseline.ps1 only for a library" ((Test-Path -LiteralPath (Join-Path $dest 'build\Update-Baseline.ps1')) -eq $library)
         $raise = Join-Path $dest '.github\workflows\raise-baseline.yml'
         Check "${name}: the raise-baseline workflow only for a library on GitHub" ((Test-Path -LiteralPath $raise) -eq $wantsPublish)
-        Check "${name}: ADR-0151 only for a library on GitHub" ([bool](Get-ChildItem -Path (Join-Path $dest 'docs\decisions\project-template\0151-*.md') -ErrorAction SilentlyContinue) -eq ($library -and $case.Host -eq 'github'))
+        Check "${name}: ADR-0151 only for a library on GitHub" ([bool](Get-ChildItem -Path (Join-Path $dest 'docs\decisions\project-template\0151-*.md') -ErrorAction SilentlyContinue) -eq $library)
         if ($wantsPublish) {
             $provenanceText = Get-Content -LiteralPath $provenance -Raw
             $provenanceUses = [regex]::Matches($provenanceText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
@@ -584,11 +576,11 @@ foreach ($case in $cases) {
     }
     $wrong = @($githubOnly | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @('.gitlab-ci.yml' | Where-Object { Test-Path (Join-Path $dest $_) })
     Check "${name}: the GitHub files, and no .gitlab-ci.yml" (-not $wrong) ($wrong -join ', ')
-    $installActionWanted = $case.Stack -eq 'dotnet' -and $case.Host -eq 'github'
-    Check "${name}: the install-dotnet action, and a .github/actions folder, only for a .NET project on GitHub" ((Test-Path -LiteralPath (Join-Path $dest '.github\actions\install-dotnet\action.yml')) -eq $installActionWanted -and (Test-Path -LiteralPath (Join-Path $dest '.github\actions')) -eq $installActionWanted)
-    $ciForIndex = Get-Content -LiteralPath (Join-Path $dest $(if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' })) -Raw
+    $installActionWanted = $case.Stack -eq 'dotnet'
+    Check "${name}: the install-dotnet action, and a .github/actions folder, only for a .NET project" ((Test-Path -LiteralPath (Join-Path $dest '.github\actions\install-dotnet\action.yml')) -eq $installActionWanted -and (Test-Path -LiteralPath (Join-Path $dest '.github\actions')) -eq $installActionWanted)
+    $ciForIndex = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
     Check "${name}: CI checks the decision index" ($ciForIndex.Contains('.template/Test-AdrIndex.ps1')) $ciForIndex
-    $indexHistory = if ($case.Host -eq 'github') { $ciForIndex -match '(?s)  build-and-test:.*?fetch-depth: 0.*?- name: Check the decision index' } else { $ciForIndex.Contains('- pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"') -and $ciForIndex.Contains('GIT_DEPTH: "0"') }
+    $indexHistory = $ciForIndex -match '(?s)  build-and-test:.*?fetch-depth: 0.*?- name: Check the decision index'
     Check "${name}: CI checks the decision index with the history to tell a new record" $indexHistory $ciForIndex
     # The repository's license: the license answer.
     $licenseAnswer = $wantLicense
@@ -621,10 +613,10 @@ foreach ($case in $cases) {
         }
         Check "${name}: ADR-0020's Signed-Releases and Packaging rows follow the nuget_package and nuget_publisher answers" $rowsRight (($signedRows + $packagingRows) -join ' | ')
     }
-    # The Copilot cloud agent's environment: only for a GitHub project that uses Copilot.
+    # The Copilot cloud agent's environment: only for a project that uses Copilot.
     $copilotSetup = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
-    $wantsSetup = $case.Host -eq 'github' -and 'copilot' -in $tools
-    Check "${name}: the Copilot setup workflow only for a GitHub project that uses Copilot" ((Test-Path -LiteralPath $copilotSetup) -eq $wantsSetup) "exists=$(Test-Path -LiteralPath $copilotSetup) wanted=$wantsSetup"
+    $wantsSetup = 'copilot' -in $tools
+    Check "${name}: the Copilot setup workflow only for a project that uses Copilot" ((Test-Path -LiteralPath $copilotSetup) -eq $wantsSetup) "exists=$(Test-Path -LiteralPath $copilotSetup) wanted=$wantsSetup"
     if ($wantsSetup) {
         $setup = Get-Content -LiteralPath $copilotSetup -Raw
         $setupUses = [regex]::Matches($setup, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
@@ -649,9 +641,9 @@ foreach ($case in $cases) {
         Check "${name}: the Copilot setup workflow installs what CI installs for the stack" $setupOk $setup
         Check "${name}: the Copilot setup workflow sets up Node.js from .node-version exactly when the project uses Node.js" ($setup.Contains('node-version-file: .node-version') -eq $usesNode) $setup
     }
-    # The code review caller: only for a GitHub project that asked for it, and never a GitLab one, which isn't asked.
+    # The code review caller: only for a project that asked for it.
     $reviewCaller = Join-Path $dest '.github\workflows\code-review.yml'
-    $wantsReview = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
+    $wantsReview = $case.Data.code_review -eq 'true'
     Check "${name}: the code review caller is there only when asked for" ((Test-Path -LiteralPath $reviewCaller) -eq $wantsReview) "exists=$(Test-Path -LiteralPath $reviewCaller) wanted=$wantsReview"
     Check "${name}: AGENTS.md opens every pull request as a draft exactly when the project runs NCode Review" ((Select-String -LiteralPath (Join-Path $dest 'AGENTS.md') -Pattern '^- draft: yes$' -Quiet) -eq $wantsReview)
     Check "${name}: CONTRIBUTING.md says to comment /review after a push exactly when the project runs NCode Review" ((Get-Content -LiteralPath (Join-Path $dest 'CONTRIBUTING.md') -Raw).Contains('comments `/review` after one') -eq $wantsReview)
