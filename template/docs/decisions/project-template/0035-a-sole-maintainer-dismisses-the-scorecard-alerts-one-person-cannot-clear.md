@@ -32,6 +32,10 @@ comment, each under GitHub's 280-character limit:
 | CII-Best-Practices | 5 (passing) | `One person maintains the project. Silver needs a second owner, and gold needs two-person review and a bus factor of 2, so one person reaches passing at most and the check stays below 10 (project-template ADR-0035).` |
 | Contributors | 0 | `One person maintains the project. The check scores 10 only with recent contributors from at least 3 companies, each with 5 of the last 30 commits, which one person can't meet (project-template ADR-0035).` |
 
+The Branch-Protection comment above describes a ruleset without NCode Review's approver. Where the approver is set
+up, the ruleset requires one approval, of the last push, so `tools/Dismiss-ScorecardAlerts.ps1` writes a comment that
+cites ADR-0034 and ADR-0036 instead, which holds for both rulesets.
+
 1. `tools/Dismiss-ScorecardAlerts.ps1 -Repo <owner>/<name>` in the project template does it, run from its clone with
    `-WhatIf` first. It reads who can write and dismisses nothing with two writers or more. It lists every open Scorecard
    alert first, dismisses those of the three checks and leaves every other alert open.
