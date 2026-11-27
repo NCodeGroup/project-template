@@ -95,8 +95,10 @@
     Such a library's nuget_publisher answer names its own publishing workflows, so the update also leaves out or deletes release-provenance.yml and raise-baseline.yml, and its documents name those workflows instead of publish.yml.
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     An existing project keeps off the checks a new one starts with until -Data turns them on: csharp_format, node_lint, coverage_gate and file_headers are false when its answers lack them.
-    A NuGet package needs a license: when the answers and -Data give a library none, it stops before it changes
-    anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' } to run.
+    A blank license answer beside a package_license answer, which template v0.63.0 replaced with license, takes that
+    value, and the update says so. A NuGet package needs a license: when the answers and -Data give a library none, it
+    stops before it changes anything and prints the -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' }
+    to run.
     When the project has no LICENSE or COPYING file at its root, it warns, also when the project is already up to
     date: for a blank license answer it prints the -Data @{ license = 'Apache-2.0' } that adds one, and for any other
     answer it says to add that license's text (the template's ADR-0024). A project from before the license question
@@ -194,6 +196,13 @@ function Get-OptInData {
 # A project from before the license question has no license answer: an update keeps it without a license rather than giving it copier.yml's Apache-2.0 default (ADR-0024); -Data sets one.
 function Get-LicenseData {
     if (-not $Data.ContainsKey('license') -and -not (Select-String -LiteralPath .copier-answers.yml -Pattern '^license:' -Quiet)) { '--data', 'license=' }
+}
+
+# A library from before template v0.63.0 recorded its packages' license as package_license, which v0.63.0 replaced with license: the value to carry over when the license answer is blank and -Data gives none, else nothing.
+function Get-PackageLicenseAnswer {
+    if ($Data.ContainsKey('license') -or "$(Get-Answer 'license')".Trim()) { return }
+    $value = "$(Get-Answer 'package_license')".Trim()
+    if ($value) { $value }
 }
 
 # No license (ADR-0024): no LICENSE or COPYING file at the project's root. A blank answer gets the command that adds Apache-2.0; any other answer, one the template writes no file for or whose LICENSE.txt was deleted, is told to add that license's text. The template's Adopt-Project.ps1 prints the same lines; tests/Test-LicenseWarning.ps1 keeps them equal.
@@ -1094,6 +1103,12 @@ try {
     # copier.yml's license validator refuses a NuGet library without a license: stop before anything changes, naming the -Data that gives one.
     $nugetAnswer = if ($Data.ContainsKey('nuget_package')) { "$($Data['nuget_package'])" } else { Get-Answer 'nuget_package' }
     $licenseAnswer = if ($Data.ContainsKey('license')) { "$($Data['license'])" } else { Get-Answer 'license' }
+    $carriedLicense = Get-PackageLicenseAnswer
+    if ($carriedLicense) {
+        $Data['license'] = $carriedLicense
+        $licenseAnswer = $carriedLicense
+        "The license answer is blank: the update takes $carriedLicense from package_license, which template v0.63.0 replaced with license, and records it as the license answer."
+    }
     if ($nugetAnswer -eq 'true' -and -not "$licenseAnswer".Trim()) { throw "A NuGet package needs a license, and $project publishes NuGet packages without a license answer. Run the update with the SPDX license expression its packages carry: .\.template\Update-Project.ps1 -Data @{ license = '<SPDX expression, such as MIT or Apache-2.0>' }" }
     $head = git rev-parse HEAD
     $from = Get-Answer '_commit'
