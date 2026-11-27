@@ -14,6 +14,13 @@ of checks. The Buffers library, built from this template, scored 7.8 on 2026-11-
 Scorecard's source. Some checks the template controls; others need a person, a second reviewer or a registration the
 template cannot make.
 
+On Scorecard v5.7.0, three projects from the template, each with one writer and NCode Review's approver set up
+([ADR-0036](0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)), scored 9.4 (NCodeGroup/Buffers,
+2026-11-24), 9.5 (NCodeGroup/PropertyBag, 2026-11-24) and 8.2 (NCodeGroup/code-review, 2026-11-27): Branch-Protection
+8, CII-Best-Practices 5 (passing) and Contributors 0 to 3 on all three, Signed-Releases 10 on the two libraries, and
+Code-Review 8 to 10 as approved pull requests fill the last 30 commits
+([#437](https://github.com/NCodeGroup/project-template/issues/437)).
+
 ## Decision
 
 Every GitHub project runs `.github/workflows/scorecard.yml`. The workflow publishes the score for the README badge and
@@ -72,16 +79,18 @@ The table lists each check, what the template does for it and what needs a perso
 {% if review %}
 - A solo project's score tops out below 10, for the reasons in the table's last column: Contributors,
   Branch-Protection's tier 4 and silver's second owner need other people. With NCode Review, Code-Review rises toward 10
-  and Branch-Protection reaches about 8 once a second person has write access
-  ([ADR-0034](0034-with-one-writer-the-baseline-requires-no-approval.md)); with one writer, the alerts ADR-0035 lists
-  are dismissed.
+  and Branch-Protection reaches 8 where its approver is set up, with one writer too, or a second person has write access
+  ([ADR-0034](0034-with-one-writer-the-baseline-requires-no-approval.md),
+  [ADR-0036](0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)); with one writer, the alerts ADR-0035
+  lists are dismissed.
 {%- else %}
 - A solo project's score tops out below 10, for the reasons in the table's last column: Contributors, Code-Review's
-  non-author approval, Branch-Protection's tier 2 (a required approval, which a sole maintainer can't meet) and silver's
-  second owner need other people. With NCode Review, Code-Review rises toward 10 and
-  Branch-Protection reaches about 8 once a second person has write access
-  ([ADR-0034](0034-with-one-writer-the-baseline-requires-no-approval.md)); with one writer, the alerts ADR-0035 lists
-  are dismissed.
+  non-author approval, Branch-Protection's tier 2 (a required approval, which a sole maintainer meets only through
+  NCode Review's approver) and silver's second owner need other people or NCode Review. With NCode Review, Code-Review
+  rises toward 10 and Branch-Protection reaches 8 where its approver is set up, with one writer too, or a second person
+  has write access ([ADR-0034](0034-with-one-writer-the-baseline-requires-no-approval.md),
+  [ADR-0036](0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)); with one writer, the alerts ADR-0035
+  lists are dismissed.
 {%- endif %}
 - A private repository lists the workflow in `project_owned_files` and deletes it; until it does, the workflow
   fails to publish its score.
@@ -100,6 +109,8 @@ The table lists each check, what the template does for it and what needs a perso
   approval.
 - [ADR-0035](0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md): a sole maintainer
   dismisses the Scorecard alerts one person can't clear.
+- [ADR-0036](0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md): a required approval is met by NCode
+  Review's approver app.
 - [ADR-0023](0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md): a project ships the
   documents the Best Practices silver level asks for.
 - [ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md): every Best Practices criterion is
