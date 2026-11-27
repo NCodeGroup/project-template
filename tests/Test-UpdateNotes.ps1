@@ -48,7 +48,7 @@
                 for an upload named only in a comment line.
       copies    Get-WorkflowEvents and Test-ReleaseAssetWorkflow in Update-Project.ps1 are character for character
                 the ones in tools/Set-RepositoryBaseline.ps1, and Adopt-Project.ps1's copies of those,
-                Get-ImmutableReleaseNote and Get-PublisherDispatchNote are the ones in Update-Project.ps1.
+                Get-ImmutableReleaseNote, Get-PublisherDispatchNote and Get-ReleasePolicyNote are the ones in Update-Project.ps1.
       kept-edit Test-EditKept is true when the update keeps every line the project changed in a template-owned file:
                 each line the project adds to the current version's render is in the file the update leaves at least
                 as often as in the project's copy, such as a pin the new version also bumps beside changes of its own,
@@ -570,13 +570,13 @@ $immutableNote = & {
     }
     Check 'copies: Get-WorkflowEvents and Test-ReleaseAssetWorkflow match tools/Set-RepositoryBaseline.ps1''s' (-not $differ) "differ: [$($differ -join ', ')]"
     $adoptAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'Adopt-Project.ps1'), [ref]$null, [ref]$null)
-    $adoptDiffer = foreach ($fnName in 'Get-WorkflowEvents', 'Test-ReleaseAssetWorkflow', 'Get-ImmutableReleaseNote', 'Get-PublisherDispatchNote') {
+    $adoptDiffer = foreach ($fnName in 'Get-WorkflowEvents', 'Test-ReleaseAssetWorkflow', 'Get-ImmutableReleaseNote', 'Get-PublisherDispatchNote', 'Get-ReleasePolicyNote') {
         $isFn = { param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }
         $copy = $adoptAst.Find($isFn, $true)
         $original = $ast.Find($isFn, $true)
         if (-not $copy -or -not $original -or $copy.Extent.Text -ne $original.Extent.Text) { $fnName }
     }
-    Check 'copies: Adopt-Project.ps1''s Get-WorkflowEvents, Test-ReleaseAssetWorkflow, Get-ImmutableReleaseNote and Get-PublisherDispatchNote match Update-Project.ps1''s' (-not $adoptDiffer) "differ: [$($adoptDiffer -join ', ')]"
+    Check 'copies: Adopt-Project.ps1''s Get-WorkflowEvents, Test-ReleaseAssetWorkflow, Get-ImmutableReleaseNote, Get-PublisherDispatchNote and Get-ReleasePolicyNote match Update-Project.ps1''s' (-not $adoptDiffer) "differ: [$($adoptDiffer -join ', ')]"
 }
 $immutableNote
 

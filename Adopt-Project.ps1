@@ -27,6 +27,8 @@
     .\.template\Update-Project.ps1 prints for each of those workflows without a workflow_dispatch trigger, or that
     doesn't exist: tag-release.yml starts them through that trigger, so until each has it, a release ships no packages.
 
+    When the repository is a .NET library on GitHub and the AGENTS.md the adoption leaves says release: none or tag, or has no release line, it prints the note .\.template\Update-Project.ps1 prints with the one-line change to - release: tag+release, unless a workflow the nuget_publisher answer names has no workflow_dispatch trigger or doesn't exist.
+
     When that publish.yml doesn't call .github/workflows/release-provenance.yml or
     .github/workflows/raise-baseline.yml, or both, which the adoption added and which no longer start on workflow_run,
     it prints the warning .\.template\Update-Project.ps1 prints (ADR-0151): until publish.yml calls each, no release
@@ -158,6 +160,24 @@ function Get-PublisherDispatchNote {
         ''
         "$workflow publishes this library's NuGet packages (the nuget_publisher answer) and has no workflow_dispatch trigger. AGENTS.md says release: tag+release, so .github/workflows/tag-release.yml publishes each release with the workflow's token, which starts no other workflow, and then starts $workflow through workflow_dispatch on the release's tag; until $workflow has that trigger, that run fails and a release ships no packages. Add workflow_dispatch to its on: section, and read the tag from inputs.tag, when it declares a tag input, or else github.ref_name, when the run has no release (the template's ADR-0137)."
     }
+}
+
+# A .NET library on GitHub whose AGENTS.md says release: none or tag, or has no release line, publishes nothing as a release's pull request merges, though the template gives it tag+release (the template's ADR-0016 and ADR-0137).
+# A copy of .template/Update-Project.ps1's; tests/Test-UpdateNotes.ps1 keeps the copies equal. Get-ReleasePolicyAnswer comes from tools/adopt/Adoption.psm1.
+function Get-ReleasePolicyNote {
+    if ((Get-Answer 'nuget_package') -ne 'true' -or (Get-Answer 'git_host') -ne 'github' -or -not (Test-Path -LiteralPath .github/workflows/tag-release.yml)) { return }
+    $policy = Get-ReleasePolicyAnswer
+    if ($policy -notin 'none', 'tag') { return }
+    $publishers = @("$(Get-Answer 'nuget_publisher')" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    foreach ($workflow in $publishers) {
+        if (-not (Test-Path -LiteralPath $workflow -PathType Leaf) -or @(Get-WorkflowEvents (Get-Content -LiteralPath $workflow -Raw)) -notcontains 'workflow_dispatch') { return }
+    }
+    $merge = if ($policy -eq 'none') { 'tags nothing, publishes no GitHub release' } else { 'tags the release but publishes no GitHub release' }
+    $starts = if ($publishers.Count) { "$($publishers -join ', '), this library's own publishing workflow$(if ($publishers.Count -gt 1) { 's' })" } else { '.github/workflows/publish.yml, which publishes the packages to nuget.org once a maintainer approves the nuget environment' }
+    ''
+    "AGENTS.md's Landing section says release: $policy, so merging a release's pull request $merge and starts no publishing workflow. The template gives a .NET library on GitHub release: tag+release, under which .github/workflows/tag-release.yml tags each release and publishes its GitHub release from the changelog as its pull request merges, then starts $starts (the template's ADR-0016 and ADR-0137, in docs/decisions/project-template/). To publish on merge, change the release line of AGENTS.md's Landing section to:"
+    '  - release: tag+release'
+    "The first run after that change publishes nothing while the changelog's newest release section is already tagged and has its GitHub release; when that tag has no GitHub release yet, the run publishes it and starts the publishing workflow for it. SECURITY.md can then say how to verify a release tag's gitsign signature, as the SECURITY.md the template gives a library with release: tag+release does (the template's ADR-0028)."
 }
 
 if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw "$Path isn't a folder." }
@@ -383,6 +403,9 @@ try {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
+    # A .NET library on GitHub whose AGENTS.md says release: none or tag publishes nothing on merge. The note is
+    # .template/Update-Project.ps1's, word for word; tests/Test-UpdateNotes.ps1 keeps the two functions equal.
+    Get-ReleasePolicyNote
     # A library whose own workflows publish its packages, without the trigger tag-release.yml starts them with. The note is
     # .template/Update-Project.ps1's, word for word; tests/Test-UpdateNotes.ps1 keeps the two functions equal.
     Get-PublisherDispatchNote
