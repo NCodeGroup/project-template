@@ -852,6 +852,10 @@ Check 'repository: every pwsh run: block of the workflows parses' (-not $ownPars
 $ownFiles = git -C $repoRoot -c core.quotePath=false ls-files --eol | Where-Object { $_ -match '^i/lf\s' } | ForEach-Object { Join-Path $repoRoot (($_ -split "`t", 2)[1]) }
 $badEnd = $ownFiles | Where-Object { $b = [IO.File]::ReadAllBytes($_); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.Substring($repoRoot.Length).TrimStart('\', '/') }
 Check 'repository: every text file ends with exactly one newline' (-not $badEnd) ($badEnd -join ', ')
+# The GitLab .NET jobs run in the SDK image of the LTS global.json pins (ADR-0155 item 2).
+$sdkMajor = ((Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template/global.json') | ConvertFrom-Json).sdk.version -split '\.')[0]
+$imageMajors = @([regex]::Matches((Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template/.gitlab-ci.yml.jinja')), 'mcr\.microsoft\.com/dotnet/sdk:(\d+)\.\d+') | ForEach-Object { $_.Groups[1].Value })
+Check 'repository: every .NET SDK image tag in template/.gitlab-ci.yml.jinja names the major version of the SDK template/global.json pins (ADR-0155)' ($imageMajors.Count -gt 0 -and -not @($imageMajors | Where-Object { $_ -ne $sdkMajor })) "global.json: $sdkMajor; image tags: $($imageMajors -join ', ')"
 # This repository runs the template's NCode Review caller as is, so a change to either copy must land in both.
 $reviewCallers = @('.github\workflows\code-review.yml', 'template\.github\workflows\code-review.yml' | ForEach-Object { Join-Path $repoRoot $_ })
 Check 'repository: .github/workflows/code-review.yml is identical to template/.github/workflows/code-review.yml (copy the changed one over the other)' (@($reviewCallers | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }).Count -eq 2 -and (Get-FileHash -LiteralPath $reviewCallers[0]).Hash -eq (Get-FileHash -LiteralPath $reviewCallers[1]).Hash) ($reviewCallers -join ', ')
