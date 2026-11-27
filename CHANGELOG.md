@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `.github/instructions/project-template.instructions.md` gives every .NET library on GitHub the same release conventions: `publish.yml` publishes the packages from a GitHub release through trusted publishing once a maintainer approves the `nuget` environment, `tag-release.yml` tags and publishes each release as its pull request merges under `release: tag+release` and starts `publish.yml`, and `raise-baseline.yml` raises `PackageValidationBaselineVersion` after each stable release, so no plan raises it; a library whose own workflow publishes its packages gets that workflow in place of `publish.yml`, and no trusted publishing or baseline text ([#516](https://github.com/NCodeGroup/project-template/issues/516)).
 
+## [0.115.4] - 2026-11-27
+
+### Fixed
+
+- Python, Node.js, PowerShell and other projects no longer get ADR-0155, the .NET record on LTS releases, which their decision index never lists: `copier.yml` excludes it as it does every .NET record ([#514](https://github.com/NCodeGroup/project-template/issues/514), [ADR-0155](template/docs/decisions/project-template/0155-dotnet-code-targets-only-lts-releases-and-prose-names-no-dotnet-version.md)).
+
 ## [0.115.3] - 2026-11-27
 
 ### Changed
@@ -1988,7 +1994,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
 [unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.116.0...HEAD
-[0.116.0]: https://github.com/NCodeGroup/project-template/compare/v0.115.3...v0.116.0
+[0.116.0]: https://github.com/NCodeGroup/project-template/compare/v0.115.4...v0.116.0
+[0.115.4]: https://github.com/NCodeGroup/project-template/compare/v0.115.3...v0.115.4
 [0.115.3]: https://github.com/NCodeGroup/project-template/compare/v0.115.2...v0.115.3
 [0.115.2]: https://github.com/NCodeGroup/project-template/compare/v0.115.1...v0.115.2
 [0.115.1]: https://github.com/NCodeGroup/project-template/compare/v0.115.0...v0.115.1

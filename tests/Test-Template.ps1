@@ -136,7 +136,7 @@ $toolFiles = @{
         '.github\prompts\plan-feature.prompt.md', '.github\prompts\execute-step-local.prompt.md'
 }
 $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\ProjectTemplate.globalconfig', 'build\ProjectTemplate.Tests.globalconfig', 'build\BannedSymbols.txt', 'build\dod.ps1', 'build\Get-TestRuntimes.ps1', 'build\Install-Dotnet.ps1', 'build\Test-DotnetSupport.ps1', 'Directory.Packages.props', 'global.json', 'nuget.config', 'docs\metrics.md',
-    '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md', 'docs\decisions\project-template\0156-*.md'
+    '.claude\rules\csharp.md', '.claude\rules\csharp-tests.md', '.github\instructions\csharp.instructions.md', '.github\instructions\csharp-tests.instructions.md', 'docs\decisions\project-template\0156-*.md', 'docs\decisions\project-template\0155-*.md'
 # Files only a project that needs Node.js gets (stack node, or uses_node answered yes).
 $nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', '.template\install-nvs.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
