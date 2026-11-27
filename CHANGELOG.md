@@ -18,6 +18,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `tools/Set-GitLabBaseline.ps1`, which protected a GitLab project, and the GitLab branch of `tools/Get-AdoptionChecklist.ps1`: `docs/adopt.md` and its checklist no longer have step 2.5, On GitLab ([#529](https://github.com/NCodeGroup/project-template/issues/529), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
 
+## [0.118.1] - 2026-11-27
+
+### Changed
+
+- The `code-review.yml` a GitHub project with NCode Review gets, and this repository's own, no longer carry ADR-0009's commented exception for NCode Review v1.6.0, which the pin needed while v1.6.0 was under three days old; the pin stays v1.6.0. `code-review.yml` is the project's own, so an update shows the change to copy ([#535](https://github.com/NCodeGroup/project-template/issues/535), [ADR-0009](template/docs/decisions/project-template/0009-new-dependency-versions-wait-a-cooldown.md)).
+
 ## [0.118.0] - 2026-11-27
 
 ### Added
@@ -2039,7 +2045,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
 [unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.119.0...HEAD
-[0.119.0]: https://github.com/NCodeGroup/project-template/compare/v0.118.0...v0.119.0
+[0.119.0]: https://github.com/NCodeGroup/project-template/compare/v0.118.1...v0.119.0
+[0.118.1]: https://github.com/NCodeGroup/project-template/compare/v0.118.0...v0.118.1
 [0.118.0]: https://github.com/NCodeGroup/project-template/compare/v0.117.2...v0.118.0
 [0.117.2]: https://github.com/NCodeGroup/project-template/compare/v0.117.1...v0.117.2
 [0.117.1]: https://github.com/NCodeGroup/project-template/compare/v0.117.0...v0.117.1
