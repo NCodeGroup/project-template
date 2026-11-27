@@ -1745,6 +1745,8 @@ $loopResults = foreach ($prelude in "- Prelude: ``./env.ps1```n", '') {
 Check 'workflow: Invoke-PlanSteps re-checks a step the planner completed after the plan''s prelude, and fails it without one' (($loopResults -join ',') -eq '0,3') "exit codes with and without the prelude: $($loopResults -join ',')"
 
 ''
+$m = @(Get-MissingText $rulesJinja ('## Backlog', 'as ADR-0042 in `docs/decisions/project-template/` says', 'takes `sub_issue_id`', 'takes `issue_id`', 'never pipe it into a shell variable'))
+Check 'rules: the Backlog section records epics, stories, the Definition of Ready, links, the REST forms and the board (ADR-0042)' (-not $m) ($m -join '; ')
 if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Template tests: PASSED'
