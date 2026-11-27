@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.117.1] - 2026-11-27
+
+### Changed
+
+- The `code-review.yml` a GitHub project with NCode Review gets, and this repository's own, pin `NCodeGroup/code-review` to the full commit SHA of v1.6.0 in both jobs, with the tag in a comment (they pinned v1.5.0). With v1.5.1's fix, reviewers see the decision records in `docs/decisions/project-template/` under ids such as `project-template ADR-0150`. With v1.6.0's learned guidance, reviewers leave template-owned and Copier-generated files to the template and check `.copier-answers.yml` and `AGENTS.md` before they call an edit a template-ownership violation. The action's inputs are unchanged, so a project's own `code-review.yml` needs only the new pin, which Dependabot's `ncode-review` group proposes. v1.6.0 is pinned before it is three days old by [ADR-0009](template/docs/decisions/project-template/0009-new-dependency-versions-wait-a-cooldown.md)'s commented exception, which goes once 2026-11-30 has passed.
+
 ## [0.117.0] - 2026-11-27
 
 ### Added
@@ -1999,7 +2005,9 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.116.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.117.1...HEAD
+[0.117.1]: https://github.com/NCodeGroup/project-template/compare/v0.117.0...v0.117.1
+[0.117.0]: https://github.com/NCodeGroup/project-template/compare/v0.116.0...v0.117.0
 [0.116.0]: https://github.com/NCodeGroup/project-template/compare/v0.115.4...v0.116.0
 [0.115.4]: https://github.com/NCodeGroup/project-template/compare/v0.115.3...v0.115.4
 [0.115.3]: https://github.com/NCodeGroup/project-template/compare/v0.115.2...v0.115.3
