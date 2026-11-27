@@ -8,7 +8,7 @@ Triage these issues so I can choose which to plan:
 
 {{INPUT}}
 
-Change no files, write no `PLAN.md` and post nothing to any issue: each plan comes later, from its own plan-issue run.
+Change no files, write no `PLAN.md` and post nothing to any issue: each plan comes later, from its own plan-issue run. The one change it makes is on the board, in step 7.
 
 1. Turn the request into a filter on open issues: `label:<name>`, which may repeat, `milestone:<title>`, `assignee:<login>` (`@me` for me), and any other words as a search. `epic:#<number>` takes the open stories of that epic instead, and no other part of the filter applies with it. A `group:<n>` part, from 1 to 3, isn't a filter: it is the most issues per group, 3 when the request has none, and `group:1` makes no groups. A single issue reference isn't a set: say to run plan-issue with it instead, or decompose-issue when it is an Epic, and stop.
 2. List the matching issues, asking for 21 so you know whether there are more than 20:
@@ -29,6 +29,7 @@ Change no files, write no `PLAN.md` and post nothing to any issue: each plan com
    - a `## Depends on` section, or an `after #<number>`, that names an issue it isn't blocked by;
    - an open epic whose sub-issues are all closed: its `sub_issues_summary` has `completed` equal to `total`, and `total` is above 0.
 6. Reply with one table, with the columns issue, title, kind, readiness, size, group and notes, ordered by what to plan first: ready groups before the rest, an issue ready after another below that one, then by overlap and size, with a group's issues on adjacent rows and the group's first issue in its group column. Under it, give the command that plans each group, one per line, naming its issues in order, such as `/plan-issue #42` for a single issue or `/plan-issue #25 #24 #26` for a group, and say that each runs in a session of its own so the plans can proceed side by side, except one ready after another, which waits until that one lands, and that a group's plan covers all its issues in one worktree, one pull request and one release. Give `/decompose-issue #<number>` for each epic and large issue, on a line of its own. Then list the questions for each issue that needs info, and then each link drift, one line each, with the link or the change that fixes it.
+7. When the board is set, as The Board below says, move each issue you judged ready, or ready after another, to `Ready`, and say in the reply which ones moved.
 
 ## The Definition of Ready
 
@@ -37,6 +38,10 @@ Change no files, write no `PLAN.md` and post nothing to any issue: each plan com
 ## Issue Links
 
 {{PROMPT:_issue-links}}
+
+## The Board
+
+{{PROMPT:_board}}
 
 ## Choosing the Kind of Plan
 
