@@ -517,7 +517,7 @@ Use-FixtureEnvironment $Work $bin {
         $moveLines = @($calls | Where-Object { $_ -match '^MOVE #' })
         Check 'the board moved #1 to In progress, then to In review, moved none of #2, #3 and #5, and calls.log records each move' ($inProgress -ge 0 -and $inReview -gt $inProgress -and @($moves | Where-Object { $_ -match '^#[235] ' }).Count -eq 0 -and $moveLines.Count -eq $moves.Count) "moves: $($moves -join ', '); MOVE lines: $($moveLines.Count)"
     }
-    # The test checks the recommendation only in minor-round, max-rounds and push-branch, whose last review is predictable.
+    # The test checks the recommendation in every scenario except review-with-footer and fix-now: the others' last review is predictable.
     if ($Scenario -notin 'review-with-footer', 'fix-now') {
         $recommendations = @(@(Read-HostJson $hostDir 'comments.json') | Where-Object { $_ -and $_.kind -eq 'pr' -and "$($_.body)".TrimStart() -match '^Autopilot:' -and "$($_.body)" -match '(?i)\bmerg' })
         Check 'the run recommended the merge once, in a top-level Autopilot: comment' ($recommendations.Count -eq 1) "recommendations: $($recommendations.Count)"
