@@ -17,7 +17,8 @@ every first-time contributor to a repository delays feedback for contributors al
 2. The baseline sets the organization default to the same policy only when run with `-OrganizationPolicy`. It
    preserves the stricter `all_external_contributors` policy at both organization and repository level.
 3. Projects with self-hosted runners or `pull_request` workflows that use secrets must retain
-   `all_external_contributors`. The automation does not inspect runners or workflows for these risks.
+   `all_external_contributors`. The automation does not inspect runners or workflows for these risks; where it raises
+   a policy, it prints a notice that such a project must keep the stricter one.
 
 ## Options considered
 
@@ -33,9 +34,9 @@ every first-time contributor to a repository delays feedback for contributors al
 - Established GitHub contributors' fork pull request workflows can run without maintainer approval under the chosen
   policy.
 - Maintainers must retain the stricter policy when using self-hosted runners or secret-bearing `pull_request`
-  workflows; the automation does not check for either risk.
+  workflows; the automation does not check for either risk, and prints a notice where it raises a policy.
 
 ## References
 
 - `tools/Set-RepositoryBaseline.ps1` in the project template's repository
-- NCodeGroup/project-template#518
+- [NCodeGroup/project-template#518](https://github.com/NCodeGroup/project-template/issues/518)
