@@ -14,7 +14,7 @@ outcomes.
 
 - NCodeGroup/code-review v1.7.0 adds the `review-forks` input (NCodeGroup/code-review#251, its ADR-1013). A fork's pull
   request is reviewed when it opens or reopens as ready for review, when it's marked ready and on a writer's `/review`,
-  and never as a draft when it opens.
+  drafts included, and never as a draft when it opens.
 - Its review is never an approval, whatever `approve` says: its author can't write to the repository and can try to
   steer the verdict through the diff. So the summary's `Approval:` line says a maintainer approves it, and the NCode
   Review Approver's token isn't minted.
@@ -28,12 +28,13 @@ outcomes.
 1. `code-review.yml` pins v1.7.0 or later and passes `review-forks: true` to both NCode Review steps.
 2. The `review` job's `if:` admits a fork's pull request once it isn't a draft, with
    `(github.event.pull_request.head.repo.full_name == github.repository || !github.event.pull_request.draft) &&`. The
-   `skip-review` label, the bot and push rules are unchanged.
+   `skip-review` label, the bot and push rules, Dependabot's among them
+   ([ADR-0041](0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md)), are unchanged.
 3. The `outcomes` job's `if:` is `github.event_name == 'pull_request_target' && github.event.action == 'closed'`, so a
    fork's closed pull request records its outcomes.
 4. A maintainer approves a fork's pull request. This amends ADR-0019 decision 3, where the workflow now skips a fork's
-   draft rather than every fork's pull request, and ADR-0022 decision 4, where NCode Review reviews a fork's pull
-   request but leaves its approval to a maintainer.
+   draft until a writer comments `/review`, rather than every fork's pull request, and ADR-0022 decision 4, where NCode
+   Review reviews a fork's pull request but leaves its approval to a maintainer.
 5. A project leaves forks out by dropping `review-forks` from both steps, putting
    `github.event.pull_request.head.repo.full_name == github.repository &&` back in place of that `if:` line, and adding
    `&& github.event.pull_request.head.repo.full_name == github.repository` to the end of the `outcomes` job's `if:`.
@@ -51,6 +52,10 @@ outcomes.
 
 - Each ready fork pull request costs a review, and a burst from many accounts costs many: set GitHub's interaction
   limits or turn the input off.
+- The `review` job holds the Bedrock key, the NCode Review app's key and the approver's key while it reads a fork's
+  diff, as it does for any pull request. `pull_request_target` runs only the default branch's workflow, and nothing
+  from the fork is built or run in the job: the engine reads its diff only as text, and the approver's token isn't
+  minted for it (NCodeGroup/code-review's ADR-1013).
 - Where the ruleset requires an approval, a fork's pull request still waits for a maintainer's.
 - Whether it can merge under the baseline ruleset is unchanged (NCodeGroup/project-template#537).
 - A project's `code-review.yml` is its own: a template update shows this change to it, and the project takes it in its
