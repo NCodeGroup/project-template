@@ -233,6 +233,17 @@ function Get-CiCallNote {
     '.github/workflows/ci.yml is missing or has no workflow_call trigger. .github/workflows/tag-release.yml runs it as a reusable workflow before it tags a release, so until it has that trigger, no release is tagged or published. Add workflow_call: to its on: section, as the ci.yml the project template gives a GitHub project does (the template''s ADR-0026, in docs/decisions/project-template/).'
 }
 
+# A library whose own workflows publish its packages (the nuget_publisher answer), with release: tag+release: tag-release.yml starts each through workflow_dispatch once it publishes a release, so one without that trigger ships no packages (the template's ADR-0137).
+function Get-PublisherDispatchNote {
+    if ((Get-ReleasePolicyAnswer) -ne 'tag+release' -or -not (Test-Path -LiteralPath .github/workflows/tag-release.yml)) { return }
+    foreach ($workflow in @("$(Get-Answer 'nuget_publisher')" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+        if (-not (Test-Path -LiteralPath $workflow -PathType Leaf)) { continue }
+        if (@(Get-WorkflowEvents (Get-Content -LiteralPath $workflow -Raw)) -contains 'workflow_dispatch') { continue }
+        ''
+        "$workflow publishes this library's NuGet packages (the nuget_publisher answer) and has no workflow_dispatch trigger. AGENTS.md says release: tag+release, so .github/workflows/tag-release.yml publishes each release with the workflow's token, which starts no other workflow, and then starts $workflow through workflow_dispatch on the release's tag; until $workflow has that trigger, that run fails and a release ships no packages. Add workflow_dispatch to its on: section, and read the tag from inputs.tag, when it declares a tag input, or else github.ref_name, when the run has no release (the template's ADR-0137)."
+    }
+}
+
 # The events a workflow's top-level on: key names, in order: one event (on: push), a list in brackets, the keys or items
 # indented below it, or - items at its own indent, with quotes, comments and blank lines allowed. A mapping in braces, or
 # no on: key, gives none.

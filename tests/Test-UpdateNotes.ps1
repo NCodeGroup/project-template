@@ -33,6 +33,7 @@
       release-policy Get-ReleasePolicyAnswer reads the release line of AGENTS.md's Landing section, with or without
                 double quotes, none without the line or outside that section, and nothing for a value
                 .template\Publish-Release.ps1 refuses or without AGENTS.md. tools\adopt\Adoption.psm1's copy answers the same.
+      publisher-dispatch Get-PublisherDispatchNote names each workflow the nuget_publisher answer names that has no workflow_dispatch trigger, in a block or a flow sequence, when AGENTS.md says release: tag+release and tag-release.yml exists, and nothing with release: none or without the answer.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
       code-review Get-CodeReviewNote names a code-review.yml that pins NCodeGroup/code-review before v1.5.0, passes
@@ -334,6 +335,42 @@ $releasePolicyAnswer = & {
     }
 }
 $releasePolicyAnswer
+
+# publisher-dispatch: Get-PublisherDispatchNote, run from inside each fixture folder, which is also the project.
+$publisherDispatchNote = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    foreach ($fnName in 'Get-Answer', 'Get-ReleasePolicyAnswer', 'Get-WorkflowEvents', 'Get-PublisherDispatchNote') {
+        $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $fnName }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    $noTrigger = "on:`n  release:`n    types: [published]`n"
+    $dispatchCases = [ordered]@{
+        'no trigger'         = @{ Release = 'tag+release'; Publisher = '.github/workflows/release.yml'; Files = @{ 'release.yml' = $noTrigger }; Want = @('.github/workflows/release.yml') }
+        'block trigger'      = @{ Release = 'tag+release'; Publisher = '.github/workflows/release.yml'; Files = @{ 'release.yml' = "$noTrigger  workflow_dispatch:`n" }; Want = @() }
+        'flow trigger'       = @{ Release = 'tag+release'; Publisher = '.github/workflows/release.yml'; Files = @{ 'release.yml' = "on: [release, workflow_dispatch]`n" }; Want = @() }
+        'release: none'      = @{ Release = 'none'; Publisher = '.github/workflows/release.yml'; Files = @{ 'release.yml' = $noTrigger }; Want = @() }
+        'two workflows'      = @{ Release = 'tag+release'; Publisher = '.github/workflows/a.yml, .github/workflows/b.yml'; Files = @{ 'a.yml' = "$noTrigger  workflow_dispatch:`n"; 'b.yml' = $noTrigger }; Want = @('.github/workflows/b.yml') }
+        'no nuget_publisher' = @{ Release = 'tag+release'; Publisher = ''; Files = @{ 'release.yml' = $noTrigger }; Want = @() }
+    }
+    foreach ($name in $dispatchCases.Keys) {
+        $case = $dispatchCases[$name]
+        $folder = Join-Path $Work "publisher-dispatch-$($name -replace '\W+', '-')"
+        $workflows = Join-Path $folder '.github/workflows'
+        $null = New-Item -ItemType Directory -Path $workflows -Force
+        [IO.File]::WriteAllText((Join-Path $folder 'AGENTS.md'), "## Landing`n`n- release: $($case.Release)`n")
+        $answers = "nuget_package: true`n"
+        if ($case.Publisher) { $answers += "nuget_publisher: $($case.Publisher)`n" }
+        [IO.File]::WriteAllText((Join-Path $folder '.copier-answers.yml'), $answers)
+        [IO.File]::WriteAllText((Join-Path $workflows 'tag-release.yml'), "name: Tag and publish release`n")
+        foreach ($file in $case.Files.Keys) { [IO.File]::WriteAllText((Join-Path $workflows $file), $case.Files[$file]) }
+        Push-Location $folder
+        try { $note = (Get-PublisherDispatchNote) -join "`n" }
+        finally { Pop-Location }
+        $named = @([regex]::Matches($note, '(?m)^(\S+) publishes this library''s NuGet packages \(the nuget_publisher answer\) and has no workflow_dispatch trigger\.') | ForEach-Object { $_.Groups[1].Value })
+        Check "publisher-dispatch: $name" (($named -join ',') -eq ($case.Want -join ',')) "got [$note]"
+    }
+}
+$publisherDispatchNote
 
 # badge: Get-BadgeReminder, run from inside each fixture folder, which is also the project.
 $badgeReminder = & {
