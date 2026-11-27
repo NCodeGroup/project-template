@@ -236,10 +236,11 @@ export async function main(argv, { gh, log }) {
     { fieldId: field.id, options },
   );
   if (!updated) return 1;
-  log('Status: Backlog, Ready, In progress, In review, Done');
+  const columns = STATUSES.map((status) => status.name).join(', ');
+  log(`Status: ${columns}`);
   if (kept.length > 0) log(`Kept the other options, so no item loses its status: ${kept.join(', ')}`);
 
-  const text = `Kanban: Backlog, Ready, In progress, In review, Done. At most ${wipLimit} stories in progress and in review together.`;
+  const text = `Kanban: ${columns}. At most ${wipLimit} stories in progress and in review together.`;
   const described = graphql(
     'mutation($projectId: ID!, $text: String!) { updateProjectV2(input: { projectId: $projectId, shortDescription: $text }) { projectV2 { id } } }',
     { projectId: project.id, text },
