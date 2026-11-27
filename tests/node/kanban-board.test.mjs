@@ -2,7 +2,7 @@
 // tests/Test-KanbanBoard.ps1 runs it: node --test tests/node/kanban-board.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { main, statusOptions, STATUSES } from '../../tools/kanban-board.mjs';
+import { main, runGh, statusOptions, STATUSES } from '../../tools/kanban-board.mjs';
 
 const TOKEN_WITH_PROJECT = "  - Token scopes: 'gist', 'project', 'read:org', 'repo'\n";
 const PROJECT_URL = 'https://github.com/orgs/NCodeGroup/projects/7';
@@ -141,4 +141,131 @@ test('statusOptions with no existing option returns the five statuses without id
   assert.deepEqual(options, STATUSES.map((status) => ({ ...status })));
   assert.ok(options.every((option) => !('id' in option)));
   assert.deepEqual(kept, []);
+});
+
+// The answers of graphqlAnswers(), with the answer for key replaced.
+const replace = (answers, key, data) => answers.map(([k, d]) => [k, k === key ? data : d]);
+const FAILURE = { raw: { code: 1, stdout: '', stderr: 'HTTP 502' } };
+
+test('with --owner alone, adopts the project titled Kanban and creates none', async () => {
+  const { gh, calls, lines, log } = stand({ graphql: graphqlAnswers({ projects: [project(5)] }) });
+  assert.equal(await main(['--owner', 'NCodeGroup'], { gh, log }), 0);
+  assert.equal(sent(calls, 'createProjectV2').length, 0);
+  assert.ok(lines.some((line) => line.startsWith('Adopted project #5: ')));
+});
+
+test('--title Other creates a project when only one titled Kanban exists', async () => {
+  const { gh, calls, lines, log } = stand({ graphql: graphqlAnswers({ projects: [project(5)] }) });
+  assert.equal(await main(['--owner', 'NCodeGroup', '--title', 'Other'], { gh, log }), 0);
+  assert.equal(sent(calls, 'createProjectV2')[0].title, 'Other');
+  assert.ok(lines.some((line) => line.startsWith('Created project #7: ')));
+});
+
+for (const args of [
+  ['--repo', 'app'],
+  ['--repo', 'NCodeGroup/app/x'],
+  ['--project', '0'],
+  ['--project', 'abc'],
+  ['--wip-limit', '0'],
+  ['--wip-limit', '100'],
+  ['--unknown'],
+]) {
+  test(`${args.join(' ')} returns 1, logs the usage and calls no gh`, async () => {
+    const { gh, calls, lines, log } = stand({ graphql: graphqlAnswers() });
+    assert.equal(await main(['--owner', 'NCodeGroup', ...args], { gh, log }), 1);
+    assert.equal(calls.length, 0);
+    assert.ok(lines.some((line) => line.startsWith('Usage: ')));
+  });
+}
+
+test('gh not signed in returns 1 after the auth call', async () => {
+  const { gh, calls, lines, log } = stand({ auth: { code: 1, stdout: '', stderr: 'You are not logged into any GitHub hosts.' } });
+  assert.equal(await main(['--owner', 'NCodeGroup'], { gh, log }), 1);
+  assert.equal(calls.length, 1);
+  assert.ok(lines.includes("gh isn't signed in to github.com: run gh auth login."));
+});
+
+for (const key of ['repository(owner', 'createProjectV2', 'linkProjectV2ToRepository', 'node(id', 'updateProjectV2Field', 'updateProjectV2(']) {
+  test(`a failed ${key} call returns 1, logs why and makes no later change`, async () => {
+    const { gh, lines, log } = stand({ graphql: replace(graphqlAnswers(), key, FAILURE) });
+    assert.equal(await main(['--owner', 'NCodeGroup', '--repo', 'NCodeGroup/app'], { gh, log }), 1);
+    assert.ok(lines.includes('gh api graphql failed: HTTP 502'));
+    assert.ok(!lines.some((line) => line.startsWith('Add this line')));
+  });
+}
+
+for (const [what, stdout] of [["that isn't JSON", '<html>Bad gateway</html>'], ['with no data', '{}']]) {
+  test(`a mutation that exits 0 with an answer ${what} returns 1 and logs it`, async () => {
+    const { gh, calls, lines, log } = stand({ graphql: replace(graphqlAnswers(), 'updateProjectV2Field', { raw: { code: 0, stdout, stderr: '' } }) });
+    assert.equal(await main(['--owner', 'NCodeGroup'], { gh, log }), 1);
+    assert.ok(lines.includes(`gh api graphql failed: ${stdout}`));
+    assert.equal(sent(calls, 'updateProjectV2(').length, 0);
+  });
+}
+
+test('statusOptions gives Backlog the id of Todo when there is no Backlog, matches names ignoring case and keeps every other option', () => {
+  const { options, kept } = statusOptions([
+    { id: 't', name: 'Todo', color: 'GRAY', description: 'Not started' },
+    { id: 'r', name: 'READY', color: 'BLUE', description: '' },
+    { id: 'q', name: 'QA', color: 'PINK' },
+  ]);
+  assert.deepEqual(options.map((option) => option.id), ['t', 'r', undefined, undefined, undefined, 'q']);
+  assert.deepEqual(options.map((option) => option.name), [...STATUSES.map((status) => status.name), 'QA']);
+  assert.deepEqual(options[5], { id: 'q', name: 'QA', color: 'PINK', description: '' });
+  assert.deepEqual(kept, ['QA']);
+});
+
+test('statusOptions keeps Todo as another option when there is a Backlog', () => {
+  const { options, kept } = statusOptions([
+    { id: 'b', name: 'Backlog', color: 'GRAY', description: '' },
+    { id: 't', name: 'Todo', color: 'GRAY', description: '' },
+  ]);
+  assert.equal(options[0].id, 'b');
+  assert.deepEqual(kept, ['Todo']);
+});
+
+test("finds the project titled Kanban on a later page of the organization's projects", async () => {
+  const roadmap = { id: 'P1', number: 1, title: 'Roadmap', url: 'https://github.com/orgs/NCodeGroup/projects/1' };
+  const pages = {
+    first: { nodes: [roadmap], pageInfo: { hasNextPage: true, endCursor: 'c1' } },
+    c1: { nodes: [project(12)], pageInfo: { hasNextPage: false, endCursor: 'c2' } },
+  };
+  const organization = (variables) => ({ organization: { id: 'O1', projectsV2: pages[variables.after ?? 'first'] } });
+  const { gh, calls, lines, log } = stand({ graphql: replace(graphqlAnswers(), 'organization(', organization) });
+  assert.equal(await main(['--owner', 'NCodeGroup'], { gh, log }), 0);
+  assert.deepEqual(sent(calls, 'projectsV2(').map((variables) => variables.after), [null, 'c1']);
+  assert.equal(sent(calls, 'createProjectV2').length, 0);
+  assert.ok(lines.some((line) => line.startsWith('Adopted project #12: ')));
+});
+
+test("--project 3 reads that project by its number, not the organization's list", async () => {
+  const { gh, calls, log } = stand({ graphql: graphqlAnswers({ projects: [project(3)] }) });
+  assert.equal(await main(['--owner', 'NCodeGroup', '--project', '3'], { gh, log }), 0);
+  assert.deepEqual(sent(calls, 'projectV2(number').map((variables) => variables.number), [3]);
+  assert.equal(sent(calls, 'projectsV2(').length, 0);
+});
+
+test('--project 9, which GitHub answers with a NOT_FOUND error, returns 1 and says there is no such project', async () => {
+  const answer = { data: { organization: { id: 'O1', projectV2: null } }, errors: [{ type: 'NOT_FOUND', message: 'Could not resolve to a ProjectV2 with the number 9.' }] };
+  const notFound = { raw: { code: 1, stdout: JSON.stringify(answer), stderr: 'gh: Could not resolve to a ProjectV2 with the number 9.' } };
+  const { gh, lines, log } = stand({ graphql: replace(graphqlAnswers(), 'organization(', notFound) });
+  assert.equal(await main(['--owner', 'NCodeGroup', '--project', '9'], { gh, log }), 1);
+  assert.ok(lines.includes('No project #9 in NCodeGroup.'));
+});
+
+test('runGh stops a gh call after 120 s and reports the timeout as a failure', () => {
+  const seen = [];
+  const spawn = (command, args, options) => {
+    seen.push({ command, args, options });
+    return { status: null, signal: 'SIGTERM', stdout: '', stderr: '', error: Object.assign(new Error('spawnSync gh ETIMEDOUT'), { code: 'ETIMEDOUT' }) };
+  };
+  assert.deepEqual(runGh(['auth', 'status'], undefined, spawn), { code: 1, stdout: '', stderr: 'gh timed out after 120 s' });
+  assert.equal(seen[0].command, 'gh');
+  assert.equal(seen[0].options.timeout, 120000);
+});
+
+test("runGh reports a gh that can't start or is stopped by a signal as a failure, and passes an exit code through", () => {
+  assert.deepEqual(runGh([], undefined, () => ({ status: null, error: new Error('spawnSync gh ENOENT') })), { code: 1, stdout: '', stderr: 'spawnSync gh ENOENT' });
+  assert.equal(runGh([], undefined, () => ({ status: null, signal: 'SIGKILL', stdout: '', stderr: '' })).code, 1);
+  assert.deepEqual(runGh([], undefined, () => ({ status: 0, stdout: 'ok', stderr: '' })), { code: 0, stdout: 'ok', stderr: '' });
 });
