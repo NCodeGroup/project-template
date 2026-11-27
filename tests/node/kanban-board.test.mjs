@@ -269,3 +269,47 @@ test("runGh reports a gh that can't start or is stopped by a signal as a failure
   assert.equal(runGh([], undefined, () => ({ status: null, signal: 'SIGKILL', stdout: '', stderr: '' })).code, 1);
   assert.deepEqual(runGh([], undefined, () => ({ status: 0, stdout: 'ok', stderr: '' })), { code: 0, stdout: 'ok', stderr: '' });
 });
+
+// The number of GraphQL mutations the calls sent.
+const mutations = (calls) => calls.filter((call) => call.args[0] === 'api' && JSON.parse(call.input).query.startsWith('mutation')).length;
+
+for (const args of [[], ['--project', '3']]) {
+  test(`an organization answer of null${args.length > 0 ? ` with ${args.join(' ')}` : ''} returns 1, says there is no such organization and sends no mutation`, async () => {
+    const { gh, calls, lines, log } = stand({ graphql: replace(graphqlAnswers(), 'organization(', { organization: null }) });
+    assert.equal(await main(['--owner', 'NCodeGroup', ...args], { gh, log }), 1);
+    assert.ok(lines.includes('gh api graphql failed: no organization NCodeGroup.'));
+    assert.equal(mutations(calls), 0);
+  });
+}
+
+test('a repository answer of null with --repo returns 1, says there is no such repository and sends no mutation', async () => {
+  const { gh, calls, lines, log } = stand({ graphql: replace(graphqlAnswers(), 'repository(owner', { repository: null }) });
+  assert.equal(await main(['--owner', 'NCodeGroup', '--repo', 'NCodeGroup/app'], { gh, log }), 1);
+  assert.ok(lines.includes('gh api graphql failed: no repository NCodeGroup/app.'));
+  assert.equal(mutations(calls), 0);
+});
+
+test('a createProjectV2 answer with no project returns 1, says none was created and sends no later mutation', async () => {
+  const { gh, calls, lines, log } = stand({ graphql: replace(graphqlAnswers(), 'createProjectV2', { createProjectV2: { projectV2: null } }) });
+  assert.equal(await main(['--owner', 'NCodeGroup', '--repo', 'NCodeGroup/app'], { gh, log }), 1);
+  assert.ok(lines.includes('gh api graphql failed: no project was created.'));
+  assert.equal(mutations(calls), 1);
+  assert.equal(sent(calls, 'linkProjectV2ToRepository').length, 0);
+});
+
+test('a project whose Status field is null returns 1, says it has no Status field and sends no later mutation', async () => {
+  const { gh, calls, lines, log } = stand({ graphql: replace(graphqlAnswers(), 'node(id', { node: { field: null, workflows: { nodes: [] } } }) });
+  assert.equal(await main(['--owner', 'NCodeGroup'], { gh, log }), 1);
+  assert.ok(lines.includes('The project has no Status field.'));
+  assert.equal(sent(calls, 'updateProjectV2Field').length, 0);
+  assert.equal(sent(calls, 'updateProjectV2(').length, 0);
+});
+
+test('a project with more workflows than one page returns 0, says only the first 50 were read and sends each mutation once', async () => {
+  const details = { node: { field: { id: 'F1', options: [] }, workflows: { nodes: [], pageInfo: { hasNextPage: true } } } };
+  const { gh, calls, lines, log } = stand({ graphql: replace(graphqlAnswers(), 'node(id', details) });
+  assert.equal(await main(['--owner', 'NCodeGroup'], { gh, log }), 0);
+  assert.ok(lines.includes('The project has more than 50 workflows, and this read the first 50: check a workflow not found above in its settings.'));
+  assert.equal(mutations(calls), 3);
+  assert.ok(lines.at(-1).startsWith('Add this line'));
+});
