@@ -161,12 +161,12 @@ function Get-OriginTags {
 
 function Get-IssueState([string]$Ref, [string]$HostName) {
     $issueState = 'unknown'
-    $numbers = [regex]::Matches($Ref, '\d+')
+    $numbers = [regex]::Matches($Ref, '[0-9]+')
     if ($HostName -eq 'github' -and $numbers.Count -gt 0 -and (Get-Command gh -ErrorAction SilentlyContinue)) {
         $issueNumber = $numbers[$numbers.Count - 1].Value
         $apiRepo = '{owner}/{repo}'
-        if ($Ref -match '^(?<r>[^\s/#:]+/[^\s/#:]+)#\d+') { $apiRepo = $Matches['r'] }
-        elseif ($Ref -match '^https?://[^/\s]+/(?<r>.+?)/issues/\d+') { $apiRepo = $Matches['r'] }
+        if ($Ref -match '^(?<r>[^\s/#:]+/[^\s/#:]+)#[0-9]+') { $apiRepo = $Matches['r'] }
+        elseif ($Ref -match '^https?://[^/\s]+/(?<r>.+?)/issues/[0-9]+') { $apiRepo = $Matches['r'] }
         $out = & gh api "repos/$apiRepo/issues/$issueNumber" 2>$null | Out-String
         if ($LASTEXITCODE -eq 0) {
             try {
@@ -403,8 +403,7 @@ try {
 
     # Start the calls that wait on the network at the same time; each part below receives its own.
     $fetchCall = $null; $tagsCall = $null
-    $cli = if ($hostName -eq 'github') { 'gh' } else { '' }
-    $hasCli = $cli -and [bool](Get-Command $cli -ErrorAction SilentlyContinue)
+    $hasCli = $hostName -eq 'github' -and [bool](Get-Command gh -ErrorAction SilentlyContinue)
     $requestsCall = $null; $releaseCall = $null
     if ($hostName -ne 'none' -and -not $NoFetch) { $fetchCall = Start-Concurrent $folder 'git' @('fetch', 'origin', '--prune', '--tags', '--quiet') }
     if ($hostName -ne 'none' -and $release -ne '-') { $tagsCall = Start-Concurrent $folder 'Get-OriginTags' -Functions 'Get-OriginTags' }
@@ -421,7 +420,7 @@ try {
     $releaseArgs = @('api', "repos/{owner}/{repo}/releases/tags/$release")
     if ($hasCli -and $releasePolicy -eq 'tag+release' -and $release -ne '-') {
         & git rev-parse -q --verify "refs/tags/$release" 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { $releaseCall = Start-Concurrent $folder $cli $releaseArgs }
+        if ($LASTEXITCODE -eq 0) { $releaseCall = Start-Concurrent $folder 'gh' $releaseArgs }
     }
     $issueRefs = @($issue -split '[\s,]+' | Where-Object { $_ -and $_ -ne '-' })
     $issueCalls = @(foreach ($ref in $issueRefs) { Start-Concurrent $folder 'Get-IssueState' @($ref, $hostName) -Functions 'Get-IssueState' })
@@ -433,7 +432,7 @@ try {
         & git rev-parse -q --verify "refs/tags/$release" 2>$null | Out-Null
         $localTag = ($LASTEXITCODE -eq 0)
     }
-    if (-not $releaseCall -and $localTag -and $hasCli -and $releasePolicy -eq 'tag+release') { $releaseCall = Start-Concurrent $folder $cli $releaseArgs }
+    if (-not $releaseCall -and $localTag -and $hasCli -and $releasePolicy -eq 'tag+release') { $releaseCall = Start-Concurrent $folder 'gh' $releaseArgs }
     $protected = (Receive-Concurrent $protectedCall).Value
 
     # Position against the default branch
@@ -577,7 +576,7 @@ try {
     if ($releasePolicy -eq 'tag+release' -and $tag -eq 'present') {
         $published = 'unknown'
         if ($hasCli) {
-            if (-not $releaseResult) { $releaseResult = Receive-Concurrent (Start-Concurrent $folder $cli $releaseArgs) }
+            if (-not $releaseResult) { $releaseResult = Receive-Concurrent (Start-Concurrent $folder 'gh' $releaseArgs) }
             $published = if ($releaseResult.ExitCode -eq 0) { 'yes' } else { 'no' }
         }
     }
