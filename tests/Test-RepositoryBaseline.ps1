@@ -69,9 +69,11 @@
     that -All skips archived repositories and forks;
     and that bad parameters stop it; and that the approval policy for fork pull request workflows is set to
     first_time_contributors_new_to_github, on a repository and, with -OrganizationPolicy, on the organization, where
-    first_time_contributors is raised with a PUT of that policy alone, shown by -WhatIf without a write, while it and
-    the stricter all_external_contributors are left alone, and an unknown, unreadable or refused policy is reported
-    and left as it is, the organization's failing the run. Prints PASS or FAIL per check and exits 1 on any failure.
+    first_time_contributors is raised with a PUT of that policy alone, shown by -WhatIf without a write, each with a
+    notice to keep the stricter policy where a self-hosted runner or a pull_request workflow that uses secrets runs,
+    while it and the stricter all_external_contributors are left alone, and an unknown, unreadable or refused policy is
+    reported and left as it is, the organization's failing the run. Prints PASS or FAIL per check and exits 1 on any
+    failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-baseline-test-<process ID> in the
@@ -1374,6 +1376,7 @@ try {
     $forkLabel = 'fork pull request workflows approved only for first-time contributors new to GitHub'
     $forkSegment = 'actions/permissions/fork-pr-contributor-approval'
     $forkRaised = 'first_time_contributors_new_to_github'
+    $forkNotice = 'notice: a repository with a self-hosted runner or a pull_request workflow that uses secrets must keep all_external_contributors'
     foreach ($case in @(
             @{ Name = 'forkDrift'; Says = 'set' }
             @{ Name = 'forkRefused'; Says = 'not available (HTTP 403' })) {
@@ -1383,12 +1386,15 @@ try {
         $put = @($r.Bodies | Where-Object { $_.path -eq "repos/NCodeGroup/$name/$forkSegment" })
         Check "fork approval: $name reads the repository's policy and PUTs the raised one alone" ($get.Count -eq 1 -and $put.Count -eq 1 -and $put[0].method -eq 'PUT' -and $put[0].body.approval_policy -eq $forkRaised -and @($put[0].body.Keys).Count -eq 1) "$($r.Changes -join '|') $($r.Output)"
         Check "fork approval: $name reports '$($case.Says)'$(if ($name -eq 'forkRefused') { ' without failing the run' })" ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match [regex]::Escape("${name}: ${forkLabel}: $($case.Says)")) $r.Output
+        Check "fork approval: $name prints the notice to keep the stricter policy" ($r.Output.Contains("${name}: $forkNotice")) $r.Output
     }
     $r = Invoke-Baseline @('-Repo', 'forkDrift', '-WhatIf')
     Check 'fork approval: -WhatIf says it would set the policy and writes nothing' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output -match [regex]::Escape("forkDrift: ${forkLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
+    Check 'fork approval: -WhatIf prints the notice to keep the stricter policy' ($r.Output.Contains("forkDrift: $forkNotice")) $r.Output
     foreach ($name in 'fresh', 'forkStrict') {
         $r = Invoke-Baseline @('-Repo', $name)
         Check "fork approval: $name, already first_time_contributors_new_to_github or stricter, is left alone" ($r.ExitCode -eq 0 -and -not @($r.Changes | Where-Object { $_ -like "*$forkSegment*" }).Count -and $r.Output -match [regex]::Escape("${name}: ${forkLabel}: already set")) "$($r.Changes -join '|') $($r.Output)"
+        Check "fork approval: $name prints no notice where it raises nothing" (-not $r.Output.Contains($forkNotice)) $r.Output
     }
     foreach ($case in @(
             @{ Name = 'forkUnknown'; Says = "an approval policy this script doesn't know ('brand_new_policy'), left as it is" }
@@ -1397,6 +1403,7 @@ try {
             @{ Name = 'forkNoPolicy'; Says = "couldn't read it: the answer has no approval_policy" })) {
         $r = Invoke-Baseline @('-Repo', $case.Name)
         Check "fork approval: $($case.Name) is reported as not available and left as it is, without failing the run" ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and -not @($r.Changes | Where-Object { $_ -like "*$forkSegment*" }).Count -and $r.Output -match [regex]::Escape("$($case.Name): ${forkLabel}: not available (") -and $r.Output.Contains($case.Says)) "$($r.Changes -join '|') $($r.Output)"
+        Check "fork approval: $($case.Name) prints no notice where it raises nothing" (-not $r.Output.Contains($forkNotice)) $r.Output
     }
 
     $orgForkLabel = $forkLabel
@@ -1404,11 +1411,14 @@ try {
     $get = @(Get-Content -LiteralPath $calls | Where-Object { $_ -like "*api --include orgs/orgForkDrift/$forkSegment" })
     $put = @($r.Bodies | Where-Object { $_.path -eq "orgs/orgForkDrift/$forkSegment" })
     Check 'fork approval: -OrganizationPolicy reads the organization policy and PUTs the raised one alone' ($r.ExitCode -eq 0 -and $get.Count -eq 1 -and $put.Count -eq 1 -and $put[0].method -eq 'PUT' -and $put[0].body.approval_policy -eq $forkRaised -and @($put[0].body.Keys).Count -eq 1 -and $r.Output -match [regex]::Escape("organization orgForkDrift: ${orgForkLabel}: set")) "$($r.Changes -join '|') $($r.Output)"
+    Check 'fork approval: -OrganizationPolicy prints the notice to keep the stricter policy' ($r.Output.Contains("organization orgForkDrift: $forkNotice")) $r.Output
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgForkDrift', '-WhatIf')
     Check 'fork approval: -OrganizationPolicy -WhatIf says it would set the policy and writes nothing' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("organization orgForkDrift: ${orgForkLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
+    Check 'fork approval: -OrganizationPolicy -WhatIf prints the notice to keep the stricter policy' ($r.Output.Contains("organization orgForkDrift: $forkNotice")) $r.Output
     foreach ($owner in 'orgEmpty', 'orgForkStrict') {
         $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', $owner)
         Check "fork approval: $owner, already first_time_contributors_new_to_github or stricter, is left alone" ($r.ExitCode -eq 0 -and -not @($r.Changes | Where-Object { $_ -like "*$forkSegment*" }).Count -and $r.Output -match [regex]::Escape("organization ${owner}: ${orgForkLabel}: already set")) "$($r.Changes -join '|') $($r.Output)"
+        Check "fork approval: $owner prints no notice where it raises nothing" (-not $r.Output.Contains($forkNotice)) $r.Output
     }
     foreach ($case in @(
             @{ Owner = 'orgForkUnknown'; Says = "an approval policy this script doesn't know ('brand_new_policy'), left as it is" }
