@@ -22,7 +22,8 @@
     run or without a publish.yml, and fails naming the trigger when publish.yml has none, and fails naming publish.yml
     and the tag when starting it fails. Also checks that with a nuget_publisher answer in .copier-answers.yml it starts
     the workflow the answer names instead of publish.yml, with the tag as input only when its workflow_dispatch trigger
-    declares a tag input, and fails naming the workflow, the answer and the trigger when it has none. Also checks that
+    declares a tag input, and fails naming the workflow, the answer and the trigger when it has none. It also fails,
+    after starting the others, naming the answer and each workflow it names that doesn't exist. Also checks that
     with pre-release: untracked the release notes stop at the link
     reference definitions and at the next ## heading. Also checks that release.yml runs the script on a push to main
     that changes CHANGELOG.md, with contents: write and the merged commit. Also checks that -Policy prints the release
@@ -461,6 +462,11 @@ try {
     Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
     $run = Invoke-Publish $work
     Check 'nuget_publisher without workflow_dispatch: it publishes the release, then fails and names the workflow, the answer and the trigger' ($run.Code -ne 0 -and (Test-Path -LiteralPath (Join-Path $releases 'v0.2.0')) -and $run.Output -match 'main\.yml' -and $run.Output -match 'nuget_publisher' -and $run.Output -match 'workflow_dispatch' -and -not (@(Get-Calls) -match 'dispatches')) ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
+
+    $work = New-Clone 'publisher-missing' '- release: tag+release' -Files @{ '.copier-answers.yml' = "nuget_publisher: .github/workflows/main.yml, .github/workflows/gone.yml`n"; '.github/workflows/main.yml' = $publishWith }
+    Remove-Item -LiteralPath (Join-Path $releases 'pulls.json'), (Join-Path $releases 'v0.2.0') -ErrorAction SilentlyContinue
+    $run = Invoke-Publish $work
+    Check 'nuget_publisher naming a missing workflow: it starts the one that exists, publishes the release, then fails and names the missing one and the answer' ($run.Code -ne 0 -and (Test-Path -LiteralPath (Join-Path $releases 'v0.2.0')) -and (@(Get-Calls) -match 'actions/workflows/main\.yml/dispatches').Count -eq 1 -and -not (@(Get-Calls) -match 'gone\.yml') -and $run.Output -match 'gone\.yml' -and $run.Output -match 'nuget_publisher' -and $run.Output -match 'doesn''t exist') ($run.Output + ' | ' + ((Get-Calls) -join ' | '))
 
     $notesChangelogBase = "# Changelog`n`n## [Unreleased]`n`n### Added`n`n- The product does a thing.`n`n"
     $stopCases = @(

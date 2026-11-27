@@ -33,7 +33,7 @@
       release-policy Get-ReleasePolicyAnswer reads the release line of AGENTS.md's Landing section, with or without
                 double quotes, none without the line or outside that section, and nothing for a value
                 .template\Publish-Release.ps1 refuses or without AGENTS.md. tools\adopt\Adoption.psm1's copy answers the same.
-      publisher-dispatch Get-PublisherDispatchNote names each workflow the nuget_publisher answer names that has no workflow_dispatch trigger, in a block or a flow sequence, when AGENTS.md says release: tag+release and tag-release.yml exists, and nothing with release: none or without the answer.
+      publisher-dispatch Get-PublisherDispatchNote names each workflow the nuget_publisher answer names that has no workflow_dispatch trigger, in a block or a flow sequence, or doesn't exist, when AGENTS.md says release: tag+release and tag-release.yml exists, and nothing with release: none or without the answer.
       publish-dispatch The condition of the publish.yml workflow_dispatch warning, in Update-Project.ps1 and in Adopt-Project.ps1, holds for a publish.yml without the trigger and not for one with it, in a block or a flow sequence, and the two agree.
       badge     Get-BadgeReminder prints the badge line to add when best_practices_project is set and README.md lacks
                 the badge, and nothing when README.md has it or the answer is unset.
@@ -353,6 +353,7 @@ $publisherDispatchNote = & {
         'release: none'      = @{ Release = 'none'; Publisher = '.github/workflows/release.yml'; Files = @{ 'release.yml' = $noTrigger }; Want = @() }
         'two workflows'      = @{ Release = 'tag+release'; Publisher = '.github/workflows/a.yml, .github/workflows/b.yml'; Files = @{ 'a.yml' = "$noTrigger  workflow_dispatch:`n"; 'b.yml' = $noTrigger }; Want = @('.github/workflows/b.yml') }
         'no nuget_publisher' = @{ Release = 'tag+release'; Publisher = ''; Files = @{ 'release.yml' = $noTrigger }; Want = @() }
+        'missing workflow'   = @{ Release = 'tag+release'; Publisher = '.github/workflows/gone.yml'; Files = @{}; Want = @(); Missing = @('.github/workflows/gone.yml') }
     }
     foreach ($name in $dispatchCases.Keys) {
         $case = $dispatchCases[$name]
@@ -369,7 +370,8 @@ $publisherDispatchNote = & {
         try { $note = (Get-PublisherDispatchNote) -join "`n" }
         finally { Pop-Location }
         $named = @([regex]::Matches($note, '(?m)^(\S+) publishes this library''s NuGet packages \(the nuget_publisher answer\) and has no workflow_dispatch trigger\.') | ForEach-Object { $_.Groups[1].Value })
-        Check "publisher-dispatch: $name" (($named -join ',') -eq ($case.Want -join ',')) "got [$note]"
+        $missingNamed = @([regex]::Matches($note, '(?m)^(\S+), which the nuget_publisher answer names as this library''s publishing workflow, doesn''t exist\.') | ForEach-Object { $_.Groups[1].Value })
+        Check "publisher-dispatch: $name" ((($named -join ',') -eq ($case.Want -join ',')) -and (($missingNamed -join ',') -eq (@($case.Missing) -join ','))) "got [$note]"
     }
 }
 $publisherDispatchNote
