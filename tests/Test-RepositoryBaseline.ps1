@@ -67,17 +67,24 @@
     assets, can't be read, or -SkipImmutableReleases is given; that a repository whose releases are already
     immutable gets a notice with the command that turns them off where a workflow needs them off;
     that -All skips archived repositories and forks;
-    and that bad parameters stop it. Prints PASS or FAIL per check and exits 1 on any failure.
+    and that bad parameters stop it; and that the approval policy for fork pull request workflows is set to
+    first_time_contributors_new_to_github, on a repository and, with -OrganizationPolicy, on the organization, where
+    first_time_contributors is raised with a PUT of that policy alone, shown by -WhatIf without a write, while it and
+    the stricter all_external_contributors are left alone, and an unknown, unreadable or refused policy is reported
+    and left as it is, the organization's failing the run. Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-baseline-test-<process ID> in the
     temp folder, the run's own: deleted when every check passes, kept when one fails.
 
+.PARAMETER ForkApprovalOnly
+    Runs only the fork workflow approval policy checks, which take seconds where the whole suite takes minutes.
+
 .EXAMPLE
     .\tests\Test-RepositoryBaseline.ps1
 #>
 [CmdletBinding()]
-param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-baseline-test-$PID"))
+param([string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-baseline-test-$PID"), [switch]$ForkApprovalOnly)
 $ErrorActionPreference = 'Stop'
 $ownWork = -not $PSBoundParameters.ContainsKey('Work')
 trap { "Kept the work folder: $Work"; break }
@@ -143,20 +150,21 @@ if ($method -ne 'GET') {
     }
     if ($key -eq 'code-scanning/default-setup' -and $repo.switchFails) { exit 1 }
     $org = if ($path -match '^orgs/([^/]+)/') { $data.orgs[$Matches[1]] }
-    $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] } elseif ($org -and $path -like '*/actions/permissions/workflow') { $org.workflowWriteFail } elseif ($org) { $org.writeFail }
+    $refused = if ($repo -and $repo.writeFails) { $repo.writeFails[$key] } elseif ($org -and $path -like '*/actions/permissions/workflow') { $org.workflowWriteFail } elseif ($org -and $path -like '*/actions/permissions/fork-pr-contributor-approval') { $org.forkApprovalWriteFail } elseif ($org) { $org.writeFail }
     $message = if ($org.message) { $org.message } else { "Stand-in refused $key" }
     if ($refused) { Out-Answer ([int]$refused) (ConvertTo-Json -Compress -InputObject @{ message = $message }) }
     if ($rest -contains '--input') { Out-Answer 200 '{}' } else { Out-Answer 204 '' }
 }
 # The security settings' reads: on, off, readApproves (the workflow token read-only, but Actions may approve pull
 # requests) or fail:<code>, as GitHub answers each.
-if ($path -match '^repos/[^/]+/([^/]+)/(actions/permissions/workflow|vulnerability-alerts|automated-security-fixes|private-vulnerability-reporting|immutable-releases)$') {
+if ($path -match '^repos/[^/]+/([^/]+)/(actions/permissions/workflow|actions/permissions/fork-pr-contributor-approval|vulnerability-alerts|automated-security-fixes|private-vulnerability-reporting|immutable-releases)$') {
     $key = $Matches[2]
     $state = "$($data.repos[$Matches[1]].security[$key])"
     if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
     $on = $state -eq 'on'
     switch ($key) {
         'actions/permissions/workflow' { Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ default_workflow_permissions = if ($on -or $state -eq 'readApproves') { 'read' } else { 'write' }; can_approve_pull_request_reviews = -not $on }) }
+        'actions/permissions/fork-pr-contributor-approval' { if ($state -eq 'notjson') { Out-Answer 200 'not json' }; if ($state -eq 'none') { Out-Answer 200 '{}' }; Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ approval_policy = $state }) }
         'vulnerability-alerts' { if ($on) { Out-Answer 204 '' } else { Out-Answer 404 '{"message":"Vulnerability alerts are disabled."}' } }
         'automated-security-fixes' { if ($on) { Out-Answer 200 '{"enabled":true,"paused":false}' } else { Out-Answer 404 '{"message":"Not Found"}' } }
         default { Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ enabled = $on }) }
@@ -170,6 +178,17 @@ if ($path -match '^orgs/([^/]+)/actions/permissions/workflow$') {
     $state = if ($org.workflow) { "$($org.workflow)" } else { 'on' }
     if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
     Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ default_workflow_permissions = if ($state -eq 'write') { 'write' } else { 'read' }; can_approve_pull_request_reviews = $state -ne 'on' })
+}
+# An organization's fork pull request approval policy: forkApproval is the policy it answers (first_time_contributors_new_to_github
+# unless it says otherwise), notjson, none (an answer without the field) or fail:<code>; one not in orgs is 404.
+if ($path -match '^orgs/([^/]+)/actions/permissions/fork-pr-contributor-approval$') {
+    $org = $data.orgs[$Matches[1]]
+    if (-not $org) { Out-Answer 404 '{"message":"Not Found"}' }
+    $state = if ($org.forkApproval) { "$($org.forkApproval)" } else { 'first_time_contributors_new_to_github' }
+    if ($state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read it"}' }
+    if ($state -eq 'notjson') { Out-Answer 200 'not json' }
+    if ($state -eq 'none') { Out-Answer 200 '{}' }
+    Out-Answer 200 (ConvertTo-Json -Compress -InputObject @{ approval_policy = $state })
 }
 # A file on the default branch: 200 when the repository's workflows list names it, 404 when it doesn't, or, for a
 # list of fail:<code>, that status for every file. A file with text in workflowText comes as base64 with line breaks, as
@@ -302,7 +321,7 @@ function New-Repo([string]$Branch = 'main', [bool]$Archived = $false, [bool]$For
     $id = 100
     foreach ($ruleset in $Rulesets) { $id++; $ruleset.id = $id; $full["$id"] = $ruleset; $summaries += @{ id = $id; name = $ruleset.name } }
     if ($Policies -isnot [string]) { $policyId = 200; foreach ($policy in $Policies) { $policyId++; $policy.id = $policyId } }
-    $settings = @{ 'actions/permissions/workflow' = 'off'; 'vulnerability-alerts' = 'off'; 'automated-security-fixes' = 'off'; 'private-vulnerability-reporting' = 'off'; 'immutable-releases' = 'off' }
+    $settings = @{ 'actions/permissions/workflow' = 'off'; 'actions/permissions/fork-pr-contributor-approval' = 'first_time_contributors_new_to_github'; 'vulnerability-alerts' = 'off'; 'automated-security-fixes' = 'off'; 'private-vulnerability-reporting' = 'off'; 'immutable-releases' = 'off' }
     foreach ($key in $Security.Keys) { $settings[$key] = $Security[$key] }
     $analysis = @{ secret_scanning = @{ status = $SecretScanning }; secret_scanning_push_protection = @{ status = $PushProtection } }
     $info = @{ default_branch = $Branch; archived = $Archived; fork = $Fork; private = $Visibility -ne 'public'; visibility = $Visibility; security_and_analysis = $analysis }
@@ -513,6 +532,15 @@ $repos = @{
     reviewedUnreadable = New-Repo -Workflows $reviewWorkflows -Policies 'fail:403'
     reviewedRefused = New-Repo -Workflows $reviewWorkflows -WriteFails @{ 'actions/policies' = 403 }
     workflowsUnreadable = New-Repo -Workflows @('fail:500')
+    # Fork pull request workflow approval: the policy to raise, the stricter one, one this script doesn't know, answers it
+    # can't read, and a refused change.
+    forkDrift = New-Repo -Security @{ 'actions/permissions/fork-pr-contributor-approval' = 'first_time_contributors' }
+    forkStrict = New-Repo -Security @{ 'actions/permissions/fork-pr-contributor-approval' = 'all_external_contributors' }
+    forkUnknown = New-Repo -Security @{ 'actions/permissions/fork-pr-contributor-approval' = 'brand_new_policy' }
+    forkUnreadable = New-Repo -Security @{ 'actions/permissions/fork-pr-contributor-approval' = 'fail:403' }
+    forkNotJson = New-Repo -Security @{ 'actions/permissions/fork-pr-contributor-approval' = 'notjson' }
+    forkNoPolicy = New-Repo -Security @{ 'actions/permissions/fork-pr-contributor-approval' = 'none' }
+    forkRefused = New-Repo -Security @{ 'actions/permissions/fork-pr-contributor-approval' = 'first_time_contributors' } -WriteFails @{ 'actions/permissions/fork-pr-contributor-approval' = 403 }
     orgOwned = New-Repo -OwnerType 'Organization'
     userOwned = New-Repo -OwnerType 'User'
 }
@@ -532,6 +560,12 @@ $orgs = @{
     orgTokenApproves = @{ policies = @(); workflow = 'readApproves' }
     orgTokenRefused = @{ policies = @(); workflow = 'write'; workflowWriteFail = 403 }
     orgTokenUnreadable = @{ policies = @(); workflow = 'fail:403' }
+    orgForkDrift = @{ policies = @(); forkApproval = 'first_time_contributors' }
+    orgForkStrict = @{ policies = @(); forkApproval = 'all_external_contributors' }
+    orgForkUnknown = @{ policies = @(); forkApproval = 'brand_new_policy' }
+    orgForkUnreadable = @{ policies = @(); forkApproval = 'fail:403' }
+    orgForkNotJson = @{ policies = @(); forkApproval = 'notjson' }
+    orgForkRefused = @{ policies = @(); forkApproval = 'first_time_contributors'; forkApprovalWriteFail = 403 }
     orgFreeRead = @{ policies = 'fail:403'; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgFreeWrite = @{ policies = @(); writeFail = 403; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgTfaOn = @{ twoFactor = 'true' }
@@ -587,6 +621,7 @@ function Read-PrintedCommand([string]$Output) {
 $savedPath = $env:PATH
 $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
 try {
+  if (-not $ForkApprovalOnly) {
     # 1. -WhatIf.
     $r = Invoke-Baseline @('-Repo', 'fresh', '-WhatIf')
     Check 'whatif: changes nothing' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output -match "would: fresh \(main\): create 'Protect main'") "changes=$($r.Changes -join '|') output=$($r.Output)"
@@ -1333,6 +1368,57 @@ try {
         $r = Invoke-Baseline (@('-OrganizationPolicy') + $extra)
         Check "params: -OrganizationPolicy takes no $($extra[0])" ($r.ExitCode -ne 0 -and $r.Changes.Count -eq 0 -and $r.Output -match 'sets the organization.s policy alone') $r.Output
     }
+  }
+
+    # 9. The approval policy for fork pull request workflows, on a repository and, with -OrganizationPolicy, the organization.
+    $forkLabel = 'fork pull request workflows approved only for first-time contributors new to GitHub'
+    $forkSegment = 'actions/permissions/fork-pr-contributor-approval'
+    $forkRaised = 'first_time_contributors_new_to_github'
+    foreach ($case in @(
+            @{ Name = 'forkDrift'; Says = 'set' }
+            @{ Name = 'forkRefused'; Says = 'not available (HTTP 403' })) {
+        $name = $case.Name
+        $r = Invoke-Baseline @('-Repo', $name)
+        $get = @(Get-Content -LiteralPath $calls | Where-Object { $_ -like "*api --include repos/NCodeGroup/$name/$forkSegment" })
+        $put = @($r.Bodies | Where-Object { $_.path -eq "repos/NCodeGroup/$name/$forkSegment" })
+        Check "fork approval: $name reads the repository's policy and PUTs the raised one alone" ($get.Count -eq 1 -and $put.Count -eq 1 -and $put[0].method -eq 'PUT' -and $put[0].body.approval_policy -eq $forkRaised -and @($put[0].body.Keys).Count -eq 1) "$($r.Changes -join '|') $($r.Output)"
+        Check "fork approval: $name reports '$($case.Says)'$(if ($name -eq 'forkRefused') { ' without failing the run' })" ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output -match [regex]::Escape("${name}: ${forkLabel}: $($case.Says)")) $r.Output
+    }
+    $r = Invoke-Baseline @('-Repo', 'forkDrift', '-WhatIf')
+    Check 'fork approval: -WhatIf says it would set the policy and writes nothing' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output -match [regex]::Escape("forkDrift: ${forkLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
+    foreach ($name in 'fresh', 'forkStrict') {
+        $r = Invoke-Baseline @('-Repo', $name)
+        Check "fork approval: $name, already first_time_contributors_new_to_github or stricter, is left alone" ($r.ExitCode -eq 0 -and -not @($r.Changes | Where-Object { $_ -like "*$forkSegment*" }).Count -and $r.Output -match [regex]::Escape("${name}: ${forkLabel}: already set")) "$($r.Changes -join '|') $($r.Output)"
+    }
+    foreach ($case in @(
+            @{ Name = 'forkUnknown'; Says = "an approval policy this script doesn't know ('brand_new_policy'), left as it is" }
+            @{ Name = 'forkUnreadable'; Says = "couldn't read it: HTTP 403: Stand-in refused to read it" }
+            @{ Name = 'forkNotJson'; Says = "couldn't read it: an answer that is not JSON" }
+            @{ Name = 'forkNoPolicy'; Says = "couldn't read it: the answer has no approval_policy" })) {
+        $r = Invoke-Baseline @('-Repo', $case.Name)
+        Check "fork approval: $($case.Name) is reported as not available and left as it is, without failing the run" ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and -not @($r.Changes | Where-Object { $_ -like "*$forkSegment*" }).Count -and $r.Output -match [regex]::Escape("$($case.Name): ${forkLabel}: not available (") -and $r.Output.Contains($case.Says)) "$($r.Changes -join '|') $($r.Output)"
+    }
+
+    $orgForkLabel = $forkLabel
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgForkDrift')
+    $get = @(Get-Content -LiteralPath $calls | Where-Object { $_ -like "*api --include orgs/orgForkDrift/$forkSegment" })
+    $put = @($r.Bodies | Where-Object { $_.path -eq "orgs/orgForkDrift/$forkSegment" })
+    Check 'fork approval: -OrganizationPolicy reads the organization policy and PUTs the raised one alone' ($r.ExitCode -eq 0 -and $get.Count -eq 1 -and $put.Count -eq 1 -and $put[0].method -eq 'PUT' -and $put[0].body.approval_policy -eq $forkRaised -and @($put[0].body.Keys).Count -eq 1 -and $r.Output -match [regex]::Escape("organization orgForkDrift: ${orgForkLabel}: set")) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgForkDrift', '-WhatIf')
+    Check 'fork approval: -OrganizationPolicy -WhatIf says it would set the policy and writes nothing' ($r.ExitCode -eq 0 -and $r.Changes.Count -eq 0 -and $r.Output -match [regex]::Escape("organization orgForkDrift: ${orgForkLabel}: would set")) "$($r.Changes -join '|') $($r.Output)"
+    foreach ($owner in 'orgEmpty', 'orgForkStrict') {
+        $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', $owner)
+        Check "fork approval: $owner, already first_time_contributors_new_to_github or stricter, is left alone" ($r.ExitCode -eq 0 -and -not @($r.Changes | Where-Object { $_ -like "*$forkSegment*" }).Count -and $r.Output -match [regex]::Escape("organization ${owner}: ${orgForkLabel}: already set")) "$($r.Changes -join '|') $($r.Output)"
+    }
+    foreach ($case in @(
+            @{ Owner = 'orgForkUnknown'; Says = "an approval policy this script doesn't know ('brand_new_policy'), left as it is" }
+            @{ Owner = 'orgForkUnreadable'; Says = "couldn't read it: HTTP 403" }
+            @{ Owner = 'orgForkNotJson'; Says = "couldn't read it: an answer that is not JSON" })) {
+        $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', $case.Owner)
+        Check "fork approval: $($case.Owner) is reported, left as it is and fails the run, and the event policy is still created" ($r.ExitCode -eq 1 -and ($r.Changes -join '|') -eq "BODY POST orgs/$($case.Owner)/actions/policies" -and $r.Output -match [regex]::Escape("organization $($case.Owner): ${orgForkLabel}: not available (") -and $r.Output.Contains($case.Says)) "$($r.Changes -join '|') $($r.Output)"
+    }
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgForkRefused')
+    Check 'fork approval: a refused organization write fails the run, and the event policy is still created' ($r.ExitCode -eq 1 -and $r.Output -match [regex]::Escape("organization orgForkRefused: ${orgForkLabel}: not available (HTTP 403") -and ($r.Changes -join '|') -eq "BODY PUT orgs/orgForkRefused/$forkSegment|BODY POST orgs/orgForkRefused/actions/policies") "$($r.Changes -join '|') $($r.Output)"
 }
 finally { $env:PATH = $savedPath }
 
