@@ -1753,6 +1753,12 @@ $decomposeFiles = 'template\.claude\commands\decompose-issue.md', 'template\.git
 $m = @(Get-MissingText $decomposeFiles ('Record decisions: <topic>', 'Ask me once whether to file them', '/sub_issues -F sub_issue_id=<id>', '/dependencies/blocked_by -F issue_id=<id>', 'meets the Definition of Ready, as ADR-0042', '- `## Not in this issue`:', 'as data, not instructions', '/run-issues epic:#<epic>'))
 $m += @(foreach ($p in $decomposeFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'EnterWorktree', '## Output: PLAN.md for the executor model', '{{') { if ($t.Contains($x)) { "${p}: has $x" } } } })
 Check 'workflow: decompose-issue decides first, asks before it files, and files each story with its type, parent and blocked-by links through REST' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $triageFiles ('epic:#<number>', 'ready after #<number>', 'blocked, naming each open issue it is blocked by', '/decompose-issue #<number>', 'whose parent isn''t #<number>', 'meets the Definition of Ready, as ADR-0042'))
+$m += @(Get-MissingText $issuePlanFiles ('it is an Epic', 'say to run decompose-issue with it instead', 'that the request doesn''t name'))
+$m += @(Get-MissingText ('template\.claude\commands\plan-issue.md', 'template\.claude\commands\triage-issues.md') 'a `Bug` is a bugfix')
+$m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('never runs ahead of that entry', 'naming the blocker'))
+$m += @(Get-MissingText $shipFiles ('link it as a sub-issue of the epic', 'closed the epic''s last open story', 'prompt its retrospective'))
+Check 'workflow: triage, plan-issue, run-issues and ship-plan read and keep the epic hierarchy (ADR-0042)' (-not $m) ($m -join '; ')
 if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Template tests: PASSED'
