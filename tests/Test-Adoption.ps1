@@ -103,6 +103,17 @@ Invoke-Git -C $githubOrigin config user.email template-test@example.invalid
 $hostMessage = try { & $adoptScript -Path $githubOrigin -Template $repoRoot -Data @{ git_host = 'gitlab' } | Out-Null; '' } catch { $_.Exception.Message }
 $hostStatus = "$(git -C $githubOrigin status --porcelain)"
 Check 'unit: Adopt-Project.ps1 refuses -Data that answers git_host other than github and leaves the repository alone' ($hostMessage.Contains('NCodeGroup''s GitHub repositories only') -and $hostMessage.Contains('git_host ''gitlab''') -and -not $hostStatus) "$hostMessage | $hostStatus"
+$remoteWanted = [ordered]@{
+    'https://github.com/example/x.git'                 = $true
+    'https://user:token@github.com/example/x.git'      = $true
+    'git@github.com:example/x.git'                     = $true
+    'ssh://git@github.com/example/x.git'               = $true
+    'https://gitlab.com/example/x.git'                 = $false
+    'git@gitlab.com:example/x.git'                     = $false
+    'https://github.com.evil.example/example/x.git'    = $false
+}
+$remoteWrong = @($remoteWanted.Keys | Where-Object { [bool](Test-GitHubRemote $_) -ne $remoteWanted[$_] })
+Check 'unit: Test-GitHubRemote accepts GitHub over https, with credentials, scp-style SSH and ssh://, and nothing else' ($remoteWrong.Count -eq 0) ($remoteWrong -join ' | ')
 $apacheText = "                                 Apache License`n                           Version 2.0, January 2004`n"
 $licenseFolders = [ordered]@{
     'license-props' = @{ Files = @{ 'src/A/A.csproj' = "<Project />`n"; 'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <PackageLicenseExpression>MIT</PackageLicenseExpression>`n  </PropertyGroup>`n</Project>`n"; 'LICENSE' = $apacheText }; License = 'MIT' }
