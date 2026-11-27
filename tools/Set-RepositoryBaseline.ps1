@@ -38,7 +38,8 @@
       - sets the repository's fork pull request approval policy to first_time_contributors_new_to_github, so only
         contributors who are new to GitHub need approval. The stricter all_external_contributors policy is left as it
         is. Projects with self-hosted runners or pull_request workflows that use secrets must keep that stricter policy
-        (the template's ADR-0039);
+        (the template's ADR-0039); it checks for neither, so where it raises the policy, here or for the organization
+        with -OrganizationPolicy, it prints a notice saying so;
       - turns on "Allow auto-merge" where it is off, so the template's code-review-auto-merge.yml workflow can turn on
         auto-merge for a Dependabot pull request that only moves the NCode Review pin. Allowing it merges nothing by
         itself: a pull request merges itself only once someone, or that workflow, turns it on, and still waits for what
@@ -898,6 +899,7 @@ function Get-EventPolicyGaps($Policy, [string[]]$Events) {
 # it can't read, is reported and left as it is.
 $forkApprovalLabel = 'fork pull request workflows approved only for first-time contributors new to GitHub'
 $forkApprovalPolicy = 'first_time_contributors_new_to_github'
+$forkApprovalNotice = "notice: a repository with a self-hosted runner or a pull_request workflow that uses secrets must keep all_external_contributors, and this script checks for neither (the template's ADR-0039)"
 function Get-ForkApprovalState($Response) {
     if ($Response.Status -ne 200) { return Get-SettingState $Response { $true } }
     try { $policy = "$(($Response.Body | ConvertFrom-Json -ErrorAction Stop).approval_policy)" }
@@ -936,6 +938,7 @@ function Set-SecuritySettings([string]$Name, $Info) {
     $state = Get-SettingState (Invoke-HostApi gh "$base/actions/permissions/workflow") { param($answer) $answer.default_workflow_permissions -eq 'read' -and -not [bool]$answer.can_approve_pull_request_reviews }
     Set-SecuritySetting $Name $label $state PUT "$base/actions/permissions/workflow" @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false }
     $state = Get-ForkApprovalState (Invoke-HostApi gh "$base/actions/permissions/fork-pr-contributor-approval")
+    if ($state -is [bool] -and -not $state) { Write-Host "${Name}: $forkApprovalNotice" }
     Set-SecuritySetting $Name $forkApprovalLabel $state PUT "$base/actions/permissions/fork-pr-contributor-approval" @{ approval_policy = $forkApprovalPolicy }
 
     $features = [ordered]@{ secret_scanning = 'secret scanning'; secret_scanning_push_protection = 'secret scanning push protection' }
@@ -1083,6 +1086,7 @@ function Set-OrganizationForkApproval {
     $name = "organization ${Owner}"
     if ($state -is [string]) { Write-Host "${name}: ${forkApprovalLabel}: not available ($state)"; return $false }
     if ($state) { Write-Host "${name}: ${forkApprovalLabel}: already set"; return $true }
+    Write-Host "${name}: $forkApprovalNotice"
     if (-not $PSCmdlet.ShouldProcess($Owner, "turn on $forkApprovalLabel")) { Write-Host "${name}: ${forkApprovalLabel}: would set"; return $true }
     $result = Invoke-HostWrite PUT $path @{ approval_policy = $forkApprovalPolicy }
     if ($result.Status -ge 200 -and $result.Status -lt 300) { Write-Host "${name}: ${forkApprovalLabel}: set"; return $true }
