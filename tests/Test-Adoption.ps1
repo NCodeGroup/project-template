@@ -83,12 +83,26 @@ $demo = New-TestFolder 'demo' @{
     'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <Authors>NCode Group</Authors>`n  </PropertyGroup>`n</Project>`n"
 }
 Push-Location $demo
-try { Invoke-Git init -q -b main; Invoke-Git remote add origin https://gitlab.com/example/demo.git }
+try { Invoke-Git init -q -b main; Invoke-Git remote add origin https://github.com/example/demo.git }
 finally { Pop-Location }
 $a = Get-AdoptionAnswers $demo
 $detail = ($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; '
-Check 'unit: Get-AdoptionAnswers works out a .NET repository' (($a.stack -eq 'dotnet') -and ($a.project_name -eq 'NCode.Demo') -and ($a.git_host -eq 'gitlab') -and ($a.author_name -eq 'NCode Group') -and ($a.build_command -eq 'dotnet build src/NCode.Demo.slnx') -and ($a.test_command -eq 'dotnet test src/NCode.Demo.slnx')) $detail
+Check 'unit: Get-AdoptionAnswers works out a .NET repository' (($a.stack -eq 'dotnet') -and ($a.project_name -eq 'NCode.Demo') -and ($a.git_host -eq 'github') -and ($a.author_name -eq 'NCode Group') -and ($a.build_command -eq 'dotnet build src/NCode.Demo.slnx') -and ($a.test_command -eq 'dotnet test src/NCode.Demo.slnx')) $detail
 Check 'unit: Get-AdoptionAnswers answers pre_release tracked, since a repository has a history' ($a.pre_release -eq 'tracked') $detail
+# The refusals come before the adoption touches anything; the fixtures carry a local identity, which the script's own check needs.
+$adoptScript = Join-Path $repoRoot 'Adopt-Project.ps1'
+$gitlabOrigin = New-Fixture 'gitlab-origin' @{ 'README.md' = "t`n" } 'https://user:secret@gitlab.com/example/gitlab-origin.git'
+Invoke-Git -C $gitlabOrigin config user.name template-test
+Invoke-Git -C $gitlabOrigin config user.email template-test@example.invalid
+$gitlabMessage = try { & $adoptScript -Path $gitlabOrigin -Template $repoRoot | Out-Null; '' } catch { $_.Exception.Message }
+$gitlabStatus = "$(git -C $gitlabOrigin status --porcelain)"
+Check 'unit: Adopt-Project.ps1 refuses a repository whose origin isn''t on GitHub, without its credentials, and leaves it alone' ($gitlabMessage.Contains('NCodeGroup''s GitHub repositories only') -and $gitlabMessage.Contains('https://gitlab.com/example/gitlab-origin.git') -and -not $gitlabMessage.Contains('secret') -and -not $gitlabStatus) "$gitlabMessage | $gitlabStatus"
+$githubOrigin = New-Fixture 'github-origin' @{ 'README.md' = "t`n" } 'https://github.com/example/github-origin.git'
+Invoke-Git -C $githubOrigin config user.name template-test
+Invoke-Git -C $githubOrigin config user.email template-test@example.invalid
+$hostMessage = try { & $adoptScript -Path $githubOrigin -Template $repoRoot -Data @{ git_host = 'gitlab' } | Out-Null; '' } catch { $_.Exception.Message }
+$hostStatus = "$(git -C $githubOrigin status --porcelain)"
+Check 'unit: Adopt-Project.ps1 refuses -Data that answers git_host other than github and leaves the repository alone' ($hostMessage.Contains('NCodeGroup''s GitHub repositories only') -and $hostMessage.Contains('git_host ''gitlab''') -and -not $hostStatus) "$hostMessage | $hostStatus"
 $apacheText = "                                 Apache License`n                           Version 2.0, January 2004`n"
 $licenseFolders = [ordered]@{
     'license-props' = @{ Files = @{ 'src/A/A.csproj' = "<Project />`n"; 'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <PackageLicenseExpression>MIT</PackageLicenseExpression>`n  </PropertyGroup>`n</Project>`n"; 'LICENSE' = $apacheText }; License = 'MIT' }
