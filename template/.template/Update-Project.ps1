@@ -82,8 +82,9 @@
     major was built with a higher one than build/ProjectTemplate.props pins (the library's ADR-0136). It leaves
     .github/workflows/publish.yml out of a library whose own workflow already runs nuget push, and warns when both
     publish. When the project has .github/workflows/tag-release.yml and a publish.yml without a workflow_dispatch
-    trigger, it says what to add. When tag-release.yml runs ci.yml and ci.yml has no workflow_call trigger, it says
-    to add one. When a job of ci.yml, or its top-level permissions, asks for more than contents: read, which
+    trigger, it says what to add. With release: tag+release, it also names each workflow the nuget_publisher answer
+    names that has no workflow_dispatch trigger, which tag-release.yml starts the same way. When tag-release.yml runs
+    ci.yml and ci.yml has no workflow_call trigger, it says to add one. When a job of ci.yml, or its top-level permissions, asks for more than contents: read, which
     tag-release.yml grants it, it names each and says to move such a job into a workflow of its own (the template's
     ADR-0026). When it has release-provenance.yml or raise-baseline.yml and a publish.yml that
     doesn't call one of them, or either, it warns that no release gets its provenance or baseline pull request (the template's
@@ -1461,6 +1462,7 @@ try {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
+    Get-PublisherDispatchNote
     Get-CiCallNote
     Get-CiPermissionNote
     $offered = [bool]@($shown | Where-Object { $_.File -eq 'SECURITY.md' } | ForEach-Object Lines | Where-Object { $_ -match '^\s*\+Releases are immutable' }).Count
