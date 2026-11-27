@@ -3,7 +3,7 @@
     Render the template's .NET cases and check that the .NET layer builds, tests and packs.
 
 .DESCRIPTION
-    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Then runs build/Test-DotnetSupport.ps1 against a stand-in releases index, offline; its fixture solutions need dotnet on PATH. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), checks that each fresh render passes dotnet csharpier check . before anything formats it, runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
+    First runs the template's build/Install-Dotnet.ps1 in this process against stand-ins for Microsoft's release metadata and downloads, offline. Then runs build/Test-DotnetSupport.ps1 against a stand-in releases index, offline, and build/Get-TestRuntimes.ps1 on a fixture solution; the fixture solutions need dotnet on PATH. Renders the dotnet and dotnet-library-apache cases of tests\Test-Template.ps1 from a committed, tagged (v0.1.0) snapshot of the working tree in the work folder (-Work), checks that each fresh render passes dotnet csharpier check . before anything formats it, runs the .NET build checks on them, prints PASS or FAIL per check and exits 1 on any failure. With -SkipDotnetBuild it renders nothing and exits 0.
 
 .EXAMPLE
     .\tests\Test-TemplateDotnet.ps1
@@ -12,7 +12,7 @@
     Render nothing and run no .NET check; exit 0.
 
 .PARAMETER InstallerOnly
-    Run only the offline checks of build/Install-Dotnet.ps1 and build/Test-DotnetSupport.ps1: render nothing and build nothing.
+    Run only the offline checks of build/Install-Dotnet.ps1, build/Test-DotnetSupport.ps1 and build/Get-TestRuntimes.ps1: render nothing and build nothing.
 
 .PARAMETER FormatOnly
     Run the installer checks, offline, then render the two cases and run only the check that each fresh render passes CSharpier's check: build nothing.
@@ -271,6 +271,22 @@ $r = Invoke-Support '12.0.100-preview.1.26000.1'
 Check 'support: build/Test-DotnetSupport.ps1 fails a release in a phase other than active or maintenance, such as preview' ($r.ExitCode -eq 1 -and $r.Printed.Contains('Error: .NET 12.0 (global.json) is a preview release, not one Microsoft supports') -and $r.Printed.Contains('.NET support: FAILED (1)')) $r.Printed
 $r = Invoke-Support '' -Name 'multi' -Files @{ 'src/Multi/Multi.csproj' = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFrameworks>net10.0;netstandard2.0;net48</TargetFrameworks></PropertyGroup></Project>' }
 Check 'support: build/Test-DotnetSupport.ps1 checks only the net channel of a project that also targets netstandard2.0 and net48' ($r.ExitCode -eq 0 -and $r.Printed.Contains('10.0 (src/Multi/Multi.csproj): LTS, supported until 2028-11-14') -and -not $r.Printed.Contains('lists no') -and @($r.Printed -split "`n" | Where-Object { $_ -match '^\d+\.\d+ \(' }).Count -eq 1 -and $r.Printed.Contains('.NET support: PASSED')) $r.Printed
+# build/Get-TestRuntimes.ps1 reads a test project MSBuild warns about: MSB4011, naming a path with a brace, goes to stderr, and the script must parse only the JSON on stdout.
+$runtimesRoot = Join-Path $stubRoot 'runtimes-braces'
+New-Item -ItemType Directory -Force -Path (Join-Path $runtimesRoot 'build') | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $runtimesRoot 'tests/Braces.Tests') | Out-Null
+Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'template/build/Get-TestRuntimes.ps1') -Destination (Join-Path $runtimesRoot 'build')
+[IO.File]::WriteAllText((Join-Path $runtimesRoot 'tests/Braces.Tests/Braces{1}.props'), '<Project />')
+[IO.File]::WriteAllText((Join-Path $runtimesRoot 'tests/Braces.Tests/Braces.Tests.csproj'), '<Project Sdk="Microsoft.NET.Sdk"><Import Project="Braces{1}.props" /><Import Project="Braces{1}.props" /><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>')
+Push-Location $runtimesRoot
+try {
+    dotnet new sln -n Fixture --no-update-check | Out-Null
+    dotnet sln add tests/Braces.Tests/Braces.Tests.csproj | Out-Null
+    $runtimes = @(pwsh -NoProfile -File build/Get-TestRuntimes.ps1 2>&1 | ForEach-Object { "$_" })
+    $runtimesCode = $LASTEXITCODE
+}
+finally { Pop-Location }
+Check 'runtimes: build/Get-TestRuntimes.ps1 reads the target frameworks of a test project MSBuild warns about, parsing only the JSON on stdout' ($runtimesCode -eq 0 -and ($runtimes -join ',') -eq '8.0.x') ($runtimes -join "`n")
 if ($InstallerOnly) {
     ''
     if ($failures.Count) { "Kept the work folder: $Work"; "Template .NET tests: FAILED ($($failures.Count))"; exit 1 }
