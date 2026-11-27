@@ -94,6 +94,7 @@
     reference it themselves (the template's ADR-0138).
     It also names each job of the project's own workflows, other than publish.yml, that builds, packs, tests without --no-build or pushes packages with an actions/checkout step without fetch-depth: 0 whose folder holds such a step's working directory (its working-directory:, or the job's or the workflow's defaults:), on which Nerdbank.GitVersioning fails the build, or with a -p:Version argument, which it ignores; when it can't tell which checkout a step runs in, it names each shallow checkout of the job.
     Such a library's nuget_publisher answer names its own publishing workflows, so the update also leaves out or deletes release-provenance.yml and raise-baseline.yml, and its documents name those workflows instead of publish.yml.
+    For a .NET library on GitHub whose AGENTS.md Landing section says release: none or tag, or has no release line, it names the one-line change to - release: tag+release, under which tag-release.yml tags and publishes each release as its pull request merges and starts the publishing workflow, also when the project is already up to date; it says nothing while a workflow the nuget_publisher answer names has no workflow_dispatch trigger or doesn't exist, and never changes AGENTS.md (the template's ADR-0016 and ADR-0137).
     When -Data turns csharp_format on, it counts the C# files that don't start with the header .editorconfig sets and names the first five, because IDE0073 then fails the build for each (the template's ADR-0148); it rewrites none.
     An existing project keeps off the checks a new one starts with until -Data turns them on: csharp_format, node_lint, coverage_gate and file_headers are false when its answers lack them.
     A blank license answer beside a package_license answer, which template v0.63.0 replaced with license, takes that
@@ -1394,7 +1395,7 @@ try {
         })
 
     # A success ends with exit 0, not return, which would hand a caller that runs this with & the exit code of the last git command, such as git apply --check's 1 for a hunk the project lacks.
-    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-LicenseWarning; Get-BadgeReminder; Get-ImmutableReleaseNote $false; Get-CodeReviewNote; exit 0 }
+    if (-not (git status --porcelain)) { "Already up to date: template $to."; Get-ReleasePolicyNote; Get-LicenseWarning; Get-BadgeReminder; Get-ImmutableReleaseNote $false; Get-CodeReviewNote; exit 0 }
     "Template $from -> ${to}:"
     $changes | Sort-Object Kind, File | ForEach-Object { '  {0,-9} {1}' -f $_.Kind, $_.File }
     # A file the update leaves as the project had it lost nothing, such as a local edit the new version also makes or a deleted file it also deletes: list only the files that differ from the commit the update started from.
@@ -1500,6 +1501,7 @@ try {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
+    Get-ReleasePolicyNote
     Get-PublisherDispatchNote
     Get-CiCallNote
     Get-CiPermissionNote
