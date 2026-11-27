@@ -107,7 +107,7 @@ Existing `byte[]` surfaces convert as they are touched, not in one sweep.
 - `new byte[]` zeroed in a `finally`. Rejected: the array is movable, and each call allocates.
 - A pinned allocation per call, without a pool. Rejected on hot paths: it costs more than an ordinary allocation and is
   freed only by a generation 2 collection. Kept for code off hot paths.
-- `SecureString`. Rejected: Microsoft's DE0001 obsoletes it, and it holds `char` values, not bytes.
+- `SecureString`. Rejected: Microsoft's DE0001 advises against it in new code, and it holds `char` values, not bytes.
 - Locking or encrypting memory. Rejected: it takes operating system calls, hibernation saves locked pages, and the key
   is one more secret to protect.
 - Every project depends on NCode.Buffers. Rejected: the template adds no package, and many projects hold no secret.
