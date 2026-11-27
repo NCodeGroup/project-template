@@ -358,7 +358,7 @@ try {
     # A publish.yml the repository kept, without the trigger tag-release.yml starts it with: a release that workflow
     # publishes would ship no packages. The warning is .template/Update-Project.ps1's, word for word;
     # tests/Test-AdoptEdgeCases.ps1 keeps the two equal.
-    if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch '(?m)^\s+workflow_dispatch:') {
+    if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and @(Get-WorkflowEvents (Get-Content -LiteralPath .github/workflows/publish.yml -Raw)) -notcontains 'workflow_dispatch') {
         ''
         '.github/workflows/publish.yml has no workflow_dispatch trigger. .github/workflows/tag-release.yml publishes each release with the workflow''s token, which starts no other workflow, so it starts publish.yml through workflow_dispatch, and until publish.yml has that trigger, a release ships no packages. Add the trigger with a required tag input to its on: section, read the tag from inputs.tag when the run has no release, and check out refs/tags/<tag>, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0137, which such a library has in docs/decisions/project-template/).'
     }
