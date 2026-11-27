@@ -1767,6 +1767,7 @@ $m += @(Get-MissingText $boardFiles ('board=<owner>/<number>', 'projectsV2/<numb
 $m += @(Get-MissingText $triageFiles 'to `Ready`')
 $m += @(Get-MissingText $planBoardFiles 'to `In progress` on the board')
 $m += @(Get-MissingText $shipFiles 'to `In review` on the board')
+$m += @($shipFiles | Where-Object { ([regex]::Matches([IO.File]::ReadAllText((Join-Path $repoRoot $_)), [regex]::Escape('to `In review` on the board'))).Count -lt 2 } | ForEach-Object { "${_}: moves to In review only once, not also when the pull request is open already" })
 $m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- board: none', '`board`: `none`'))
 Check 'workflow: with a board, triage moves ready issues to Ready, a plan snapshot to In progress and a pull request to In review, and AGENTS.md documents board' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ($triageFiles + $shipFiles + $decomposeFiles) 'is never read as an empty list')
