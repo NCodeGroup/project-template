@@ -44,7 +44,6 @@ Once per PC, in PowerShell 7, not elevated:
 | VS Code | `winget install --id Microsoft.VisualStudioCode -e` | The Claude Code and Copilot Chat panels |
 | Claude Code | `irm https://claude.ai/install.ps1 \| iex` | The `claude` command. This installer keeps it up to date; the WinGet package `Anthropic.ClaudeCode` doesn't |
 | Copilot CLI | `winget install --id GitHub.Copilot -e` | Copilot in a terminal; optional |
-| GitLab CLI | `winget install --id GLab.GLab -e` | GitLab projects only |
 | The stack's toolchain | .NET: `winget install --id Microsoft.DotNet.SDK.10 -e`. Python: `winget install --id Python.Python.3.14 -e`. Node.js: nvs, below | Building and testing the project |
 
 For Node.js, install the version manager nvs rather than Node.js itself. It works in both PowerShell and Git Bash:
@@ -189,7 +188,7 @@ Adopt one from this repository's clone. See [Adopt an existing repository](READM
 
 `Adopt-Project.ps1` works out `workflow_tools` from the repository's Copilot and Hybrid agent files. A repository that has neither gets Claude Code and Copilot; to add the Hybrid agents, which use the shack PC's private model, pass `-Data @{ workflow_tools = 'claude', 'copilot', 'local' }`.
 
-On GitHub, `Adopt-Project.ps1` ends by printing the command that protects the repository's default branch so changes reach it only through pull requests (`tools\Set-RepositoryBaseline.ps1`, [Protect the Default Branch](README.md#protect-the-default-branch)). On GitLab, it prints the command that protects the project (`tools\Set-GitLabBaseline.ps1`), with its "All threads must be resolved" and "Pipelines must succeed" merge checks, "Squash commits when merging" set to "Do not allow" and no one allowed to push to the default branch, to run signed in to `glab` as a Maintainer of the project. `New-Project.ps1 -CreateRemote` runs either for you. Run the printed command once, from this clone, signed in to `gh` as an administrator of the repository on GitHub.
+`Adopt-Project.ps1` ends by printing the command that protects the repository's default branch so changes reach it only through pull requests (`tools\Set-RepositoryBaseline.ps1`, [Protect the Default Branch](README.md#protect-the-default-branch)). `New-Project.ps1 -CreateRemote` runs it for you. Run the printed command once, from this clone, signed in to `gh` as an administrator of the repository on GitHub.
 
 To have the NCode Review bot review a GitHub project's pull requests, and its NCode Review Approver approve them, answer yes to the `code_review` question when you create it; a project that already exists gets `.github/workflows/code-review.yml` from `.\.template\Update-Project.ps1 -Data @{ code_review = $true }`, run in the project. Then set the repository up once, as [docs/adopt.md](docs/adopt.md#5-ncode-review) section 5 says, after NCode Review's runbook, [Set Up NCode Review, End to End](https://github.com/NCodeGroup/code-review/blob/main/docs/setup.md): add the repository to both apps' installations, NCode Review and NCode Review Approver, and run `tools\Enable-CodeReview.ps1 -Repo <the repository's name> -ApproverPrivateKeyPath <path to the approver's .pem>` from a clone of `NCodeGroup/code-review`, which creates the `code-review` environment, gives the repository the organization's secrets and stores the approver's key there. Without that step, the review job fails.
 
