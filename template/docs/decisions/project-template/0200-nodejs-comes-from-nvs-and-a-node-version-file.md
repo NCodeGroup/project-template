@@ -1,6 +1,6 @@
 # 0200. Node.js comes from nvs and a `.node-version` file
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0040)
 - **Date:** 2026-11-08
 
 ## Context

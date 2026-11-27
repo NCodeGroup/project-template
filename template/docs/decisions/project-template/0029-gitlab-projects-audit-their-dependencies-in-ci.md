@@ -1,6 +1,6 @@
 # 0029. GitLab projects audit their dependencies in CI
 
-- **Status:** Accepted
+- **Status:** Superseded by 0040
 - **Date:** 2026-11-16
 
 ## Context
