@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.116.0] - 2026-11-27
+
+### Added
+
+- `.\.template\Update-Project.ps1` and `Adopt-Project.ps1` print the one-line change to `- release: tag+release` for a .NET library on GitHub whose `AGENTS.md` Landing section says `release: none` or `tag`, or has no release line, so a library learns why merging a release publishes nothing: the note says that `tag-release.yml` then tags and publishes each release as its pull request merges and starts `publish.yml`, or the library's own publishing workflow, that the first run publishes nothing while the changelog's newest section is already tagged and released, and that `SECURITY.md` can then say how to verify a release tag. The update prints it also when the project is already up to date, and neither changes `AGENTS.md`; a library whose own publishing workflow has no `workflow_dispatch` trigger, or doesn't exist, gets no such note ([#516](https://github.com/NCodeGroup/project-template/issues/516)).
+
+### Changed
+
+- `.github/instructions/project-template.instructions.md` gives every .NET library on GitHub the same release conventions: `publish.yml` publishes the packages from a GitHub release through trusted publishing once a maintainer approves the `nuget` environment, `tag-release.yml` tags and publishes each release as its pull request merges under `release: tag+release` and starts `publish.yml`, and `raise-baseline.yml` raises `PackageValidationBaselineVersion` after each stable release, so no plan raises it; a library whose own workflow publishes its packages gets that workflow in place of `publish.yml`, and no trusted publishing or baseline text ([#516](https://github.com/NCodeGroup/project-template/issues/516)).
+
 ## [0.115.3] - 2026-11-27
 
 ### Changed
@@ -1977,7 +1987,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.115.3...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.116.0...HEAD
+[0.116.0]: https://github.com/NCodeGroup/project-template/compare/v0.115.3...v0.116.0
 [0.115.3]: https://github.com/NCodeGroup/project-template/compare/v0.115.2...v0.115.3
 [0.115.2]: https://github.com/NCodeGroup/project-template/compare/v0.115.1...v0.115.2
 [0.115.1]: https://github.com/NCodeGroup/project-template/compare/v0.115.0...v0.115.1
