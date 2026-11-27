@@ -444,6 +444,17 @@ try {
     $stsOffOutput = dotnet build src/Sts -p:CheckEolTargetFramework=false -p:ProjectTemplateLtsCheck=false 2>&1 | Out-String
     $stsOffCode = $LASTEXITCODE
     Check 'dotnet: a target framework on a Standard Term Support release fails the build with PT0155, and builds with ProjectTemplateLtsCheck set to false' ($stsCode -ne 0 -and $stsOutput -match "error PT0155: $([regex]::Escape($stsFramework)) is a Standard Term Support release" -and $stsOffCode -eq 0) ((($stsOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | ') + ' || ' + (($stsOffOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 3) -join ' | '))
+
+    # PT0155's target reads only the target framework: run it alone, without restore or build, so -windows and netcoreapp3.1 need no targeting pack.
+    $ltsMajor = [int]($sdkChannel -split '\.')[0]
+    $boundaries = [ordered]@{ "net$($ltsMajor - 1).0-windows" = $true; "net${ltsMajor}.0" = $false; "net${ltsMajor}.0-windows" = $false; 'netcoreapp3.1' = $false }
+    $wrongBoundaries = @(foreach ($framework in $boundaries.Keys) {
+            $boundaryOutput = dotnet msbuild src/Sts/Sts.csproj -t:ProjectTemplateLtsTargetFramework "-p:TargetFramework=$framework" 2>&1 | Out-String
+            $boundaryFailed = $LASTEXITCODE -ne 0
+            $reported = $boundaryOutput -match "error PT0155: $([regex]::Escape($framework)) is a Standard Term Support release"
+            if ($boundaryFailed -ne $boundaries[$framework] -or $reported -ne $boundaries[$framework] -or (-not $boundaries[$framework] -and $boundaryOutput.Contains('PT0155'))) { "${framework}: exit $LASTEXITCODE $(($boundaryOutput -split "`n" | Select-String -Pattern ' error ' | Select-Object -First 2) -join ' ')" }
+        })
+    Check 'dotnet: PT0155 fails an odd major with a platform suffix, and leaves an even major, with or without one, and netcoreapp3.1 alone' (-not $wrongBoundaries) ($wrongBoundaries -join ' | ')
 }
 finally { Pop-Location }
 
