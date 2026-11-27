@@ -1775,6 +1775,14 @@ $m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('leave that entry out, n
 $m += @(Get-MissingText $issuePlanFiles ('one page at a time from page 1 until a page holds fewer than 100 entries', 'When that read fails, stop and say so, naming the issue and the call that failed'))
 $m += @(Get-MissingText $decomposeFiles ('or when the read of its sub-issues fails, naming the call that failed', 'a read of the epic''s sub-issues or of a story''s blockers among them, stop filing'))
 Check 'workflow: a failed read of blockers or sub-issues is never an empty list: run-issues leaves the entry out, triage doesn''t judge it ready, plan-issue and decompose-issue stop (ADR-0042)' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ($triageFiles + $shipFiles + $decomposeFiles) 'answers nothing and is never read as "no type, no parent"')
+$m += @(Get-MissingText ($triageFiles + $issuePlanFiles) 'When that read fails, the type is unknown, not missing')
+$m += @(Get-MissingText $triageFiles 'list it with the readiness `not judged: it couldn''t be read`')
+$m += @(Get-MissingText $issuePlanFiles 'A read that fails is never read as an issue without a type, which would plan an Epic')
+$m += @(Get-MissingText $decomposeFiles ('when the read of the issue itself fails, naming the call that failed', 'step 1 stopped when that read failed, so a type is never set from a read that failed'))
+$m += @(Get-MissingText $shipFiles ('file the follow-ups without a type or an epic link, and item 12 says so', 'When item 9 filed follow-ups without a type or an epic link because the read of that first issue failed, say so'))
+$m += @(($triageFiles + $shipFiles + $decomposeFiles) | Where-Object { [IO.File]::ReadAllText((Join-Path $repoRoot $_)).Contains('go on as if the issue had no type or parent') } | ForEach-Object { "${_}: reads a failed read as no type or parent" })
+Check 'workflow: a failed read of an issue is never "no type, no parent": triage doesn''t judge it, plan-issue and decompose-issue stop, ship-plan files its follow-ups unlinked and says so (ADR-0042)' (-not $m) ($m -join '; ')
 if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Template tests: PASSED'
