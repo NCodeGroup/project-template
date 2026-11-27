@@ -172,7 +172,7 @@ GitHub runs 2.1 to 2.4; GitLab runs only 2.5.
 
 ## 3. Releases
 
-This section applies to a project whose `AGENTS.md` Landing section says `release: tag+release`, the default for a .NET library on GitHub, and not to one that says `none`.
+This section applies to a project whose `AGENTS.md` Landing section says `release: tag+release`, the default for a .NET library on GitHub, and not to one that says `none`. A .NET library on GitHub that says `none` or `tag` publishes nothing on merge: `Adopt-Project.ps1` and every `.\.template\Update-Project.ps1` run print the one-line change to `- release: tag+release`.
 
 ### 3.1 How a Release Happens
 
