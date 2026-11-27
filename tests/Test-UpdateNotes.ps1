@@ -388,7 +388,7 @@ $releasePolicyNote = & {
     $library = "nuget_package: true`ngit_host: github`n"
     $own = $library + "nuget_publisher: .github/workflows/release.yml`n"
     $noteCases = [ordered]@{
-        'release: none'                = @{ Landing = '- release: none'; Answers = $library; Want = @("AGENTS.md's Landing section says release: none,", 'tags nothing, publishes no GitHub release', '  - release: tag+release', '.github/workflows/publish.yml, which publishes the packages', 'ADR-0016 and ADR-0137',         'already tagged and has its GitHub release', './.template/Publish-Release.ps1 -Policy then prints tag+release', 'as the template''s ADR-0032 item 2 says', "`n  - Merging a release's pull request now tags the release") }
+        'release: none'                = @{ Landing = '- release: none'; Answers = $library; Want = @("AGENTS.md's Landing section says release: none,", 'tags nothing, publishes no GitHub release', '  - release: tag+release', '.github/workflows/publish.yml, which publishes the packages', 'ADR-0016 and ADR-0137', 'already tagged and has its GitHub release', './.template/Publish-Release.ps1 -Policy then prints tag+release', 'as the template''s ADR-0032 item 2 says', "`n  - Merging a release's pull request now tags the release") }
         'no release line'              = @{ Landing = '- integrate: pull-request'; Answers = $library; Want = @('says release: none,', '  - release: tag+release') }
         'release: tag'                 = @{ Landing = '- release: tag'; Answers = $library; Want = @('says release: tag,', 'tags the release but publishes no GitHub release') }
         'release: tag+release'         = @{ Landing = '- release: tag+release'; Answers = $library }
