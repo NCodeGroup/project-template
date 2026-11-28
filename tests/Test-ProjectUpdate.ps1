@@ -88,7 +88,7 @@ $preRelease = & {
 }
 Check 'unit: the render takes pre_release from -Data, else untracked only from the Landing section''s - pre-release: untracked line' (-not $preRelease) ($preRelease -join ' | ')
 
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test python' --data 'stack=python' --data 'git_host=github' --data 'workflow_tools=[claude, copilot, local]' $tplUrl (Join-Path $Work 'python')
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test python' --data 'stack=python' --data 'workflow_tools=[claude, copilot, local]' $tplUrl (Join-Path $Work 'python')
 
 $project = Join-Path $Work 'python'
 # Each project runs its own copy of the update script.
@@ -230,7 +230,7 @@ finally { Pop-Location }
 
 # A .NET project from before csharp_format has no such answer: an update keeps it out of the formatter, and -Data opts it in.
 $dotnet = Join-Path $Work 'dotnet'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test dotnet' --data 'stack=dotnet' --data 'git_host=github' --data 'csharp_format=false' $tplUrl $dotnet
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test dotnet' --data 'stack=dotnet' --data 'csharp_format=false' $tplUrl $dotnet
 Push-Location $dotnet
 try {
     $answersFile = (Resolve-Path -LiteralPath .copier-answers.yml).Path

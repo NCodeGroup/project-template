@@ -58,7 +58,7 @@ $tplUrl = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 # Renders a project of the stack at v0.1.0 and commits it in a repository of its own; returns its folder.
 function New-TestProject([string]$Name) {
     $dest = Join-Path $Work $Name
-    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $Name" --data "stack=$Name" --data 'git_host=github' --data 'workflow_tools=[claude, copilot, local]' $tplUrl $dest
+    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $Name" --data "stack=$Name" --data 'workflow_tools=[claude, copilot, local]' $tplUrl $dest
     Push-Location $dest
     try { Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project' }
     finally { Pop-Location }

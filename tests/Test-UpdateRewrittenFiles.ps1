@@ -54,7 +54,7 @@ $tpl = Join-Path $Work 'template-repo'
 $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $path = Join-Path $Work 'rewritten'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Rewritten' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tpl $path | Out-Null
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Rewritten' --data stack=python --data 'workflow_tools=[claude]' $tpl $path | Out-Null
 $ci = Join-Path $path '.github/workflows/ci.yml'
 [IO.File]::AppendAllText($ci, "# Own note`n")
 Push-Location $path

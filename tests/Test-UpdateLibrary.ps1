@@ -63,7 +63,7 @@ function Invoke-Git {
 function New-Library([string]$Name, [string[]]$Data) {
     $folder = Join-Path $Work $Name
     $dataArgs = foreach ($d in $Data) { '--data', $d }
-    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $Name" --data stack=dotnet --data git_host=github --data 'workflow_tools=[claude]' --data nuget_package=true @dataArgs $tpl $folder
+    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=Test $Name" --data stack=dotnet --data 'workflow_tools=[claude]' --data nuget_package=true @dataArgs $tpl $folder
     $folder
 }
 # Run a project's own update script with &, collecting its output and its exit code, or -1 when it throws.
