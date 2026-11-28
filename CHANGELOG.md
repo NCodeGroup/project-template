@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.125.2] - 2026-11-28
+
+### Fixed
+
+- `/triage-issues`, every planning command and `/ship-plan` find the board's Status option for a column by its `name.raw`: GitHub's REST Projects API answers an option's `name` as an object with its `raw` and `html` text, so a move that compared `name` with the column found no option ([#552](https://github.com/NCodeGroup/project-template/issues/552), [ADR-0042](template/docs/decisions/project-template/0042-work-is-planned-as-epics-stories-and-plan-steps-on-a-kanban-flow.md)).
+- Every command that runs `gh` says to quote a `gh api` path that holds `{owner}` or `{repo}` in PowerShell, such as `gh api 'repos/{owner}/{repo}/issues/1'`: unquoted, PowerShell reads the braces as script blocks and passes the path to `gh` in pieces, so the call failed, as `/run-issues`'s did on Windows ([#552](https://github.com/NCodeGroup/project-template/issues/552)).
+
 ## [0.125.1] - 2026-11-28
 
 ### Removed
@@ -2127,7 +2134,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.125.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.125.2...HEAD
+[0.125.2]: https://github.com/NCodeGroup/project-template/compare/v0.125.1...v0.125.2
 [0.125.1]: https://github.com/NCodeGroup/project-template/compare/v0.125.0...v0.125.1
 [0.125.0]: https://github.com/NCodeGroup/project-template/compare/v0.124.0...v0.125.0
 [0.124.0]: https://github.com/NCodeGroup/project-template/compare/v0.123.0...v0.124.0
