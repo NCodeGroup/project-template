@@ -23,6 +23,12 @@ on:
 permissions:
   contents: read
 
+# The same groups as ci.yml: a newer push to a pull request or a topic branch cancels the run it supersedes, and a run
+# for a default-branch commit or a merge queue entry is never cancelled.
+concurrency:
+  group: codeql-${{ github.ref }}-${{ (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.event_name == 'merge_group') && github.sha || 'latest' }}
+  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name != 'merge_group' }}
+
 jobs:
   languages:
     name: CodeQL languages
@@ -74,6 +80,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # build-mode none builds nothing, and restores the C# projects' packages with the SDK global.json selects, which a
+      # .NET project installs with its install-dotnet action.
+      - name: Install .NET
+        if: matrix.language == 'csharp' && hashFiles('.github/actions/install-dotnet/action.yml') != ''
+        uses: ./.github/actions/install-dotnet
       - name: Initialize CodeQL
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
