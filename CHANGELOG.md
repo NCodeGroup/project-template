@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.122.0] - 2026-11-28
+## [0.123.0] - 2026-11-28
 
 ### Added
 
@@ -15,6 +15,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - **Breaking:** `New-Project.ps1 -CreateRemote` checks the repository's name, the destination folder's, before `gh repo create`: a .NET project's is its root namespace in PascalCase segments joined by `.`, without a leading `NCode.`, such as `Buffers` or `Collections.Providers`, and every other project's is lowercase kebab case, such as `qso-viewer`. A name that doesn't fit stops the script with an error that names the one that fits; it deletes the files Copier wrote and creates nothing on GitHub, and with `stack` in `-Data` it stops before Copier asks anything. Name the folder `-Path` points to by that rule. The script's help, the README's Create a Project and `docs/adopt.md` say so, and the `Adopt-Project.ps1` examples use `C:\src\Buffers` ([#546](https://github.com/NCodeGroup/project-template/issues/546), [ADR-0045](template/docs/decisions/project-template/0045-new-project-names-a-repository-by-ncodegroups-rule-and-refuses-a-name-that-doesnt-fit.md)).
+
+## [0.122.0] - 2026-11-28
+
+### Added
+
+- Every GitHub project gets a project-owned `.github/workflows/codeql.yml`, which runs CodeQL on each push to `main`, every pull request, a fork's too, the merge queue and weekly, with the `security-extended` queries for `actions` and, from the tracked files, `c-cpp`, `csharp`, `java-kotlin`, `javascript-typescript`, `python`, `ruby` and `rust`. CodeQL's default setup analyzes no pull request from a fork, so the code-scanning rule held every fork's pull request. An update adds the file and prints a note: run `tools/Set-RepositoryBaseline.ps1` once the update merges, since GitHub refuses the workflow's results while the default setup is on ([#537](https://github.com/NCodeGroup/project-template/issues/537), [ADR-0044](template/docs/decisions/project-template/0044-a-fork-pull-request-merges-without-a-bypass.md)).
+- ADR-0044 records how a fork's pull request merges with no bypass in a one-writer repository: CodeQL runs in the project's workflow, and the fork's author, not the maintainer, brings its branch up to date, since approval of the last push leaves a maintainer's update waiting for a second writer ([#537](https://github.com/NCodeGroup/project-template/issues/537), [ADR-0044](template/docs/decisions/project-template/0044-a-fork-pull-request-merges-without-a-bypass.md)).
+
+### Changed
+
+- `tools/Set-RepositoryBaseline.ps1` counts a workflow on the default branch that runs CodeQL on `pull_request` as CodeQL's setup: the ruleset it creates or rewrites gets the code-scanning rule whatever the default setup says, and it turns CodeQL's default setup off, before the ruleset write, where a refusal fails the repository with nothing changed, and on a run that leaves the ruleset alone as a reported setting. `-RequireChecks auto` leaves out the workflow's `CodeQL languages` job ([#537](https://github.com/NCodeGroup/project-template/issues/537), [ADR-0044](template/docs/decisions/project-template/0044-a-fork-pull-request-merges-without-a-bypass.md)).
+- `tools/Get-AdoptionChecklist.ps1`'s row 2.3 is done where `.github/workflows/codeql.yml` runs CodeQL and the default setup is off, and `docs/adopt.md` says so ([#537](https://github.com/NCodeGroup/project-template/issues/537)).
+- `CONTRIBUTING.md` and `/address-feedback` say a fork's author brings its pull request up to date, never a maintainer, whose update approval of the last push would leave waiting for a second writer ([#537](https://github.com/NCodeGroup/project-template/issues/537), [ADR-0044](template/docs/decisions/project-template/0044-a-fork-pull-request-merges-without-a-bypass.md)).
+- `tools/Set-RepositoryBaseline.ps1 -OrganizationPolicy` names each organization code security configuration that enables CodeQL's default setup without allowing advanced setup, which refuses the turn-off of default setup that `codeql.yml`'s results need, and says what an owner sets ([#537](https://github.com/NCodeGroup/project-template/issues/537), [ADR-0044](template/docs/decisions/project-template/0044-a-fork-pull-request-merges-without-a-bypass.md)).
 
 ## [0.121.1] - 2026-11-28
 
@@ -2084,7 +2098,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.122.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.123.0...HEAD
+[0.123.0]: https://github.com/NCodeGroup/project-template/compare/v0.122.0...v0.123.0
 [0.122.0]: https://github.com/NCodeGroup/project-template/compare/v0.121.1...v0.122.0
 [0.121.1]: https://github.com/NCodeGroup/project-template/compare/v0.121.0...v0.121.1
 [0.121.0]: https://github.com/NCodeGroup/project-template/compare/v0.120.0...v0.121.0
