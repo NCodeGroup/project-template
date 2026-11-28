@@ -1,14 +1,15 @@
 # 0044. A fork's pull request merges without a bypass
 
 - **Status:** Accepted
-- **Date:** 2026-11-27
+- **Date:** 2026-11-28
 - **Amends:** 0005, 0020, 0022 and 0030
 
 ## Context
 
-NCodeGroup/NCode.Disposables#95, a pull request from a fork, sat `BLOCKED` with passing CI, a maintainer's approval and
-every thread resolved. It merged once through a temporary `pull_request`-mode bypass for repository admins, removed
-right after. Two causes kept it from merging under the baseline ruleset.
+[NCodeGroup/NCode.Disposables#95](https://github.com/NCodeGroup/NCode.Disposables/pull/95), a pull request from a fork,
+sat `BLOCKED` with passing CI, a maintainer's approval and every thread resolved. It merged once through a temporary
+`pull_request`-mode bypass for repository admins, removed right after. Two causes kept it from merging under the
+baseline ruleset.
 
 1. The code-scanning rule waits for CodeQL, and CodeQL never analyzes a fork's pull request.
    - CodeQL's default setup runs on pull requests "excluding pull requests from forks" (GitHub Docs, "Code scanning
@@ -21,7 +22,8 @@ right after. Two causes kept it from merging under the baseline ruleset.
 2. `strict_required_status_checks_policy` makes a pull request behind `main` update its branch before it merges.
    GitHub counts the merge that "Update branch" makes as the maintainer's push. `require_last_push_approval` then needs
    another writer's approval, which a repository with one writer doesn't have, and NCode Review never approves a fork's
-   pull request, so the approver skips forks
+   pull request, so the approver
+   ([ADR-0036](0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)) skips forks
    ([ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md) decision 4,
    [ADR-0043](0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md) decision 4).
 
@@ -40,8 +42,9 @@ right after. Two causes kept it from merging under the baseline ruleset.
      ([ADR-0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md)).
 2. `tools/Set-RepositoryBaseline.ps1` counts a workflow as CodeQL's setup when its top-level `on:` names `pull_request`
    and a line that isn't a comment uses `github/codeql-action/analyze@`. A CodeQL workflow that runs only on push
-   doesn't count, so default setup keeps deciding there. Where a workflow counts, which amends ADR-0030 decision 1 for
-   such repositories:
+   doesn't count, so default setup keeps deciding there. The baseline reads the workflow's text alone: it doesn't check
+   that the workflow is enabled or has uploaded an analysis, because a new project's first baseline run comes
+   before any analysis exists. Where a workflow counts, which amends ADR-0030 decision 1 for such repositories:
    - a ruleset the baseline creates or rewrites gets the code-scanning rule whatever the default setup says, with no
      suite switch, and the baseline prints neither the suite notice nor ADR-0030's no-language warning;
    - the baseline turns the default setup off before it writes the ruleset, so GitHub accepts the workflow's results; a
@@ -90,6 +93,10 @@ right after. Two causes kept it from merging under the baseline ruleset.
   ([ADR-0039](0039-fork-pull-request-workflows-run-for-established-contributors.md)).
 - A fork's pull request whose author doesn't update it can't merge while it is behind. The maintainer closes it or opens
   the change again from a branch of their own after reading every file.
+- A workflow that is disabled, or fails before it uploads, leaves the code-scanning rule waiting for a result, so every
+  pull request waits until it is fixed; the baseline doesn't detect that.
+- A run that can't read a repository's workflows prints a line saying so and decides the rule and the suite from
+  the default setup, as before this record; the next run that reads them turns the default setup off.
 
 ## References
 
@@ -104,4 +111,5 @@ right after. Two causes kept it from merging under the baseline ruleset.
   [ADR-0036](0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md),
   [ADR-0039](0039-fork-pull-request-workflows-run-for-established-contributors.md) and
   [ADR-0043](0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md)
-- NCodeGroup/project-template#537, NCodeGroup/NCode.Disposables#95
+- [NCodeGroup/project-template#537](https://github.com/NCodeGroup/project-template/issues/537),
+  [NCodeGroup/NCode.Disposables#95](https://github.com/NCodeGroup/NCode.Disposables/pull/95)
