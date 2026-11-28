@@ -40,6 +40,12 @@ baseline ruleset.
      project that has them adds an Analyze job for each.
    - It runs the `security-extended` suite, the one the baseline gave default setup
      ([ADR-0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md)).
+   - It shares `ci.yml`'s concurrency groups, named `codeql-` in place of `ci-`: a newer push to a pull request or a
+     topic branch cancels the run it supersedes, and a run for a default-branch commit or a merge queue entry is never
+     cancelled.
+   - Before CodeQL starts on C#, it installs the .NET SDK `global.json` selects with `./.github/actions/install-dotnet`
+     where the project has that action, as a .NET project does, so `build-mode: none` restores the projects' packages
+     with that SDK rather than the runner's.
 2. `tools/Set-RepositoryBaseline.ps1` counts a workflow as CodeQL's setup when its top-level `on:` names `pull_request`
    and a line that isn't a comment uses `github/codeql-action/analyze@`. A CodeQL workflow that runs only on push
    doesn't count, so default setup keeps deciding there. The baseline reads the workflow's text alone: it doesn't check
@@ -59,6 +65,11 @@ baseline ruleset.
    maintainer isn't the author and can write, meets approval of the last push. `/address-feedback` stops on a fork's
    pull request and says its author pushes the fixes and brings the branch up to date.
 4. `strict_required_status_checks_policy` and `require_last_push_approval` stay as they are.
+5. A repository whose own workflow, other than `codeql.yml`, already runs CodeQL, where a line that isn't a comment
+   uses `github/codeql-action/analyze@`, keeps it and gets no `codeql.yml`: the template's `Adopt-Project.ps1` and
+   `.template/Update-Project.ps1` leave the file out and say so, since two CodeQL workflows would analyze each commit
+   twice under the same categories. The baseline counts that workflow as CodeQL's setup by decision 2 where it runs on
+   `pull_request`, and `tools/Get-AdoptionChecklist.ps1`'s row 2.3 counts it the same way.
 
 ## Options considered
 
@@ -75,6 +86,8 @@ baseline ruleset.
   [ADR-0043](0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md) decides that NCode Review
   never approves a fork's pull request, whatever `approve` says, because its author can't write to the repository and
   can try to steer the verdict through the diff.
+- Add `codeql.yml` beside a repository's own CodeQL workflow. Rejected: each commit is analyzed twice, and the later
+  upload of a category replaces the earlier one.
 - A project-owned CodeQL workflow, and a fork's author who updates its own branch (chosen).
 
 ## Consequences
@@ -86,6 +99,8 @@ baseline ruleset.
   workflow's results while default setup is on. The update's note says to run the baseline once the update merges.
 - A language default setup analyzed that needs a build (Go, Swift, Kotlin) goes unanalyzed until the project adds an
   Analyze job for it, which the baseline's line names.
+- A repository whose own workflow runs CodeQL analyzes what that workflow analyzes. To take the template's `codeql.yml`,
+  its owner deletes that workflow and runs the update again.
 - An organization security configuration that enforces default setup makes the baseline fail or report until an owner
   sets code scanning to "Enabled with advanced setup allowed" or leaves it out of the configuration.
   `-OrganizationPolicy` names each such configuration.
@@ -113,3 +128,4 @@ baseline ruleset.
   [ADR-0043](0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md)
 - [NCodeGroup/project-template#537](https://github.com/NCodeGroup/project-template/issues/537),
   [NCodeGroup/NCode.Disposables#95](https://github.com/NCodeGroup/NCode.Disposables/pull/95)
+- [NCodeGroup/project-template#541](https://github.com/NCodeGroup/project-template/issues/541)
