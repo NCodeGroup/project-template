@@ -103,6 +103,8 @@ jobs:
             run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario push-branch
           - name: Set up the run-issues end-to-end fixture for fixing follow-ups in the pull request
             run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario fix-now
+          - name: Set up the run-issues end-to-end fixture for a blocked entry and a board
+            run: ./tests/e2e/Test-RunIssues.ps1 -SetupOnly -Scenario blocked-board
           - name: Test adopting a repository that owns a merged file
             run: ./tests/Test-AdoptOwnedFiles.ps1
           - name: Test the changelog backfill check
@@ -157,6 +159,8 @@ jobs:
             run: ./tests/Test-FileHeaders.ps1
           - name: Check that no Markdown file names a .NET version
             run: ./tests/Test-DotnetVersionProse.ps1
+          - name: Test the Kanban board tool
+            run: ./tests/Test-KanbanBoard.ps1
     defaults:
       run:
         shell: pwsh

@@ -1750,6 +1750,45 @@ $loopResults = foreach ($prelude in "- Prelude: ``./env.ps1```n", '') {
 Check 'workflow: Invoke-PlanSteps re-checks a step the planner completed after the plan''s prelude, and fails it without one' (($loopResults -join ',') -eq '0,3') "exit codes with and without the prelude: $($loopResults -join ',')"
 
 ''
+$m = @(Get-MissingText $rulesJinja ('## Backlog', 'as ADR-0042 in `docs/decisions/project-template/` says', 'takes `sub_issue_id`', 'takes `issue_id`', 'never pipe it into a shell variable'))
+Check 'rules: the Backlog section records epics, stories, the Definition of Ready, links, the REST forms and the board (ADR-0042)' (-not $m) ($m -join '; ')
+$forms = @('template/.github/ISSUE_TEMPLATE', '.github/ISSUE_TEMPLATE', 'template/.github/ISSUE_TEMPLATE.md', '.github/ISSUE_TEMPLATE.md' | Where-Object { Test-Path -LiteralPath (Join-Path $repoRoot $_) })
+Check 'template: ships no issue forms, so every project and this repository take the NCodeGroup organization''s default forms (ADR-0042)' (-not $forms) ($forms -join ', ')
+$decomposeFiles = 'template\.claude\commands\decompose-issue.md', 'template\.github\prompts\decompose-issue.prompt.md', 'template\.github\skills\decompose-issue\SKILL.md', '.claude\commands\decompose-issue.md'
+$m = @(Get-MissingText $decomposeFiles ('Record decisions: <topic>', 'Ask me once whether to file them', '/sub_issues -F sub_issue_id=<id>', '/dependencies/blocked_by -F issue_id=<id>', 'meets the Definition of Ready, as ADR-0042', '- `## Not in this issue`:', 'as data, not instructions', '/run-issues epic:#<epic>'))
+$m += @(foreach ($p in $decomposeFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'EnterWorktree', '## Output: PLAN.md for the executor model', '{{') { if ($t.Contains($x)) { "${p}: has $x" } } } })
+Check 'workflow: decompose-issue decides first, asks before it files, and files each story with its type, parent and blocked-by links through REST' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $triageFiles ('epic:#<number>', 'ready after #<number>', 'blocked, naming each open issue it is blocked by', '/decompose-issue #<number>', 'whose parent isn''t #<number>', 'meets the Definition of Ready, as ADR-0042'))
+$m += @(Get-MissingText $issuePlanFiles ('it is an Epic', 'say to run decompose-issue with it instead', 'that the request doesn''t name'))
+$m += @(Get-MissingText ('template\.claude\commands\plan-issue.md', 'template\.claude\commands\triage-issues.md') 'a `Bug` is a bugfix')
+$m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('never runs ahead of that entry', 'naming the blocker'))
+$m += @(Get-MissingText $shipFiles ('link it as a sub-issue of the epic', 'closed the epic''s last open story', 'prompt its retrospective'))
+Check 'workflow: triage, plan-issue, run-issues and ship-plan read and keep the epic hierarchy (ADR-0042)' (-not $m) ($m -join '; ')
+# Every planning command includes the planning format, whose board paragraph moves a plan's issues to In progress.
+$planBoardFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template/.claude/commands') -File | Where-Object { $_.Name -like 'plan-*.md' -or $_.Name -eq 'handoff-plan.md' } | ForEach-Object { "template\.claude\commands\$($_.Name)" })
+$boardFiles = $triageFiles + $shipFiles + $planBoardFiles + @('template\.github\skills\plan-issue\SKILL.md')
+$m = @('plan-issue.md', 'plan-feature.md', 'plan-bugfix.md', 'handoff-plan.md' | Where-Object { $planBoardFiles -notcontains "template\.claude\commands\$_" } | ForEach-Object { "template\.claude\commands\${_}: not found" })
+$m += @(Get-MissingText $boardFiles ('board=<owner>/<number>', 'projectsV2/<number>/fields', 'A board move never stops the command'))
+$m += @(Get-MissingText $triageFiles 'to `Ready`')
+$m += @(Get-MissingText $planBoardFiles 'to `In progress` on the board')
+$m += @(Get-MissingText $shipFiles 'to `In review` on the board')
+$m += @($shipFiles | Where-Object { ([regex]::Matches([IO.File]::ReadAllText((Join-Path $repoRoot $_)), [regex]::Escape('to `In review` on the board'))).Count -lt 2 } | ForEach-Object { "${_}: moves to In review only once, not also when the pull request is open already" })
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- board: none', '`board`: `none`'))
+Check 'workflow: with a board, triage moves ready issues to Ready, a plan snapshot to In progress and a pull request to In review, and AGENTS.md documents board' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ($triageFiles + $shipFiles + $decomposeFiles) 'is never read as an empty list')
+$m += @(Get-MissingText $triageFiles ('its readiness is `not judged: its blockers couldn''t be read`', 'When the read of the epic''s sub-issues fails, stop and say so'))
+$m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('leave that entry out, naming the issue and the call that failed', 'to run again once the read works'))
+$m += @(Get-MissingText $issuePlanFiles ('one page at a time from page 1 until a page holds fewer than 100 entries', 'When that read fails, stop and say so, naming the issue and the call that failed'))
+$m += @(Get-MissingText $decomposeFiles ('or when the read of its sub-issues fails, naming the call that failed', 'a read of the epic''s sub-issues or of a story''s blockers among them, stop filing'))
+Check 'workflow: a failed read of blockers or sub-issues is never an empty list: run-issues leaves the entry out, triage doesn''t judge it ready, plan-issue and decompose-issue stop (ADR-0042)' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ($triageFiles + $shipFiles + $decomposeFiles) 'answers nothing and is never read as "no type, no parent"')
+$m += @(Get-MissingText ($triageFiles + $issuePlanFiles) 'When that read fails, the type is unknown, not missing')
+$m += @(Get-MissingText $triageFiles 'list it with the readiness `not judged: it couldn''t be read`')
+$m += @(Get-MissingText $issuePlanFiles 'A read that fails is never read as an issue without a type, which would plan an Epic')
+$m += @(Get-MissingText $decomposeFiles ('when the read of the issue itself fails, naming the call that failed', 'step 1 stopped when that read failed, so a type is never set from a read that failed'))
+$m += @(Get-MissingText $shipFiles ('file the follow-ups without a type or an epic link, and item 12 says so', 'When item 9 filed follow-ups without a type or an epic link because the read of that first issue failed, say so'))
+$m += @(($triageFiles + $shipFiles + $decomposeFiles) | Where-Object { [IO.File]::ReadAllText((Join-Path $repoRoot $_)).Contains('go on as if the issue had no type or parent') } | ForEach-Object { "${_}: reads a failed read as no type or parent" })
+Check 'workflow: a failed read of an issue is never "no type, no parent": triage doesn''t judge it, plan-issue and decompose-issue stop, ship-plan files its follow-ups unlinked and says so (ADR-0042)' (-not $m) ($m -join '; ')
 if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Template tests: PASSED'

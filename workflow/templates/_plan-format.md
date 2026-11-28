@@ -95,4 +95,8 @@ After writing `PLAN.md`, post the plan once to each issue on its `Issue:` line, 
 
 Give each comment's URL in your reply. When the CLI is missing or the post fails, say so, with the command to run; the plan doesn't depend on the comment.
 
+Once the snapshots are posted, move each issue on the `Issue:` line to `In progress` on the board, as the next paragraph says.
+
+{{PROMPT:_board}}
+
 After writing `PLAN.md`, reply with the step list (one line per step) and any open risks. Do not start implementing.
