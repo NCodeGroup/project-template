@@ -276,6 +276,15 @@ if ($path -match '^repos/[^/]+/([^/]+)/commits/([^/]+)/check-runs\?') {
 if ($path -match '^repos/[^/]+/([^/]+)/actions/runs\?head_sha=([^&]+)') {
     Out-Pages 'workflow_runs' @($data.repos[$Matches[1]].workflowRuns[$Matches[2]] | Where-Object { $_ }); exit 0
 }
+# An organization's code security configurations: codeSecurity is the list it answers (none when it has no such field),
+# or fail:<code>; one not in orgs is 404.
+if ($path -match '^orgs/([^/]+)/code-security/configurations(\?.*)?$') {
+    $org = $data.orgs[$Matches[1]]
+    if (-not $org) { Out-Answer 404 '{"message":"Not Found"}' }
+    $state = $org.codeSecurity
+    if ($state -is [string] -and $state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read them"}' }
+    Out-Answer 200 (ConvertTo-Json -InputObject @($state | Where-Object { $_ }) -Depth 10 -Compress)
+}
 # The organization itself: twoFactor is true or false (two_factor_requirement_enabled), absent (an answer without the
 # field, as a non-owner gets), notjson (a 200 whose body is not JSON) or fail:<code>.
 if ($path -match '^orgs/([^/]+)$') {
@@ -592,6 +601,12 @@ $orgs = @{
     orgForkUnreadable = @{ policies = @(); forkApproval = 'fail:403' }
     orgForkNotJson = @{ policies = @(); forkApproval = 'notjson' }
     orgForkRefused = @{ policies = @(); forkApproval = 'first_time_contributors'; forkApprovalWriteFail = 403 }
+    orgScanning = @{ policies = @(); codeSecurity = @(
+        @{ name = 'Everything'; enforcement = 'enforced'; code_scanning_default_setup = 'enabled'; code_scanning_options = @{ allow_advanced = $false } }
+        @{ name = 'Open'; code_scanning_default_setup = 'enabled'; code_scanning_options = @{ allow_advanced = $true } }
+        @{ name = 'Off'; code_scanning_default_setup = 'disabled' }) }
+    orgScanningNone = @{ policies = @(); codeSecurity = @() }
+    orgScanningRefused = @{ policies = @(); codeSecurity = 'fail:403' }
     orgFreeRead = @{ policies = 'fail:403'; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgFreeWrite = @{ policies = @(); writeFail = 403; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgTfaOn = @{ twoFactor = 'true' }
@@ -1380,6 +1395,22 @@ try {
         $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', $case.Owner)
         Check "org: $($case.Owner), refused for its plan, exits 1 and says it needs GitHub Team and to run it per repository" ($r.ExitCode -eq 1 -and ($r.Changes -join '|') -eq $case.Changes -and $r.Output -match [regex]::Escape($case.Says) -and $r.Output -notmatch 'admin:org') "$($r.Changes -join '|') $($r.Output)"
     }
+
+    # 7g. -OrganizationPolicy also reads the organization's code security configurations and reports the ones that refuse
+    # the turn-off of CodeQL's default setup; it writes nothing for them and never changes the exit code.
+    $scanPrefix = 'organization orgScanning: code security configurations: '
+    $scanLine = "${scanPrefix}'Everything' enables CodeQL's default setup and doesn't allow advanced setup (enforcement: enforced)"
+    $base = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgEmpty')
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgScanning')
+    Check 'org code scanning: a configuration with default setup and no advanced setup is named, with what an owner sets' ($r.Output.Contains($scanLine) -and $r.Output.Contains('Enabled with advanced setup allowed') -and $r.Output.Contains('tools/Set-RepositoryBaseline.ps1 -Repo <name> again')) $r.Output
+    Check 'org code scanning: a configuration that allows advanced setup or leaves default setup off is not named' ($r.Output -notmatch "configurations: '(Open|Off)'") $r.Output
+    Check 'org code scanning: the exit code is what it was without the route, and no write goes to a code-security path' ($r.ExitCode -eq $base.ExitCode -and -not @($r.Changes | Where-Object { $_ -match 'code-security' }).Count -and -not @($r.Bodies | Where-Object { $_.path -match 'code-security' }).Count) "$($r.ExitCode) $($r.Changes -join '|')"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgScanningNone')
+    Check 'org code scanning: none to name is said' ($r.ExitCode -eq $base.ExitCode -and $r.Output.Contains("organization orgScanningNone: code security configurations: none enables CodeQL's default setup without allowing advanced setup")) $r.Output
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgScanningRefused')
+    Check 'org code scanning: a refused read is reported with the read:org scope and leaves the exit code' ($r.ExitCode -eq $base.ExitCode -and $r.Output.Contains('organization orgScanningRefused: code security configurations: not available (HTTP 403') -and $r.Output.Contains('read:org')) $r.Output
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgScanning', '-WhatIf')
+    Check 'org code scanning: -WhatIf prints the same line and writes nothing' ($r.ExitCode -eq 0 -and $r.Output.Contains($scanLine) -and $r.Changes.Count -eq 0) "$($r.Changes -join '|') $($r.Output)"
 
     # 8. Bad parameters.
     $r = Invoke-Baseline @()

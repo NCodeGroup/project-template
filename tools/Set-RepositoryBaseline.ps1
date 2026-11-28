@@ -1218,7 +1218,28 @@ function Set-OrganizationEventPolicy {
     return $false
 }
 
-if ($OrganizationPolicy) { $workflow = Set-OrganizationWorkflowPermissions; $forkApproval = Set-OrganizationForkApproval; $policy = Set-OrganizationEventPolicy; if ($workflow -and $forkApproval -and $policy) { exit 0 } else { exit 1 } }
+# Reports the organization's code security configurations that enable CodeQL's default setup without allowing advanced
+# setup, because GitHub refuses a CodeQL workflow's results in a repository such a configuration applies to, the
+# template's ADR-0044. It is read-only, so a refused read or a configuration it names never fails the run.
+function Write-OrganizationCodeScanningReport {
+    $prefix = "organization ${Owner}: code security configurations: "
+    $read = Invoke-HostApi gh "orgs/$Owner/code-security/configurations?per_page=100"
+    $answer = $null
+    if ($read.Status -eq 200) { try { $answer = $read.Body | ConvertFrom-Json -NoEnumerate -ErrorAction Stop } catch { $answer = $null } }
+    if ($read.Status -ne 200 -or $null -eq $answer) {
+        $reason = if ($read.Status -eq 200) { 'an answer that is not JSON' } else { Get-FailureReason $read }
+        Write-Host "${prefix}not available ($reason); run it as an administrator or security manager of the organization, with a token that has the read:org scope"
+        return
+    }
+    $refusing = @(@($answer) | Where-Object { $_ -and $_.code_scanning_default_setup -eq 'enabled' -and $_.code_scanning_options.allow_advanced -ne $true })
+    if (-not $refusing.Count) { Write-Host "${prefix}none enables CodeQL's default setup without allowing advanced setup"; return }
+    foreach ($config in $refusing) {
+        $enforcement = if ($config.enforcement) { "$($config.enforcement)" } else { 'not reported' }
+        Write-Host "${prefix}'$($config.name)' enables CodeQL's default setup and doesn't allow advanced setup (enforcement: $enforcement), so it refuses the turn-off that .github/workflows/codeql.yml's results need; an owner sets its code scanning to 'Enabled with advanced setup allowed' or leaves code scanning out of it, then runs tools/Set-RepositoryBaseline.ps1 -Repo <name> again"
+    }
+}
+
+if ($OrganizationPolicy) { $workflow = Set-OrganizationWorkflowPermissions; $forkApproval = Set-OrganizationForkApproval; $policy = Set-OrganizationEventPolicy; Write-OrganizationCodeScanningReport; if ($workflow -and $forkApproval -and $policy) { exit 0 } else { exit 1 } }
 foreach ($name in Get-Targets) {
     try { Set-Baseline $name } catch { Write-Host "${name}: FAILED: $($_.Exception.Message)" -ForegroundColor Red }
 }
