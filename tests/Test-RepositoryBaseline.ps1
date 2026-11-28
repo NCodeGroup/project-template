@@ -89,7 +89,8 @@
     Runs only the fork workflow approval policy checks, which take seconds where the whole suite takes minutes.
 
 .PARAMETER CodeQLWorkflowOnly
-    Runs only the CodeQL workflow checks, which take seconds where the whole suite takes minutes.
+    Runs only the CodeQL workflow checks (section 10); the organization code security configuration checks (section 7g)
+    run only without it. They take seconds where the whole suite takes minutes.
 
 .EXAMPLE
     .\tests\Test-RepositoryBaseline.ps1
@@ -279,12 +280,13 @@ if ($path -match '^repos/[^/]+/([^/]+)/actions/runs\?head_sha=([^&]+)') {
     Out-Pages 'workflow_runs' @($data.repos[$Matches[1]].workflowRuns[$Matches[2]] | Where-Object { $_ }); exit 0
 }
 # An organization's code security configurations: codeSecurity is the list it answers (none when it has no such field),
-# or fail:<code>; one not in orgs is 404.
+# fail:<code> or notjson (a 200 whose body is not JSON); one not in orgs is 404.
 if ($path -match '^orgs/([^/]+)/code-security/configurations(\?.*)?$') {
     $org = $data.orgs[$Matches[1]]
     if (-not $org) { Out-Answer 404 '{"message":"Not Found"}' }
     $state = $org.codeSecurity
     if ($state -is [string] -and $state.StartsWith('fail:')) { Out-Answer ([int]$state.Substring(5)) '{"message":"Stand-in refused to read them"}' }
+    if ($state -is [string] -and $state -eq 'notjson') { Out-Answer 200 'not json' }
     Out-Answer 200 (ConvertTo-Json -InputObject @($state | Where-Object { $_ }) -Depth 10 -Compress)
 }
 # The organization itself: twoFactor is true or false (two_factor_requirement_enabled), absent (an answer without the
@@ -580,6 +582,9 @@ $repos = @{
     # Workflows that can't be listed, so the default setup decides the rule, and a ruleset of ours with the rule, rewritten.
     codeqlUnreadable = New-Repo -Workflows @('fail:500')
     codeqlOursChecks = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes)) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml }
+    # A default setup that can't be read (HTTP 403), beside a ruleset of ours that is left alone and with no ruleset.
+    codeqlOursUnreadable = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes)) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml } -CodeQL 'fail:403'
+    codeqlFreshUnreadable = New-Repo -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml } -CodeQL 'fail:403'
 }
 $orgs = @{
     orgEmpty = @{ policies = @() }
@@ -609,6 +614,8 @@ $orgs = @{
         @{ name = 'Off'; code_scanning_default_setup = 'disabled' }) }
     orgScanningNone = @{ policies = @(); codeSecurity = @() }
     orgScanningRefused = @{ policies = @(); codeSecurity = 'fail:403' }
+    orgScanningNotJson = @{ policies = @(); codeSecurity = 'notjson' }
+    orgScanningMany = @{ policies = @(); codeSecurity = @(1..100 | ForEach-Object { @{ name = "Configuration $_"; code_scanning_default_setup = 'disabled' } }) }
     orgFreeRead = @{ policies = 'fail:403'; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgFreeWrite = @{ policies = @(); writeFail = 403; message = 'Upgrade to GitHub Team to enable this feature.' }
     orgTfaOn = @{ twoFactor = 'true' }
@@ -1411,6 +1418,10 @@ try {
     Check 'org code scanning: none to name is said' ($r.ExitCode -eq $base.ExitCode -and $r.Output.Contains("organization orgScanningNone: code security configurations: none enables CodeQL's default setup without allowing advanced setup")) $r.Output
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgScanningRefused')
     Check 'org code scanning: a refused read is reported with the read:org scope and leaves the exit code' ($r.ExitCode -eq $base.ExitCode -and $r.Output.Contains('organization orgScanningRefused: code security configurations: not available (HTTP 403') -and $r.Output.Contains('read:org')) $r.Output
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgScanningNotJson')
+    Check 'org code scanning: an answer that is not JSON is reported, leaves the exit code and writes nothing for it' ($r.ExitCode -eq $base.ExitCode -and $r.Output.Contains('organization orgScanningNotJson: code security configurations: not available (an answer that is not JSON)') -and -not @($r.Changes | Where-Object { $_ -match 'code-security' }).Count -and -not @($r.Bodies | Where-Object { $_.path -match 'code-security' }).Count) "$($r.ExitCode) $($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgScanningMany')
+    Check 'org code scanning: an answer of 100 configurations says it read the first 100 and that any beyond them aren''t named' ($r.ExitCode -eq $base.ExitCode -and $r.Output.Contains('organization orgScanningMany: code security configurations: read the first 100 configurations; any beyond them aren''t named')) $r.Output
     $r = Invoke-Baseline @('-OrganizationPolicy', '-Owner', 'orgScanning', '-WhatIf')
     Check 'org code scanning: -WhatIf prints the same line and writes nothing' ($r.ExitCode -eq 0 -and $r.Output.Contains($scanLine) -and $r.Changes.Count -eq 0) "$($r.Changes -join '|') $($r.Output)"
 
@@ -1533,6 +1544,10 @@ try {
     Check 'codeql workflow: -RequireChecks keeps a rewritten ruleset''s code-scanning rule, and turns the default setup off before the write, with no suite switch' ($r.ExitCode -eq 0 -and @($r.Body.rules.type) -contains 'code_scanning' -and $patch -ge 0 -and $putIndex -gt $patch -and -not @($r.Changes | Where-Object { $_ -like '*query_suite*' }).Count -and $r.Output.Contains('and keeps its code-scanning rule') -and $r.Output.Contains("turn off CodeQL's default setup")) "$patch $putIndex $($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'codeqlOursChecks', '-RequireChecks', 'build-and-test', '-WhatIf')
     Check 'codeql workflow: -RequireChecks -WhatIf on a kept rule changes nothing and says what would be done' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains('would: codeqlOursChecks (main)')) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlOursUnreadable')
+    Check 'codeql workflow: a default setup that can''t be read, beside a ruleset left alone, is reported as not available, with no write and no failure' ($r.ExitCode -eq 0 -and $r.Output -notmatch 'FAILED' -and $r.Output.Contains("codeqlOursUnreadable: ${codeqlLabel}: not available (couldn't read it: HTTP 403") -and -not @($r.Changes | Where-Object { $_ -like '*default-setup*' }).Count -and -not @($r.Bodies | Where-Object { $_.path -like '*default-setup*' }).Count) "$($r.ExitCode) $($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlFreshUnreadable')
+    Check 'codeql workflow: a default setup that can''t be read, with no ruleset, skips the repository with the reason and writes nothing' ($r.Output.Contains("codeqlFreshUnreadable: skipped (couldn't read CodeQL's default setup: HTTP 403") -and $r.Output -notmatch 'FAILED' -and $r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0) "$($r.Changes -join '|') $($r.Output)"
   }
 }
 finally { $env:PATH = $savedPath }

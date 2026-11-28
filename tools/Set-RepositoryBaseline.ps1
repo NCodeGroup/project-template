@@ -665,14 +665,14 @@ function Set-BranchRuleset {
         if ($result.Status -lt 200 -or $result.Status -ge 300) { throw "Couldn't turn off CodeQL's default setup for $Name ($(Get-FailureReason $result)), which keeps $($CodeQLWorkflows -join ', ') from uploading CodeQL's results; its ruleset and delete-branch-on-merge were left as they were. $defaultSetupHint." }
     }
 
-    # The suite switch comes before the ruleset write too: once the ruleset has its code-scanning rule, a later run reads the default setup only
-    # for its notice and never switches it, so a switch that failed after it could never be retried. It sends query_suite
-    # alone. GitHub's REST reference, "Update a code scanning default setup configuration" (read 2026-11-16), makes every
-    # field optional and describes languages only as "CodeQL languages to be analyzed", without saying what an update
-    # does to the languages it leaves out; the switch names none, so it sets none up. NCodeGroup/docs and
-    # NCodeGroup/brand were configured with no language on the extended suite on 2026-11-16, which most likely came from
-    # this switch, since their organization's security configuration sets no query suite. So it runs only where the
-    # setup already analyzes a language ($suite is set only with $codeql).
+    # The suite switch comes before the ruleset write too: once the ruleset has its code-scanning rule, a later run
+    # reads the default setup only for its notice and never switches it, so a switch that failed after it could never be
+    # retried. It sends query_suite alone. GitHub's REST reference, "Update a code scanning default setup configuration"
+    # (read 2026-11-16), makes every field optional and describes languages only as "CodeQL languages to be analyzed",
+    # without saying what an update does to the languages it leaves out; the switch names none, so it sets none up.
+    # NCodeGroup/docs and NCodeGroup/brand were configured with no language on the extended suite on 2026-11-16, which
+    # most likely came from this switch, since their organization's security configuration sets no query suite. So it
+    # runs only where the setup already analyzes a language ($suite is set only with $codeql).
     if ($suite) {
         & gh api -X PATCH "repos/$Owner/$Name/code-scanning/default-setup" -f query_suite=extended | Out-Null
         if ($LASTEXITCODE) { throw "Couldn't switch CodeQL's default setup to the extended query suite for $Name; its ruleset and delete-branch-on-merge were left as they were, so run it again." }
@@ -851,10 +851,11 @@ function Test-ReleaseAssetWorkflow([string]$Text) {
 
 # A workflow runs CodeQL on pull requests when its top-level on: names pull_request and a line that isn't a comment uses
 # github/codeql-action/analyze, as the template's codeql.yml does: its results then meet the code-scanning rule on every
-# pull request, a fork's too (ADR-0044).
+# pull request, a fork's too (ADR-0044). tools/Get-AdoptionChecklist.ps1's row 2.3 applies the same rules; a change to
+# one belongs in both.
 function Test-CodeQLWorkflow([string]$Text) {
     $code = $Text -replace '(?m)^\s*#.*$', ''
-    [bool](((Get-WorkflowEvents $Text) -contains 'pull_request') -and ($code -match '(?m)^\s*(-\s+)?uses:\s*[''"]?github/codeql-action/analyze@'))
+    [bool](((Get-WorkflowEvents $Text) -contains 'pull_request') -and ($code -match '(?m)^[ \t]*(-[ \t]+)?uses:[ \t]*[''"]?github/codeql-action/analyze@'))
 }
 
 # The workflow files of a repository's default branch whose text $Match accepts. Why is the reason a folder or file
@@ -1223,7 +1224,8 @@ function Set-OrganizationEventPolicy {
 
 # Reports the organization's code security configurations that enable CodeQL's default setup without allowing advanced
 # setup, because GitHub refuses a CodeQL workflow's results in a repository such a configuration applies to, the
-# template's ADR-0044. It is read-only, so a refused read or a configuration it names never fails the run.
+# template's ADR-0044. It is read-only, so a refused read or a configuration it names never fails the run. It reads one
+# page of 100 configurations and says so when the answer fills it.
 function Write-OrganizationCodeScanningReport {
     $prefix = "organization ${Owner}: code security configurations: "
     $read = Invoke-HostApi gh "orgs/$Owner/code-security/configurations?per_page=100"
@@ -1235,11 +1237,12 @@ function Write-OrganizationCodeScanningReport {
         return
     }
     $refusing = @(@($answer) | Where-Object { $_ -and $_.code_scanning_default_setup -eq 'enabled' -and $_.code_scanning_options.allow_advanced -ne $true })
-    if (-not $refusing.Count) { Write-Host "${prefix}none enables CodeQL's default setup without allowing advanced setup"; return }
+    if (-not $refusing.Count) { Write-Host "${prefix}none enables CodeQL's default setup without allowing advanced setup" }
     foreach ($config in $refusing) {
         $enforcement = if ($config.enforcement) { "$($config.enforcement)" } else { 'not reported' }
         Write-Host "${prefix}'$($config.name)' enables CodeQL's default setup and doesn't allow advanced setup (enforcement: $enforcement), so it refuses the turn-off that .github/workflows/codeql.yml's results need; an owner sets its code scanning to 'Enabled with advanced setup allowed' or leaves code scanning out of it, then runs tools/Set-RepositoryBaseline.ps1 -Repo <name> again"
     }
+    if (@($answer).Count -eq 100) { Write-Host "${prefix}read the first 100 configurations; any beyond them aren't named" }
 }
 
 if ($OrganizationPolicy) { $workflow = Set-OrganizationWorkflowPermissions; $forkApproval = Set-OrganizationForkApproval; $policy = Set-OrganizationEventPolicy; Write-OrganizationCodeScanningReport; if ($workflow -and $forkApproval -and $policy) { exit 0 } else { exit 1 } }
