@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.122.0] - 2026-11-27
+
+### Added
+
+- ADR-0045 records how `New-Project.ps1` applies NCodeGroup/.github ADR-1001, the organization's rule for repository names: `-CreateRemote` checks the destination folder's name, which names the repository, against the `stack` answer, and refuses a name that doesn't fit rather than warning about it once the repository exists ([#546](https://github.com/NCodeGroup/project-template/issues/546), [ADR-0045](template/docs/decisions/project-template/0045-new-project-names-a-repository-by-ncodegroups-rule-and-refuses-a-name-that-doesnt-fit.md)).
+
+### Changed
+
+- **Breaking:** `New-Project.ps1 -CreateRemote` checks the repository's name, the destination folder's, before `gh repo create`: a .NET project's is its root namespace in PascalCase segments joined by `.`, without a leading `NCode.`, such as `Buffers` or `Collections.Providers`, and every other project's is lowercase kebab case, such as `qso-viewer`. A name that doesn't fit stops the script with an error that names the one that fits; it deletes the files Copier wrote and creates nothing on GitHub, and with `stack` in `-Data` it stops before Copier asks anything. Name the folder `-Path` points to by that rule. The script's help, the README's Create a Project and `docs/adopt.md` say so, and the `Adopt-Project.ps1` examples use `C:\src\Buffers` ([#546](https://github.com/NCodeGroup/project-template/issues/546), [ADR-0045](template/docs/decisions/project-template/0045-new-project-names-a-repository-by-ncodegroups-rule-and-refuses-a-name-that-doesnt-fit.md)).
+
 ## [0.121.1] - 2026-11-28
 
 ### Changed
@@ -2074,7 +2084,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.121.1...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.122.0...HEAD
+[0.122.0]: https://github.com/NCodeGroup/project-template/compare/v0.121.1...v0.122.0
 [0.121.1]: https://github.com/NCodeGroup/project-template/compare/v0.121.0...v0.121.1
 [0.121.0]: https://github.com/NCodeGroup/project-template/compare/v0.120.0...v0.121.0
 [0.120.0]: https://github.com/NCodeGroup/project-template/compare/v0.119.0...v0.120.0
