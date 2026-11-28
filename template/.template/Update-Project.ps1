@@ -882,16 +882,22 @@ function Get-NuGetPublisherAnswer {
     @(Get-NuGetPublisher) -join ', '
 }
 
-# The workflows other than codeql.yml that run CodeQL, as .github/workflows/<name>, sorted: a line that isn't a comment
-# uses github/codeql-action/analyze@. A repository with one has a CodeQL setup of its own, and the template's codeql.yml
-# beside it would analyze each commit a second time under the same categories (the template's ADR-0044).
+# The workflows other than codeql.yml that run CodeQL on pull_request, as .github/workflows/<name>, sorted, by the rules
+# tools/Set-RepositoryBaseline.ps1's Test-CodeQLWorkflow and tools/Get-AdoptionChecklist.ps1's row 2.3 apply: its on:
+# names pull_request and a line that isn't a comment uses github/codeql-action/analyze@. A repository with one has a
+# CodeQL setup of its own, and the template's codeql.yml beside it would analyze each commit a second time under the
+# same categories (the template's ADR-0047).
 # tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
 function Get-CodeQLWorkflow {
     if (-not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
-    $found = foreach ($file in Get-ChildItem -LiteralPath .github/workflows -File) {
-        if ($file.Extension -in '.yml', '.yaml' -and $file.Name -ne 'codeql.yml' -and ("$(Get-Content -LiteralPath $file.FullName -Raw)" -replace '(?m)^[ \t]*#.*$', '') -match '(?m)^[ \t]*(-[ \t]+)?uses:[ \t]*[''"]?github/codeql-action/analyze@') { ".github/workflows/$($file.Name)" }
-    }
-    @($found) | Sort-Object
+    $found = @(foreach ($file in Get-ChildItem -LiteralPath .github/workflows -File) {
+            if ($file.Extension -notin '.yml', '.yaml' -or $file.Name -eq 'codeql.yml') { continue }
+            $code = "$(Get-Content -LiteralPath $file.FullName -Raw)" -replace '(?m)^[ \t]*#.*$', ''
+            $analyzes = $code -match '(?m)^[ \t]*(-[ \t]+)?uses:[ \t]*[''"]?github/codeql-action/analyze@'
+            $onPullRequest = $code -match '(?m)^[ \t]*pull_request[ \t]*:' -or $code -match '(?m)^on:[ \t]*\[[^\]\r\n]*\bpull_request\b' -or $code -match '(?m)^on:[ \t]*pull_request[ \t]*\r?$'
+            if ($analyzes -and $onPullRequest) { ".github/workflows/$($file.Name)" }
+        })
+    $found | Sort-Object
 }
 
 function Get-AssemblyVersionFloor {
