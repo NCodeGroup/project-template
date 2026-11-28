@@ -1,8 +1,8 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
 {%- set publisher = nuget_publisher | default('') %}
-{%- set ghlib = git_host == 'github' and library and not publisher %}
-{%- set review = git_host == 'github' and code_review is defined and code_review %}
-{%- set pr = 'merge request' if git_host == 'gitlab' else 'pull request' %}
+{%- set ghlib = library and not publisher %}
+{%- set review = code_review is defined and code_review %}
+{%- set pr = 'pull request' %}
 {%- set owner = author_name if ((stack == 'dotnet' or license) and author_name | default('')) else "the repository's owners" -%}
 # Governance
 
@@ -17,11 +17,8 @@ what and how decisions are made.
 | --- | --- | --- |
 | Maintainer | The repository's owners | Sets direction, triages issues, reviews and merges {{ pr }}s, {% if ghlib %}approves each publication in the `nuget` environment, {% endif %}answers vulnerability reports, owns the repository's settings{% if library %} and the nuget.org packages{% endif %} |
 | Contributor | Anyone | Opens issues and {{ pr }}s, under [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md) |
-{% if git_host == 'github' -%}
 | Automation | {% if review %}`ncode-review[bot]`, `ncode-review-approver[bot]`, {% endif %}Dependabot, GitHub Actions | {% if review %}Reviews and approves a clean pull request, as `ncode-review-approver[bot]` where NCode Review's approver is set up, whose approval meets the ruleset's required approval ([ADR-0036](docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md)), proposes dependency updates, runs CI, {% if ghlib %}tags and publishes releases{% else %}tags and publishes releases where `AGENTS.md`'s Landing section sets `release: tag+release`{% endif %}; never merges a pull request except the pin bump `code-review-auto-merge.yml` merges once the required checks pass and, where the ruleset requires an approval, it is approved: by `ncode-review-approver[bot]` after a clean review where NCode Review's approver is set up ([ADR-0041](docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md)), else by a maintainer{% else %}Proposes dependency updates, runs CI, {% if ghlib %}tags and publishes releases{% else %}tags and publishes releases where `AGENTS.md`'s Landing section sets `release: tag+release`{% endif %}; never merges a pull request{% endif %} |
-{% else -%}
-| Automation | GitLab CI/CD | Runs CI; never merges a merge request |
-{% endif %}
+
 Only a maintainer has write access. A contributor who keeps contributing reviewed, merged work can be invited to become
 a maintainer; the existing maintainers decide, and the change is recorded in this file.
 
@@ -47,7 +44,7 @@ records.{% endif %}
 ## Continuity
 
 The repository, its issues, decision records, build, release automation and documentation are all in the
-{{ 'GitHub organization' if git_host == 'github' else 'GitLab group' }} that owns it, so anyone given access can carry
+GitHub organization that owns it, so anyone given access can carry
 on with no knowledge held elsewhere.
 {%- if ghlib %} nuget.org publishing uses trusted publishing, with no stored API key to hand over.{% elif library and publisher %} nuget.org publishing runs in `{{ publisher }}`: hand over whatever credential it uses with the repository.{% endif %}
 
