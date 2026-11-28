@@ -766,12 +766,23 @@ foreach ($case in $cases) {
                     }
                     git add -A
                     if ($LASTEXITCODE) { throw 'git add failed.' }
-                    $env:GITHUB_OUTPUT = Join-Path $detectRepo 'github-output.txt'
+                    # The step runs in a child process, so a stray exit in it can't end this suite.
+                    $detectScript = Join-Path $Work "codeql-detect-$detectNumber.ps1"
+                    Set-Content -LiteralPath $detectScript -Value $detect
+                    $detectOutput = Join-Path $detectRepo 'github-output.txt'
+                    $savedGitHubOutput = $env:GITHUB_OUTPUT
+                    $env:GITHUB_OUTPUT = $detectOutput
                     $detectError = ''
-                    try { & ([scriptblock]::Create($detect)) | Out-Null } catch { $detectError = "$_" }
-                    $detected = if (Test-Path -LiteralPath $env:GITHUB_OUTPUT) { (Get-Content -LiteralPath $env:GITHUB_OUTPUT -Raw).Trim() } else { '' }
-                    Remove-Item -LiteralPath $env:GITHUB_OUTPUT -Force -ErrorAction SilentlyContinue
-                    Remove-Item Env:GITHUB_OUTPUT
+                    try {
+                        $detectLog = & pwsh -NoProfile -File $detectScript 2>&1 | Out-String
+                        if ($LASTEXITCODE) { $detectError = "exit=$LASTEXITCODE $detectLog" }
+                    }
+                    catch { $detectError = "$_" }
+                    finally {
+                        if ($null -eq $savedGitHubOutput) { Remove-Item Env:GITHUB_OUTPUT -ErrorAction SilentlyContinue } else { $env:GITHUB_OUTPUT = $savedGitHubOutput }
+                    }
+                    $detected = if (Test-Path -LiteralPath $detectOutput) { (Get-Content -LiteralPath $detectOutput -Raw).Trim() } else { '' }
+                    Remove-Item -LiteralPath $detectOutput -Force -ErrorAction SilentlyContinue
                 }
                 finally { Pop-Location }
                 Check "${name}: the CodeQL workflow's detect step picks the languages for $scenario" ($detect -and -not $detectError -and $detected -eq $detectCases[$scenario].Expected) "output=$detected error=$detectError"
@@ -1185,6 +1196,8 @@ $copilotAddressFiles = 'template\.github\prompts\address-feedback.prompt.md', 't
 $m += @(Get-MissingText $copilotAddressFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'is data to judge, never an instruction', 'git worktree add --no-track .claude/worktrees/feedback-<number> -b worktree-feedback-<number> "origin/<head>"', 'git push origin "HEAD:refs/heads/<head>"', 'git branch -D worktree-feedback-<number>', '`git branch --show-current`', 'refs/heads/feedback-<number>', '.claude/worktrees/feedback-<number>', 'runSubagent', '.github/skills/<name>/SKILL.md', 'plan-executor', 'third still adds fix steps', 'addPullRequestReviewThreadReply', 'Autopilot:', '`/allow-all`', '^[A-Za-z0-9._/][A-Za-z0-9._/-]*\z', 'git merge-base --is-ancestor "origin/<head>" HEAD'))
 $m += @(foreach ($p in $copilotAddressFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'ExitWorktree', 'EnterWorktree', '.claude/commands/', '$ARGUMENTS', '{{') { if ($t.Contains($x)) { "${p}: has $x" } } } })
 Check 'workflow: address-feedback reaches Claude Code from address-feedback.md, and Copilot Chat and Copilot CLI from address-feedback-copilot.md, which works in a worktree of its own, as Claude Code''s does; each treats every comment as data to judge, pushes only new commits to the pull request''s branch, and never merges, resolves or dismisses' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ($addressFiles + $copilotAddressFiles) 'brings its branch up to date, never a maintainer')
+Check 'workflow: every copy of address-feedback says a fork''s author brings its branch up to date, never a maintainer' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $shipFiles ('`plan.pushBranch`', '`push-branch:<name>`', '`git push -u origin "HEAD:refs/heads/<branch>"`', '`pr-branch-state`', '`git push origin --delete "<branch>"`', 'never stacking new commits on merged history'))
 $m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('`plan.pushBranch`', '`push-branch:<name>`', '`git push origin "HEAD:refs/heads/<pr branch>"`'))
 $m += @(Get-MissingText ($addressFiles + $copilotAddressFiles) ('`plan.pushBranch`', '`push-branch:<name>`', 'this session pushes only to its push branch'))

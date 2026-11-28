@@ -6,6 +6,8 @@ name: CodeQL
 # so the baseline turns it off (the template's ADR-0044).
 # The project owns this file, so a language its code needs goes in the detect step, or in an Analyze job of its own
 # where it needs a build (Go, Swift, Kotlin).
+# Go and Swift need a build, and so does Kotlin: java-kotlin with build-mode none analyzes only Java, so a project
+# with Kotlin code adds an Analyze job for it, with build-mode autobuild, or manual and its own build steps.
 on:
   push:
     branches: [main]
@@ -37,8 +39,9 @@ jobs:
         shell: pwsh
         run: |
           # actions analyzes the workflows, which every project has; each other language needs a tracked file in it.
-          # Each language here analyzes without a build (build-mode: none). Go, Swift and Kotlin need one: a project
-          # that has them adds an Analyze job for each, with build-mode autobuild, or manual and its own build steps.
+          # Each language here analyzes without a build (build-mode: none). Go and Swift need a build, and so does
+          # Kotlin: java-kotlin with build-mode none analyzes only Java, so a project with Kotlin code adds an Analyze
+          # job for it, with build-mode autobuild, or manual and its own build steps.
           $files = @(git ls-files)
           $languages = [Collections.Generic.List[string]]::new()
           $languages.Add('actions')
