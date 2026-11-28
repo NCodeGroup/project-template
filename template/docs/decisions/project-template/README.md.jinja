@@ -75,7 +75,7 @@ never brings a number the project already uses
 | [0043](0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md) | `code-review.yml` passes NCode Review's `review-forks: true`, so a fork's pull request is reviewed once it isn't a draft and records its outcomes when it closes, and is never approved: a maintainer approves it (amends 0019 and 0022) |
 | [0044](0044-a-fork-pull-request-merges-without-a-bypass.md) | Every GitHub project runs CodeQL in a project-owned workflow on every pull request, a fork's too, and the baseline turns CodeQL's default setup off where one runs; a fork's author brings its branch up to date, so its pull request merges with no bypass with one writer too (amends 0005, 0020, 0022 and 0030) |
 {%- endif %}
-| [0045](0045-new-project-names-a-repository-by-ncodegroups-rule-and-refuses-a-name-that-doesnt-fit.md) | `New-Project.ps1 -CreateRemote` names a repository after its folder by NCodeGroup's rule: a .NET project's root namespace in PascalCase segments without `NCode.`, every other in lowercase kebab case; it refuses a name that doesn't fit, naming the one that fits, and creates nothing (refines NCodeGroup/.github ADR-1001) |
+| [0045](0045-new-project-names-a-repository-by-ncodegroups-rule-and-refuses-a-name-that-doesnt-fit.md) | `New-Project.ps1 -CreateRemote` names a repository after its folder by NCodeGroup's rule: a .NET project's root namespace in PascalCase segments without `NCode.`, every other in lowercase kebab case; it refuses a name that doesn't fit, naming the one that fits, and creates nothing; `Adopt-Project.ps1` notes an adopted repository's name that doesn't fit (refines NCodeGroup/.github ADR-1001) |
 {%- if stack == 'dotnet' %}
 
 ## .NET

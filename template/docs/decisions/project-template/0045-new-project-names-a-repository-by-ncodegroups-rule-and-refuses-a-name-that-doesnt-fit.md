@@ -38,7 +38,10 @@ policy and the links to a GitHub Pages site (ADR-1001).
    recorded the answer, and deletes the files Copier wrote, so the folder can be named again, also where only its
    case changes on a file system that ignores case.
 5. Without `-CreateRemote` the script creates no repository and checks nothing. The template's `Adopt-Project.ps1`
-   adopts a repository that already exists, and checks nothing either.
+   adopts a repository that already exists, so it refuses nothing: where the repository's `origin` remote is on
+   GitHub, it checks the name that remote gives against the `stack` answer it works out, by the rule of decision 1,
+   and for a name that doesn't fit it prints a note with the name that fits, worked out as decision 3 says, and what
+   ADR-1001's Consequences say a rename touches, and goes on.
 
 ## Options considered
 
@@ -59,10 +62,14 @@ policy and the links to a GitHub Pages site (ADR-1001).
 - A .NET repository whose name the pattern doesn't cover, such as one whose segment starts with a digit, isn't
   created by the script; `gh repo create` creates it by hand.
 - Renaming an existing repository is outside the script: each one that doesn't follow the rule has its own issue.
+- An adoption names a repository that doesn't follow ADR-1001, so its rename gets its issue instead of being found by
+  hand; the adoption renames nothing.
 
 ## References
 
 - [NCodeGroup/.github ADR-1001](https://github.com/NCodeGroup/.github/blob/main/docs/decisions/1001-a-dotnet-repository-is-named-for-its-root-namespace-and-every-other-repository-in-lowercase.md)
 - [ADR-0040](0040-the-template-serves-ncodegroups-repositories-on-github-only.md)
-- NCodeGroup/project-template's `New-Project.ps1`, and `Get-RepositoryNameRefusal` in its `tools/adopt/Adoption.psm1`
+- NCodeGroup/project-template's `New-Project.ps1` and `Adopt-Project.ps1`, and `Get-RepositoryNameRefusal` and
+  `Get-RepositoryNameWarning` in its `tools/adopt/Adoption.psm1`
 - [NCodeGroup/project-template#546](https://github.com/NCodeGroup/project-template/issues/546)
+- [NCodeGroup/project-template#548](https://github.com/NCodeGroup/project-template/issues/548)
