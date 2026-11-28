@@ -90,7 +90,7 @@
       <_ProjectTemplateRepository Condition="'$(_ProjectTemplateRepository)' == ''">$(PrivateRepositoryUrl)</_ProjectTemplateRepository>
       <_ProjectTemplateRepository>$([System.Text.RegularExpressions.Regex]::Replace('$(_ProjectTemplateRepository)', '\.git$', ''))</_ProjectTemplateRepository>
       <PackageProjectUrl Condition="'$(PackageProjectUrl)' == ''">$(_ProjectTemplateRepository)</PackageProjectUrl>
-      <PackageReleaseNotes Condition="'$(PackageReleaseNotes)' == ''">See the changelog: $(_ProjectTemplateRepository)/{% if git_host == 'gitlab' %}-/{% endif %}blob/HEAD/CHANGELOG.md</PackageReleaseNotes>
+      <PackageReleaseNotes Condition="'$(PackageReleaseNotes)' == ''">See the changelog: $(_ProjectTemplateRepository)/blob/HEAD/CHANGELOG.md</PackageReleaseNotes>
     </PropertyGroup>
   </Target>
 
