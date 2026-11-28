@@ -69,7 +69,7 @@ policy and the links to a GitHub Pages site (ADR-1001).
 
 - [NCodeGroup/.github ADR-1001](https://github.com/NCodeGroup/.github/blob/main/docs/decisions/1001-a-dotnet-repository-is-named-for-its-root-namespace-and-every-other-repository-in-lowercase.md)
 - [ADR-0040](0040-the-template-serves-ncodegroups-repositories-on-github-only.md)
-- NCodeGroup/project-template's `New-Project.ps1` and `Adopt-Project.ps1`, and `Get-RepositoryNameRefusal` and
-  `Get-RepositoryNameWarning` in its `tools/adopt/Adoption.psm1`
+- NCodeGroup/project-template's `New-Project.ps1`, the template's `Adopt-Project.ps1`, and `Get-RepositoryNameRefusal`
+  and `Get-RepositoryNameWarning` in its `tools/adopt/Adoption.psm1`
 - [NCodeGroup/project-template#546](https://github.com/NCodeGroup/project-template/issues/546)
 - [NCodeGroup/project-template#548](https://github.com/NCodeGroup/project-template/issues/548)
