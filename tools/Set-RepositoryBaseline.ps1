@@ -154,7 +154,10 @@
     can't read the policies or the API refuses a policy, the fork approval setting or the default token setting. It
     needs GitHub Team or above, the plans GitHub offers organization event policies on: when GitHub refuses them for the
     organization's plan, with an answer that asks to upgrade, such as "Upgrade to GitHub Team to enable this feature.",
-    it says so and to run it for each repository instead, with -Repo <name> or -All.
+    it says so and to run it for each repository instead, with -Repo <name> or -All. It then reads the organization's
+    code security configurations and names each that enables CodeQL's default setup without allowing advanced setup,
+    which refuses the turn-off of default setup that .github/workflows/codeql.yml needs (the template's ADR-0044), as a
+    report that changes nothing and never fails the run.
 
     For a repository an organization owns, it also reports the organization's two-factor requirement, as
     "organization two-factor requirement: required", "not required" or "not available" with the reason (GitHub shows

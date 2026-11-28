@@ -85,6 +85,7 @@ right after. Two causes kept it from merging under the baseline ruleset.
   Analyze job for it, which the baseline's line names.
 - An organization security configuration that enforces default setup makes the baseline fail or report until an owner
   sets code scanning to "Enabled with advanced setup allowed" or leaves it out of the configuration.
+  `-OrganizationPolicy` names each such configuration.
 - A contributor new to GitHub waits for a maintainer's approval before CodeQL runs too
   ([ADR-0039](0039-fork-pull-request-workflows-run-for-established-contributors.md)).
 - A fork's pull request whose author doesn't update it can't merge while it is behind. The maintainer closes it or opens

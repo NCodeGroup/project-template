@@ -63,6 +63,8 @@
     that does or one that already allows both events on every repository, exits 1 when it can't read the
     policies or is refused, says for a refusal that asks to upgrade the organization's plan that it needs GitHub Team or
     above and to run it per repository, and otherwise names the admin:org scope, takes no -Repo, -All or -RequireChecks;
+    that -OrganizationPolicy names each organization code security configuration that enables CodeQL's default setup
+    without allowing advanced setup, and reports a refused read, writing nothing;
     that immutable releases stay off, with the reason, where a workflow runs on a release event or uploads release
     assets, can't be read, or -SkipImmutableReleases is given; that a repository whose releases are already
     immutable gets a notice with the command that turns them off where a workflow needs them off;
