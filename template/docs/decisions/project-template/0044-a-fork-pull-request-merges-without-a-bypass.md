@@ -30,10 +30,12 @@ right after. Two causes kept it from merging under the baseline ruleset.
 1. Every GitHub project gets a project-owned `.github/workflows/codeql.yml`.
    - It runs on every pull request, on a push to `main`, in a merge queue, weekly and on request, with a read-only token
      except `security-events: write` in the job that uploads the results.
-   - A `CodeQL languages` job picks the languages at run time: `actions` always, and `csharp`,
-     `javascript-typescript` and `python` where `git ls-files` lists a file in that language. A new project has no
-     source file yet, and CodeQL fails a language with no code; the four are the languages of the template's stacks that
-     support `build-mode: none`.
+   - A `CodeQL languages` job picks the languages at run time: `actions` always, and `c-cpp`, `csharp`, `java-kotlin`,
+     `javascript-typescript`, `python`, `ruby` and `rust` where `git ls-files` lists a file in that language. A new
+     project has no source file yet, and CodeQL fails a language with no code. These are the languages that analyze
+     without a build (GitHub Docs, "CodeQL code scanning for compiled languages", read 2026-11-28). `java-kotlin` runs
+     with `build-mode: none`, which analyzes only its Java and skips Kotlin. Go, Swift and Kotlin need a build, so a
+     project that has them adds an Analyze job for each.
    - It runs the `security-extended` suite, the one the baseline gave default setup
      ([ADR-0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md)).
 2. `tools/Set-RepositoryBaseline.ps1` counts a workflow as CodeQL's setup when its top-level `on:` names `pull_request`
@@ -79,8 +81,8 @@ right after. Two causes kept it from merging under the baseline ruleset.
   no-language case doesn't arise with the workflow.
 - An existing project's Analyze jobs fail between its template update and the baseline run, because GitHub refuses the
   workflow's results while default setup is on. The update's note says to run the baseline once the update merges.
-- A language default setup analyzed beyond the four goes unanalyzed until the project adds it to the detect step, which
-  the baseline's line names.
+- A language default setup analyzed that needs a build (Go, Swift, Kotlin) goes unanalyzed until the project adds an
+  Analyze job for it, which the baseline's line names.
 - An organization security configuration that enforces default setup makes the baseline fail or report until an owner
   sets code scanning to "Enabled with advanced setup allowed" or leaves it out of the configuration.
 - A contributor new to GitHub waits for a maintainer's approval before CodeQL runs too
@@ -92,9 +94,10 @@ right after. Two causes kept it from merging under the baseline ruleset.
 
 - `.github/workflows/codeql.yml`, `tools/Set-RepositoryBaseline.ps1` and `tests/Test-RepositoryBaseline.ps1`
 - GitHub Docs, [Code scanning setup types](https://docs.github.com/en/code-security/concepts/code-scanning/setup-types),
-  [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
-  and
+  [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets),
   [Resource not accessible](https://docs.github.com/en/code-security/reference/code-scanning/troubleshoot-analysis-errors/resource-not-accessible)
+  and
+  [CodeQL code scanning for compiled languages](https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/codeql-code-scanning-for-compiled-languages)
 - [ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md),
   [ADR-0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md),
   [ADR-0036](0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md),
