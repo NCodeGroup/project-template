@@ -21,7 +21,7 @@ never brings a number the project already uses
 | [0004](0004-trunk-based-development-on-the-default-branch.md) | One trunk, `main`, with short-lived branches; no long-lived integration branch |
 | [0005](0005-the-default-branch-accepts-changes-only-through-pull-requests.md) | The default branch takes changes only through pull requests whose required checks pass (amended by 0018, 0022{% if git_host == 'github' %}, 0030, 0034 and 0040{% else %}, 0030 and 0040{% endif %}) |
 | [0006](0006-a-person-merges-every-pull-request.md) | A person decides every merge; an agent never merges, marks ready or turns on auto-merge (amended by 0022{% if git_host == 'github' %}, 0034 and 0041{% endif %}) |
-| [0007](0007-pending-work-is-tracked-as-issues.md) | Pending work is one issue per item on the repository host, closed by the pull request that completes it (amended by 0040) |
+| [0007](0007-pending-work-is-tracked-as-issues.md) | Pending work is one issue per item on the repository host, closed by the pull request that completes it (amended by 0040 and 0042) |
 | [0008](0008-external-inputs-are-pinned-and-kept-current.md) | Packages, actions, SDKs, images and the template version are pinned exactly and moved by reviewed updates (amended by 0040) |
 | [0009](0009-new-dependency-versions-wait-a-cooldown.md) | A new dependency version is adopted only once it is at least three days old (amended by 0040) |
 | [0010](0010-a-change-consumers-can-observe-is-decided-before-it-is-built.md) | A change consumers can observe starts as an issue, and its decision is recorded before or with the pull request |
@@ -71,6 +71,7 @@ never brings a number the project already uses
 | [0041](0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md) | `code-review.yml` reviews a pull request Dependabot opens from the repository when it opens and after each push Dependabot makes, so a clean review approves it and a minor or patch NCode Review pin bump merges with no person's action; another bot's pull request waits for a `/review` (amends 0006, 0020, 0022 and 0036) |
 | [0042](0042-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md) | `code-review.yml` passes NCode Review's `review-forks: true`, so a fork's pull request is reviewed once it isn't a draft and records its outcomes when it closes, and is never approved: a maintainer approves it (amends 0019 and 0022) |
 {%- endif %}
+| [0042](0042-work-is-planned-as-epics-stories-and-plan-steps-on-a-kanban-flow.md) | Large work is an epic of stories, one plan each, whose parent and blocked-by links record their place and order; a story is planned once it meets the Definition of Ready, work flows through Kanban columns with at most two stories in progress and no sprints, and the organization supplies the issue forms (amends 0007) |
 {%- if stack == 'dotnet' %}
 
 ## .NET
