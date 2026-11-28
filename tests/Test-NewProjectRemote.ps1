@@ -124,6 +124,10 @@ foreach ($case in @(
 }
 $refusal = Get-RepositoryNameRefusal '2fa' 'dotnet'
 Check "name rule: '2fa' doesn't fit a dotnet repository, and the refusal names no folder that doesn't fit either" ([bool]$refusal -and -not $refusal.Contains('Name the folder')) "refusal=$refusal"
+foreach ($case in @(("Buffers`n", 'dotnet'), ("qso-viewer`n", 'python'))) {
+    $name, $stack = $case
+    Check "name rule: a name that ends in a line break doesn't fit a $stack repository" ($null -ne (Get-RepositoryNameRefusal $name $stack))
+}
 
 $savedNames = 'PATH', 'NEW_PROJECT_TEST_CALLS', 'NEW_PROJECT_TEST_HOST', 'NEW_PROJECT_TEST_FAIL', 'NEW_PROJECT_TEST_STACK', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0', 'GIT_CONFIG_KEY_1', 'GIT_CONFIG_VALUE_1'
 $saved = @{}

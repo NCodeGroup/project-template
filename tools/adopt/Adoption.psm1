@@ -990,7 +990,7 @@ function Test-GitHubRemote([string]$Url) {
 # from $Name, when that name fits the rule.
 function Get-RepositoryNameRefusal([string]$Name, [string]$Stack) {
     $dotnet = $Stack -eq 'dotnet'
-    $pattern = if ($dotnet) { '^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)*$' } else { '^[a-z0-9]+(-[a-z0-9]+)*$' }
+    $pattern = if ($dotnet) { '^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)*\z' } else { '^[a-z0-9]+(-[a-z0-9]+)*\z' }
     $fits = { param([string]$Candidate) $Candidate -ceq '.github' -or ($Candidate -cmatch $pattern -and -not ($dotnet -and $Candidate -match '^ncode\.')) }
     if (& $fits $Name) { return }
     $base = $Name -replace '^(?i:ncode)\.', ''
