@@ -52,6 +52,8 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+      # Reads the workflow run's details in a private repository.
+      actions: read
       # Uploads the results to code scanning.
       security-events: write
     strategy:
