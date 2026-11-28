@@ -553,23 +553,29 @@ $checks['5.2'] = {
     else { New-Result 'not done' "requires $count approval(s), expected 1" }
 }
 
-# A codeql.yml counts as CodeQL's setup when it runs on pull_request and a line that isn't a comment uses
-# github/codeql-action/analyze@. tools/Set-RepositoryBaseline.ps1's Test-CodeQLWorkflow applies the same rules;
-# a change to one belongs in both.
+# A workflow counts as CodeQL's setup when it runs on pull_request and a line that isn't a comment uses
+# github/codeql-action/analyze@: the first such .yml or .yaml file in .github/workflows, by name, such as codeql.yml.
+# tools/Set-RepositoryBaseline.ps1's Test-CodeQLWorkflow applies the same rules; a change to one belongs in both.
 $checks['2.3'] = {
-    $codeqlFile = Get-FileText '.github/workflows/codeql.yml'
     $setup = Read-Gh @('api', "repos/$slug/code-scanning/default-setup")
-    $codeqlCode = [regex]::Replace("$codeqlFile", '(?m)^[ \t]*#.*$', '')
-    $codeqlUses = $codeqlCode -match '(?m)^[ \t]*(-[ \t]+)?uses:[ \t]*[''"]?github/codeql-action/analyze@'
-    $codeqlOnPullRequest = $codeqlCode -match '(?m)^[ \t]*pull_request[ \t]*:' -or
-        $codeqlCode -match '(?m)^on:[ \t]*\[[^\]\r\n]*\bpull_request\b' -or
-        $codeqlCode -match '(?m)^on:[ \t]*pull_request[ \t]*$'
-    if ($codeqlUses -and $codeqlOnPullRequest) {
+    $codeqlWorkflow = $null
+    $folder = Join-Path $Path '.github/workflows'
+    if (Test-Path -LiteralPath $folder -PathType Container) {
+        foreach ($file in Get-ChildItem -LiteralPath $folder -File | Where-Object { $_.Extension -in '.yml', '.yaml' } | Sort-Object Name) {
+            $codeqlCode = [regex]::Replace("$(Get-Content -LiteralPath $file.FullName -Raw)", '(?m)^[ \t]*#.*$', '')
+            $codeqlUses = $codeqlCode -match '(?m)^[ \t]*(-[ \t]+)?uses:[ \t]*[''"]?github/codeql-action/analyze@'
+            $codeqlOnPullRequest = $codeqlCode -match '(?m)^[ \t]*pull_request[ \t]*:' -or
+                $codeqlCode -match '(?m)^on:[ \t]*\[[^\]\r\n]*\bpull_request\b' -or
+                $codeqlCode -match '(?m)^on:[ \t]*pull_request[ \t]*\r?$'
+            if ($codeqlUses -and $codeqlOnPullRequest) { $codeqlWorkflow = ".github/workflows/$($file.Name)"; break }
+        }
+    }
+    if ($codeqlWorkflow) {
         if ($setup.state -eq 'configured') {
-            $why = "CodeQL's default setup is on, which refuses .github/workflows/codeql.yml's results: run Set-RepositoryBaseline.ps1"
+            $why = "CodeQL's default setup is on, which refuses ${codeqlWorkflow}'s results: run Set-RepositoryBaseline.ps1"
             return New-Result 'not done' $why
         }
-        return New-Result 'done' '.github/workflows/codeql.yml runs CodeQL; the default setup is off'
+        return New-Result 'done' "$codeqlWorkflow runs CodeQL; the default setup is off"
     }
     $languages = @($setup.languages | Where-Object { $_ })
     if ($setup.state -eq 'configured' -and $languages.Count) {

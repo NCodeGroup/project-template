@@ -29,9 +29,6 @@ name: Code review
 # 0034-with-one-writer-the-baseline-requires-no-approval.md,
 # 0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md and
 # 0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md say why.
-# v1.7.0 was released on 2026-11-27, under the three days ADR-0009 waits: it is pinned by that record's commented
-# exception, because review-forks needs it, and this sentence goes once 2026-11-30 has passed
-# (NCodeGroup/project-template#543).
 #
 # review-forks: true (v1.7.0 on) reviews a pull request from a fork too: when it opens or reopens as ready for review,
 # when it's marked ready and on a writer's /review, never as a draft when it opens, and never as an approval, so a

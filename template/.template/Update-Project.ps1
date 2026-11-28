@@ -112,7 +112,7 @@
     tools/Set-RepositoryBaseline.ps1 leaves mutable, it says to delete or leave out that paragraph, also when the
     project is already up to date (the template's ADR-0028).
     With NCode Review, when .github/workflows/code-review.yml pins NCodeGroup/code-review before v1.5.0, passes no approve: true or passes approve: true without approver-private-key, or AGENTS.md's Landing section doesn't say draft: yes, it says what to change, to store the approver's key with tools/Enable-CodeReview.ps1 -ApproverPrivateKeyPath from NCodeGroup/code-review and to run the template's tools/Set-RepositoryBaseline.ps1 again, also when the project is already up to date (the template's ADR-0022 and ADR-0036).
-    When the update adds .github/workflows/codeql.yml, it says to run tools/Set-RepositoryBaseline.ps1 once the update merges, which turns CodeQL's default setup off, since GitHub refuses the workflow's results until then (the template's ADR-0044).
+    When the update adds .github/workflows/codeql.yml, it says to run tools/Set-RepositoryBaseline.ps1 once the update merges, which turns CodeQL's default setup off, since GitHub refuses the workflow's results until then (the template's ADR-0044). It leaves .github/workflows/codeql.yml out of a project whose own workflow already runs CodeQL on pull_request, as tools/Set-RepositoryBaseline.ps1 counts one, and says so (the template's ADR-0047).
 
     On Windows it stops before it changes anything when the project's template version has a path Git for Windows
     refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
@@ -882,6 +882,24 @@ function Get-NuGetPublisherAnswer {
     @(Get-NuGetPublisher) -join ', '
 }
 
+# The workflows other than codeql.yml that run CodeQL on pull_request, as .github/workflows/<name>, sorted, by the rules
+# tools/Set-RepositoryBaseline.ps1's Test-CodeQLWorkflow and tools/Get-AdoptionChecklist.ps1's row 2.3 apply: its on:
+# names pull_request and a line that isn't a comment uses github/codeql-action/analyze@. A repository with one has a
+# CodeQL setup of its own, and the template's codeql.yml beside it would analyze each commit a second time under the
+# same categories (the template's ADR-0047).
+# tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-CodeQLWorkflow {
+    if (-not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
+    $found = @(foreach ($file in Get-ChildItem -LiteralPath .github/workflows -File) {
+            if ($file.Extension -notin '.yml', '.yaml' -or $file.Name -eq 'codeql.yml') { continue }
+            $code = "$(Get-Content -LiteralPath $file.FullName -Raw)" -replace '(?m)^[ \t]*#.*$', ''
+            $analyzes = $code -match '(?m)^[ \t]*(-[ \t]+)?uses:[ \t]*[''"]?github/codeql-action/analyze@'
+            $onPullRequest = $code -match '(?m)^[ \t]*pull_request[ \t]*:' -or $code -match '(?m)^on:[ \t]*\[[^\]\r\n]*\bpull_request\b' -or $code -match '(?m)^on:[ \t]*pull_request[ \t]*\r?$'
+            if ($analyzes -and $onPullRequest) { ".github/workflows/$($file.Name)" }
+        })
+    $found | Sort-Object
+}
+
 function Get-AssemblyVersionFloor {
     if (-not (Test-Path -LiteralPath build/ProjectTemplate.props -PathType Leaf)) { return }
     if ((Get-Content -LiteralPath build/ProjectTemplate.props -Raw) -notmatch 'Name="ProjectTemplatePinAssemblyVersion"') { return }
@@ -1341,6 +1359,10 @@ try {
         $publishers = @(if ((Get-Answer 'nuget_package') -eq 'true') { Get-NuGetPublisher })
         $publishLeftOut = $publishers.Count -gt 0 -and -not (Test-Path -LiteralPath .github/workflows/publish.yml) -and '.github/workflows/publish.yml' -notin @($deleted)
         if ($publishLeftOut) { $copierArgs += '--exclude', '/.github/workflows/publish.yml' }
+        # A project whose own workflow already runs CodeQL on pull_request gets no codeql.yml, which would analyze each commit a second time under the same categories (the template's ADR-0047).
+        $codeqlWorkflows = @(Get-CodeQLWorkflow)
+        $codeqlLeftOut = $codeqlWorkflows.Count -gt 0 -and -not (Test-Path -LiteralPath .github/workflows/codeql.yml) -and '.github/workflows/codeql.yml' -notin @($deleted)
+        if ($codeqlLeftOut) { $copierArgs += '--exclude', '/.github/workflows/codeql.yml' }
         # A file the project owns, merged or template-owned, stays as it is; its template change is shown below.
         foreach ($file in $ownedFiles) { $copierArgs += '--exclude', "/$file" }
         $versionFileNew = -not (Test-Path -LiteralPath version.json) -and 'version.json' -notin @($deleted)
@@ -1505,6 +1527,11 @@ try {
     elseif ($publishers.Count -gt 0 -and (Test-Path -LiteralPath .github/workflows/publish.yml)) {
         ''
         "Both .github/workflows/publish.yml and $($publishers -join ', ') push NuGet packages, so a published release runs both. Keep one: delete publish.yml, or move the publishing into it and delete the others."
+    }
+    # A project whose own workflow runs CodeQL (Get-CodeQLWorkflow).
+    if ($codeqlLeftOut) {
+        ''
+        "Left out .github/workflows/codeql.yml: $($codeqlWorkflows -join ', ') already run CodeQL on pull requests, and two CodeQL workflows would analyze each commit twice under the same categories. To run CodeQL through the template's codeql.yml instead, which analyzes every pull request, a fork's too (the template's ADR-0044, in docs/decisions/project-template/), delete $($codeqlWorkflows -join ', ') and run the update again."
     }
     # A library's publish.yml without the trigger tag-release.yml starts it with: a release that workflow publishes would ship no packages.
     if ((Test-Path -LiteralPath .github/workflows/tag-release.yml) -and (Test-Path -LiteralPath .github/workflows/publish.yml) -and @(Get-WorkflowEvents (Get-Content -LiteralPath .github/workflows/publish.yml -Raw)) -notcontains 'workflow_dispatch') {

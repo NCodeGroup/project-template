@@ -510,6 +510,24 @@ function Get-NuGetPublisherAnswer {
     @(Get-NuGetPublisher) -join ', '
 }
 
+# The workflows other than codeql.yml that run CodeQL on pull_request, as .github/workflows/<name>, sorted, by the rules
+# tools/Set-RepositoryBaseline.ps1's Test-CodeQLWorkflow and tools/Get-AdoptionChecklist.ps1's row 2.3 apply: its on:
+# names pull_request and a line that isn't a comment uses github/codeql-action/analyze@. A repository with one has a
+# CodeQL setup of its own, and the template's codeql.yml beside it would analyze each commit a second time under the
+# same categories (the template's ADR-0047).
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-CodeQLWorkflow {
+    if (-not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
+    $found = @(foreach ($file in Get-ChildItem -LiteralPath .github/workflows -File) {
+            if ($file.Extension -notin '.yml', '.yaml' -or $file.Name -eq 'codeql.yml') { continue }
+            $code = "$(Get-Content -LiteralPath $file.FullName -Raw)" -replace '(?m)^[ \t]*#.*$', ''
+            $analyzes = $code -match '(?m)^[ \t]*(-[ \t]+)?uses:[ \t]*[''"]?github/codeql-action/analyze@'
+            $onPullRequest = $code -match '(?m)^[ \t]*pull_request[ \t]*:' -or $code -match '(?m)^on:[ \t]*\[[^\]\r\n]*\bpull_request\b' -or $code -match '(?m)^on:[ \t]*pull_request[ \t]*\r?$'
+            if ($analyzes -and $onPullRequest) { ".github/workflows/$($file.Name)" }
+        })
+    $found | Sort-Object
+}
+
 # The release_policy answer, which Copier never records (copier.yml says when: false): the value of the "- release:" line of
 # AGENTS.md's Landing section, none without the line, as .template/Publish-Release.ps1 reads it. Nothing for a value that
 # script refuses or without AGENTS.md, so the answer's default applies. Runs in the project folder.
@@ -984,10 +1002,10 @@ function Test-GitHubRemote([string]$Url) {
     $Url -match '^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)'
 }
 
-# The refusal text for a GitHub repository named $Name in a project whose stack answer is $Stack, or nothing when the
-# name fits NCodeGroup's rule (NCodeGroup/.github ADR-1001, ADR-0045). The text names the name that fits, worked out
-# from $Name, when that name fits the rule.
-function Get-RepositoryNameRefusal([string]$Name, [string]$Stack) {
+# Whether a GitHub repository named $Name fits NCodeGroup's rule for a project whose stack answer is $Stack
+# (NCodeGroup/.github ADR-1001, ADR-0045): nothing when it fits, else the rule it breaks and the name that fits, worked
+# out from $Name, or a $null Suggestion when that name doesn't fit the rule either.
+function Get-RepositoryNameMismatch([string]$Name, [string]$Stack) {
     $dotnet = $Stack -eq 'dotnet'
     $pattern = if ($dotnet) { '^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)*\z' } else { '^[a-z0-9]+(-[a-z0-9]+)*\z' }
     $fits = { param([string]$Candidate) $Candidate -ceq '.github' -or ($Candidate -cmatch $pattern -and -not ($dotnet -and $Candidate -match '^ncode\.')) }
@@ -1001,8 +1019,28 @@ function Get-RepositoryNameRefusal([string]$Name, [string]$Stack) {
         ($words -replace '[^A-Za-z0-9]+', '-').Trim('-').ToLowerInvariant()
     }
     $rule = if ($dotnet) { "a .NET repository is named for its root namespace: PascalCase segments joined by '.', without a leading 'NCode.', such as 'Buffers' or 'Collections.Providers'" } else { "a repository that isn't .NET is named in lowercase kebab case, such as 'qso-viewer'" }
-    $message = "New-Project.ps1 names the GitHub repository after its folder, '$Name', but $rule (NCodeGroup/.github ADR-1001, ADR-0045)."
-    if (& $fits $suggestion) { "$message Name the folder '$suggestion'." } else { $message }
+    [pscustomobject]@{ Rule = $rule; Suggestion = $(if (& $fits $suggestion) { $suggestion } else { $null }) }
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote, Get-ReleasePolicyAnswer, Set-TemplateSource, Get-GitHubOnlyMessage, Test-GitHubRemote, Get-RepositoryNameRefusal
+# The refusal text for a GitHub repository named $Name in a project whose stack answer is $Stack, or nothing when the
+# name fits NCodeGroup's rule (NCodeGroup/.github ADR-1001, ADR-0045). The text names the name that fits, worked out
+# from $Name, when that name fits the rule.
+function Get-RepositoryNameRefusal([string]$Name, [string]$Stack) {
+    $mismatch = Get-RepositoryNameMismatch $Name $Stack
+    if (-not $mismatch) { return }
+    $message = "New-Project.ps1 names the GitHub repository after its folder, '$Name', but $($mismatch.Rule) (NCodeGroup/.github ADR-1001, ADR-0045)."
+    if ($mismatch.Suggestion) { "$message Name the folder '$($mismatch.Suggestion)'." } else { $message }
+}
+
+# The note Adopt-Project.ps1 prints for an adopted GitHub repository named $Name in a project whose stack answer is
+# $Stack, or nothing when the name fits NCodeGroup's rule (NCodeGroup/.github ADR-1001, ADR-0045): the name that fits,
+# worked out as for Get-RepositoryNameRefusal, and what a rename touches, as ADR-1001's Consequences list it.
+function Get-RepositoryNameWarning([string]$Name, [string]$Stack) {
+    $mismatch = Get-RepositoryNameMismatch $Name $Stack
+    if (-not $mismatch) { return }
+    $message = "The repository's name, '$Name', doesn't fit NCodeGroup's rule for repository names: $($mismatch.Rule) (NCodeGroup/.github ADR-1001, the template's ADR-0045)."
+    if ($mismatch.Suggestion) { $message += " The name that fits is '$($mismatch.Suggestion)'." }
+    "$message The adoption renames nothing. A rename goes through an issue in the repository that lists what it touches, as ADR-1001's Consequences say: badges and services keyed by the name, such as OpenSSF Scorecard and Codecov; federated-identity conditions; workflow conditions on github.repository; the name in the repository's own files, except released changelog sections; and, for more than a change of case, the nuget.org trusted publishing policy, links to the GitHub Pages default URL and the clone's folder. https://github.com/NCodeGroup/.github/blob/main/docs/decisions/1001-a-dotnet-repository-is-named-for-its-root-namespace-and-every-other-repository-in-lowercase.md"
+}
+
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote, Get-ReleasePolicyAnswer, Set-TemplateSource, Get-GitHubOnlyMessage, Test-GitHubRemote, Get-RepositoryNameRefusal, Get-RepositoryNameWarning, Get-CodeQLWorkflow

@@ -18,6 +18,14 @@
     It enables the template's Git hooks (core.hooksPath .githooks), so .githooks/pre-push runs, unless the
     repository already has a hooks path, hooks in .git/hooks, or uses pre-commit; then it leaves them as they are and warns, naming the command that runs the template's hooks.
 
+    When its origin remote names a GitHub repository whose name doesn't fit NCodeGroup's rule for the stack answer
+    (NCodeGroup/.github ADR-1001, the template's ADR-0045 and ADR-0046): for stack dotnet, the root namespace's
+    PascalCase segments joined by '.', without a leading NCode., and for every other stack, lowercase kebab case, it
+    prints a note with the name that fits and what a rename touches. It renames nothing.
+
+    A repository whose own workflow already runs CodeQL on pull_request, as tools/Set-RepositoryBaseline.ps1 counts
+    one, keeps it and gets no .github/workflows/codeql.yml, and the report says so (the template's ADR-0047).
+
     When the repository keeps its own .github/workflows/publish.yml without a workflow_dispatch trigger and gets
     .github/workflows/tag-release.yml, it prints the warning .\.template\Update-Project.ps1 prints: the Tag and publish
     release workflow starts publish.yml through that trigger, so until it has one, a release ships no packages.
@@ -261,6 +269,10 @@ try {
         }
         # Files the repository owns, merged or template-owned, stay exactly as they are.
         foreach ($file in $ownedFiles) { $copierArgs += '--exclude', "/$file" }
+        # A repository whose own workflow already runs CodeQL on pull_request keeps it alone, without the template's codeql.yml beside it, which would analyze each commit a second time under the same categories (the template's ADR-0047).
+        $codeqlWorkflows = @(Get-CodeQLWorkflow)
+        $codeqlLeftOut = $codeqlWorkflows.Count -gt 0 -and -not (Test-Path -LiteralPath .github/workflows/codeql.yml)
+        if ($codeqlLeftOut) { $copierArgs += '--exclude', '/.github/workflows/codeql.yml' }
         $copierArgs += $Template, $project
         $versionFileNew = -not (Test-Path -LiteralPath version.json)
         Invoke-Copier @copierArgs
@@ -311,6 +323,7 @@ try {
         if ($answers.Contains('nuget_publisher') -and $answers['nuget_publisher']) {
             $report.Add("  Skipped .github/workflows/publish.yml, release-provenance.yml and raise-baseline.yml $([char]0x2014) $($answers['nuget_publisher']) already push NuGet packages")
         }
+        if ($codeqlLeftOut) { $report.Add("  Skipped .github/workflows/codeql.yml $([char]0x2014) $($codeqlWorkflows -join ', ') already run CodeQL on pull requests") }
         # A version.json this adoption brought in starts at the patch after the newest release tag, with the AssemblyVersion its current major shipped.
         if ($versionFileNew -and (Test-Path -LiteralPath version.json -PathType Leaf)) {
             $versionFile = Update-VersionFile
@@ -339,8 +352,8 @@ try {
         if (Test-Path -LiteralPath .github/copilot-instructions.md) { $followUps.Add('fold .github/copilot-instructions.md into AGENTS.md or a file it lists') }
         # A ci.yml the repository already had was kept, so its other workflows are not in conflict with the template's.
         if ((Test-Path -LiteralPath .github/workflows/ci.yml) -and -not $originals.ContainsKey('.github/workflows/ci.yml')) {
-            # code-review.yml, code-review-auto-merge.yml, publish.yml and tag-release.yml are the template's own workflows for the review bot, for merging its Dependabot bumps, for publishing packages and for tagging and publishing releases, separate from CI by design: nothing to reconcile. So are scorecard.yml, which scores the repository's supply chain, codeql.yml, which runs CodeQL, and release-provenance.yml, which attests the packages publish.yml publishes, and raise-baseline.yml, which raises the package validation baseline after each release.
-            foreach ($f in Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Extension -in '.yml', '.yaml' -and $_.Name -notin 'ci.yml', 'code-review.yml', 'code-review-auto-merge.yml', 'publish.yml', 'tag-release.yml', 'scorecard.yml', 'codeql.yml', 'release-provenance.yml', 'raise-baseline.yml' } | Sort-Object Name) {
+            # code-review.yml, code-review-auto-merge.yml, publish.yml and tag-release.yml are the template's own workflows for the review bot, for merging its Dependabot bumps, for publishing packages and for tagging and publishing releases, separate from CI by design: nothing to reconcile. So are scorecard.yml, which scores the repository's supply chain, codeql.yml, which runs CodeQL, and release-provenance.yml, which attests the packages publish.yml publishes, and raise-baseline.yml, which raises the package validation baseline after each release. A workflow of the repository's own that runs CodeQL takes codeql.yml's place, so it isn't reconciled either.
+            foreach ($f in Get-ChildItem -LiteralPath .github/workflows -File | Where-Object { $_.Extension -in '.yml', '.yaml' -and $_.Name -notin 'ci.yml', 'code-review.yml', 'code-review-auto-merge.yml', 'publish.yml', 'tag-release.yml', 'scorecard.yml', 'codeql.yml', 'release-provenance.yml', 'raise-baseline.yml' -and ".github/workflows/$($_.Name)" -notin $codeqlWorkflows } | Sort-Object Name) {
                 $followUps.Add("reconcile .github/workflows/$($f.Name) with ci.yml")
             }
         }
@@ -458,6 +471,9 @@ try {
     if ($originUrl -match '^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/([^/]+?)(?:\.git)?/?$') {
         # The next -match overwrites $Matches.
         $owner, $repo = $Matches[1], $Matches[2]
+        # NCodeGroup's rule for repository names (the template's ADR-0045 and ADR-0046): an adoption refuses nothing, so it names a repository whose name doesn't fit and what its rename touches.
+        $nameWarning = Get-RepositoryNameWarning $repo (Get-Answer 'stack')
+        if ($nameWarning) { ''; $nameWarning }
         $ci = if (Test-Path -LiteralPath .github/workflows/ci.yml) { Get-Content -Raw -LiteralPath .github/workflows/ci.yml } else { '' }
         $checks = if ($ci -match '(?m)^  build-and-test:' -and $ci.Contains('./.template/Test-AdrIndex.ps1')) { " -RequireChecks 'build-and-test'" } else { '' }
         ''

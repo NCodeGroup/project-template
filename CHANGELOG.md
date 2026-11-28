@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.125.0] - 2026-11-28
+
+### Added
+
+- `Adopt-Project.ps1` prints a note when the repository's `origin` remote is on GitHub and names a repository whose name doesn't fit NCodeGroup's rule for its `stack` answer (NCodeGroup/.github ADR-1001): a .NET repository's root namespace in PascalCase segments without `NCode.`, every other in lowercase kebab case. The note names the name that fits and what a rename touches; the adoption renames nothing and goes on. ADR-0046, which amends ADR-0045, says so ([#548](https://github.com/NCodeGroup/project-template/issues/548), [ADR-0046](template/docs/decisions/project-template/0046-an-adoption-notes-a-repository-name-that-doesnt-fit-ncodegroups-rule.md)).
+
+### Changed
+
+- `.github/workflows/codeql.yml` shares `ci.yml`'s concurrency groups, so a newer push to a pull request cancels the CodeQL run it supersedes while a run for a `main` commit or a merge queue entry is never cancelled, and, in a .NET project, installs the SDK `global.json` selects with `.github/actions/install-dotnet` before CodeQL analyzes C#, so `build-mode: none` restores the packages with that SDK. The file is the project's own: take the change from the update's listing of the template's changes to it ([#541](https://github.com/NCodeGroup/project-template/issues/541), [ADR-0047](template/docs/decisions/project-template/0047-codeql-yml-runs-like-ci-yml-and-steps-aside-for-a-repositorys-own-codeql-workflow.md)).
+- `Adopt-Project.ps1` and `.template/Update-Project.ps1` leave `.github/workflows/codeql.yml` out of a repository whose own workflow already runs CodeQL on `pull_request`, as `tools/Set-RepositoryBaseline.ps1` counts one, and say so, since the two would analyze each commit twice under the same categories; the adoption asks to reconcile no such workflow with `ci.yml`. `tools/Get-AdoptionChecklist.ps1`'s row 2.3 counts any workflow that runs CodeQL on `pull_request`, as `tools/Set-RepositoryBaseline.ps1` does, and ADR-0047, which amends ADR-0044, and `docs/adopt.md` say so ([#541](https://github.com/NCodeGroup/project-template/issues/541), [ADR-0047](template/docs/decisions/project-template/0047-codeql-yml-runs-like-ci-yml-and-steps-aside-for-a-repositorys-own-codeql-workflow.md)).
+- The `code-review.yml` a GitHub project with NCode Review gets, and this repository's own, no longer carry ADR-0009's commented exception for NCode Review v1.7.0, which the pin needed while v1.7.0 was under three days old; the pin stays v1.7.0. `code-review.yml` is the project's own, so an update shows the change to copy ([#543](https://github.com/NCodeGroup/project-template/issues/543), [ADR-0009](template/docs/decisions/project-template/0009-new-dependency-versions-wait-a-cooldown.md)).
+
 ## [0.124.0] - 2026-11-28
 
 ### Changed
@@ -2109,7 +2121,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.124.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.125.0...HEAD
+[0.125.0]: https://github.com/NCodeGroup/project-template/compare/v0.124.0...v0.125.0
 [0.124.0]: https://github.com/NCodeGroup/project-template/compare/v0.123.0...v0.124.0
 [0.123.0]: https://github.com/NCodeGroup/project-template/compare/v0.122.0...v0.123.0
 [0.122.0]: https://github.com/NCodeGroup/project-template/compare/v0.121.1...v0.122.0

@@ -1,6 +1,6 @@
 # 0045. New-Project.ps1 names a repository by NCodeGroup's rule and refuses a name that doesn't fit
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0046)
 - **Date:** 2026-11-27
 - **Refines:** [NCodeGroup/.github ADR-1001](https://github.com/NCodeGroup/.github/blob/main/docs/decisions/1001-a-dotnet-repository-is-named-for-its-root-namespace-and-every-other-repository-in-lowercase.md)
 

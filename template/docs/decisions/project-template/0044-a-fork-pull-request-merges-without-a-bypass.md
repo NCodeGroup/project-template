@@ -1,6 +1,6 @@
 # 0044. A fork's pull request merges without a bypass
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0047)
 - **Date:** 2026-11-28
 - **Amends:** 0005, 0020, 0022 and 0030
 
