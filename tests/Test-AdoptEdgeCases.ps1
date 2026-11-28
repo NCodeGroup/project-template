@@ -14,6 +14,7 @@
     A repository whose own workflow runs on a release event gets Update-Project.ps1's note on SECURITY.md's immutable-releases paragraph (ADR-0028).
     A library whose kept AGENTS.md has no release line gets Update-Project.ps1's note with the one-line change to
     - release: tag+release; a library whose AGENTS.md the template writes, with release: tag+release, doesn't.
+    A .NET repository named gaps gets a note naming Gaps, the name NCodeGroup's rule gives it (ADR-0045), and a Node.js repository named notes gets none.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-adopt-edge-test-<process ID> in the
@@ -93,6 +94,7 @@ Check 'gaps: the repository''s other attribute lines are kept, and the report sa
 $gapsGlobal = Get-Content -Raw -LiteralPath (Join-Path $gaps 'global.json')
 Check 'gaps: a partial SDK version in global.json is replaced by the template''s, which setup-dotnet accepts' ($gapsGlobal -match '"version":\s*"\d+\.\d+\.\d{3}"' -and -not $gapsGlobal.Contains('"10.0.0"') -and $gapsOut.Contains('isn''t a full version')) "$gapsGlobal | $gapsOut"
 Check 'gaps: the code review and release workflows, scorecard.yml and release-provenance.yml are not asked to be reconciled with ci.yml, but the repository''s own workflow is' ($gapsOut.Contains('reconcile .github/workflows/main.yml with ci.yml') -and -not $gapsOut.Contains('code-review.yml with ci.yml') -and -not $gapsOut.Contains('code-review-auto-merge.yml with ci.yml') -and -not $gapsOut.Contains('tag-release.yml with ci.yml') -and -not $gapsOut.Contains('scorecard.yml with ci.yml') -and -not $gapsOut.Contains('codeql.yml with ci.yml') -and -not $gapsOut.Contains('release-provenance.yml with ci.yml')) $gapsOut
+Check 'gaps: notes that the name gaps doesn''t fit a .NET repository, naming Gaps and what a rename touches' ($gapsOut.Contains("The repository's name, 'gaps', doesn't fit NCodeGroup's rule for repository names") -and $gapsOut.Contains("The name that fits is 'Gaps'.") -and $gapsOut.Contains('nuget.org trusted publishing policy')) $gapsOut
 # Update-Project.ps1's warning for a publish.yml without workflow_dispatch, which adoption prints word for word.
 $updateScript = [IO.File]::ReadAllText((Join-Path $repoRoot 'template/.template/Update-Project.ps1'))
 $dispatchWarning = [regex]::Match($updateScript, "(?m)^\s*'(\.github/workflows/publish\.yml has no workflow_dispatch trigger\.(?:[^']|'')*)'\s*$").Groups[1].Value.Replace("''", "'")
@@ -157,6 +159,7 @@ $notesSubject = git -C $notes log -1 --format=%s
 Check 'notes: a Node.js repository without build or test scripts commits without running a command' ($notesSubject -eq 'Adopt project-template v0.1.0' -and $notesAnswers -match '(?m)^stack: node\s*$' -and $notesAnswers -match "(?m)^build_command: ''\s*$" -and $notesAnswers -match "(?m)^test_command: ''\s*$" -and -not $notesOut.Contains('Running ') -and -not $notesCi.Contains('run build') -and -not $notesCi.Contains('npm test')) "$notesSubject | $notesAnswers | $notesOut | $notesCi"
 Check 'notes: CI installs with the package manager package.json names' ($notesAnswers -match '(?m)^package_manager: yarn\s*$' -and $notesCi.Contains('corepack enable yarn') -and $notesCi.Contains('yarn install') -and -not $notesCi.Contains('npm ci')) "$notesAnswers | $notesCi"
 Check 'notes: the template''s own ci.yml gets neither ci.yml note' (-not $notesOut.Contains('has no workflow_call trigger') -and -not $notesOut.Contains('asks for more than contents: read')) $notesOut
+Check 'notes: a name that fits gets no name note' (-not $notesOut.Contains("doesn't fit NCodeGroup's rule for repository names")) $notesOut
 ''
 $env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Adopt edge-case tests: FAILED ($($failures.Count))"; exit 1 }
