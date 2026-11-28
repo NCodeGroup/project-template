@@ -390,7 +390,7 @@ if (-not $UnitOnly) {
         'main.py'               = "print('hi')`n"
         'pyproject.toml'        = "[project]`nname = ""plain""`n"
         '.vscode/settings.json' = "{`n  // editor`n  ""editor.rulers"": [100]`n}`n"
-        '.gitlab-ci.yml'        = "test:`n  script: echo hi`n"
+        '.circleci/config.yml'  = "jobs:`n  test:`n    steps:`n      - run: echo hi`n"
         'web/package.json'      = "{}`n"
         '.nvmrc'                = "v22`n"
     } 'https://github.com/example/plain.git'
@@ -421,7 +421,7 @@ if (-not $UnitOnly) {
     $agents = Get-Content -Raw -LiteralPath (Join-Path $plain 'AGENTS.md')
     $iEntry = $agents.IndexOf('@.github/instructions/project-template.instructions.md')
     Check 'plain: AGENTS.md gains the template rules' ($iEntry -ge 0 -and $iEntry -lt $agents.IndexOf('## Conventions') -and $agents.Contains('Own rules.')) $agents
-    Check 'plain: CI file kept' ((Get-Content -Raw -LiteralPath (Join-Path $plain '.gitlab-ci.yml')) -eq "test:`n  script: echo hi`n") ''
+    Check 'plain: CI file kept' ((Get-Content -Raw -LiteralPath (Join-Path $plain '.circleci/config.yml')) -eq "jobs:`n  test:`n    steps:`n      - run: echo hi`n") ''
 
     $scaffoldRepo = New-Fixture 'scaffold' @{
         'NCode.Demo.slnx'                   = "<Solution>`n  <Project Path=""src/NCode.Demo/NCode.Demo.csproj"" />`n</Solution>`n"
