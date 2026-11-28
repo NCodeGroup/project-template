@@ -114,6 +114,17 @@ $remoteWanted = [ordered]@{
 }
 $remoteWrong = @($remoteWanted.Keys | Where-Object { [bool](Test-GitHubRemote $_) -ne $remoteWanted[$_] })
 Check 'unit: Test-GitHubRemote accepts GitHub over https, with credentials, scp-style SSH and ssh://, and nothing else' ($remoteWrong.Count -eq 0) ($remoteWrong -join ' | ')
+# Get-BuildFileList: each .dockerignore and each GitHub workflow that names Directory.Build.props, and no other CI file (ADR-0040).
+$buildListRepo = New-Fixture 'build-lists' @{
+    '.dockerignore'              = "*`n!Directory.Build.props`n"
+    'docker/app.dockerignore'    = "*`n"
+    '.github/workflows/ci.yml'   = "key: Directory.Build.props`n"
+    '.github/workflows/lint.yml' = "on: push`n"
+    '.gitlab-ci.yml'             = "key: Directory.Build.props`n"
+    '.circleci/config.yml'       = "key: Directory.Build.props`n"
+} 'https://github.com/example/build-lists.git'
+$buildLists = @(Get-BuildFileList $buildListRepo) -join ','
+Check 'unit: Get-BuildFileList lists each .dockerignore and each GitHub workflow that names Directory.Build.props, and no other CI file' ($buildLists -eq '.dockerignore,.github/workflows/ci.yml,docker/app.dockerignore') $buildLists
 $apacheText = "                                 Apache License`n                           Version 2.0, January 2004`n"
 $licenseFolders = [ordered]@{
     'license-props' = @{ Files = @{ 'src/A/A.csproj' = "<Project />`n"; 'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <PackageLicenseExpression>MIT</PackageLicenseExpression>`n  </PropertyGroup>`n</Project>`n"; 'LICENSE' = $apacheText }; License = 'MIT' }
@@ -379,7 +390,7 @@ if (-not $UnitOnly) {
         'main.py'               = "print('hi')`n"
         'pyproject.toml'        = "[project]`nname = ""plain""`n"
         '.vscode/settings.json' = "{`n  // editor`n  ""editor.rulers"": [100]`n}`n"
-        '.gitlab-ci.yml'        = "test:`n  script: echo hi`n"
+        '.circleci/config.yml'  = "jobs:`n  test:`n    steps:`n      - run: echo hi`n"
         'web/package.json'      = "{}`n"
         '.nvmrc'                = "v22`n"
     } 'https://github.com/example/plain.git'
@@ -410,7 +421,7 @@ if (-not $UnitOnly) {
     $agents = Get-Content -Raw -LiteralPath (Join-Path $plain 'AGENTS.md')
     $iEntry = $agents.IndexOf('@.github/instructions/project-template.instructions.md')
     Check 'plain: AGENTS.md gains the template rules' ($iEntry -ge 0 -and $iEntry -lt $agents.IndexOf('## Conventions') -and $agents.Contains('Own rules.')) $agents
-    Check 'plain: CI file kept' ((Get-Content -Raw -LiteralPath (Join-Path $plain '.gitlab-ci.yml')) -eq "test:`n  script: echo hi`n") ''
+    Check 'plain: CI file kept' ((Get-Content -Raw -LiteralPath (Join-Path $plain '.circleci/config.yml')) -eq "jobs:`n  test:`n    steps:`n      - run: echo hi`n") ''
 
     $scaffoldRepo = New-Fixture 'scaffold' @{
         'NCode.Demo.slnx'                   = "<Solution>`n  <Project Path=""src/NCode.Demo/NCode.Demo.csproj"" />`n</Solution>`n"
