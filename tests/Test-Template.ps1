@@ -747,6 +747,8 @@ foreach ($case in $cases) {
             $detectCases = [ordered]@{
                 'a tracked C# file and a Python file' = @{ Files = @('src/a.cs', 'tools/b.py', 'README.md'); Expected = 'languages=["actions","csharp","python"]' }
                 'no source file' = @{ Files = @('README.md'); Expected = 'languages=["actions"]' }
+                'all-languages' = @{ Files = @('src/a.cs', 'src/B.java', 'lib/c.rb', 'lib/d.rs', 'web/e.ts', 'native/f.cpp', 'tools/g.py', 'README.md'); Expected = 'languages=["actions","c-cpp","csharp","java-kotlin","javascript-typescript","python","ruby","rust"]' }
+                'needs-a-build' = @{ Files = @('main.go', 'App.swift', 'Main.kt', 'README.md'); Expected = 'languages=["actions"]' }
             }
             $detectNumber = 0
             foreach ($scenario in $detectCases.Keys) {

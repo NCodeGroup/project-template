@@ -36,12 +36,18 @@ jobs:
         shell: pwsh
         run: |
           # actions analyzes the workflows, which every project has; each other language needs a tracked file in it.
+          # Each language here analyzes without a build (build-mode: none). Go, Swift and Kotlin need one: a project that has
+          # them adds an Analyze job for each, with build-mode autobuild, or manual and its own build steps.
           $files = @(git ls-files)
           $languages = [Collections.Generic.List[string]]::new()
           $languages.Add('actions')
+          if (@($files -match '\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$').Count) { $languages.Add('c-cpp') }
           if (@($files -match '\.(cs|csx|cshtml|razor)$').Count) { $languages.Add('csharp') }
+          if (@($files -match '\.java$').Count) { $languages.Add('java-kotlin') }
           if (@($files -match '\.(js|jsx|mjs|cjs|ts|tsx|mts|cts)$').Count) { $languages.Add('javascript-typescript') }
           if (@($files -match '\.py$').Count) { $languages.Add('python') }
+          if (@($files -match '\.rb$').Count) { $languages.Add('ruby') }
+          if (@($files -match '\.rs$').Count) { $languages.Add('rust') }
           "languages=$(ConvertTo-Json -Compress -InputObject @($languages))" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
           "CodeQL analyzes: $($languages -join ', ')"
 
