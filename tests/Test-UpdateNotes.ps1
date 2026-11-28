@@ -43,6 +43,8 @@
                 doesn't say draft: yes, without naming ADR-0009's cooldown, and says nothing
                 for a current setup, a pin whose version is in other Unicode digits, or a project without
                 code-review.yml.
+      codeql    Get-CodeQLWorkflowNote names codeql.yml, Set-RepositoryBaseline.ps1 and 'Enabled with advanced setup
+                allowed' when the update adds codeql.yml, and says nothing when it modifies it or adds another file.
       immutable Get-ImmutableReleaseNote says to delete or leave out SECURITY.md's "Releases are immutable" paragraph
                 when a workflow runs on a release event or uploads release assets, and nothing otherwise, such as
                 for an upload named only in a comment line.
@@ -524,6 +526,28 @@ $codeReviewNote = & {
     }
 }
 $codeReviewNote
+
+# codeql: Get-CodeQLWorkflowNote takes the update's changes and reads no folder.
+$codeqlNote = & {
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-CodeQLWorkflowNote' }, $true)
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $codeqlCases = [ordered]@{
+        'added'              = @{ Change = [pscustomobject]@{ Kind = 'added'; File = '.github/workflows/codeql.yml' }; Want = $true }
+        'modified'           = @{ Change = [pscustomobject]@{ Kind = 'modified'; File = '.github/workflows/codeql.yml' }; Want = $false }
+        'another file added' = @{ Change = [pscustomobject]@{ Kind = 'added'; File = '.github/workflows/ci.yml' }; Want = $false }
+    }
+    foreach ($name in $codeqlCases.Keys) {
+        $case = $codeqlCases[$name]
+        $note = (Get-CodeQLWorkflowNote @($case.Change)) -join "`n"
+        if ($case.Want) {
+            $missing = @('.github/workflows/codeql.yml', 'Set-RepositoryBaseline.ps1', 'Enabled with advanced setup allowed' | Where-Object { -not $note.Contains($_) })
+            Check "codeql: $name" (-not $missing.Count) "missing [$($missing -join '], [')] in [$note]"
+        }
+        else { Check "codeql: $name" (-not $note.Trim()) "got [$note]" }
+    }
+}
+$codeqlNote
 
 # immutable: Get-ImmutableReleaseNote, run from inside each fixture folder, which is also the project.
 $immutableNote = & {

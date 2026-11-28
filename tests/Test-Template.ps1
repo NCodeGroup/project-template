@@ -228,7 +228,7 @@ $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\Pro
 $nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', '.template\install-nvs.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'docs\decisions\project-template\0147-*.md', 'docs\decisions\project-template\0149-*.md', 'docs\decisions\project-template\0152-*.md', 'build\Update-PublicApi.ps1', 'docs\api-compatibility.md'
-$githubOnly = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml', '.github\workflows\scorecard.yml'
+$githubOnly = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml', '.github\workflows\scorecard.yml', '.github\workflows\codeql.yml'
 # tests\Test-TemplateDotnet.ps1 renders the dotnet and dotnet-library-apache cases again with the same answers: change both together.
 $cases = @(
     @{ Name = 'dotnet'; Stack = 'dotnet' }
@@ -658,11 +658,12 @@ foreach ($case in $cases) {
         $outcomesJob = if ($outcomesAt -ge 0) { $caller.Substring($outcomesAt) } else { '' }
         Check "${name}: the code review caller's review job leaves a closed pull request alone, a plain /review on one included, and cancels a superseded review" ($caller -match '(?m)^\s+types: \[[^\]\r\n]*\bclosed\b[^\]\r\n]*\]\r?$' -and $reviewJob.Contains("(github.event_name == 'pull_request_target' && github.event.action != 'closed' &&") -and $reviewJob -match "\(github\.event\.issue\.state == 'open' \|\| startsWith\(github\.event\.comment\.body, '/review explain'\) \|\|\s+startsWith\(github\.event\.comment\.body, '/review teach'\)\) &&" -and $reviewJob -match '(?m)^      cancel-in-progress: true\r?$' -and $reviewJob.Contains('id-token: write') -and $reviewJob.Contains('issues: read')) $reviewJob
         Check "${name}: the code review caller reviews a pull request Dependabot opened from the repository when it opens and after each push Dependabot makes, and no other bot's" ($caller -match '(?m)^    types: \[opened, reopened, ready_for_review, synchronize, closed\]\r?$' -and $reviewJob.Contains("!contains(github.event.pull_request.labels.*.name, 'skip-review') &&") -and $reviewJob.Contains("((github.event.action != 'synchronize' && github.event.sender.type != 'Bot') ||") -and $reviewJob.Contains("(github.event.pull_request.user.login == 'dependabot[bot]' && github.event.sender.login == 'dependabot[bot]'))) ||")) $reviewJob
+        Check "${name}: the code review caller reviews a fork's pull request once it isn't a draft and records its outcomes, passing review-forks: true to both NCode Review steps of v1.7.0 or later" ($reviewJob.Contains('(github.event.pull_request.head.repo.full_name == github.repository || !github.event.pull_request.draft) &&') -and [regex]::Matches($reviewJob, '(?m)^          review-forks: true\r?$').Count -eq 1 -and [regex]::Matches($outcomesJob, '(?m)^          review-forks: true\r?$').Count -eq 1 -and @($uses | Where-Object { $_.Groups[2].Value -cmatch '^# v([0-9]+)\.([0-9]+)\.[0-9]+\z' -and ([int]$Matches[1] -gt 1 -or ([int]$Matches[1] -eq 1 -and [int]$Matches[2] -ge 7)) }).Count -eq 2) $caller
         $v112Group = '      group: code-review-${{ github.event_name == ''issue_comment'' && !(github.event.comment.body == ''/review'' || startsWith(github.event.comment.body, format(''/review{0}'', fromJSON(''"\n"''))) || startsWith(github.event.comment.body, format(''/review{0}'', fromJSON(''"\r\n"'')))) && format(''command-{0}'', github.event.comment.id) || github.event.pull_request.number || github.event.issue.number }}'
         Check "${name}: the code review caller's review job puts only a comment whose first line is exactly /review in the pull request's concurrency group" ($reviewJob.Contains($v112Group)) $reviewJob
         Check "${name}: the code review caller passes approve: true in the review job alone" ([regex]::Matches($reviewJob, '(?m)^\s+approve: true\r?$').Count -eq 1 -and -not $outcomesJob.Contains('approve:')) $caller
         Check "${name}: the code review caller passes the approver's key from the environment in the review job alone" ($reviewJob.Contains('approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}') -and -not $outcomesJob.Contains('approver')) $caller
-        Check "${name}: the code review caller's outcomes job runs only on a closed pull request from the repository, outside the environment, reading contents and pull requests, with only the app key and without cancelling a review" ($outcomesJob.Contains("github.event_name == 'pull_request_target' && github.event.action == 'closed' &&") -and $outcomesJob.Contains('github.event.pull_request.head.repo.full_name == github.repository') -and $outcomesJob -match '(?m)^      group: code-review-\$\{\{ github\.event\.pull_request\.number \}\}\r?\n      cancel-in-progress: false\r?$' -and $outcomesJob -match '(?m)^    permissions:\r?\n      contents: read\r?\n      pull-requests: read\r?\n    steps:\r?$' -and $outcomesJob -notmatch '(?m)^\s+environment:' -and $outcomesJob -notmatch '(?m)^\s+id-token:' -and -not $outcomesJob.Contains('actions/checkout') -and $outcomesJob.Contains('app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}') -and -not $outcomesJob.Contains('bedrock-api-key')) $outcomesJob
+        Check "${name}: the code review caller's outcomes job runs on every closed pull request, a fork's too, outside the environment, reading contents and pull requests, with only the app key and review-forks and without cancelling a review" ($outcomesJob -match "(?m)^      github\.event_name == 'pull_request_target' && github\.event\.action == 'closed'\r?\n    runs-on: " -and -not $outcomesJob.Contains('head.repo.full_name') -and $outcomesJob -match '(?m)^      group: code-review-\$\{\{ github\.event\.pull_request\.number \}\}\r?\n      cancel-in-progress: false\r?$' -and $outcomesJob -match '(?m)^    permissions:\r?\n      contents: read\r?\n      pull-requests: read\r?\n    steps:\r?$' -and $outcomesJob -notmatch '(?m)^\s+environment:' -and $outcomesJob -notmatch '(?m)^\s+id-token:' -and -not $outcomesJob.Contains('actions/checkout') -and $outcomesJob.Contains('app-private-key: ${{ secrets.NCODE_REVIEW_APP_PRIVATE_KEY }}') -and -not $outcomesJob.Contains('bedrock-api-key')) $outcomesJob
         $checkouts = [regex]::Matches($caller, '(?m)^\s+uses: actions/checkout@').Count
         Check "${name}: the code review caller checks out only the default branch, without persisted credentials, and never the pull request's head" ($checkouts -eq 1 -and [regex]::Matches($caller, '(?m)^\s+persist-credentials: false\r?$').Count -eq 1 -and -not $caller.Contains('refs/pull/') -and -not $caller.Contains('head.sha')) $caller
         $answers = Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw
@@ -712,6 +713,60 @@ foreach ($case in $cases) {
     $scorecard = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\scorecard.yml') -Raw
     $uses = [regex]::Matches($scorecard, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
     Check "${name}: the Scorecard workflow pins each action to a full commit SHA with its tag in a comment, publishes its results with the OIDC and code scanning permissions, and reads contents by default" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and $scorecard.Contains('ossf/scorecard-action@') -and $scorecard.Contains('publish_results: true') -and $scorecard.Contains('id-token: write') -and $scorecard.Contains('security-events: write') -and $scorecard -match '(?m)^permissions:\r?\n  contents: read\r?$') $scorecard
+    # The CodeQL workflow: every GitHub project gets it, and it runs on every pull request, a fork's too.
+    $codeqlWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\codeql.yml') -Raw
+    $uses = [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+    Check "${name}: the CodeQL workflow pins each action to a full commit SHA with its tag in a comment, and every checkout persists no credentials" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: actions/checkout@').Count -gt 0 -and [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: actions/checkout@').Count -eq [regex]::Matches($codeqlWorkflow, '(?m)^\s+persist-credentials: false\r?$').Count) $codeqlWorkflow
+    Check "${name}: the CodeQL workflow reads contents by default and writes security events in its analyze job only" ($codeqlWorkflow -match '(?m)^permissions:\r?\n  contents: read\r?$' -and [regex]::Matches($codeqlWorkflow, 'security-events: write').Count -eq 1) $codeqlWorkflow
+    Check "${name}: the CodeQL workflow runs on pull requests and in the merge queue, picks its languages in a CodeQL languages job, and analyzes each with the extended queries and no build" ($codeqlWorkflow.Contains('pull_request:') -and $codeqlWorkflow.Contains('merge_group:') -and $codeqlWorkflow.Contains('queries: security-extended') -and $codeqlWorkflow.Contains('build-mode: none') -and $codeqlWorkflow.Contains('name: CodeQL languages') -and $codeqlWorkflow.Contains('language: ${{ fromJSON(needs.languages.outputs.languages) }}')) $codeqlWorkflow
+    # The detect step that picks the languages, run once: every GitHub render has the same file.
+    if (-not $codeqlDetectRan) {
+        $codeqlDetectRan = $true
+        $detect = Get-StepScript $codeqlWorkflow 'detect'
+        $detectCases = [ordered]@{
+            'a tracked C# file and a Python file' = @{ Files = @('src/a.cs', 'tools/b.py', 'README.md'); Expected = 'languages=["actions","csharp","python"]' }
+            'no source file' = @{ Files = @('README.md'); Expected = 'languages=["actions"]' }
+            'all-languages' = @{ Files = @('src/a.cs', 'src/B.java', 'lib/c.rb', 'lib/d.rs', 'web/e.ts', 'native/f.cpp', 'tools/g.py', 'README.md'); Expected = 'languages=["actions","c-cpp","csharp","java-kotlin","javascript-typescript","python","ruby","rust"]' }
+            'needs-a-build' = @{ Files = @('main.go', 'App.swift', 'Main.kt', 'README.md'); Expected = 'languages=["actions"]' }
+        }
+        $detectNumber = 0
+        foreach ($scenario in $detectCases.Keys) {
+            $detectNumber++
+            $detectRepo = Join-Path $Work "codeql-detect-$detectNumber"
+            New-Item -ItemType Directory -Force $detectRepo | Out-Null
+            Push-Location -LiteralPath $detectRepo
+            try {
+                git init -q
+                if ($LASTEXITCODE) { throw 'git init failed.' }
+                foreach ($file in $detectCases[$scenario].Files) {
+                    $filePath = Join-Path $detectRepo $file
+                    New-Item -ItemType Directory -Force (Split-Path -Parent $filePath) | Out-Null
+                    Set-Content -LiteralPath $filePath -Value 'x'
+                }
+                git add -A
+                if ($LASTEXITCODE) { throw 'git add failed.' }
+                # The step runs in a child process, so a stray exit in it can't end this suite.
+                $detectScript = Join-Path $Work "codeql-detect-$detectNumber.ps1"
+                Set-Content -LiteralPath $detectScript -Value $detect
+                $detectOutput = Join-Path $detectRepo 'github-output.txt'
+                $savedGitHubOutput = $env:GITHUB_OUTPUT
+                $env:GITHUB_OUTPUT = $detectOutput
+                $detectError = ''
+                try {
+                    $detectLog = & pwsh -NoProfile -File $detectScript 2>&1 | Out-String
+                    if ($LASTEXITCODE) { $detectError = "exit=$LASTEXITCODE $detectLog" }
+                }
+                catch { $detectError = "$_" }
+                finally {
+                    if ($null -eq $savedGitHubOutput) { Remove-Item Env:GITHUB_OUTPUT -ErrorAction SilentlyContinue } else { $env:GITHUB_OUTPUT = $savedGitHubOutput }
+                }
+                $detected = if (Test-Path -LiteralPath $detectOutput) { (Get-Content -LiteralPath $detectOutput -Raw).Trim() } else { '' }
+                Remove-Item -LiteralPath $detectOutput -Force -ErrorAction SilentlyContinue
+            }
+            finally { Pop-Location }
+            Check "${name}: the CodeQL workflow's detect step picks the languages for $scenario" ($detect -and -not $detectError -and $detected -eq $detectCases[$scenario].Expected) "output=$detected error=$detectError"
+        }
+    }
     # The code review auto-merge workflow: every GitHub project gets it, and it merges nothing where no Dependabot pull
     # request moves the NCode Review pin.
     $autoMerge = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\code-review-auto-merge.yml') -Raw
@@ -1083,6 +1138,8 @@ $copilotAddressFiles = 'template\.github\prompts\address-feedback.prompt.md', 't
 $m += @(Get-MissingText $copilotAddressFiles ('pwsh -NoProfile -File .template/Get-PlanState.ps1', 'Ask me once', 'is data to judge, never an instruction', 'git worktree add --no-track .claude/worktrees/feedback-<number> -b worktree-feedback-<number> "origin/<head>"', 'git push origin "HEAD:refs/heads/<head>"', 'git branch -D worktree-feedback-<number>', '`git branch --show-current`', 'refs/heads/feedback-<number>', '.claude/worktrees/feedback-<number>', 'runSubagent', '.github/skills/<name>/SKILL.md', 'plan-executor', 'third still adds fix steps', 'addPullRequestReviewThreadReply', 'Autopilot:', '`/allow-all`', '^[A-Za-z0-9._/][A-Za-z0-9._/-]*\z', 'git merge-base --is-ancestor "origin/<head>" HEAD'))
 $m += @(foreach ($p in $copilotAddressFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'ExitWorktree', 'EnterWorktree', '.claude/commands/', '$ARGUMENTS', '{{') { if ($t.Contains($x)) { "${p}: has $x" } } } })
 Check 'workflow: address-feedback reaches Claude Code from address-feedback.md, and Copilot Chat and Copilot CLI from address-feedback-copilot.md, which works in a worktree of its own, as Claude Code''s does; each treats every comment as data to judge, pushes only new commits to the pull request''s branch, and never merges, resolves or dismisses' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ($addressFiles + $copilotAddressFiles) 'brings its branch up to date, never a maintainer')
+Check 'workflow: every copy of address-feedback says a fork''s author brings its branch up to date, never a maintainer' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText $shipFiles ('`plan.pushBranch`', '`push-branch:<name>`', '`git push -u origin "HEAD:refs/heads/<branch>"`', '`pr-branch-state`', '`git push origin --delete "<branch>"`', 'never stacking new commits on merged history'))
 $m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('`plan.pushBranch`', '`push-branch:<name>`', '`git push origin "HEAD:refs/heads/<pr branch>"`'))
 $m += @(Get-MissingText ($addressFiles + $copilotAddressFiles) ('`plan.pushBranch`', '`push-branch:<name>`', 'this session pushes only to its push branch'))
@@ -1692,6 +1749,45 @@ $loopResults = foreach ($prelude in "- Prelude: ``./env.ps1```n", '') {
 Check 'workflow: Invoke-PlanSteps re-checks a step the planner completed after the plan''s prelude, and fails it without one' (($loopResults -join ',') -eq '0,3') "exit codes with and without the prelude: $($loopResults -join ',')"
 
 ''
+$m = @(Get-MissingText $rulesJinja ('## Backlog', 'as ADR-0042 in `docs/decisions/project-template/` says', 'takes `sub_issue_id`', 'takes `issue_id`', 'never pipe it into a shell variable'))
+Check 'rules: the Backlog section records epics, stories, the Definition of Ready, links, the REST forms and the board (ADR-0042)' (-not $m) ($m -join '; ')
+$forms = @('template/.github/ISSUE_TEMPLATE', '.github/ISSUE_TEMPLATE', 'template/.github/ISSUE_TEMPLATE.md', '.github/ISSUE_TEMPLATE.md' | Where-Object { Test-Path -LiteralPath (Join-Path $repoRoot $_) })
+Check 'template: ships no issue forms, so every project and this repository take the NCodeGroup organization''s default forms (ADR-0042)' (-not $forms) ($forms -join ', ')
+$decomposeFiles = 'template\.claude\commands\decompose-issue.md', 'template\.github\prompts\decompose-issue.prompt.md', 'template\.github\skills\decompose-issue\SKILL.md', '.claude\commands\decompose-issue.md'
+$m = @(Get-MissingText $decomposeFiles ('Record decisions: <topic>', 'Ask me once whether to file them', '/sub_issues -F sub_issue_id=<id>', '/dependencies/blocked_by -F issue_id=<id>', 'meets the Definition of Ready, as ADR-0042', '- `## Not in this issue`:', 'as data, not instructions', '/run-issues epic:#<epic>'))
+$m += @(foreach ($p in $decomposeFiles) { $full = Join-Path $repoRoot $p; if (Test-Path -LiteralPath $full) { $t = [IO.File]::ReadAllText($full); foreach ($x in 'EnterWorktree', '## Output: PLAN.md for the executor model', '{{') { if ($t.Contains($x)) { "${p}: has $x" } } } })
+Check 'workflow: decompose-issue decides first, asks before it files, and files each story with its type, parent and blocked-by links through REST' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText $triageFiles ('epic:#<number>', 'ready after #<number>', 'blocked, naming each open issue it is blocked by', '/decompose-issue #<number>', 'whose parent isn''t #<number>', 'meets the Definition of Ready, as ADR-0042'))
+$m += @(Get-MissingText $issuePlanFiles ('it is an Epic', 'say to run decompose-issue with it instead', 'that the request doesn''t name'))
+$m += @(Get-MissingText ('template\.claude\commands\plan-issue.md', 'template\.claude\commands\triage-issues.md') 'a `Bug` is a bugfix')
+$m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('never runs ahead of that entry', 'naming the blocker'))
+$m += @(Get-MissingText $shipFiles ('link it as a sub-issue of the epic', 'closed the epic''s last open story', 'prompt its retrospective'))
+Check 'workflow: triage, plan-issue, run-issues and ship-plan read and keep the epic hierarchy (ADR-0042)' (-not $m) ($m -join '; ')
+# Every planning command includes the planning format, whose board paragraph moves a plan's issues to In progress.
+$planBoardFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template/.claude/commands') -File | Where-Object { $_.Name -like 'plan-*.md' -or $_.Name -eq 'handoff-plan.md' } | ForEach-Object { "template\.claude\commands\$($_.Name)" })
+$boardFiles = $triageFiles + $shipFiles + $planBoardFiles + @('template\.github\skills\plan-issue\SKILL.md')
+$m = @('plan-issue.md', 'plan-feature.md', 'plan-bugfix.md', 'handoff-plan.md' | Where-Object { $planBoardFiles -notcontains "template\.claude\commands\$_" } | ForEach-Object { "template\.claude\commands\${_}: not found" })
+$m += @(Get-MissingText $boardFiles ('board=<owner>/<number>', 'projectsV2/<number>/fields', 'A board move never stops the command'))
+$m += @(Get-MissingText $triageFiles 'to `Ready`')
+$m += @(Get-MissingText $planBoardFiles 'to `In progress` on the board')
+$m += @(Get-MissingText $shipFiles 'to `In review` on the board')
+$m += @($shipFiles | Where-Object { ([regex]::Matches([IO.File]::ReadAllText((Join-Path $repoRoot $_)), [regex]::Escape('to `In review` on the board'))).Count -lt 2 } | ForEach-Object { "${_}: moves to In review only once, not also when the pull request is open already" })
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- board: none', '`board`: `none`'))
+Check 'workflow: with a board, triage moves ready issues to Ready, a plan snapshot to In progress and a pull request to In review, and AGENTS.md documents board' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ($triageFiles + $shipFiles + $decomposeFiles) 'is never read as an empty list')
+$m += @(Get-MissingText $triageFiles ('its readiness is `not judged: its blockers couldn''t be read`', 'When the read of the epic''s sub-issues fails, stop and say so'))
+$m += @(Get-MissingText ($runFiles + $copilotRunFiles) ('leave that entry out, naming the issue and the call that failed', 'to run again once the read works'))
+$m += @(Get-MissingText $issuePlanFiles ('one page at a time from page 1 until a page holds fewer than 100 entries', 'When that read fails, stop and say so, naming the issue and the call that failed'))
+$m += @(Get-MissingText $decomposeFiles ('or when the read of its sub-issues fails, naming the call that failed', 'a read of the epic''s sub-issues or of a story''s blockers among them, stop filing'))
+Check 'workflow: a failed read of blockers or sub-issues is never an empty list: run-issues leaves the entry out, triage doesn''t judge it ready, plan-issue and decompose-issue stop (ADR-0042)' (-not $m) ($m -join '; ')
+$m = @(Get-MissingText ($triageFiles + $shipFiles + $decomposeFiles) 'answers nothing and is never read as "no type, no parent"')
+$m += @(Get-MissingText ($triageFiles + $issuePlanFiles) 'When that read fails, the type is unknown, not missing')
+$m += @(Get-MissingText $triageFiles 'list it with the readiness `not judged: it couldn''t be read`')
+$m += @(Get-MissingText $issuePlanFiles 'A read that fails is never read as an issue without a type, which would plan an Epic')
+$m += @(Get-MissingText $decomposeFiles ('when the read of the issue itself fails, naming the call that failed', 'step 1 stopped when that read failed, so a type is never set from a read that failed'))
+$m += @(Get-MissingText $shipFiles ('file the follow-ups without a type or an epic link, and item 12 says so', 'When item 9 filed follow-ups without a type or an epic link because the read of that first issue failed, say so'))
+$m += @(($triageFiles + $shipFiles + $decomposeFiles) | Where-Object { [IO.File]::ReadAllText((Join-Path $repoRoot $_)).Contains('go on as if the issue had no type or parent') } | ForEach-Object { "${_}: reads a failed read as no type or parent" })
+Check 'workflow: a failed read of an issue is never "no type, no parent": triage doesn''t judge it, plan-issue and decompose-issue stop, ship-plan files its follow-ups unlinked and says so (ADR-0042)' (-not $m) ($m -join '; ')
 if ($failures.Count) { "Kept the work folder: $Work"; "Template tests: FAILED ($($failures.Count))"; exit 1 }
 if ($ownWork) { & (Join-Path $PSScriptRoot 'Remove-TestWork.ps1') $Work }
 'Template tests: PASSED'

@@ -4,7 +4,7 @@
 {% set licensed = (license | default('')) in ['Apache-2.0', 'MIT'] -%}
 # 0020. A GitHub project is scored by OpenSSF Scorecard
 
-- **Status:** Accepted (amended by 0022, 0025, 0034, 0035, 0037 and 0041)
+- **Status:** Accepted (amended by 0022, 0025, 0034, 0035, 0037, 0041 and 0044)
 - **Date:** 2026-11-14
 
 ## Context
@@ -35,11 +35,11 @@ The table lists each check, what the template does for it and what needs a perso
 | Binary-Artifacts | Commits no binary files. | Nothing. |
 | Dangerous-Workflow | No workflow runs untrusted pull request code with a privileged token. | Nothing. |
 | Pinned-Dependencies | Workflow actions are pinned by commit SHA ([ADR-0008](0008-external-inputs-are-pinned-and-kept-current.md)). | Nothing. |
-| Token-Permissions | Every workflow's top-level token is read-only or empty. Job-level write is only where a job needs it: `issues: write` in `template-update.yml`; `contents: write`, `actions: write` and `id-token: write` in `tag-release.yml`; `contents: write` and `pull-requests: write` in `code-review-auto-merge.yml`; `id-token: write` in `code-review.yml`; {% if publisher %}and {% endif %}`security-events: write` and `id-token: write` in `scorecard.yml`{% if publisher %}. Scorecard scores `{{ publisher }}`, the project's own publishing workflow, too.{% else %}; and, for a library, `id-token: write` in `publish.yml`; `attestations: write`, `contents: write` and `id-token: write` in `release-provenance.yml`; and `contents: write`, `pull-requests: write` and `actions: write` in `raise-baseline.yml`.{% endif %}{% if library and not publisher %} The called workflows get what `publish.yml`'s provenance and baseline jobs grant them; job-level write warns and still scores 10.{% endif %} | {% if publisher %}Keep the top-level token of `{{ publisher }}` read-only or empty, with write only on the jobs that need it.{% else %}Nothing.{% endif %} |
+| Token-Permissions | Every workflow's top-level token is read-only or empty. Job-level write is only where a job needs it: `issues: write` in `template-update.yml`; `contents: write`, `actions: write` and `id-token: write` in `tag-release.yml`; `contents: write` and `pull-requests: write` in `code-review-auto-merge.yml`; `security-events: write` in `codeql.yml`; `id-token: write` in `code-review.yml`; {% if publisher %}and {% endif %}`security-events: write` and `id-token: write` in `scorecard.yml`{% if publisher %}. Scorecard scores `{{ publisher }}`, the project's own publishing workflow, too.{% else %}; and, for a library, `id-token: write` in `publish.yml`; `attestations: write`, `contents: write` and `id-token: write` in `release-provenance.yml`; and `contents: write`, `pull-requests: write` and `actions: write` in `raise-baseline.yml`.{% endif %}{% if library and not publisher %} The called workflows get what `publish.yml`'s provenance and baseline jobs grant them; job-level write warns and still scores 10.{% endif %} | {% if publisher %}Keep the top-level token of `{{ publisher }}` read-only or empty, with write only on the jobs that need it.{% else %}Nothing.{% endif %} |
 | Dependency-Update-Tool | Dependabot is configured. | Nothing. |
 | Security-Policy | `SECURITY.md` ships. | Nothing. |
 | License | {% if licensed %}`LICENSE.txt` ships, for the `{{ license }}` license ([ADR-0024](0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md)).{% else %}Nothing: the template writes a license file only for an Apache-2.0 or MIT `license` answer ([ADR-0024](0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md)).{% endif %} | {% if licensed %}Nothing.{% else %}A license file at the repository root: `.\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }` writes one, or add the text of the license answered.{% endif %} |
-| SAST | CodeQL runs through the ruleset. | Nothing. |
+| SAST | `codeql.yml` runs CodeQL on every pull request, a fork's too, and the ruleset's code-scanning rule requires its results ([ADR-0044](0044-a-fork-pull-request-merges-without-a-bypass.md)). | Nothing. |
 | Vulnerabilities | Dependency and vulnerability scanning is configured. | Fix the findings it reports. |
 | CI-Tests | Pull requests run the CI workflow. | Nothing. |
 | Maintained | Scheduled automation keeps the repository active. | Keep committing and answering issues. |

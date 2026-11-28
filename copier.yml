@@ -20,6 +20,7 @@ _skip_if_exists:
   - /Directory.Build.props
   - /version.json
   - /.github/workflows/code-review.yml
+  - /.github/workflows/codeql.yml
   - /.github/workflows/publish.yml
   - /docs/decisions/README.md
   - /docs/decisions/0000-template.md

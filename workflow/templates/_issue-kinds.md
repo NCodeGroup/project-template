@@ -1,3 +1,5 @@
+Read the issue's type first, its `type.name` in `gh api repos/{owner}/{repo}/issues/<number>`: a `Bug` is a bugfix, unless its labels map to security, and an `Epic` is no kind of plan: decompose-issue splits it into stories, and it is never planned. A `Feature` or a `Task`, or an issue without a type, takes its kind from its labels. When that read fails, the type is unknown, not missing: choose no kind for the issue, from its labels or its text, and do what these instructions say for an issue that couldn't be read.
+
 Map the issue's labels to a kind of plan. Compare each label in lowercase, ignoring a prefix that ends in `:`, `::` or `/`, so `type: bug`, `type::bug` and `kind/bug` all count as `bug`:
 
 | Labels | Kind |
