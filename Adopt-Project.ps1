@@ -168,7 +168,7 @@ function Get-PublisherDispatchNote {
 # A .NET library on GitHub whose AGENTS.md says release: none or tag, or has no release line, publishes nothing as a release's pull request merges, though the template gives it tag+release (the template's ADR-0016 and ADR-0137).
 # A copy of .template/Update-Project.ps1's; tests/Test-UpdateNotes.ps1 keeps the copies equal. Get-ReleasePolicyAnswer comes from tools/adopt/Adoption.psm1.
 function Get-ReleasePolicyNote {
-    if ((Get-Answer 'nuget_package') -ne 'true' -or (Get-Answer 'git_host') -ne 'github' -or -not (Test-Path -LiteralPath .github/workflows/tag-release.yml)) { return }
+    if ((Get-Answer 'nuget_package') -ne 'true' -or -not (Test-Path -LiteralPath .github/workflows/tag-release.yml)) { return }
     $policy = Get-ReleasePolicyAnswer
     if ($policy -notin 'none', 'tag') { return }
     $publishers = @("$(Get-Answer 'nuget_publisher')" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
