@@ -18,7 +18,12 @@
     as the first commit. When Git already has a hooks path for the new repository, such as a global one, or hooks
     from a template folder in .git/hooks, it leaves them and warns, naming the command that runs the template's hooks.
     With -CreateRemote it runs `gh repo create`, which creates the repository on GitHub, named after the destination
-    folder, with the given -Visibility (public unless told otherwise), and pushes. It then runs
+    folder, with the given -Visibility (public unless told otherwise), and pushes. First it checks the folder's name
+    against NCodeGroup's rule for repository names (NCodeGroup/.github ADR-1001, ADR-0045): for stack dotnet, the root
+    namespace's PascalCase segments joined by '.', without a leading NCode., such as Buffers or Collections.Providers;
+    for every other stack, lowercase kebab case, such as qso-viewer. A name that doesn't fit stops the script with an
+    error that names the one that fits; it deletes the files Copier wrote and creates nothing on GitHub. When -Data
+    answers stack, the name is checked before Copier asks anything. It then runs
     tools/Set-RepositoryBaseline.ps1, which protects the default branch so changes reach it only through a pull
     request and requires the template's CI jobs to pass. -NoBaseline skips it. When it fails, or the signed-in GitHub
     user can't be read, the repository stays and a warning gives the command to run it again.
@@ -28,6 +33,7 @@
     .\New-Project.ps1 -Path C:\src\qso-viewer -CreateRemote                      # public, on GitHub
     .\New-Project.ps1 -Path C:\src\qso-viewer -CreateRemote -Visibility private  # private
     .\New-Project.ps1 -Path C:\src\qso-viewer -CreateRemote -Owner bixbots       # under a GitHub organization
+    .\New-Project.ps1 -Path C:\src\Buffers -CreateRemote -Owner NCodeGroup -Data @{ stack = 'dotnet' }  # .NET: named for the root namespace NCode.Buffers
     .\New-Project.ps1 -Path $env:TEMP\demo -Template . -Defaults -Data @{ project_name = 'Demo'; stack = 'python' }   # asks nothing
 #>
 [CmdletBinding()]
