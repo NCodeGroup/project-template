@@ -6,7 +6,7 @@
 {%- set pr = 'merge request' if git_host == 'gitlab' else 'pull request' -%}
 # Contributing to {{ project_name }}
 
-Issues and {{ pr }}s are welcome. [README.md](README.md) explains the project, and [AGENTS.md](AGENTS.md) holds the rules every change follows, for people and coding agents alike. Report a vulnerability privately instead, as [SECURITY.md](SECURITY.md) says. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md); [GOVERNANCE.md](GOVERNANCE.md) says who decides what, and [ROADMAP.md](ROADMAP.md) where the project is going. Issues labeled `good first issue` are small, self-contained tasks for a first contribution.
+Issues and {{ pr }}s are welcome. [README.md](README.md) explains the project, and [AGENTS.md](AGENTS.md) holds the rules every change follows, for people and coding agents alike. Report a vulnerability privately instead, as [SECURITY.md](SECURITY.md) says. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md); [GOVERNANCE.md](GOVERNANCE.md) says who decides what, and [ROADMAP.md](ROADMAP.md) where the project is going. Issues labeled `good first issue` are small, self-contained tasks for a first contribution.{% if git_host == 'github' %} This file, [SECURITY.md](SECURITY.md), the Code of Conduct and [GOVERNANCE.md](GOVERNANCE.md) take precedence over the defaults in the `.github` repository of the organization that owns this one, which cover the organization's repositories that have none of their own.{% endif %}
 
 ## Prerequisites
 
