@@ -114,6 +114,17 @@ $remoteWanted = [ordered]@{
 }
 $remoteWrong = @($remoteWanted.Keys | Where-Object { [bool](Test-GitHubRemote $_) -ne $remoteWanted[$_] })
 Check 'unit: Test-GitHubRemote accepts GitHub over https, with credentials, scp-style SSH and ssh://, and nothing else' ($remoteWrong.Count -eq 0) ($remoteWrong -join ' | ')
+# Get-BuildFileList: each .dockerignore and each GitHub workflow that names Directory.Build.props, and no other CI file (ADR-0040).
+$buildListRepo = New-Fixture 'build-lists' @{
+    '.dockerignore'              = "*`n!Directory.Build.props`n"
+    'docker/app.dockerignore'    = "*`n"
+    '.github/workflows/ci.yml'   = "key: Directory.Build.props`n"
+    '.github/workflows/lint.yml' = "on: push`n"
+    '.gitlab-ci.yml'             = "key: Directory.Build.props`n"
+    '.circleci/config.yml'       = "key: Directory.Build.props`n"
+} 'https://github.com/example/build-lists.git'
+$buildLists = @(Get-BuildFileList $buildListRepo) -join ','
+Check 'unit: Get-BuildFileList lists each .dockerignore and each GitHub workflow that names Directory.Build.props, and no other CI file' ($buildLists -eq '.dockerignore,.github/workflows/ci.yml,docker/app.dockerignore') $buildLists
 $apacheText = "                                 Apache License`n                           Version 2.0, January 2004`n"
 $licenseFolders = [ordered]@{
     'license-props' = @{ Files = @{ 'src/A/A.csproj' = "<Project />`n"; 'Directory.Build.props' = "<Project>`n  <PropertyGroup>`n    <PackageLicenseExpression>MIT</PackageLicenseExpression>`n  </PropertyGroup>`n</Project>`n"; 'LICENSE' = $apacheText }; License = 'MIT' }
