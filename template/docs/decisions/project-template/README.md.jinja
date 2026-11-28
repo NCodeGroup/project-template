@@ -74,6 +74,7 @@ never brings a number the project already uses
 {%- if git_host == 'github' %}
 | [0043](0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md) | `code-review.yml` passes NCode Review's `review-forks: true`, so a fork's pull request is reviewed once it isn't a draft and records its outcomes when it closes, and is never approved: a maintainer approves it (amends 0019 and 0022) |
 {%- endif %}
+| [0045](0045-new-project-names-a-repository-by-ncodegroups-rule-and-refuses-a-name-that-doesnt-fit.md) | `New-Project.ps1 -CreateRemote` names a repository after its folder by NCodeGroup's rule: a .NET project's root namespace in PascalCase segments without `NCode.`, every other in lowercase kebab case; it refuses a name that doesn't fit, naming the one that fits, and creates nothing (refines NCodeGroup/.github ADR-1001) |
 {%- if stack == 'dotnet' %}
 
 ## .NET
