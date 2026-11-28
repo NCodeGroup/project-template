@@ -3,12 +3,12 @@
     Check that the working tree's template renders, and updates a project, exactly as the template at -Base does.
 
 .DESCRIPTION
-    Builds a template repository whose v0.1.0 holds the template files (copier.yml, .gitattributes and template/) of
-    the commit -Base and whose v0.2.0 holds those of the working tree. For each of seven answer sets, all on GitHub, or the ones -Only names, it renders a
-    project from both versions and checks that they hold the same files with the same bytes, apart from
-    .copier-answers.yml and .template-version. It then updates each v0.1.0 render to v0.2.0 and checks that the result
-    matches the v0.2.0 render in every file but .copier-answers.yml. -SkipUpdate leaves the update out, to check the renders alone.
-    Prints PASS or FAIL per check and exits 1 on any failure.
+    Builds a template repository whose v0.1.0 holds the template files (copier.yml, .gitattributes and template/) of the
+    commit -Base and whose v0.2.0 holds those of the working tree. For each of seven answer sets, all on GitHub, or the
+    ones -Only names, it renders a project from both versions and checks that they hold the same files with the same
+    bytes, apart from .copier-answers.yml and .template-version. It then updates each v0.1.0 render to v0.2.0 and checks
+    that the result matches the v0.2.0 render in every file but .copier-answers.yml. -SkipUpdate leaves the update out,
+    to check the renders alone. Prints PASS or FAIL per check and exits 1 on any failure.
 
     It is not named Test-*.ps1, so tests/Invoke-AllTests.ps1 doesn't run it: it needs a base commit to compare with.
     It is a tool for refactors that must not change what a project gets.
@@ -17,7 +17,8 @@
     The commit, tag or branch whose template the working tree's template must match.
 
 .PARAMETER Only
-    The answer sets to check, by name: dotnet, dotnet-library, dotnet-library-icon, node-claude, python-node, other and other-code-review. An unknown name stops the run before anything is rendered.
+    The answer sets to check, by name: dotnet, dotnet-library, dotnet-library-icon, node-claude, python-node, other and
+    other-code-review. An unknown name stops the run before anything is rendered.
 
 .PARAMETER SkipUpdate
     Check the renders only, without updating the -Base render.

@@ -6,10 +6,10 @@
     Builds one small fixture project per case, runs the check on it and compares the exit code and the output. Also
     checks that every decision record the template ships in docs/decisions/project-template/ is numbered 0001-0999 and
     linked from the template's index, and that the index lists each table's records in number order, with only records
-    numbered 0001-0099 under Every Project. Fixture Git repositories check that a record numbered below 1000 that is new since the
-    merge base with origin/main, or with -Base, fails, that a renamed older one passes, and that the check is skipped,
-    saying so, without a merge base or in a folder that isn't a repository's root. Prints PASS or FAIL per check and
-    exits 1 on any failure. The checks take seconds.
+    numbered 0001-0099 under Every Project. Fixture Git repositories check that a record numbered below 1000 that is new
+    since the merge base with origin/main, or with -Base, fails, that a renamed older one passes, and that the check is
+    skipped, saying so, without a merge base or in a folder that isn't a repository's root. Prints PASS or FAIL per
+    check and exits 1 on any failure. The checks take seconds.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-decision-index-test-<process ID> in the
