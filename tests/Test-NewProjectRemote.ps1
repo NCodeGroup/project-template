@@ -15,7 +15,8 @@
     as _src_path.
     It checks Get-RepositoryNameRefusal (ADR-0045) on names that fit and names that don't, for .NET and other stacks,
     and the name each refusal gives.
-    It checks that -CreateRemote gives a fitting .NET or Python name to gh repo create, and that a name that doesn't fit stops with the fitting name, calls no gh and leaves no folder, before copier runs when -Data answers stack.
+    It checks that -CreateRemote gives a fitting .NET or Python name to gh repo create, and that a name that doesn't
+    fit stops with the fitting name, calls no gh and leaves no folder, before copier runs when -Data answers stack.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
