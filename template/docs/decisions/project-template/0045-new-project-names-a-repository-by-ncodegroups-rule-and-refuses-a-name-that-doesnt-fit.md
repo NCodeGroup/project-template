@@ -37,8 +37,8 @@ policy and the links to a GitHub Pages site (ADR-1001).
 4. When `-Data` answers `stack`, it checks before Copier runs, so nothing is asked. Otherwise it checks once Copier has
    recorded the answer, and deletes the files Copier wrote, so the folder can be named again, also where only its
    case changes on a file system that ignores case.
-5. Without `-CreateRemote` the script creates no repository and checks nothing. `Adopt-Project.ps1` adopts a
-   repository that already exists, and checks nothing either.
+5. Without `-CreateRemote` the script creates no repository and checks nothing. The template's `Adopt-Project.ps1`
+   adopts a repository that already exists, and checks nothing either.
 
 ## Options considered
 
