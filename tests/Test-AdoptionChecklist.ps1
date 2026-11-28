@@ -232,6 +232,8 @@ New-GitHubVariant 'codeql-push' @{ '.github/workflows/codeql.yml' = $codeqlWorkf
 New-GitHubVariant 'codeql-comment' @{
     '.github/workflows/codeql.yml' = $codeqlWorkflow.Replace('- uses:', '# - uses:')
 }
+# A workflow of the repository's own, under another name, that runs CodeQL on pull_request counts as the setup too.
+New-GitHubVariant 'codeql-own' @{ '.github/workflows/codeql-analysis.yml' = $codeqlWorkflow }
 
 New-GitHubVariant 'noemail' @{}
 Invoke-Git (Join-Path $Work 'noemail') @('config', '--unset', 'user.email')
@@ -408,16 +410,20 @@ try {
     $codeqlOff = Invoke-Override (Join-Path $Work 'codeql') @{
         'gh api repos/NCodeGroup/sample/code-scanning/default-setup' = Answer (Json @{ state = 'not-configured'; languages = @() })
     }
+    $codeqlOwnOn = Invoke-Override (Join-Path $Work 'codeql-own') @{}
+    $codeqlOwnOff = Invoke-Override (Join-Path $Work 'codeql-own') @{ 'gh api repos/NCodeGroup/sample/code-scanning/default-setup' = Answer (Json @{ state = 'not-configured'; languages = @() }) }
     foreach ($row in @(
             @('2.2', 'done', 'github', $gh), @('5.2', 'done', 'github', $gh), @('2.3', 'done', 'github', $gh),
             @('5.1', 'done', 'github', $gh), @('0.3', 'done', 'github', $gh),
             @('2.3', 'not done', 'codeql, default setup on', $codeqlOn), @('2.3', 'done', 'codeql, default setup off', $codeqlOff),
+            @('2.3', 'not done', 'codeql-own, default setup on', $codeqlOwnOn), @('2.3', 'done', 'codeql-own, default setup off', $codeqlOwnOff),
             @('2.2', 'not done', 'private', $pr), @('2.3', 'not done', 'private', $pr),
             @('5.1', 'not done', 'nokey', $nokey), @('2.2', 'not done', 'nokey', $nokey),
             @('0.3', 'unreadable', 'nokey', $nokey))) {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
     }
+    Check 'row 2.3: codeql-own names .github/workflows/codeql-analysis.yml' ([regex]::Match($codeqlOwnOff.Output, '(?m)^2\.3 .*$').Value.Contains('.github/workflows/codeql-analysis.yml')) $codeqlOwnOff.Output
     # A codeql.yml that runs on push only, or names the action only in a comment, is no CodeQL setup: row 2.3 reads as
     # for a repository with no codeql.yml, whose default setup is configured too.
     $codeqlRow = { param($Run) [regex]::Match($Run.Output, '(?m)^2\.3 .*$').Value }
