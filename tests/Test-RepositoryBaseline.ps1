@@ -566,6 +566,9 @@ $repos = @{
     codeqlFreshRefused = New-Repo -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml } -WriteFails @{ 'code-scanning/default-setup' = 422 }
     codeqlPushOnly = New-Repo -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml.Replace("  pull_request:`n", '') }
     codeqlAuto = New-Repo -Pulls @((New-Pull 3 'sha3' '2026-10-20T10:00:00Z')) -CheckRuns @{ sha3 = @((New-CheckRun 1 'build-and-test'), (New-CheckRun 2 'CodeQL languages')) } -WorkflowRuns @{ sha3 = @(@{ check_suite_id = 1; name = 'CI'; event = 'pull_request' }) }
+    # Workflows that can't be listed, so the default setup decides the rule, and a ruleset of ours with the rule, rewritten.
+    codeqlUnreadable = New-Repo -Workflows @('fail:500')
+    codeqlOursChecks = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes)) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml }
 }
 $orgs = @{
     orgEmpty = @{ policies = @() }
@@ -1488,6 +1491,15 @@ try {
     Check 'codeql workflow: a workflow that runs only on push counts for nothing, so the default setup decides and is switched' (($r.Changes -join '|').Contains('query_suite=extended') -and -not ($r.Changes -join '|').Contains('BODY PATCH repos/NCodeGroup/codeqlPushOnly/code-scanning/default-setup')) "$($r.Changes -join '|') $($r.Output)"
     $r = Invoke-Baseline @('-Repo', 'codeqlAuto', '-RequireChecks', 'auto', '-WhatIf')
     Check 'codeql workflow: -RequireChecks auto leaves out CodeQL languages' ($r.Output -match ('left out: .*' + [regex]::Escape('CodeQL languages (the code-scanning rule covers it)'))) $r.Output
+    $r = Invoke-Baseline @('-Repo', 'codeqlUnreadable')
+    Check 'codeql workflow: workflows that can''t be read keep the default setup deciding the rule, with one line saying so' ($r.ExitCode -eq 0 -and $r.Output.Contains("codeqlUnreadable: couldn't read the workflows to look for one that runs CodeQL on pull requests (couldn't read .github/workflows: ") -and $r.Output.Contains("CodeQL's default setup decides the code-scanning rule") -and @($r.Body.rules.type) -contains 'code_scanning' -and ($r.Changes -join '|').Contains('query_suite=extended') -and -not @($r.Changes | Where-Object { $_ -like 'BODY PATCH*default-setup*' }).Count) "$($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlOursChecks', '-RequireChecks', 'build-and-test')
+    $patch = [array]::IndexOf(@($r.Changes), 'BODY PATCH repos/NCodeGroup/codeqlOursChecks/code-scanning/default-setup')
+    $putAt = @($r.Changes | Where-Object { $_ -like 'BODY PUT repos/NCodeGroup/codeqlOursChecks/rulesets/*' })
+    $putIndex = if ($putAt.Count) { [array]::IndexOf(@($r.Changes), $putAt[0]) } else { -1 }
+    Check 'codeql workflow: -RequireChecks keeps a rewritten ruleset''s code-scanning rule, and turns the default setup off before the write, with no suite switch' ($r.ExitCode -eq 0 -and @($r.Body.rules.type) -contains 'code_scanning' -and $patch -ge 0 -and $putIndex -gt $patch -and -not @($r.Changes | Where-Object { $_ -like '*query_suite*' }).Count -and $r.Output.Contains('and keeps its code-scanning rule') -and $r.Output.Contains("turn off CodeQL's default setup")) "$patch $putIndex $($r.Changes -join '|') $($r.Output)"
+    $r = Invoke-Baseline @('-Repo', 'codeqlOursChecks', '-RequireChecks', 'build-and-test', '-WhatIf')
+    Check 'codeql workflow: -RequireChecks -WhatIf on a kept rule changes nothing and says what would be done' ($r.Changes.Count -eq 0 -and $r.Bodies.Count -eq 0 -and $r.Output.Contains('would: codeqlOursChecks (main)')) "$($r.Changes -join '|') $($r.Output)"
   }
 }
 finally { $env:PATH = $savedPath }
