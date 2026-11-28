@@ -16,8 +16,13 @@
     Then initializes git on `main`, enables the template's Git hooks (core.hooksPath .githooks) and commits everything
     as the first commit. When Git already has a hooks path for the new repository, such as a global one, or hooks
     from a template folder in .git/hooks, it leaves them and warns, naming the command that runs the template's hooks.
-    With -CreateRemote it runs `gh repo create`, which creates the repository on GitHub, named after the destination
-    folder, with the given -Visibility (public unless told otherwise), and pushes. It then runs
+    With -CreateRemote it first checks the folder's name against NCodeGroup's rule for repository names
+    (NCodeGroup/.github ADR-1001, ADR-0045): for stack dotnet, the root namespace's PascalCase segments joined by '.',
+    without a leading NCode., such as Buffers or Collections.Providers; for every other stack, lowercase kebab case,
+    such as qso-viewer. A name that doesn't fit stops the script with an error that names the one that fits; it deletes
+    the files Copier wrote and creates nothing on GitHub. When -Data answers stack, the name is checked before Copier
+    asks anything. For a name that fits, it runs `gh repo create`, which creates the repository on GitHub, named after
+    the destination folder, with the given -Visibility (public unless told otherwise), and pushes. It then runs
     tools/Set-RepositoryBaseline.ps1, which protects the default branch so changes reach it only through a pull
     request and requires the template's CI jobs to pass. -NoBaseline skips it. When it fails, or the signed-in GitHub
     user can't be read, the repository stays and a warning gives the command to run it again.
@@ -27,6 +32,7 @@
     .\New-Project.ps1 -Path C:\src\qso-viewer -CreateRemote                      # public, on GitHub
     .\New-Project.ps1 -Path C:\src\qso-viewer -CreateRemote -Visibility private  # private
     .\New-Project.ps1 -Path C:\src\qso-viewer -CreateRemote -Owner bixbots       # under a GitHub organization
+    .\New-Project.ps1 -Path C:\src\Buffers -CreateRemote -Owner NCodeGroup -Data @{ stack = 'dotnet' }  # .NET: named for the root namespace NCode.Buffers
     .\New-Project.ps1 -Path $env:TEMP\demo -Template . -Defaults -Data @{ project_name = 'Demo'; stack = 'python' }   # asks nothing
 #>
 [CmdletBinding()]
@@ -65,6 +71,14 @@ function Get-Answer([string[]]$Lines, [string]$Key) {
 if ((Test-Path $Path) -and (Get-ChildItem -LiteralPath $Path -Force | Select-Object -First 1)) { throw "$Path exists and is not empty." }
 if ($Defaults -and -not $Data.project_name) { throw "-Defaults asks nothing, and project_name has no default. Add it: -Data @{ project_name = '<name>' }" }
 if ($Data.ContainsKey('git_host') -and "$($Data['git_host'])" -ne 'github') { throw (Get-GitHubOnlyMessage "-Data answers git_host '$($Data['git_host'])'.") }
+$fullPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path).TrimEnd([char]'\', [char]'/')
+$repositoryName = Split-Path -Leaf $fullPath
+$pathExisted = Test-Path -LiteralPath $fullPath
+# NCodeGroup's rule for the repository's name (ADR-0045): checked before Copier when -Data answers stack, so nothing is asked or written.
+if ($CreateRemote -and $Data.ContainsKey('stack')) {
+    $refusal = Get-RepositoryNameRefusal $repositoryName "$($Data['stack'])"
+    if ($refusal) { throw "$refusal Nothing was created." }
+}
 foreach ($key in 'user.name', 'user.email') {
     if (-not (git config $key)) { throw "Git has no $key. Set it with: git config --global $key ""<value>""" }
 }
@@ -76,6 +90,14 @@ if ($Defaults) { $copierArgs += '--defaults' }
 foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
 $copierArgs += $Template, $Path
 Invoke-Copier @copierArgs
+if ($CreateRemote) {
+    $refusal = Get-RepositoryNameRefusal $repositoryName (Get-Answer (Get-Content -LiteralPath (Join-Path $fullPath '.copier-answers.yml')) 'stack')
+    if ($refusal) {
+        # Deleted so the folder can be named again, also where only its case changes on a file system that ignores case.
+        if ($pathExisted) { Get-ChildItem -LiteralPath $fullPath -Force | Remove-Item -Recurse -Force } else { Remove-Item -LiteralPath $fullPath -Recurse -Force }
+        throw "$refusal The files Copier wrote are deleted, and nothing was created on GitHub."
+    }
+}
 Set-TemplateSource (Resolve-Path -LiteralPath $Path).Path $Template
 
 Push-Location $Path
@@ -98,7 +120,7 @@ try {
     "Committed the new project in $((Get-Location).Path)."
 
     if ($CreateRemote) {
-        $name = Split-Path -Leaf (Get-Location)
+        $name = $repositoryName
         $fullName = if ($Owner) { "$Owner/$name" } else { $name }
         gh repo create $fullName "--$Visibility" --source . --remote origin --push
         if ($LASTEXITCODE) { throw 'Creating or pushing the remote repository failed.' }

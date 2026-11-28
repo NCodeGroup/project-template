@@ -55,11 +55,11 @@
     When the repository references Nerdbank.GitVersioning itself and build/ProjectTemplate.props references it too, as a library's does once version.json exists, it drops the repository's own PackageReference (and a second PackageVersion in Directory.Packages.props) and reports it, because two references fail the build with NU1504 or NU1506 (ADR-0138). A repository that isn't a library keeps its own reference, its only one.
 
 .EXAMPLE
-    .\Adopt-Project.ps1 -Path C:\src\buffers
-    .\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ workflow_tools = 'claude', 'copilot' }
-    .\Adopt-Project.ps1 -Path C:\src\buffers -Data @{ project_owned_files = '.github/workflows/ci.yml' }
-    .\Adopt-Project.ps1 -Path C:\src\buffers -NoCommit
-    .\Adopt-Project.ps1 -Path C:\src\buffers -NoVerify
+    .\Adopt-Project.ps1 -Path C:\src\Buffers
+    .\Adopt-Project.ps1 -Path C:\src\Buffers -Data @{ workflow_tools = 'claude', 'copilot' }
+    .\Adopt-Project.ps1 -Path C:\src\Buffers -Data @{ project_owned_files = '.github/workflows/ci.yml' }
+    .\Adopt-Project.ps1 -Path C:\src\Buffers -NoCommit
+    .\Adopt-Project.ps1 -Path C:\src\Buffers -NoVerify
 #>
 [CmdletBinding()]
 param(

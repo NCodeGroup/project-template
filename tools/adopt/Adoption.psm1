@@ -984,4 +984,25 @@ function Test-GitHubRemote([string]$Url) {
     $Url -match '^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)'
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote, Get-ReleasePolicyAnswer, Set-TemplateSource, Get-GitHubOnlyMessage, Test-GitHubRemote
+# The refusal text for a GitHub repository named $Name in a project whose stack answer is $Stack, or nothing when the
+# name fits NCodeGroup's rule (NCodeGroup/.github ADR-1001, ADR-0045). The text names the name that fits, worked out
+# from $Name, when that name fits the rule.
+function Get-RepositoryNameRefusal([string]$Name, [string]$Stack) {
+    $dotnet = $Stack -eq 'dotnet'
+    $pattern = if ($dotnet) { '^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)*\z' } else { '^[a-z0-9]+(-[a-z0-9]+)*\z' }
+    $fits = { param([string]$Candidate) $Candidate -ceq '.github' -or ($Candidate -cmatch $pattern -and -not ($dotnet -and $Candidate -match '^ncode\.')) }
+    if (& $fits $Name) { return }
+    $base = $Name -replace '^(?i:ncode)\.', ''
+    $suggestion = if ($dotnet) {
+        @($base -split '\.' | ForEach-Object { -join ([regex]::Matches($_, '[A-Za-z0-9]+') | ForEach-Object { $_.Value.Substring(0, 1).ToUpperInvariant() + $_.Value.Substring(1) }) } | Where-Object { $_ }) -join '.'
+    }
+    else {
+        $words = $base -creplace '([a-z0-9])([A-Z])', '$1-$2' -creplace '([A-Z]+)([A-Z][a-z])', '$1-$2'
+        ($words -replace '[^A-Za-z0-9]+', '-').Trim('-').ToLowerInvariant()
+    }
+    $rule = if ($dotnet) { "a .NET repository is named for its root namespace: PascalCase segments joined by '.', without a leading 'NCode.', such as 'Buffers' or 'Collections.Providers'" } else { "a repository that isn't .NET is named in lowercase kebab case, such as 'qso-viewer'" }
+    $message = "New-Project.ps1 names the GitHub repository after its folder, '$Name', but $rule (NCodeGroup/.github ADR-1001, ADR-0045)."
+    if (& $fits $suggestion) { "$message Name the folder '$suggestion'." } else { $message }
+}
+
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote, Get-ReleasePolicyAnswer, Set-TemplateSource, Get-GitHubOnlyMessage, Test-GitHubRemote, Get-RepositoryNameRefusal
