@@ -50,7 +50,7 @@ $ownCheck = "Write-Output 'own check'`n"
 $ownExtensions = "{""recommendations"": [""own.extension-one"", ""own.extension-two""]}`n"
 
 $path = Join-Path $Work 'conflicts'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Conflicts' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tpl $path | Out-Null
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Conflicts' --data stack=python --data 'workflow_tools=[claude]' $tpl $path | Out-Null
 $null = New-Item -ItemType Directory -Path (Join-Path $path 'scripts') -Force
 [IO.File]::WriteAllText((Join-Path $path 'scripts/check.ps1'), $ownCheck)
 [IO.File]::WriteAllText((Join-Path $path '.vscode/extensions.json'), $ownExtensions)

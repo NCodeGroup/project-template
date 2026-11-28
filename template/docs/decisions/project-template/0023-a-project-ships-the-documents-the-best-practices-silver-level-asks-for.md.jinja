@@ -8,10 +8,8 @@
 The OpenSSF Best Practices badge has a passing, a silver and a gold level. The silver level asks for governance, roles
 and responsibilities, a code of conduct, a roadmap, an architecture description and an assurance case. The template
 already meets most of its other criteria: a security policy, a license, tests in CI, reviewed and pinned dependencies,
-and releases tagged and published as ADR-0016 records once the Landing section sets `release: tag` or `tag+release`.
-{%- if git_host == 'github' %} On GitHub, the Scorecard's CII-Best-Practices check scores a passing badge 5 and a silver
+and releases tagged and published as ADR-0016 records once the Landing section sets `release: tag` or `tag+release`. On GitHub, the Scorecard's CII-Best-Practices check scores a passing badge 5 and a silver
 badge 7 ([ADR-0020](0020-github-projects-are-scored-by-openssf-scorecard.md)).
-{%- endif %}
 
 Each project that wants the badge would otherwise research the same criteria again and write the same documents from
 nothing. NCodeGroup/Buffers wrote them (Best Practices project 16727), and they carry over once what the template
@@ -63,9 +61,7 @@ controls is separated from what only the maintainers know.
 - [Contributor Covenant 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/)
 - [OpenSSF Best Practices](https://www.bestpractices.dev)
 - [ADR-0018](0018-agent-attribution-is-avoided-not-enforced.md): agent attribution is avoided, not enforced.
-{%- if git_host == 'github' %}
 - [ADR-0020](0020-github-projects-are-scored-by-openssf-scorecard.md): GitHub projects are scored by OpenSSF Scorecard.
-{%- endif %}
 - [ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md): every Best Practices criterion
   is mapped in a template-owned page.
 - [NCodeGroup/project-template#383](https://github.com/NCodeGroup/project-template/issues/383)

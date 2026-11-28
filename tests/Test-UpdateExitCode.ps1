@@ -53,7 +53,7 @@ $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $handoffMarker = 'Update-Project.ps1 from v0.2.0 is running.'
 $project = Join-Path $Work 'project'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test Exit Code' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tpl $project
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test Exit Code' --data stack=python --data 'workflow_tools=[claude]' $tpl $project
 # A code-review.yml of the project's own that pins NCode Review by tag before v1.4.0, without approve: true: both runs say what it lacks.
 $null = New-Item -ItemType Directory -Path (Join-Path $project '.github/workflows') -Force
 [IO.File]::WriteAllText((Join-Path $project '.github/workflows/code-review.yml'), "name: review`non: pull_request`njobs:`n  review:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: NCodeGroup/code-review@v1.3.0`n")

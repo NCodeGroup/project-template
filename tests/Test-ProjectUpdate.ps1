@@ -88,7 +88,7 @@ $preRelease = & {
 }
 Check 'unit: the render takes pre_release from -Data, else untracked only from the Landing section''s - pre-release: untracked line' (-not $preRelease) ($preRelease -join ' | ')
 
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test python' --data 'stack=python' --data 'git_host=github' --data 'workflow_tools=[claude, copilot, local]' $tplUrl (Join-Path $Work 'python')
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test python' --data 'stack=python' --data 'workflow_tools=[claude, copilot, local]' $tplUrl (Join-Path $Work 'python')
 
 $project = Join-Path $Work 'python'
 # Each project runs its own copy of the update script.
@@ -127,7 +127,7 @@ finally { Pop-Location }
 Push-Location (Join-Path $tpl 'template')
 try {
     Edit-File AGENTS.md.jinja 'Run from the repository root in PowerShell 7.' 'Run from the root of the {{ project_name }} repository in PowerShell 7.'
-    $draftLine = "- draft: {% if git_host == 'github' and code_review is defined and code_review %}yes{% else %}no{% endif %}`n"
+    $draftLine = "- draft: {% if code_review is defined and code_review %}yes{% else %}no{% endif %}`n"
     Edit-File AGENTS.md.jinja $draftLine "$draftLine- pre-release-check: {{ pre_release }}`n"
     Edit-File README.md.jinja '{{ project_description }}' '{{ project_description }} Updated.'
     Edit-File AGENTS.md.jinja "- (Add the project's conventions here, and any template rule this project overrides.)" '- Local convention added in the project.'
@@ -230,7 +230,7 @@ finally { Pop-Location }
 
 # A .NET project from before csharp_format has no such answer: an update keeps it out of the formatter, and -Data opts it in.
 $dotnet = Join-Path $Work 'dotnet'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test dotnet' --data 'stack=dotnet' --data 'git_host=github' --data 'csharp_format=false' $tplUrl $dotnet
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test dotnet' --data 'stack=dotnet' --data 'csharp_format=false' $tplUrl $dotnet
 Push-Location $dotnet
 try {
     $answersFile = (Resolve-Path -LiteralPath .copier-answers.yml).Path

@@ -1,6 +1,6 @@
 // Parses each YAML file named on the command line with the yaml package, and prints "<file>: <first line of the
 // problem>" for each one that has an error or a warning: a syntax error, a duplicate key, more than one document, or
-// a tag the parser doesn't know, such as GitLab's !reference. Exits 1 if any has. tests/Test-Template.ps1 runs it for
+// a tag the parser doesn't know, such as !custom. Exits 1 if any has. tests/Test-Template.ps1 runs it for
 // its "valid YAML" check of every rendered .yml and .yaml file.
 import { readFileSync } from 'node:fs';
 import YAML from 'yaml';

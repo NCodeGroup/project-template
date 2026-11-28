@@ -16,7 +16,7 @@
     maintenance, that is, when its end of support is near. Passes when every channel is an LTS release Microsoft
     supports. Prints one line per channel, then PASSED or FAILED, and exits 1 on a failure.
 
-    CI runs it once it has installed .NET: a step of .github/workflows/ci.yml on GitHub, and .gitlab-ci.yml on GitLab.
+    CI runs it once it has installed .NET, in a step of .github/workflows/ci.yml.
     On GitHub Actions the lines are workflow annotations. The policy is ADR-0155.
 
 .PARAMETER ReleasesIndex

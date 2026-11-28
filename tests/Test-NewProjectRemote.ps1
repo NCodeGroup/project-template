@@ -9,7 +9,7 @@
     after gh repo create the baseline gets the repository, the signed-in user and the template's required checks; that
     -Owner names the owner and the signed-in user isn't read; that -NoBaseline creates the repository and runs no
     baseline; and that a baseline that fails warns with the command to run it again and the run succeeds.
-    It checks that copier gets git_host=github when -Data names no host, and that -Data @{ git_host = 'gitlab' } stops
+    It checks that copier gets no git_host answer, and that -Data @{ git_host = 'gitlab' } stops
     the script before copier runs.
     It also checks that a local clone of the template as -Template has the first commit name the clone's origin remote
     as _src_path.
@@ -149,7 +149,7 @@ try {
     $r = Invoke-NewProject 'gh-app' 'github'
     $expected = @('gh repo create gh-app --public --source . --remote origin --push', 'gh api user --jq .login', "Set-RepositoryBaseline -Repo gh-app -Owner tester -RequireChecks $checks") -join '|'
     Check 'github: after gh repo create, the baseline gets the repository, the signed-in user and the template''s checks' ($r.ExitCode -eq 0 -and (($r.Calls | Select-Object -Skip 1) -join '|') -eq $expected) "calls=$($r.Calls -join '|') output=$($r.Output)"
-    Check 'github: without git_host in -Data, copier is answered git_host github, so it asks no host question' ([bool]($r.Calls[0] -like 'copier copy *--data git_host=github *')) "calls=$($r.Calls -join '|')"
+    Check 'github: copier gets no git_host answer, since copier.yml asks no host question' (-not [bool]($r.Calls[0] -like '*git_host*')) "calls=$($r.Calls -join '|')"
     $r = Invoke-NewProject 'gh-owner' 'github' '' @('-Owner', 'org')
     $expected = @('gh repo create org/gh-owner --public --source . --remote origin --push', "Set-RepositoryBaseline -Repo gh-owner -Owner org -RequireChecks $checks") -join '|'
     Check 'github owner: -Owner names the owner, and the signed-in user isn''t read' ($r.ExitCode -eq 0 -and (($r.Calls | Select-Object -Skip 1) -join '|') -eq $expected) "calls=$($r.Calls -join '|') output=$($r.Output)"

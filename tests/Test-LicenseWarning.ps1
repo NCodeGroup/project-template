@@ -117,7 +117,7 @@ Check 'unit: the render passes license= only for answers without a license line,
 
 # no-answer: a project whose answers have no license line, as one from before the license question.
 $noAnswer = Join-Path $Work 'no-answer'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test no-answer' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' --data 'license=' $tplUrl $noAnswer
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test no-answer' --data stack=python --data 'workflow_tools=[claude]' --data 'license=' $tplUrl $noAnswer
 Push-Location $noAnswer
 try {
     $answersFile = (Resolve-Path -LiteralPath .copier-answers.yml).Path
@@ -136,7 +136,7 @@ finally { Pop-Location }
 
 # own-license: a blank answer, and a LICENSE file of the repository's own.
 $ownLicense = Join-Path $Work 'own-license'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test own-license' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' --data 'license=' $tplUrl $ownLicense
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test own-license' --data stack=python --data 'workflow_tools=[claude]' --data 'license=' $tplUrl $ownLicense
 Push-Location $ownLicense
 try {
     [IO.File]::WriteAllText((Join-Path $ownLicense 'LICENSE'), "Own license.`n", [Text.UTF8Encoding]::new($false))
@@ -148,7 +148,7 @@ finally { Pop-Location }
 
 # licensed: the default Apache-2.0 answer, with the LICENSE.txt and COPYRIGHT.txt it writes.
 $licensed = Join-Path $Work 'licensed'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test licensed' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tplUrl $licensed
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test licensed' --data stack=python --data 'workflow_tools=[claude]' $tplUrl $licensed
 Push-Location $licensed
 try {
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
@@ -160,7 +160,7 @@ finally { Pop-Location }
 
 # named-no-file: an answer the template writes no license file for, and no license file of the repository's own.
 $namedNoFile = Join-Path $Work 'named-no-file'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test named-no-file' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' --data 'license=GPL-3.0-only' $tplUrl $namedNoFile
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test named-no-file' --data stack=python --data 'workflow_tools=[claude]' --data 'license=GPL-3.0-only' $tplUrl $namedNoFile
 Push-Location $namedNoFile
 try {
     Invoke-Git init -q -b main; Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'

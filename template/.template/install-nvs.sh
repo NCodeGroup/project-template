@@ -8,7 +8,7 @@
 # It clones nvs at NVS_TAG into $NVS_HOME, else ~/.nvs, and checks that the clone is NVS_COMMIT (ADR-0008). It does
 # nothing when the nvs home already holds nvs.sh, leaves an nvs home that exists without nvs.sh as it is, and edits no
 # profile. It exits 0 when nvs is installed, and 1 with one line on standard error saying why when it is not.
-# Initialize-Nvs.ps1 runs it on Linux and macOS, as do GitLab CI and .claude/hooks/ensure-nvs.sh when the node on PATH
+# Initialize-Nvs.ps1 runs it on Linux and macOS, as does .claude/hooks/ensure-nvs.sh when the node on PATH
 # isn't the .node-version release. On Windows, Initialize-Nvs.ps1 names the winget install of the same release: change
 # NVS_TAG and NVS_COMMIT here and the --version there together.
 
