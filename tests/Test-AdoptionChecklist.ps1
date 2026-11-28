@@ -226,6 +226,13 @@ New-GitHubVariant 'publisher' @{
 
 New-GitHubVariant 'codeql' @{ '.github/workflows/codeql.yml' = "on:`n  pull_request:`njobs:`n  analyze:`n    steps:`n      - uses: github/codeql-action/analyze@x`n" }
 
+$codeqlWorkflow = "on:`n  pull_request:`njobs:`n  analyze:`n    steps:`n      - uses: github/codeql-action/analyze@x`n"
+# A codeql.yml that runs on push only, and one that names the action only in a comment: neither counts as a setup.
+New-GitHubVariant 'codeql-push' @{ '.github/workflows/codeql.yml' = $codeqlWorkflow.Replace('pull_request:', 'push:') }
+New-GitHubVariant 'codeql-comment' @{
+    '.github/workflows/codeql.yml' = $codeqlWorkflow.Replace('- uses:', '# - uses:')
+}
+
 New-GitHubVariant 'noemail' @{}
 Invoke-Git (Join-Path $Work 'noemail') @('config', '--unset', 'user.email')
 
@@ -410,6 +417,14 @@ try {
             @('0.3', 'unreadable', 'nokey', $nokey))) {
         $step, $want, $label, $run = $row
         Check "row $step ${want}: $label" ((Get-Status $run $step) -eq $want) "status=$(Get-Status $run $step) output=$($run.Output)"
+    }
+    # A codeql.yml that runs on push only, or names the action only in a comment, is no CodeQL setup: row 2.3 reads as
+    # for a repository with no codeql.yml, whose default setup is configured too.
+    $codeqlRow = { param($Run) [regex]::Match($Run.Output, '(?m)^2\.3 .*$').Value }
+    foreach ($variant in 'codeql-push', 'codeql-comment') {
+        $variantRun = Invoke-Override (Join-Path $Work $variant) @{}
+        $same = (& $codeqlRow $variantRun) -and (& $codeqlRow $variantRun) -eq (& $codeqlRow $gh)
+        Check "row 2.3: $variant reads as a repository with no codeql.yml" $same "$variant=$(& $codeqlRow $variantRun) none=$(& $codeqlRow $gh)"
     }
 
     # Rows the pull request, run and tag show: 1.4, 3.1, 3.2, 5.3, 5.4, 6.4

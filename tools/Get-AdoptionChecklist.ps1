@@ -553,10 +553,18 @@ $checks['5.2'] = {
     else { New-Result 'not done' "requires $count approval(s), expected 1" }
 }
 
+# A codeql.yml counts as CodeQL's setup when it runs on pull_request and a line that isn't a comment uses
+# github/codeql-action/analyze@. tools/Set-RepositoryBaseline.ps1's Test-CodeQLWorkflow applies the same rules;
+# a change to one belongs in both.
 $checks['2.3'] = {
     $codeqlFile = Get-FileText '.github/workflows/codeql.yml'
     $setup = Read-Gh @('api', "repos/$slug/code-scanning/default-setup")
-    if ("$codeqlFile" -match 'github/codeql-action/analyze@') {
+    $codeqlCode = [regex]::Replace("$codeqlFile", '(?m)^[ \t]*#.*$', '')
+    $codeqlUses = $codeqlCode -match '(?m)^[ \t]*(-[ \t]+)?uses:[ \t]*[''"]?github/codeql-action/analyze@'
+    $codeqlOnPullRequest = $codeqlCode -match '(?m)^[ \t]*pull_request[ \t]*:' -or
+        $codeqlCode -match '(?m)^on:[ \t]*\[[^\]\r\n]*\bpull_request\b' -or
+        $codeqlCode -match '(?m)^on:[ \t]*pull_request[ \t]*$'
+    if ($codeqlUses -and $codeqlOnPullRequest) {
         if ($setup.state -eq 'configured') {
             $why = "CodeQL's default setup is on, which refuses .github/workflows/codeql.yml's results: run Set-RepositoryBaseline.ps1"
             return New-Result 'not done' $why
