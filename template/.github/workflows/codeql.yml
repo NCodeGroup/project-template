@@ -3,7 +3,7 @@ name: CodeQL
 # CodeQL analyzes the code on every pull request, a fork's too once GitHub runs its workflows (the template's
 # ADR-0039), so the code-scanning rule that tools/Set-RepositoryBaseline.ps1 adds can be met.
 # CodeQL's default setup analyzes no fork's pull request, and GitHub refuses this workflow's results while it is on,
-# so the baseline turns it off (the template's ADR-0042).
+# so the baseline turns it off (the template's ADR-0044).
 # The project owns this file, so a language its code needs goes in the detect step.
 on:
   push:

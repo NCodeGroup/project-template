@@ -4,7 +4,7 @@
 {% set licensed = (license | default('')) in ['Apache-2.0', 'MIT'] -%}
 # 0020. A GitHub project is scored by OpenSSF Scorecard
 
-- **Status:** Accepted (amended by 0022, 0025, 0034, 0035, 0037, 0041 and 0042)
+- **Status:** Accepted (amended by 0022, 0025, 0034, 0035, 0037, 0041 and 0044)
 - **Date:** 2026-11-14
 
 ## Context
@@ -39,7 +39,7 @@ The table lists each check, what the template does for it and what needs a perso
 | Dependency-Update-Tool | Dependabot is configured. | Nothing. |
 | Security-Policy | `SECURITY.md` ships. | Nothing. |
 | License | {% if licensed %}`LICENSE.txt` ships, for the `{{ license }}` license ([ADR-0024](0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md)).{% else %}Nothing: the template writes a license file only for an Apache-2.0 or MIT `license` answer ([ADR-0024](0024-a-project-is-licensed-under-apache-2-0-unless-it-answers-otherwise.md)).{% endif %} | {% if licensed %}Nothing.{% else %}A license file at the repository root: `.\.template\Update-Project.ps1 -Data @{ license = 'Apache-2.0' }` writes one, or add the text of the license answered.{% endif %} |
-| SAST | `codeql.yml` runs CodeQL on every pull request, a fork's too, and the ruleset's code-scanning rule requires its results ([ADR-0042](0042-a-fork-pull-request-merges-without-a-bypass.md)). | Nothing. |
+| SAST | `codeql.yml` runs CodeQL on every pull request, a fork's too, and the ruleset's code-scanning rule requires its results ([ADR-0044](0044-a-fork-pull-request-merges-without-a-bypass.md)). | Nothing. |
 | Vulnerabilities | Dependency and vulnerability scanning is configured. | Fix the findings it reports. |
 | CI-Tests | Pull requests run the CI workflow. | Nothing. |
 | Maintained | Scheduled automation keeps the repository active. | Keep committing and answering issues. |

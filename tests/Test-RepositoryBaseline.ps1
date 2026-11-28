@@ -554,7 +554,7 @@ $repos = @{
     forkRefused = New-Repo -Security @{ 'actions/permissions/fork-pr-contributor-approval' = 'first_time_contributors' } -WriteFails @{ 'actions/permissions/fork-pr-contributor-approval' = 403 }
     orgOwned = New-Repo -OwnerType 'Organization'
     userOwned = New-Repo -OwnerType 'User'
-    # A workflow that runs CodeQL on pull requests (ADR-0042), beside a ruleset of ours, one of the owner's, and the setup's states.
+    # A workflow that runs CodeQL on pull requests (ADR-0044), beside a ruleset of ours, one of the owner's, and the setup's states.
     codeqlOurs = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes)) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml }
     codeqlOursRefused = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes)) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml } -WriteFails @{ 'code-scanning/default-setup' = 422 }
     codeqlOursOff = New-Repo -Rulesets @((New-Ruleset 'Protect main' $scanTypes)) -Workflows @('.github/workflows/codeql.yml') -WorkflowText @{ '.github/workflows/codeql.yml' = $codeqlYaml } -CodeQL 'not-configured' -Languages @()
@@ -1457,7 +1457,7 @@ try {
   }
 
   if (-not $ForkApprovalOnly) {
-    # 10. A workflow that runs CodeQL on pull requests (ADR-0042). Where the ruleset is left alone, CodeQL's default setup
+    # 10. A workflow that runs CodeQL on pull requests (ADR-0044). Where the ruleset is left alone, CodeQL's default setup
     # is turned off and reported like a security setting; a refusal never fails the run.
     $codeqlLabel = "CodeQL's default setup off, so .github/workflows/codeql.yml analyzes every pull request, a fork's too"
     $r = Invoke-Baseline @('-Repo', 'codeqlOurs')

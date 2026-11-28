@@ -1,4 +1,4 @@
-# 0042. A fork's pull request merges without a bypass
+# 0044. A fork's pull request merges without a bypass
 
 - **Status:** Accepted
 - **Date:** 2026-11-27

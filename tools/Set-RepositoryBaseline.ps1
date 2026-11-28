@@ -30,7 +30,7 @@
         and makes GitHub refuse the workflow's results, before it writes the ruleset, so a refusal fails the repository
         and changes nothing. On a run that leaves the ruleset alone it reports the change as set, already set, would set
         or not available, with the languages the default setup analyzed, and goes on, and it prints neither the suite
-        notice nor the no-language warning (the template's ADR-0042). A refusal names the fix: an organization's
+        notice nor the no-language warning (the template's ADR-0044). A refusal names the fix: an organization's
         security configuration that sets code scanning is set to "Enabled with advanced setup allowed";
       - turns on "delete branch on merge";
       - adds a "Protect release tags" ruleset on the tags matching v* (refs/tags/v*): no deletion and no update, so a
@@ -485,7 +485,7 @@ $defaultSetupHint = "Where the organization's security configuration sets code s
 function Set-DefaultSetupOff([string]$Name) { Invoke-HostWrite PATCH "repos/$Owner/$Name/code-scanning/default-setup" @{ state = 'not-configured' } }
 
 # CodeQL's default setup analyzes no pull request from a fork, and GitHub refuses a CodeQL workflow's results while it is
-# on, so where the default branch has a workflow that runs CodeQL on pull requests it is turned off (ADR-0042). It is
+# on, so where the default branch has a workflow that runs CodeQL on pull requests it is turned off (ADR-0044). It is
 # reported like a security setting: a run that leaves the ruleset alone never fails on a refusal.
 function Disable-DefaultSetup {
     [CmdletBinding(SupportsShouldProcess)]
@@ -564,7 +564,7 @@ function Set-BranchRuleset {
     $setupLanguages = @()
     if ($CodeQLWorkflows.Count) {
         # A workflow that runs CodeQL on pull requests meets the rule on every pull request, a fork's too, once CodeQL's
-        # default setup is off (ADR-0042).
+        # default setup is off (ADR-0044).
         $setup = Read-DefaultSetup $Name
         if ($setup.Why) { Write-Host "${Name}: skipped (couldn't read CodeQL's default setup: $($setup.Why))"; return $false }
         $setupOff = $setup.Status -ne 404 -and $setup.Answer.state -eq 'configured'
@@ -848,7 +848,7 @@ function Test-ReleaseAssetWorkflow([string]$Text) {
 
 # A workflow runs CodeQL on pull requests when its top-level on: names pull_request and a line that isn't a comment uses
 # github/codeql-action/analyze, as the template's codeql.yml does: its results then meet the code-scanning rule on every
-# pull request, a fork's too (ADR-0042).
+# pull request, a fork's too (ADR-0044).
 function Test-CodeQLWorkflow([string]$Text) {
     $code = $Text -replace '(?m)^\s*#.*$', ''
     [bool](((Get-WorkflowEvents $Text) -contains 'pull_request') -and ($code -match '(?m)^\s*(-\s+)?uses:\s*[''"]?github/codeql-action/analyze@'))
