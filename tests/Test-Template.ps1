@@ -286,7 +286,7 @@ $fixtureGood = Join-Path $nodeFixture 'good.yml'; $fixtureBad = Join-Path $nodeF
 [IO.File]::WriteAllText($fixtureGood, "a: 1`n")
 [IO.File]::WriteAllText($fixtureBad, "a: [1, 2`n")
 $fixtureTag = Join-Path $nodeFixture 'tag.yml'
-[IO.File]::WriteAllText($fixtureTag, "script: !reference [.setup, script]`n")
+[IO.File]::WriteAllText($fixtureTag, "value: !custom [a, b]`n")
 $fixtureOutput = node "$repoRoot/tests/node/check-yaml.mjs" $fixtureGood $fixtureBad $fixtureTag 2>&1 | Out-String
 Check 'tests/node/check-yaml.mjs: names an invalid YAML file and one with an unknown tag, and only them, and exits 1' ($LASTEXITCODE -eq 1 -and $fixtureOutput.Contains("${fixtureBad}: ") -and $fixtureOutput.Contains("${fixtureTag}: ") -and -not $fixtureOutput.Contains($fixtureGood)) $fixtureOutput.Trim()
 $fixtureOutput = node "$repoRoot/tests/node/pwsh-steps.mjs" $fixtureTag 2>&1 | Out-String
