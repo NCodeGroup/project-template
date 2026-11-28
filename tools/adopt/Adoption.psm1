@@ -395,11 +395,11 @@ function Remove-GitVersioningReference([string]$Path) {
 }
 
 # Files that list the build's files one by one, so a file the build newly imports must be added to each: the
-# .dockerignore files, and the CI files that name Directory.Build.props (such as in a cache key).
+# .dockerignore files, and the GitHub workflows that name Directory.Build.props (such as in a cache key).
 function Get-BuildFileList([string]$Path) {
     foreach ($file in @(git -C $Path -c core.quotePath=false ls-files)) {
         $leaf = Split-Path -Leaf $file
-        $isCi = $file -eq '.gitlab-ci.yml' -or $file -match '^\.github/workflows/[^/]+\.ya?ml$'
+        $isCi = $file -match '^\.github/workflows/[^/]+\.ya?ml$'
         if ($leaf.EndsWith('.dockerignore')) { $file }
         elseif ($isCi -and [IO.File]::ReadAllText((Join-Path $Path $file)).Contains('Directory.Build.props')) { $file }
     }
