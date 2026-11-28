@@ -20,8 +20,10 @@ right after. Two causes kept it from merging under the baseline ruleset.
    - GitHub refuses a CodeQL workflow's results while default setup is on, so the two can't run side by side.
 2. `strict_required_status_checks_policy` makes a pull request behind `main` update its branch before it merges.
    GitHub counts the merge that "Update branch" makes as the maintainer's push. `require_last_push_approval` then needs
-   another writer's approval, which a repository with one writer doesn't have, and NCode Review's approver skips forks
-   ([ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md) decision 4).
+   another writer's approval, which a repository with one writer doesn't have, and NCode Review never approves a fork's
+   pull request, so the approver skips forks
+   ([ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md) decision 4,
+   [ADR-0043](0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md) decision 4).
 
 ## Decision
 
@@ -64,8 +66,10 @@ right after. Two causes kept it from merging under the baseline ruleset.
   it themselves, past NCode Review's gate.
 - A `pull_request`-mode bypass for repository admins. Rejected: the issue rules it out; a bypass is the workaround this
   decision replaces.
-- Have the approver app approve a fork's pull request after `/review`. Rejected here: NCodeGroup/code-review#251
-  decides the approver's handling of forks, not this repository.
+- Have the approver app approve a fork's pull request after `/review`. Rejected:
+  [ADR-0043](0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md) decides that NCode Review
+  never approves a fork's pull request, whatever `approve` says, because its author can't write to the repository and
+  can try to steer the verdict through the diff.
 - A project-owned CodeQL workflow, and a fork's author who updates its own branch (chosen).
 
 ## Consequences
@@ -93,6 +97,7 @@ right after. Two causes kept it from merging under the baseline ruleset.
   [Resource not accessible](https://docs.github.com/en/code-security/reference/code-scanning/troubleshoot-analysis-errors/resource-not-accessible)
 - [ADR-0022](0022-ncode-reviews-approval-gates-the-merge.md),
   [ADR-0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md),
-  [ADR-0036](0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md) and
-  [ADR-0039](0039-fork-pull-request-workflows-run-for-established-contributors.md)
+  [ADR-0036](0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md),
+  [ADR-0039](0039-fork-pull-request-workflows-run-for-established-contributors.md) and
+  [ADR-0043](0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md)
 - NCodeGroup/project-template#537, NCodeGroup/NCode.Disposables#95
