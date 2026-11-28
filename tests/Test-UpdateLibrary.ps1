@@ -20,7 +20,9 @@
                      Its release.yml has a shallow actions/checkout and builds with /p:Version, so the update names both,
                      which Nerdbank.GitVersioning breaks. It deletes release-provenance.yml and raise-baseline.yml,
                      records nuget_publisher in .copier-answers.yml and says so. Its AGENTS.md says release: tag+release,
-                     so the update says release.yml has no workflow_dispatch trigger.
+                     so the update says release.yml has no workflow_dispatch trigger. It also has a CodeQL workflow of
+                     its own, codeql-analysis.yml, on pull_request, and no codeql.yml: the update leaves codeql.yml out
+                     and says so.
       headerless     A C# file without the header .editorconfig sets, and one with it. Turning csharp_format on with
                      -Data counts the first, names it, and not the second.
       headerless-ordinary  The same two files, and an AGENTS.md that says release: none; an ordinary update prints no
@@ -29,7 +31,8 @@
       with-trigger   The template's own publish.yml, with its workflow_dispatch trigger. The update adds tag-release.yml
                      and prints no workflow_dispatch warning, and none for the release follow-ups, which that
                      publish.yml calls. It keeps release-provenance.yml and records no nuget_publisher.
-                     Its AGENTS.md says release: tag+release, so it gets no release-line note.
+                     Its AGENTS.md says release: tag+release, so it gets no release-line note. Without a CodeQL workflow
+                     of its own, it keeps codeql.yml.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -129,11 +132,15 @@ try {
     Remove-Item -LiteralPath .github/workflows/publish.yml
     [IO.File]::WriteAllText((Join-Path $ownPublisher '.github/workflows/release.yml'), "name: release`non: release`njobs:`n  push:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@v4`n      - run: dotnet build --configuration Release /p:Version=`"`${BUILD_VERSION}`"`n      - run: dotnet nuget push out/*.nupkg`n")
     [IO.File]::WriteAllText((Join-Path $ownPublisher 'legacy.sln'), "Microsoft Visual Studio Solution File, Format Version 12.00`n")
+    # A CodeQL workflow of its own, on pull_request, in place of the template's codeql.yml (the template's ADR-0047).
+    Remove-Item -LiteralPath .github/workflows/codeql.yml
+    [IO.File]::WriteAllText((Join-Path $ownPublisher '.github/workflows/codeql-analysis.yml'), "name: CodeQL`non:`n  pull_request:`njobs:`n  analyze:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: github/codeql-action/analyze@v4`n")
     Invoke-Git add -A; Invoke-Git commit -q -m 'Create project'
     $result = Invoke-Update $ownPublisher
     Check 'own-publisher: the update names the stale legacy.sln and asks for a /plan-migration' ($result.ExitCode -eq 0 -and $result.Output.Contains('Stale NuGet logistics') -and $result.Output.Contains('legacy.sln is a .sln') -and ($result.Output -match '(?m)^\s*/plan-migration .*\bsolution\b|(?m)^\s*/plan-migration .*\bSolution\b')) $result.Output
     $versionJson = Get-Content -Raw -LiteralPath version.json | ConvertFrom-Json
     Check 'own-publisher: the update leaves publish.yml out beside release.yml, and says so' ($result.ExitCode -eq 0 -and -not (Test-Path -LiteralPath .github/workflows/publish.yml) -and $result.Output.Contains('Left out .github/workflows/publish.yml: .github/workflows/release.yml already push NuGet packages')) $result.Output
+    Check 'own-publisher: the update leaves codeql.yml out beside its own CodeQL workflow, and says so' ($result.ExitCode -eq 0 -and -not (Test-Path -LiteralPath .github/workflows/codeql.yml) -and (Test-Path -LiteralPath .github/workflows/codeql-analysis.yml) -and $result.Output.Contains('Left out .github/workflows/codeql.yml: .github/workflows/codeql-analysis.yml already run CodeQL')) $result.Output
     Check 'own-publisher: without publish.yml, no workflow_dispatch warning' (-not $result.Output.Contains('.github/workflows/publish.yml has no workflow_dispatch trigger')) $result.Output
     Check 'own-publisher: with release: tag+release, the update says release.yml, its own publishing workflow, has no workflow_dispatch trigger' ($result.Output.Contains('.github/workflows/release.yml publishes this library''s NuGet packages (the nuget_publisher answer) and has no workflow_dispatch trigger')) $result.Output
     Check 'own-publisher: the update adds version.json at the patch after v2.3.0, with the AssemblyVersion v2.3.0 shipped, and says so' (($versionJson.version -eq '2.3.1') -and ($versionJson.assemblyVersion.version -eq '2.3') -and ($versionJson.assemblyVersion.precision -eq 'minor') -and $result.Output.Contains('Added version.json') -and $result.Output.Contains('the patch after v2.3.0') -and -not $result.Output.Contains('<PropertyGroup><AssemblyVersion>')) $result.Output
@@ -195,6 +202,7 @@ try {
     Check 'with-trigger: the update says to delete the AssemblyVersion that Directory.Build.props sets' ($result.Output.Contains('Directory.Build.props sets AssemblyVersion') -and $result.Output.Contains('delete it from Directory.Build.props')) $result.Output
     Check 'with-trigger: a library that publishes through publish.yml keeps the release follow-ups and records no nuget_publisher' ((Test-Path -LiteralPath .github/workflows/release-provenance.yml) -and -not (Select-String -LiteralPath .copier-answers.yml -Pattern '^nuget_publisher:' -Quiet)) $result.Output
     Check 'with-trigger: with release: tag+release, no release-line note' ($result.ExitCode -eq 0 -and -not $result.Output.Contains("AGENTS.md's Landing section says release:")) $result.Output
+    Check 'with-trigger: without a CodeQL workflow of its own, the update keeps codeql.yml' ((Test-Path -LiteralPath .github/workflows/codeql.yml) -and -not $result.Output.Contains('Left out .github/workflows/codeql.yml')) $result.Output
 }
 finally { Pop-Location }
 
