@@ -511,6 +511,18 @@ function Get-NuGetPublisherAnswer {
     @(Get-NuGetPublisher) -join ', '
 }
 
+# The workflows other than codeql.yml that run CodeQL, as .github/workflows/<name>, sorted: a line that isn't a comment
+# uses github/codeql-action/analyze@. A repository with one has a CodeQL setup of its own, and the template's codeql.yml
+# beside it would analyze each commit a second time under the same categories (the template's ADR-0044).
+# template/.template/Update-Project.ps1 has a deliberate copy of this function, since it runs on its own. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-CodeQLWorkflow {
+    if (-not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
+    $found = foreach ($file in Get-ChildItem -LiteralPath .github/workflows -File) {
+        if ($file.Extension -in '.yml', '.yaml' -and $file.Name -ne 'codeql.yml' -and ("$(Get-Content -LiteralPath $file.FullName -Raw)" -replace '(?m)^[ \t]*#.*$', '') -match '(?m)^[ \t]*(-[ \t]+)?uses:[ \t]*[''"]?github/codeql-action/analyze@') { ".github/workflows/$($file.Name)" }
+    }
+    @($found) | Sort-Object
+}
+
 # The release_policy answer, which Copier never records (copier.yml says when: false): the value of the "- release:" line of
 # AGENTS.md's Landing section, none without the line, as .template/Publish-Release.ps1 reads it. Nothing for a value that
 # script refuses or without AGENTS.md, so the answer's default applies. Runs in the project folder.
@@ -1026,4 +1038,4 @@ function Get-RepositoryNameWarning([string]$Name, [string]$Stack) {
     "$message The adoption renames nothing. A rename goes through an issue in the repository that lists what it touches, as ADR-1001's Consequences say: badges and services keyed by the name, such as OpenSSF Scorecard and Codecov; federated-identity conditions; workflow conditions on github.repository; the name in the repository's own files, except released changelog sections; and, for more than a change of case, the nuget.org trusted publishing policy, links to the GitHub Pages default URL and the clone's folder. https://github.com/NCodeGroup/.github/blob/main/docs/decisions/1001-a-dotnet-repository-is-named-for-its-root-namespace-and-every-other-repository-in-lowercase.md"
 }
 
-Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote, Get-ReleasePolicyAnswer, Set-TemplateSource, Get-GitHubOnlyMessage, Test-GitHubRemote, Get-RepositoryNameRefusal, Get-RepositoryNameWarning
+Export-ModuleMember -Function Test-KeepAChangelog, Get-ChangelogBackfill, Get-NuGetPublisher, Get-NuGetPublisherAnswer, Get-AssemblyVersionFloor, Get-PublishedPackageVersion, Get-PackageMetadataDrift, Test-PackageValidationBaseline, Get-CSharpFileWithoutHeader, Get-NuGetLogistics, Get-CSharpierWrapper, Update-VersionFile, Get-CopierList, Get-OwnableFile, Get-OwnedFile, Get-MSBuildFile, Get-AdoptionAnswers, Get-NodeVersionFile, Merge-AdoptedFile, Add-TemplateIndexEntry, Add-ProjectTemplateImport, Move-PackageVersionsToCentral, Remove-GitVersioningReference, Get-BuildFileList, Get-GitHooksSetup, Get-CiCallNote, Get-CiPermissionNote, Get-GitVersioningWorkflowNote, Get-ReleasePolicyAnswer, Set-TemplateSource, Get-GitHubOnlyMessage, Test-GitHubRemote, Get-RepositoryNameRefusal, Get-RepositoryNameWarning, Get-CodeQLWorkflow

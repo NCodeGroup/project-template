@@ -30,6 +30,7 @@
       publisher Get-NuGetPublisherAnswer names the workflows other than publish.yml that run nuget push, joined with
                 ", ", when the library has no publish.yml, and is blank beside a publish.yml, without such a workflow or
                 without .github/workflows.
+      codeql-workflow Get-CodeQLWorkflow names the workflows other than codeql.yml that use github/codeql-action/analyze@ on a line that isn't a comment, and nothing for codeql.yml alone, a comment, upload-sarif or no .github/workflows; tools\adopt\Adoption.psm1's copy names the same.
       release-policy Get-ReleasePolicyAnswer reads the release line of AGENTS.md's Landing section, with or without
                 double quotes, none without the line or outside that section, and nothing for a value
                 .template\Publish-Release.ps1 refuses or without AGENTS.md. tools\adopt\Adoption.psm1's copy answers the same.
@@ -311,6 +312,39 @@ $publisherAnswer = & {
     }
 }
 $publisherAnswer
+
+# codeql-workflow: Get-CodeQLWorkflow, both copies, run from inside each fixture folder, which is also the project.
+$codeqlWorkflow = & {
+    Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'template\.template\Update-Project.ps1'), [ref]$null, [ref]$null)
+    $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-CodeQLWorkflow' }, $true)
+    . ([scriptblock]::Create($fn.Extent.Text))
+    $analyze = "jobs:`n  analyze:`n    steps:`n      - uses: github/codeql-action/analyze@v4`n"
+    $codeqlWorkflowCases = [ordered]@{
+        'own workflow'      = @{ Files = @{ 'codeql-analysis.yml' = $analyze }; Want = '.github/workflows/codeql-analysis.yml' }
+        'two workflows'     = @{ Files = @{ 'a.yml' = $analyze; 'b.yaml' = "jobs:`n  go:`n    steps:`n      - name: Analyze`n        uses: 'github/codeql-action/analyze@abc'`n" }; Want = '.github/workflows/a.yml, .github/workflows/b.yaml' }
+        'codeql.yml alone'  = @{ Files = @{ 'codeql.yml' = $analyze }; Want = '' }
+        'in a comment'      = @{ Files = @{ 'old.yml' = "jobs:`n  analyze:`n    steps:`n      # - uses: github/codeql-action/analyze@v4`n" }; Want = '' }
+        'upload-sarif only' = @{ Files = @{ 'scorecard.yml' = "jobs:`n  a:`n    steps:`n      - uses: github/codeql-action/upload-sarif@v4`n" }; Want = '' }
+        'no workflows'      = @{ Files = $null; Want = '' }
+    }
+    foreach ($name in $codeqlWorkflowCases.Keys) {
+        $case = $codeqlWorkflowCases[$name]
+        $folder = Join-Path $Work "codeql-workflow-$($name -replace '\W+', '-')"
+        $null = New-Item -ItemType Directory -Path $folder -Force
+        if ($case.Files) {
+            $workflows = Join-Path $folder '.github/workflows'
+            $null = New-Item -ItemType Directory -Path $workflows -Force
+            foreach ($file in $case.Files.Keys) { [IO.File]::WriteAllText((Join-Path $workflows $file), $case.Files[$file]) }
+        }
+        Push-Location $folder
+        try { $got = @(Get-CodeQLWorkflow) -join ', '; $adoptGot = @(Adoption\Get-CodeQLWorkflow) -join ', ' }
+        finally { Pop-Location }
+        Check "codeql-workflow: $name" ($got -eq $case.Want) "got [$got], want [$($case.Want)]"
+        Check "codeql-workflow: ${name}: the adoption names the same" ($adoptGot -eq $got) "update [$got], adopt [$adoptGot]"
+    }
+}
+$codeqlWorkflow
 
 # release-policy: Get-ReleasePolicyAnswer, run from inside each fixture folder, which is also the project.
 $releasePolicyAnswer = & {

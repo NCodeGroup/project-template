@@ -882,6 +882,18 @@ function Get-NuGetPublisherAnswer {
     @(Get-NuGetPublisher) -join ', '
 }
 
+# The workflows other than codeql.yml that run CodeQL, as .github/workflows/<name>, sorted: a line that isn't a comment
+# uses github/codeql-action/analyze@. A repository with one has a CodeQL setup of its own, and the template's codeql.yml
+# beside it would analyze each commit a second time under the same categories (the template's ADR-0044).
+# tools/adopt/Adoption.psm1 has a deliberate copy of this function for the template's Adopt-Project.ps1. Change both together; tests/Test-UpdateNotes.ps1 runs both copies through the same cases.
+function Get-CodeQLWorkflow {
+    if (-not (Test-Path -LiteralPath .github/workflows -PathType Container)) { return }
+    $found = foreach ($file in Get-ChildItem -LiteralPath .github/workflows -File) {
+        if ($file.Extension -in '.yml', '.yaml' -and $file.Name -ne 'codeql.yml' -and ("$(Get-Content -LiteralPath $file.FullName -Raw)" -replace '(?m)^[ \t]*#.*$', '') -match '(?m)^[ \t]*(-[ \t]+)?uses:[ \t]*[''"]?github/codeql-action/analyze@') { ".github/workflows/$($file.Name)" }
+    }
+    @($found) | Sort-Object
+}
+
 function Get-AssemblyVersionFloor {
     if (-not (Test-Path -LiteralPath build/ProjectTemplate.props -PathType Leaf)) { return }
     if ((Get-Content -LiteralPath build/ProjectTemplate.props -Raw) -notmatch 'Name="ProjectTemplatePinAssemblyVersion"') { return }
