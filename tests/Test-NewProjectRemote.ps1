@@ -17,6 +17,9 @@
     and the name each refusal gives.
     It checks that -CreateRemote gives a fitting .NET or Python name to gh repo create, and that a name that doesn't
     fit stops with the fitting name, calls no gh and leaves no folder, before copier runs when -Data answers stack.
+    It also checks that a refusal in an existing empty folder leaves the folder empty, that a -Path that ends in a
+    separator names the repository without it, and that -Data answering stack dotnet with a fitting name runs copier
+    and gh repo create.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -195,6 +198,18 @@ try {
     $message = try { & $newProject -Path (Join-Path $Work 'NCode.Disposables') -Template 'stand-in' -CreateRemote -Data @{ stack = 'dotnet' }; '' } catch { $_.Exception.Message }
     $recorded = @(if (Test-Path -LiteralPath $calls) { Get-Content -LiteralPath $calls })
     Check 'name: -Data stack dotnet with NCode.Disposables stops before copier runs, naming Disposables' ($message.Contains("Name the folder 'Disposables'. Nothing was created.") -and $recorded.Count -eq 0 -and -not (Test-Path -LiteralPath (Join-Path $Work 'NCode.Disposables'))) "message=$message calls=$($recorded -join '|')"
+    New-Item -ItemType Directory -Force (Join-Path $Work 'existing-buffers') | Out-Null
+    $r = Invoke-NewProject 'existing-buffers' 'github' '' @('-NoBaseline') 'stand-in' 'dotnet'
+    Check 'name: a .NET project in an existing empty folder named existing-buffers stops after copier, naming ExistingBuffers, with no gh call, and leaves the folder empty' ($r.ExitCode -ne 0 -and (Squeeze $r.Output).Contains((Squeeze "Name the folder 'ExistingBuffers'.")) -and -not [bool]($r.Calls -like 'gh *') -and [bool]($r.Calls -like 'copier *') -and (Test-Path -LiteralPath $r.Path -PathType Container) -and -not (Get-ChildItem -LiteralPath $r.Path -Force)) "calls=$($r.Calls -join '|') output=$($r.Output)"
+    $r = Invoke-NewProject 'trailing-separator/' 'github' '' @('-NoBaseline') 'stand-in' 'python'
+    Check 'name: a -Path that ends in a separator names the repository trailing-separator' ($r.ExitCode -eq 0 -and $r.Calls -ccontains 'gh repo create trailing-separator --public --source . --remote origin --push') "calls=$($r.Calls -join '|') output=$($r.Output)"
+    if (Test-Path -LiteralPath $calls) { Remove-Item -LiteralPath $calls -Force }
+    $env:NEW_PROJECT_TEST_HOST = 'github'
+    $env:NEW_PROJECT_TEST_FAIL = ''
+    $env:NEW_PROJECT_TEST_STACK = 'dotnet'
+    $message = try { & $newProject -Path (Join-Path $Work 'Disposables') -Template 'stand-in' -CreateRemote -NoBaseline -Data @{ stack = 'dotnet' } *>&1 | Out-Null; '' } catch { $_.Exception.Message }
+    $recorded = @(if (Test-Path -LiteralPath $calls) { Get-Content -LiteralPath $calls })
+    Check 'name: -Data stack dotnet with Disposables runs copier and creates Disposables on GitHub' ($message -eq '' -and [bool]($recorded -like 'copier *stack=dotnet*') -and $recorded -ccontains 'gh repo create Disposables --public --source . --remote origin --push') "message=$message calls=$($recorded -join '|')"
 }
 finally {
     foreach ($savedName in $savedNames) { [Environment]::SetEnvironmentVariable($savedName, $saved[$savedName]) }
