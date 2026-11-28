@@ -15,6 +15,7 @@
     A library whose kept AGENTS.md has no release line gets Update-Project.ps1's note with the one-line change to
     - release: tag+release; a library whose AGENTS.md the template writes, with release: tag+release, doesn't.
     A .NET repository named gaps gets a note naming Gaps, the name NCodeGroup's rule gives it (ADR-0045), and a Node.js repository named notes gets none.
+    A repository whose own workflow runs CodeQL gets no codeql.yml and no follow-up to reconcile that workflow, and one without gets codeql.yml.
 
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-adopt-edge-test-<process ID> in the
@@ -112,6 +113,7 @@ $libraryOut = & $adopt -Path $libraryPublish -Template $tpl -Ref v0.1.0 -Data @{
 $followUpWarning = [regex]::Match($updateScript, "(?m)^\s*'(\.github/workflows/publish\.yml doesn''t call (?:[^']|'')*)'\s*$").Groups[1].Value.Replace("''", "'")
 Check 'library-publish: warns, word for word as the update does, that the kept publish.yml doesn''t call the release follow-ups' ($followUpWarning.Length -gt 100 -and $libraryOut.Contains($followUpWarning)) $libraryOut
 Check 'ci-existing: a repository that isn''t a library gets no follow-up warning' (-not $ciOut.Contains('doesn''t call .github/workflows/release-provenance.yml')) $ciOut
+Check 'ci-existing: without a CodeQL workflow of its own, the repository gets codeql.yml' (Test-Path -LiteralPath (Join-Path $ciExisting '.github/workflows/codeql.yml'))
 $libraryCalls = New-Fixture 'library-calls' @{
     'README.md'                     = "# Library Calls`n"
     'Lib.csproj'                    = "<Project Sdk=""Microsoft.NET.Sdk"">`n  <PropertyGroup>`n    <TargetFramework>net10.0</TargetFramework>`n  </PropertyGroup>`n</Project>`n"
@@ -151,6 +153,7 @@ $notes = New-Fixture 'notes' @{
     'README.md'    = "# Notes`n"
     'package.json' = '{"name":"notes","private":true,"packageManager":"yarn@4.14.1","scripts":{"diagram:export":"echo export"}}' + "`n"
     'yarn.lock'    = "`n"
+    '.github/workflows/codeql-analysis.yml' = "name: CodeQL`non:`n  pull_request:`njobs:`n  analyze:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: github/codeql-action/analyze@v4`n"
 } 'https://github.com/example/notes.git'
 $notesOut = & $adopt -Path $notes -Template $tpl -Ref v0.1.0 | Out-String
 $notesAnswers = Get-Content -Raw -LiteralPath (Join-Path $notes '.copier-answers.yml')
@@ -160,6 +163,7 @@ Check 'notes: a Node.js repository without build or test scripts commits without
 Check 'notes: CI installs with the package manager package.json names' ($notesAnswers -match '(?m)^package_manager: yarn\s*$' -and $notesCi.Contains('corepack enable yarn') -and $notesCi.Contains('yarn install') -and -not $notesCi.Contains('npm ci')) "$notesAnswers | $notesCi"
 Check 'notes: the template''s own ci.yml gets neither ci.yml note' (-not $notesOut.Contains('has no workflow_call trigger') -and -not $notesOut.Contains('asks for more than contents: read')) $notesOut
 Check 'notes: a name that fits gets no name note' (-not $notesOut.Contains("doesn't fit NCodeGroup's rule for repository names")) $notesOut
+Check 'notes: a workflow of its own that runs CodeQL keeps codeql.yml out, the report says so, and no follow-up asks to reconcile it' (-not (Test-Path -LiteralPath (Join-Path $notes '.github/workflows/codeql.yml')) -and (Test-Path -LiteralPath (Join-Path $notes '.github/workflows/codeql-analysis.yml')) -and $notesOut.Contains('Skipped .github/workflows/codeql.yml') -and $notesOut.Contains('.github/workflows/codeql-analysis.yml already run CodeQL') -and -not $notesOut.Contains('reconcile .github/workflows/codeql-analysis.yml')) $notesOut
 ''
 $env:COPIER_CACHE_DIR = $copierCache
 if ($failures.Count) { "Kept the work folder: $Work"; "Adopt edge-case tests: FAILED ($($failures.Count))"; exit 1 }
