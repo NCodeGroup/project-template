@@ -566,7 +566,7 @@ $checks['2.3'] = {
             $codeqlUses = $codeqlCode -match '(?m)^[ \t]*(-[ \t]+)?uses:[ \t]*[''"]?github/codeql-action/analyze@'
             $codeqlOnPullRequest = $codeqlCode -match '(?m)^[ \t]*pull_request[ \t]*:' -or
                 $codeqlCode -match '(?m)^on:[ \t]*\[[^\]\r\n]*\bpull_request\b' -or
-                $codeqlCode -match '(?m)^on:[ \t]*pull_request[ \t]*$'
+                $codeqlCode -match '(?m)^on:[ \t]*pull_request[ \t]*\r?$'
             if ($codeqlUses -and $codeqlOnPullRequest) { $codeqlWorkflow = ".github/workflows/$($file.Name)"; break }
         }
     }
