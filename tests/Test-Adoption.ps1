@@ -87,7 +87,7 @@ try { Invoke-Git init -q -b main; Invoke-Git remote add origin https://github.co
 finally { Pop-Location }
 $a = Get-AdoptionAnswers $demo
 $detail = ($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; '
-Check 'unit: Get-AdoptionAnswers works out a .NET repository' (($a.stack -eq 'dotnet') -and ($a.project_name -eq 'NCode.Demo') -and ($a.git_host -eq 'github') -and ($a.author_name -eq 'NCode Group') -and ($a.build_command -eq 'dotnet build src/NCode.Demo.slnx') -and ($a.test_command -eq 'dotnet test src/NCode.Demo.slnx')) $detail
+Check 'unit: Get-AdoptionAnswers works out a .NET repository' (($a.stack -eq 'dotnet') -and ($a.project_name -eq 'NCode.Demo') -and ($a.author_name -eq 'NCode Group') -and ($a.build_command -eq 'dotnet build src/NCode.Demo.slnx') -and ($a.test_command -eq 'dotnet test src/NCode.Demo.slnx')) $detail
 Check 'unit: Get-AdoptionAnswers answers pre_release tracked, since a repository has a history' ($a.pre_release -eq 'tracked') $detail
 # The refusals come before the adoption touches anything; the fixtures carry a local identity, which the script's own check needs.
 $adoptScript = Join-Path $repoRoot 'Adopt-Project.ps1'
@@ -143,7 +143,7 @@ $bad = foreach ($name in $others.Keys) {
     foreach ($file in $others[$name].Files) { $files[$file] = "x`n" }
     $folder = New-TestFolder $name $files
     $a = Get-AdoptionAnswers $folder
-    if (-not ($a.stack -eq $others[$name].Stack -and $a.git_host -eq 'github' -and $a.project_name -eq $name -and -not $a.Contains('build_command'))) {
+    if (-not ($a.stack -eq $others[$name].Stack -and $a.project_name -eq $name -and -not $a.Contains('build_command'))) {
         "${name}: $(($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')"
     }
 }
@@ -159,7 +159,7 @@ $nodes = [ordered]@{
 $bad = foreach ($name in $nodes.Keys) {
     $folder = New-TestFolder $name $nodes[$name].Files
     $a = Get-AdoptionAnswers $folder
-    if (-not ($a.stack -eq 'node' -and $a.git_host -eq 'github' -and $a.project_name -eq $name -and $a.package_manager -eq $nodes[$name].Manager -and $a.Contains('build_command') -and $a.build_command -eq $nodes[$name].Build -and $a.Contains('test_command') -and $a.test_command -eq $nodes[$name].Test)) {
+    if (-not ($a.stack -eq 'node' -and $a.project_name -eq $name -and $a.package_manager -eq $nodes[$name].Manager -and $a.Contains('build_command') -and $a.build_command -eq $nodes[$name].Build -and $a.Contains('test_command') -and $a.test_command -eq $nodes[$name].Test)) {
         "${name}: $(($a.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')"
     }
 }
@@ -346,11 +346,11 @@ $sshProject = New-TestFolder 'source-project5' @{ '.copier-answers.yml' = "_comm
 $null = Set-TemplateSource $sshProject $withSsh
 $sshAnswers = Get-Content -Raw -LiteralPath (Join-Path $sshProject '.copier-answers.yml')
 Check 'unit: Set-TemplateSource records a GitHub SSH origin as its https address' ($sshAnswers -eq "_commit: v0.1.0`n_src_path: https://github.com/fork/project-template.git`n") $sshAnswers
-$withSshUrl = New-Fixture 'source-sshurl' @{ 'README.md' = "t`n" } 'ssh://git@gitlab.com/group/project-template.git'
+$withSshUrl = New-Fixture 'source-sshurl' @{ 'README.md' = "t`n" } 'ssh://git@github.com/group/project-template.git'
 $sshUrlProject = New-TestFolder 'source-project6' @{ '.copier-answers.yml' = "_commit: v0.1.0`n_src_path: $withSshUrl`n" }
 $null = Set-TemplateSource $sshUrlProject $withSshUrl
 $sshUrlAnswers = Get-Content -Raw -LiteralPath (Join-Path $sshUrlProject '.copier-answers.yml')
-Check 'unit: Set-TemplateSource records a GitLab ssh:// origin as its https address' ($sshUrlAnswers -eq "_commit: v0.1.0`n_src_path: https://gitlab.com/group/project-template.git`n") $sshUrlAnswers
+Check 'unit: Set-TemplateSource records a GitHub ssh:// origin as its https address' ($sshUrlAnswers -eq "_commit: v0.1.0`n_src_path: https://github.com/group/project-template.git`n") $sshUrlAnswers
 $crlfProject = New-TestFolder 'source-project7' @{ '.copier-answers.yml' = "# Written by Copier`r`n_commit: v0.1.0`r`n_src_path: first part`r`n  second part`r`nproject_name: Demo`r`n" }
 $null = Set-TemplateSource $crlfProject $withOrigin
 $crlfAnswers = Get-Content -Raw -LiteralPath (Join-Path $crlfProject '.copier-answers.yml')
@@ -359,9 +359,9 @@ Check 'unit: Set-TemplateSource keeps CRLF line endings and the other answers' (
 $updateScriptText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template/.template/Update-Project.ps1')
 $moduleText = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'tools/adopt/Adoption.psm1')
 $originPatterns = @(
-    '''^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'''
+    '''^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|[^@/\\\s]+@[^:/\\\s]+:)'''
     '''^(https?://)[^/@]*@'', ''$1'''
-    '''^(?:git@(github\.com|gitlab\.com):|ssh://git@(github\.com|gitlab\.com)/)'', ''https://$1$2/'''
+    '''^(?:git@github\.com:|ssh://git@github\.com/)'', ''https://github.com/'''
     '''(?m)^_src_path:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*'''
 )
 $apart = @($originPatterns | Where-Object { -not ($updateScriptText.Contains($_) -and $moduleText.Contains($_)) })
@@ -388,7 +388,7 @@ if (-not $UnitOnly) {
     [IO.File]::WriteAllText((Join-Path $plain '.git\hooks\pre-commit'), "#!/bin/sh`n")
     $out = & $adopt -Path $plain -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot' } -NoVerify 3>&1 | Out-String
     $answersText = Get-Content -Raw -LiteralPath (Join-Path $plain '.copier-answers.yml')
-    Check 'plain: answers recorded' ($answersText -match '(?m)^_commit: v0\.1\.0\s*$' -and $answersText -match '(?m)^stack: python\s*$' -and $answersText -match '(?m)^git_host: github\s*$' -and $answersText -match '(?m)^project_name: plain\s*$') "$answersText | $out"
+    Check 'plain: answers recorded' ($answersText -match '(?m)^_commit: v0\.1\.0\s*$' -and $answersText -match '(?m)^stack: python\s*$' -and $answersText -match '(?m)^project_name: plain\s*$') "$answersText | $out"
     Check 'plain: a Python repository with a frontend answers uses_node and carries .nvmrc over to .node-version' ($answersText -match '(?m)^uses_node: true\s*$' -and (Get-Content -Raw -LiteralPath (Join-Path $plain '.node-version')) -eq "22`n" -and $out.Contains('Carried .node-version') -and (Test-Path -LiteralPath (Join-Path $plain '.nvmrc'))) "$answersText | $out"
     $subject = git -C $plain log -1 --format=%s
     $count = git -C $plain rev-list --count HEAD
