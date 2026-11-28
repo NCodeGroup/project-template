@@ -1,6 +1,6 @@
 # 0037. /best-practices reports the Scorecard gaps and answers for the default branch
 
-- **Status:** Accepted{% if git_host == 'github' %} (amended by 0035){% endif %}
+- **Status:** Accepted (amended by 0035)
 - **Date:** 2026-11-20
 
 ## Context
@@ -36,14 +36,12 @@ evidence that Scorecard and bestpractices.dev, which read the default branch, ca
 - A project that is already registered isn't registered twice.
 - The report separates what is true on the default branch from what a pending merge would change, and asks for a
   second run after the merge.
-- The Branch-Protection claim {%- if git_host == 'github' %} in ADR-0020 {%- endif %} matches Scorecard v5.7.0's
+- The Branch-Protection claim in ADR-0020 matches Scorecard v5.7.0's
   measured scores ([#437](https://github.com/NCodeGroup/project-template/issues/437)).
 
 ## References
 
-{% if git_host == 'github' -%}
 - [ADR-0020](0020-github-projects-are-scored-by-openssf-scorecard.md): the Scorecard checks and their actions.
-{% endif -%}
 - [ADR-0025](0025-every-best-practices-criterion-is-mapped-in-a-template-owned-page.md): the criteria page.
 - [ADR-0009](0009-new-dependency-versions-wait-a-cooldown.md): the cooldown for new versions.
 - [#451](https://github.com/NCodeGroup/project-template/issues/451)
