@@ -262,6 +262,12 @@ try {
     $r = Invoke-Notice
     $body = "$((@($r.Issues) | Select-Object -First 1).body)"
     Check 'missing local address: reads the template at https://github.com/NCodeGroup/project-template.git and says so' ($r.ExitCode -eq 0 -and $r.Issues.Count -eq 1 -and $body.Contains('The newest version is v0.5.0, one version later.') -and $r.Flat.Contains("a folder that isn't here, so the template is read at https://github.com/NCodeGroup/project-template.git")) "$($r.Output) $($r.Calls -join ' | ')"
+
+    # 10b. Copier's GitLab shorthand isn't expanded any more: a gl: address reads as a folder that isn't here.
+    Set-Answer "_commit: v0.1.0`n_src_path: gl:example/project-template"
+    Set-GhState '{ "issues": [], "labels": ["bug"] }'
+    $r = Invoke-Notice
+    Check 'gl: address: reads as a folder that isn''t here, so the template is read at https://github.com/NCodeGroup/project-template.git' ($r.ExitCode -eq 0 -and $r.Flat.Contains("names gl:example/project-template, a folder that isn't here, so the template is read at https://github.com/NCodeGroup/project-template.git")) "$($r.Output) $($r.Calls -join ' | ')"
     Set-Answer "_commit: v0.1.0`n_src_path: gh:polewskm/project-template"
 
     # 11. A changelog with no section for the new version: the body links to it.
