@@ -13,6 +13,8 @@
     the script before copier runs.
     It also checks that a local clone of the template as -Template has the first commit name the clone's origin remote
     as _src_path.
+    It checks Get-RepositoryNameRefusal (ADR-0045) on names that fit and names that don't, for .NET and other stacks,
+    and the name each refusal gives.
     Prints PASS or FAIL per check and exits 1 on any failure.
 
 .PARAMETER Work
@@ -92,6 +94,31 @@ function Invoke-NewProject([string]$Name, [string]$GitHost, [string]$Fail = '', 
 
 $repositoryParameters = (Get-Command (Join-Path $repoRoot 'tools/Set-RepositoryBaseline.ps1')).Parameters
 Check 'stand-ins: the real baseline script takes the parameters New-Project.ps1 passes' ($repositoryParameters.ContainsKey('Repo') -and $repositoryParameters.ContainsKey('Owner') -and $repositoryParameters.ContainsKey('RequireChecks')) "repository=$($repositoryParameters.Keys -join ',')"
+
+Import-Module (Join-Path $repoRoot 'tools/adopt/Adoption.psm1') -Force
+foreach ($case in @(
+        ('Buffers', 'dotnet', ''),
+        ('Collections.Providers', 'dotnet', ''),
+        ('buffers', 'dotnet', 'Buffers'),
+        ('Ncode.Buffers', 'dotnet', 'Buffers'),
+        ('ncode.collections.providers', 'dotnet', 'Collections.Providers'),
+        ('password-generator', 'dotnet', 'PasswordGenerator'),
+        ('qso-viewer', 'python', ''),
+        ('QsoViewer', 'node', 'qso-viewer'),
+        ('QSO_Viewer', 'other', 'qso-viewer'),
+        ('XMLParser', 'powershell', 'xml-parser'),
+        ('.github', 'other', ''))) {
+    $name, $stack, $expected = $case
+    $refusal = Get-RepositoryNameRefusal $name $stack
+    if ($expected -eq '') {
+        Check "name rule: '$name' fits a $stack repository" ($null -eq $refusal) "refusal=$refusal"
+    }
+    else {
+        Check "name rule: '$name' doesn't fit a $stack repository, and the refusal names '$expected'" ([bool]$refusal -and $refusal.Contains("Name the folder '$expected'.") -and $refusal.Contains('ADR-1001')) "refusal=$refusal"
+    }
+}
+$refusal = Get-RepositoryNameRefusal '2fa' 'dotnet'
+Check "name rule: '2fa' doesn't fit a dotnet repository, and the refusal names no folder that doesn't fit either" ([bool]$refusal -and -not $refusal.Contains('Name the folder')) "refusal=$refusal"
 
 $savedNames = 'PATH', 'NEW_PROJECT_TEST_CALLS', 'NEW_PROJECT_TEST_HOST', 'NEW_PROJECT_TEST_FAIL', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0', 'GIT_CONFIG_KEY_1', 'GIT_CONFIG_VALUE_1'
 $saved = @{}
