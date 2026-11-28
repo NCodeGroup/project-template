@@ -127,7 +127,7 @@ finally { Pop-Location }
 Push-Location (Join-Path $tpl 'template')
 try {
     Edit-File AGENTS.md.jinja 'Run from the repository root in PowerShell 7.' 'Run from the root of the {{ project_name }} repository in PowerShell 7.'
-    $draftLine = "- draft: {% if git_host == 'github' and code_review is defined and code_review %}yes{% else %}no{% endif %}`n"
+    $draftLine = "- draft: {% if code_review is defined and code_review %}yes{% else %}no{% endif %}`n"
     Edit-File AGENTS.md.jinja $draftLine "$draftLine- pre-release-check: {{ pre_release }}`n"
     Edit-File README.md.jinja '{{ project_description }}' '{{ project_description }} Updated.'
     Edit-File AGENTS.md.jinja "- (Add the project's conventions here, and any template rule this project overrides.)" '- Local convention added in the project.'
