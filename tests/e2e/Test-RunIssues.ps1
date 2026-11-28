@@ -145,8 +145,8 @@ if (-not $CheckOnly) {
             }
         }
         $issues['5'].blocked_by_fails = $true
-        # The organization's board, fixture/7, with ADR-0042's Status columns and no items yet.
-        $options = @('Backlog', 'Ready', 'In progress', 'In review', 'Done' | ForEach-Object { @{ id = 'opt-' + $_.ToLowerInvariant().Replace(' ', '-'); name = $_ } })
+        # The organization's board, fixture/7, with ADR-0042's Status columns and no items yet. Each option's name and description are {raw, html}, as GitHub's REST API answers them.
+        $options = @('Backlog', 'Ready', 'In progress', 'In review', 'Done' | ForEach-Object { @{ id = 'opt-' + $_.ToLowerInvariant().Replace(' ', '-'); name = @{ raw = $_; html = $_ }; description = @{ raw = ''; html = '' }; color = 'GRAY' } })
         $board = @{ owner = 'fixture'; number = 7; fields = @(@{ id = 101; name = 'Title'; data_type = 'title' }, @{ id = 102; name = 'Status'; data_type = 'single_select'; options = $options }); items = @(); moves = @() }
         Write-Text (Join-Path $hostDir 'board.json') (ConvertTo-Json -InputObject $board -Depth 10)
     }
@@ -352,10 +352,10 @@ if (-not $CheckOnly) {
         $status = @(pwsh -NoProfile -File $boardGh api 'orgs/fixture/projectsV2/7/fields?per_page=100&page=1' | Out-String | ConvertFrom-Json | Where-Object { $_.name -eq 'Status' }) | Select-Object -First 1
         $item = pwsh -NoProfile -File $boardGh api orgs/fixture/projectsV2/7/items -f type=Issue -f owner=fixture -f repo=app -F number=1 | Out-String | ConvertFrom-Json
         $moveFile = Join-Path $boardProbe 'move.json'
-        Write-Text $moveFile (ConvertTo-Json -Compress -Depth 5 -InputObject @{ fields = @(@{ id = $status.id; value = "$(@($status.options | Where-Object { $_.name -eq 'In progress' })[0].id)" }) })
+        Write-Text $moveFile (ConvertTo-Json -Compress -Depth 5 -InputObject @{ fields = @(@{ id = $status.id; value = "$(@($status.options | Where-Object { $_.name.raw -eq 'In progress' })[0].id)" }) })
         $null = pwsh -NoProfile -File $boardGh api -X PATCH "orgs/fixture/projectsV2/7/items/$($item.id)" --input $moveFile
         $moves = @((Get-Content -Raw -LiteralPath (Join-Path $boardProbe 'host/board.json') | ConvertFrom-Json).moves)
-        $boardOk = $blockedBy.Count -eq 1 -and "$($blockedBy[0].number) $($blockedBy[0].state)" -eq '1 open' -and $outside.Count -eq 1 -and "$($outside[0].number) $($outside[0].state)" -eq '4 open' -and (@($status.options).name -join ',') -eq 'Backlog,Ready,In progress,In review,Done' -and $moves.Count -eq 1 -and "$($moves[0].number) $($moves[0].status)" -eq '1 In progress'
+        $boardOk = $blockedBy.Count -eq 1 -and "$($blockedBy[0].number) $($blockedBy[0].state)" -eq '1 open' -and $outside.Count -eq 1 -and "$($outside[0].number) $($outside[0].state)" -eq '4 open' -and (@($status.options | ForEach-Object { $_.name.raw }) -join ',') -eq 'Backlog,Ready,In progress,In review,Done' -and $moves.Count -eq 1 -and "$($moves[0].number) $($moves[0].status)" -eq '1 In progress'
         Check 'fixture: the stand-in lists #2 as blocked by #1 and #3 as blocked by #4, both open, serves the board''s Status field and records a move of #1 to In progress' ([bool]$boardOk) "#2 blocked by: $(@($blockedBy).number -join ','); #3 blocked by: $(@($outside).number -join ','); moves: $($moves.Count)"
         Remove-Item -LiteralPath $boardProbe -Recurse -Force
     }
