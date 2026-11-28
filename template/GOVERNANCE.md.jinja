@@ -49,6 +49,8 @@ records.{% endif %}
 The repository, its issues, decision records, build, release automation and documentation are all in the
 {{ 'GitHub organization' if git_host == 'github' else 'GitLab group' }} that owns it, so anyone given access can carry
 on with no knowledge held elsewhere.
+{%- if git_host == 'github' %} The organization's owners can administer every repository it holds, so they can step in
+when the repository's maintainers can't.{% endif %}
 {%- if ghlib %} nuget.org publishing uses trusted publishing, with no stored API key to hand over.{% elif library and publisher %} nuget.org publishing runs in `{{ publisher }}`: hand over whatever credential it uses with the repository.{% endif %}
 
 [//]: # "Maintainers: name the owners, and keep the list current."

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.121.1] - 2026-11-28
+
+### Changed
+
+- A GitHub project's community files point to the organization's `.github` repository, whose `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` and `GOVERNANCE.md` are the defaults for the organization's repositories that have none of their own: `CONTRIBUTING.md` says the project's own files take precedence over those defaults, `CODE_OF_CONDUCT.md` sends a report about behavior elsewhere in the organization to that repository's private form, and `GOVERNANCE.md`'s Continuity section says the organization's owners can administer the repository. An existing project's copies are project-owned, so an update doesn't change them.
+
 ## [0.121.0] - 2026-11-27
 
 ### Added
@@ -2068,7 +2074,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.121.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.121.1...HEAD
+[0.121.1]: https://github.com/NCodeGroup/project-template/compare/v0.121.0...v0.121.1
 [0.121.0]: https://github.com/NCodeGroup/project-template/compare/v0.120.0...v0.121.0
 [0.120.0]: https://github.com/NCodeGroup/project-template/compare/v0.119.0...v0.120.0
 [0.119.0]: https://github.com/NCodeGroup/project-template/compare/v0.118.1...v0.119.0
