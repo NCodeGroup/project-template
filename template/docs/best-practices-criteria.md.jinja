@@ -1,9 +1,8 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
-{%- set github = git_host == 'github' %}
 {%- set publisher = nuget_publisher | default('') %}
-{%- set ghlib = github and library and not publisher %}
-{%- set review = github and (code_review | default(false)) %}
-{%- set codeql = github and stack in ['dotnet', 'node', 'python'] %}
+{%- set ghlib = library and not publisher %}
+{%- set review = (code_review | default(false)) %}
+{%- set codeql = stack in ['dotnet', 'node', 'python'] %}
 {%- set csharp = stack == 'dotnet' and (csharp_format | default(false)) %}
 {%- set biome = stack == 'node' and (node_lint | default(false)) %}
 {%- set pm = package_manager | default('npm') %}
@@ -11,9 +10,9 @@
 {%- set spdx = license | default('') %}
 {%- set headers = stack != 'dotnet' and (file_headers | default(false)) %}
 {%- set srcglob = {'dotnet': '*.cs', 'python': '*.py', 'node': '*.ts', 'powershell': '*.ps1'}.get(stack, '*.<ext>') %}
-{%- set ci = '.github/workflows/ci.yml' if github else '.gitlab-ci.yml' %}
-{%- set pr = 'pull request' if github else 'merge request' %}
-{%- set host = 'GitHub' if github else 'GitLab' %}
+{%- set ci = '.github/workflows/ci.yml' %}
+{%- set pr = 'pull request' %}
+{%- set host = 'GitHub' %}
 {%- set project = best_practices_project | default('') | string %}
 {%- set number = project if project else 'NUMBER' -%}
 # OpenSSF Best Practices Criteria
@@ -84,8 +83,8 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `repo_distributed` | SUGGESTED | no | no | **Met**: Git; autofill. |
 | `version_unique` | MUST | no | no | **Check**: Met once each release has its own `vX.Y.Z` tag, which the Landing section of [AGENTS.md](../AGENTS.md) turns on with `release: tag` or `tag+release`. |
 | `version_semver` | SUGGESTED | no | no | **Met**: Semantic Versioning, as [GOVERNANCE.md](../GOVERNANCE.md), Releases, says. |
-| `version_tags` | SUGGESTED | no | no | **Check**: Met once releases are tagged{% if github %}: `.github/workflows/tag-release.yml` tags each one, and the Protect release tags ruleset keeps a tag from moving{% endif %}. |
-| `release_notes` | MUST | yes | yes | **Check**: Met once each release has notes written for users, never a Git log: `CHANGELOG.md`, in the Keep a Changelog format{% if github %}, and each GitHub release's notes{% endif %}. |
+| `version_tags` | SUGGESTED | no | no | **Check**: Met once releases are tagged: `.github/workflows/tag-release.yml` tags each one, and the Protect release tags ruleset keeps a tag from moving. |
+| `release_notes` | MUST | yes | yes | **Check**: Met once each release has notes written for users, never a Git log: `CHANGELOG.md`, in the Keep a Changelog format, and each GitHub release's notes. |
 | `release_notes_vulns` | MUST | yes | no | **Check**: N/A while no release fixed a vulnerability with a CVE or an advisory; otherwise Met, with each one under `### Security` in `CHANGELOG.md`. |
 
 ### Reporting
@@ -98,8 +97,8 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `enhancement_responses` | SHOULD | no | no | **Check**: most enhancement requests of the last 2 to 12 months were answered; cite one and its {{ pr }}. |
 | `report_archive` | MUST | no | yes | **Met**: the issues are public and searchable. |
 | `vulnerability_report_process` | MUST | no | yes | **Met**: [SECURITY.md](../SECURITY.md), Report a Vulnerability. |
-| `vulnerability_report_private` | MUST | yes | yes | {% if github %}**Check**: [SECURITY.md](../SECURITY.md) says how to report privately; Met once the Security tab shows private vulnerability reporting enabled, which the template's `tools/Set-RepositoryBaseline.ps1` turns on.{% else %}**Met**: [SECURITY.md](../SECURITY.md): a confidential issue.{% endif %} |
-| `vulnerability_report_response` | MUST | yes | no | **Check**: N/A when no vulnerability was reported in the last 6 months{% if github %}, which Security > Advisories shows{% endif %}; otherwise Met when each report was acknowledged within 14 days, as [SECURITY.md](../SECURITY.md), What to Expect, promises. |
+| `vulnerability_report_private` | MUST | yes | yes | **Check**: [SECURITY.md](../SECURITY.md) says how to report privately; Met once the Security tab shows private vulnerability reporting enabled, which the template's `tools/Set-RepositoryBaseline.ps1` turns on. |
+| `vulnerability_report_response` | MUST | yes | no | **Check**: N/A when no vulnerability was reported in the last 6 months, which Security > Advisories shows; otherwise Met when each report was acknowledged within 14 days, as [SECURITY.md](../SECURITY.md), What to Expect, promises. |
 
 ### Quality
 
@@ -136,7 +135,7 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `crypto_random` | MUST | yes | no | **Check**: N/A unless the code makes keys or nonces; then Met when it uses a cryptographically secure generator. |
 | `delivery_mitm` | MUST | no | no | **Met**: {{ host }}{% if library %} and nuget.org{% endif %} deliver over HTTPS; autofill. |
 | `delivery_unsigned` | MUST | no | no | **Met**: no hash is fetched over HTTP; dependencies install over HTTPS. |
-| `vulnerabilities_fixed_60_days` | MUST | no | no | **Check**: no vulnerability of medium or higher severity has been public and unfixed for more than 60 days{% if github %}: no unfixed published advisory, and no open Dependabot or CodeQL alert of that severity{% endif %}. |
+| `vulnerabilities_fixed_60_days` | MUST | no | no | **Check**: no vulnerability of medium or higher severity has been public and unfixed for more than 60 days: no unfixed published advisory, and no open Dependabot or CodeQL alert of that severity. |
 | `vulnerabilities_critical_fixed` | SHOULD | no | no | **Check**: the same evidence. |
 | `no_leaked_credentials` | MUST | no | no | **Check**: a scan of the whole history finds no valid credential ([Checks](#checks)). |
 
@@ -148,10 +147,10 @@ The [passing criteria](https://www.bestpractices.dev/en/criteria/0), 67 in all.
 | `static_analysis_common_vulnerabilities` | SUGGESTED | yes | no | {% if codeql %}**Check**: CodeQL's security queries, while its default setup runs.{% else %}**Check**: Met when that tool has rules for common vulnerabilities.{% endif %} |
 | `static_analysis_fixed` | MUST | yes | no | **Check**: Met when no confirmed finding of medium or higher severity is open{% if codeql %}: Security > Code scanning with `tool:CodeQL` shows none, and Scorecard's alerts there are posture checks, not code findings{% endif %}. Name any finding dismissed as won't fix. List the closed alerts by reason (Security > Code scanning with `tool:CodeQL is:closed`) and name each one closed as won't fix with its rationale; write 'none dismissed' only when there is none. |
 | `static_analysis_often` | SUGGESTED | yes | no | {% if codeql %}**Check**: Met while CodeQL runs on every {{ pr }}; Scorecard also runs on every push to the default branch and weekly.{% else %}**Check**: Met when the analysis runs on every change or daily.{% endif %} |
-| `dynamic_analysis` | SUGGESTED | no | no | {% if coverage and github %}**Check**: Met while `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`, since `.github/workflows/tag-release.yml` then runs CI's tests again on each release's commit before it tags it, and CI fails below 80% of the branches, which the criterion counts as dynamic analysis ([ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)).{% else %}**Check**: Met when a fuzzer, property tests or a test suite with 80% branch coverage runs before each release: read the branch rate with the Coverage check; `.\.template\Update-Project.ps1 -Data @{ coverage_gate = $true }` makes CI enforce it{% if github %} and makes the tests `tag-release.yml` runs before each release one{% endif %}.{% endif %} |
+| `dynamic_analysis` | SUGGESTED | no | no | {% if coverage %}**Check**: Met while `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`, since `.github/workflows/tag-release.yml` then runs CI's tests again on each release's commit before it tags it, and CI fails below 80% of the branches, which the criterion counts as dynamic analysis ([ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)).{% else %}**Check**: Met when a fuzzer, property tests or a test suite with 80% branch coverage runs before each release: read the branch rate with the Coverage check; `.\.template\Update-Project.ps1 -Data @{ coverage_gate = $true }` makes CI enforce it and makes the tests `tag-release.yml` runs before each release one.{% endif %} |
 | `dynamic_analysis_unsafe` | SUGGESTED | yes | no | **N/A**: {% if stack == 'dotnet' %}C# is memory-safe; it applies only to `unsafe` code{% else %}it applies only to code in a memory-unsafe language, such as C or C++{% endif %}. |
 | `dynamic_analysis_enable_assertions` | SUGGESTED | no | no | **Check**: Met when the tests that run before a release run with assertions on: the test framework's own (xUnit `Assert`, pytest `assert`, Pester `Should`) always are, and the code's own (`Debug.Assert`, Python `assert`) are while the tests run in a build that keeps them (.NET `Debug`, not `Release`; Python without `-O`). Unmet is the honest answer when no tests run before a release, or they run only on an optimized build that strips the code's assertions. Never leave it `?`: the site counts an unanswered SUGGESTED criterion as incomplete, which holds passing below 100%. |
-| `dynamic_analysis_fixed` | MUST | yes | no | {% if coverage and github %}**Check**: Met while each release's tests pass before it is tagged, since a failure stops the release; name any finding left open.{% else %}**N/A**: while no dynamic analysis runs; then Met when its confirmed findings are fixed.{% endif %} |
+| `dynamic_analysis_fixed` | MUST | yes | no | {% if coverage %}**Check**: Met while each release's tests pass before it is tagged, since a failure stops the release; name any finding left open.{% else %}**N/A**: while no dynamic analysis runs; then Met when its confirmed findings are fixed.{% endif %} |
 
 ## Silver
 
@@ -167,7 +166,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `governance` | MUST | no | yes | **Met**: [GOVERNANCE.md](../GOVERNANCE.md). |
 | `code_of_conduct` | MUST | no | yes | **Met**: [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md), the Contributor Covenant 2.1. |
 | `roles_responsibilities` | MUST | no | yes | **Check**: [GOVERNANCE.md](../GOVERNANCE.md), Roles; Met once its Who column names the maintainers; it ships as 'The repository's owners', so leave it `?` until the project fills the names in. |
-| `access_continuity` | MUST | no | yes | **Person**: a second owner of the {{ host }} {% if github %}organization{% else %}group{% endif %}{% if library %} and of the nuget.org packages{% endif %}, as [GOVERNANCE.md](../GOVERNANCE.md#continuity) says. Unmet with one maintainer, which keeps silver from being earned. |
+| `access_continuity` | MUST | no | yes | **Person**: a second owner of the {{ host }} organization{% if library %} and of the nuget.org packages{% endif %}, as [GOVERNANCE.md](../GOVERNANCE.md#continuity) says. Unmet with one maintainer, which keeps silver from being earned. |
 | `bus_factor` | SHOULD | no | yes | **Person**: two or more people who could carry the project on; Unmet with one maintainer. |
 | `documentation_roadmap` | MUST | no | yes | **Check**: [ROADMAP.md](../ROADMAP.md); Met once its prompts are replaced with the project's plans. |
 | `documentation_architecture` | MUST | yes | yes | **Check**: [architecture.md](architecture.md); Met once its sections are written. |
@@ -190,7 +189,7 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
 | `report_tracker` | MUST | yes | no | **Met**: the {{ host }} issue tracker. |
-| `vulnerability_report_credit` | MUST | yes | yes | **Check**: N/A when no vulnerability was resolved in the last 12 months; otherwise Met with the credit [SECURITY.md](../SECURITY.md), What to Expect, promises{% if github %}, in each advisory{% endif %}. |
+| `vulnerability_report_credit` | MUST | yes | yes | **Check**: N/A when no vulnerability was resolved in the last 12 months; otherwise Met with the credit [SECURITY.md](../SECURITY.md), What to Expect, promises, in each advisory. |
 | `vulnerability_response_process` | MUST | no | yes | **Met**: [SECURITY.md](../SECURITY.md), What to Expect. |
 
 ### Quality
@@ -202,13 +201,13 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `build_standard_variables` | MUST | yes | no | **N/A**: it applies only to a build that makes native binaries. |
 | `build_preserve_debug` | SHOULD | yes | no | {% if stack == 'dotnet' %}**Met**: Release builds keep their PDB files{% if library %}, and each package has a symbol package{% endif %}.{% else %}**Check**: N/A without a build or an installation step.{% endif %} |
 | `build_non_recursive` | MUST | yes | no | {% if stack == 'dotnet' %}**Met**: one solution build, with MSBuild's project references.{% else %}**Check**: N/A without a build system.{% endif %} |
-| `build_repeatable` | MUST | yes | no | {% if library and github %}**Check**: Met while `reproducible-build` in `{{ ci }}` passes (`./.template/Test-ReproducibleBuild.ps1`, which packs twice and compares entry by entry); a rebuild of a release's tag also matches in a later year because `Copyright` names no year ([ADR-0154](decisions/project-template/0154-a-library-build-takes-nothing-from-the-clock-and-ci-builds-it-twice.md)).{% elif library %}**Check**: Met once `./.template/Test-ReproducibleBuild.ps1` passes when you run it by hand; it packs twice and compares entry by entry, and a rebuild of a release's tag also matches in a later year because `Copyright` names no year ([ADR-0154](decisions/project-template/0154-a-library-build-takes-nothing-from-the-clock-and-ci-builds-it-twice.md)).{% elif stack == 'dotnet' %}**Check**: .NET builds are deterministic, with `ContinuousIntegrationBuild` on in CI; Met once two builds of one commit are shown to match.{% else %}**Check**: N/A when no build occurs; otherwise Met once two builds of one commit are shown to match.{% endif %} |
+| `build_repeatable` | MUST | yes | no | {% if library %}**Check**: Met while `reproducible-build` in `{{ ci }}` passes (`./.template/Test-ReproducibleBuild.ps1`, which packs twice and compares entry by entry); a rebuild of a release's tag also matches in a later year because `Copyright` names no year ([ADR-0154](decisions/project-template/0154-a-library-build-takes-nothing-from-the-clock-and-ci-builds-it-twice.md)).{% elif stack == 'dotnet' %}**Check**: .NET builds are deterministic, with `ContinuousIntegrationBuild` on in CI; Met once two builds of one commit are shown to match.{% else %}**Check**: N/A when no build occurs; otherwise Met once two builds of one commit are shown to match.{% endif %} |
 | `installation_common` | MUST | yes | no | {% if library %}**Met**: a NuGet package reference.{% else %}**Check**: Met with the ecosystem's usual way to install, such as a package manager; N/A when nothing is installed.{% endif %} |
 | `installation_standard_variables` | MUST | yes | no | **N/A**: it applies only to an installer that writes files where users choose. |
 | `installation_development_quick` | MUST | yes | no | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) names the prerequisites, the commands that set up a clone, and the build and test commands. |
 | `external_dependencies` | MUST | yes | yes | {% if stack == 'dotnet' %}**Met**: `Directory.Packages.props` and the project files.{% elif stack == 'node' %}**Check**: `package.json` and its lock file.{% elif stack == 'python' %}**Check**: `requirements.txt` or `pyproject.toml`.{% else %}**Check**: the file the ecosystem reads its dependencies from.{% endif %} |
-| `dependency_monitoring` | MUST | yes | no | {% if github %}**Check**: Dependabot (`.github/dependabot.yml`) and its alerts, which the template's `tools/Set-RepositoryBaseline.ps1` turns on; Security > Dependabot shows the open ones.{% elif stack in ['node', 'python'] %}**Check**: the `dependency-audit` job in `.gitlab-ci.yml` fails on a known vulnerability of moderate severity or above on every pipeline ([ADR-0029](decisions/project-template/0029-gitlab-projects-audit-their-dependencies-in-ci.md)); Met once the weekly pipeline the template's `tools/Set-GitLabBaseline.ps1` schedules runs it too.{% elif stack == 'dotnet' %}**Check**: CI's build fails on a NuGet vulnerability advisory (`build/ProjectTemplate.props`); Met once the weekly pipeline the template's `tools/Set-GitLabBaseline.ps1` schedules runs it too ([ADR-0029](decisions/project-template/0029-gitlab-projects-audit-their-dependencies-in-ci.md)).{% else %}**Gap**: Unmet until something checks the dependencies for known vulnerabilities; the template checks none for this stack on GitLab.{% endif %} |
-| `updateable_reused_components` | MUST | yes | no | **Met**: dependencies are pinned and moved by reviewed updates{% if github %} that Dependabot proposes, with actions pinned to a full commit SHA{% endif %}. |
+| `dependency_monitoring` | MUST | yes | no | **Check**: Dependabot (`.github/dependabot.yml`) and its alerts, which the template's `tools/Set-RepositoryBaseline.ps1` turns on; Security > Dependabot shows the open ones. |
+| `updateable_reused_components` | MUST | yes | no | **Met**: dependencies are pinned and moved by reviewed updates that Dependabot proposes, with actions pinned to a full commit SHA. |
 | `interfaces_current` | SHOULD | yes | no | **Check**: no deprecated API in use where a FLOSS alternative exists{% if stack == 'dotnet' %}; a use of an obsolete API fails the build, as warnings are errors{% endif %}. |
 | `automated_integration_testing` | MUST | no | no | **Met**: `{{ ci }}` runs the tests on every {{ pr }} and push to the default branch, and reports the result. |
 | `regression_tests_added50` | MUST | yes | no | **Check**: read the changelog's `### Fixed` entries and the {{ pr }} titles of the last six months and name each fix with its test ([Checks](#checks)); N/A only when none fixed a bug. |
@@ -229,8 +228,8 @@ The [silver criteria](https://www.bestpractices.dev/en/criteria/1), 55 in all.
 | `crypto_tls12` | SHOULD | yes | no | **Check**: N/A without TLS; otherwise Met when nothing pins a protocol older than TLS 1.2. |
 | `crypto_certificate_verification` | MUST | yes | no | **Check**: N/A without TLS; otherwise Met when nothing turns certificate verification off ([Checks](#checks)). |
 | `crypto_verification_private` | MUST | yes | no | **Check**: the same evidence. |
-| `signed_releases` | MUST | yes | no | {% if ghlib %}**Met**: nuget.org signs each package, and each release carries build provenance; [SECURITY.md](../SECURITY.md#verify-a-package) says how to verify both.{% elif github and library %}**Check**: nuget.org signs each package it accepts, and [SECURITY.md](../SECURITY.md#verify-a-package) says how to verify that signature; `{{ publisher }}`, the project's own workflow, publishes the packages, so no build provenance attestation comes with a release.{% elif github %}**Check**: Met once the repository has immutable releases, which the template's `tools/Set-RepositoryBaseline.ps1` turns on: GitHub then signs an attestation of each release, and [SECURITY.md](../SECURITY.md#verify-a-release), Verify a Release, says how to check it with `gh release verify` ([ADR-0028](decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md)). N/A when the releases aren't meant for wide use.{% else %}**Gap**: Unmet until the project signs its releases and documents how to verify them; the template does so only on GitHub. N/A when the releases aren't meant for wide use.{% endif %} |
-| `version_tags_signed` | SUGGESTED | no | no | {% if github %}**Check**: Met while the repository is public and `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`: `.github/workflows/tag-release.yml` then signs each release tag with gitsign, and [SECURITY.md](../SECURITY.md#verify-a-release), Verify a Release, says how to check it ([ADR-0028](decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md)); a private repository's tags stay unsigned.{% else %}**Unmet**: the template's release automation doesn't sign tags on GitLab.{% endif %} |
+| `signed_releases` | MUST | yes | no | {% if ghlib %}**Met**: nuget.org signs each package, and each release carries build provenance; [SECURITY.md](../SECURITY.md#verify-a-package) says how to verify both.{% elif library %}**Check**: nuget.org signs each package it accepts, and [SECURITY.md](../SECURITY.md#verify-a-package) says how to verify that signature; `{{ publisher }}`, the project's own workflow, publishes the packages, so no build provenance attestation comes with a release.{% else %}**Check**: Met once the repository has immutable releases, which the template's `tools/Set-RepositoryBaseline.ps1` turns on: GitHub then signs an attestation of each release, and [SECURITY.md](../SECURITY.md#verify-a-release), Verify a Release, says how to check it with `gh release verify` ([ADR-0028](decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md)). N/A when the releases aren't meant for wide use.{% endif %} |
+| `version_tags_signed` | SUGGESTED | no | no | **Check**: Met while the repository is public and `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`: `.github/workflows/tag-release.yml` then signs each release tag with gitsign, and [SECURITY.md](../SECURITY.md#verify-a-release), Verify a Release, says how to check it ([ADR-0028](decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md)); a private repository's tags stay unsigned. |
 | `input_validation` | MUST | yes | no | **Check**: list the entry points that take untrusted input and the checks each one makes. A library that parses or deserializes caller-supplied data is not N/A; N/A holds only for software that reads no input from outside its own process. |
 | `hardening` | SHOULD | yes | no | **Check**: name the hardening in place, such as least-privilege workflow tokens, path guards and scoped credentials, e.g. every workflow sets `permissions: {}` and grants per job, actions are pinned to full commit SHAs{% if stack == 'dotnet' %}, and `build/BannedSymbols.txt` bans unsafe APIs at build time{% endif %}. |
 | `assurance_case` | MUST | no | yes | **Check**: [assurance-case.md](assurance-case.md); Met once its threat model, trust boundary, principles and weaknesses are written. |
@@ -261,9 +260,9 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
 | `repo_distributed` | MUST | no | no | **Met**: Git; autofill. |
-| `small_tasks` | MUST | no | yes | **Check**: Met while open issues carry the `good first issue` label that [CONTRIBUTING.md](../CONTRIBUTING.md) names{% if not github %}; create the label first{% endif %}. When no open issue carries the label (a healthy project may have none), file one real small task with it, or answer Unmet; never Met without one. |
-| `require_2FA` | MUST | no | no | **Person**: the {{ host }} {% if github %}organization{% else %}group{% endif %} requires two-factor authentication; only an owner can set and confirm it. Autofill's answer ('GitHub requires 2FA as of March 2023') is not evidence of the organization's own setting: an owner confirms it, and it stays Unmet until then. |
-| `secure_2FA` | SHOULD | no | no | **Person**: {% if github %}the organization allows only secure two-factor methods{% else %}members use a security key or an authenticator app, never SMS{% endif %}. Autofill's answer ('GitHub requires 2FA as of March 2023') is not evidence of the organization's own setting: an owner confirms it, and it stays Unmet until then. |
+| `small_tasks` | MUST | no | yes | **Check**: Met while open issues carry the `good first issue` label that [CONTRIBUTING.md](../CONTRIBUTING.md) names. When no open issue carries the label (a healthy project may have none), file one real small task with it, or answer Unmet; never Met without one. |
+| `require_2FA` | MUST | no | no | **Person**: the {{ host }} organization requires two-factor authentication; only an owner can set and confirm it. Autofill's answer ('GitHub requires 2FA as of March 2023') is not evidence of the organization's own setting: an owner confirms it, and it stays Unmet until then. |
+| `secure_2FA` | SHOULD | no | no | **Person**: the organization allows only secure two-factor methods. Autofill's answer ('GitHub requires 2FA as of March 2023') is not evidence of the organization's own setting: an owner confirms it, and it stays Unmet until then. |
 
 ### Quality
 
@@ -271,7 +270,7 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 | --- | --- | --- | --- | --- |
 | `code_review_standards` | MUST | yes | yes | **Met**: [CONTRIBUTING.md](../CONTRIBUTING.md) says what a reviewer checks in each {{ pr }} and when one is acceptable. |
 | `two_person_review` | MUST | no | no | **Person**: at least half of the changes reviewed before release by someone other than their author; Unmet with one maintainer{% if review %}, as NCode Review's approval is a bot's{% endif %}. |
-| `build_reproducible` | MUST | yes | yes | {% if library and github %}**Check**: Met while `reproducible-build` in `{{ ci }}` passes (`./.template/Test-ReproducibleBuild.ps1`, which packs twice and compares entry by entry); a rebuild of a release's tag also matches in a later year because `Copyright` names no year ([ADR-0154](decisions/project-template/0154-a-library-build-takes-nothing-from-the-clock-and-ci-builds-it-twice.md)).{% elif library %}**Check**: Met once `./.template/Test-ReproducibleBuild.ps1` passes when you run it by hand; it packs twice and compares entry by entry, and a rebuild of a release's tag also matches in a later year because `Copyright` names no year ([ADR-0154](decisions/project-template/0154-a-library-build-takes-nothing-from-the-clock-and-ci-builds-it-twice.md)).{% elif stack == 'dotnet' %}**Check**: deterministic builds{% if library %} with Source Link{% endif %}; Met once a rebuild of a release's tag is shown to match it.{% else %}**Check**: N/A when no build occurs; otherwise Met once a rebuild of a release's tag is shown to match it.{% endif %} |
+| `build_reproducible` | MUST | yes | yes | {% if library %}**Check**: Met while `reproducible-build` in `{{ ci }}` passes (`./.template/Test-ReproducibleBuild.ps1`, which packs twice and compares entry by entry); a rebuild of a release's tag also matches in a later year because `Copyright` names no year ([ADR-0154](decisions/project-template/0154-a-library-build-takes-nothing-from-the-clock-and-ci-builds-it-twice.md)).{% elif stack == 'dotnet' %}**Check**: deterministic builds{% if library %} with Source Link{% endif %}; Met once a rebuild of a release's tag is shown to match it.{% else %}**Check**: N/A when no build occurs; otherwise Met once a rebuild of a release's tag is shown to match it.{% endif %} |
 | `test_invocation` | MUST | no | yes | {% if test_command %}**Met**: `{{ test_command }}`, the test command [CONTRIBUTING.md](../CONTRIBUTING.md) names.{% else %}**Gap**: the project has no test command yet.{% endif %} |
 | `test_continuous_integration` | MUST | no | yes | **Met**: `{{ ci }}` runs the build and the tests on every {{ pr }}. |
 | `test_statement_coverage90` | MUST | yes | no | {% if coverage %}**Met**: CI fails below 90% of the statements (`.template/Test-Coverage.ps1`, [ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)); cite a passing run's figure.{% else %}**Check**: a measured statement coverage of 90% or more ([Checks](#checks)).{% endif %} |
@@ -291,7 +290,7 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 
 | Criterion | Req | N/A | URL | Answer and evidence |
 | --- | --- | --- | --- | --- |
-| `dynamic_analysis` | MUST | yes | no | {% if coverage and github %}**Check**: Met while `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`, since `.github/workflows/tag-release.yml` then runs CI's tests again on each release's commit before it tags it, and CI fails below 80% of the branches, which the criterion counts as dynamic analysis ([ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)).{% else %}**Check**: Met when a fuzzer, property tests or a test suite with 80% branch coverage runs before each release: read the branch rate with the Coverage check; `.\.template\Update-Project.ps1 -Data @{ coverage_gate = $true }` makes CI enforce it{% if github %} and makes the tests `tag-release.yml` runs before each release one{% endif %}.{% endif %} |
+| `dynamic_analysis` | MUST | yes | no | {% if coverage %}**Check**: Met while `AGENTS.md`'s Landing section says `release: tag` or `release: tag+release`, since `.github/workflows/tag-release.yml` then runs CI's tests again on each release's commit before it tags it, and CI fails below 80% of the branches, which the criterion counts as dynamic analysis ([ADR-0026](decisions/project-template/0026-tests-gate-coverage-at-the-gold-thresholds-and-a-release-waits-for-them.md)).{% else %}**Check**: Met when a fuzzer, property tests or a test suite with 80% branch coverage runs before each release: read the branch rate with the Coverage check; `.\.template\Update-Project.ps1 -Data @{ coverage_gate = $true }` makes CI enforce it and makes the tests `tag-release.yml` runs before each release one.{% endif %} |
 | `dynamic_analysis_enable_assertions` | SHOULD | yes | no | **Check**: Met when the tests that run before a release run with assertions on: the test framework's own (xUnit `Assert`, pytest `assert`, Pester `Should`) always are, and the code's own (`Debug.Assert`, Python `assert`) are while the tests run in a build that keeps them (.NET `Debug`, not `Release`; Python without `-O`). Unmet is the honest answer when no tests run before a release, or they run only on an optimized build that strips the code's assertions. Never leave it `?`: the site counts an unanswered SUGGESTED criterion as incomplete, which holds passing below 100%. |
 
 ## Where a Level Stops
@@ -299,10 +298,10 @@ The [gold criteria](https://www.bestpractices.dev/en/criteria/2), 23 in all.
 These criteria need people or their settings, which the template can't supply. Check them before registering, so the
 level to expect is known up front:
 
-- `access_continuity` (silver MUST): a second owner of the {{ host }} {% if github %}organization{% else %}group{% endif %}{% if library %} and of the nuget.org packages{% endif %}, as [GOVERNANCE.md](../GOVERNANCE.md#continuity) says. With one maintainer, silver stops below 100% here, whatever else is met.
+- `access_continuity` (silver MUST): a second owner of the {{ host }} organization{% if library %} and of the nuget.org packages{% endif %}, as [GOVERNANCE.md](../GOVERNANCE.md#continuity) says. With one maintainer, silver stops below 100% here, whatever else is met.
 - `bus_factor` (silver SHOULD, gold MUST) and `two_person_review` (gold MUST): a second maintainer{% if review %}; NCode Review's approval is a bot's, not a person's{% endif %}.
 - `contributors_unassociated` (gold MUST): two significant contributors from different organizations.
-- `require_2FA` (gold MUST) and `secure_2FA` (gold SHOULD): the {{ host }} {% if github %}organization{% else %}group{% endif %} requires two-factor authentication, with secure methods only; only an owner can confirm it. Autofill's answer ('GitHub requires 2FA as of March 2023') is not evidence of the organization's own setting: an owner confirms it, and it stays Unmet until then.
+- `require_2FA` (gold MUST) and `secure_2FA` (gold SHOULD): the {{ host }} organization requires two-factor authentication, with secure methods only; only an owner can confirm it. Autofill's answer ('GitHub requires 2FA as of March 2023') is not evidence of the organization's own setting: an owner confirms it, and it stays Unmet until then.
 - `security_review` (gold MUST): a security review in the last five years, recorded in [assurance-case.md](assurance-case.md#security-reviews).
 - `dco` (silver SHOULD): unmet by choice: the template asks for no `Signed-off-by` line.
 
@@ -313,23 +312,18 @@ The Gap rows are the rest: each stays Unmet until the project, or a later templa
 The Check rows depend on these. Run them at the commit you answer for, and cite what they show.
 
 - **Coverage** (`test_most`, `test_statement_coverage80`, `test_statement_coverage90`, `test_branch_coverage80`): {% if stack == 'dotnet' %}`dotnet test --collect "XPlat Code Coverage"`, then the line and branch rates in each `coverage.cobertura.xml`{% elif stack == 'node' %}`node --test --experimental-test-coverage`, or the coverage option of the project's test runner{% elif stack == 'python' %}`python -m pytest --cov --cov-branch`, with the pytest-cov package{% elif stack == 'powershell' %}`Invoke-Pester -CI -CodeCoverage <paths>`{% else %}the coverage tool of the project's language{% endif %}. The criteria need a measured number{% if not coverage %}, even when CI doesn't gate on it{% endif %}.{% if coverage %} CI runs `./.template/Test-Coverage.ps1` after the tests, which prints both figures.{% endif %}
-- **Leaked credentials** (`no_leaked_credentials`): `gitleaks git --log-opts="--all" .` scans every commit{% if github %}, and Security > Secret scanning shows GitHub's own findings{% endif %}.
+- **Leaked credentials** (`no_leaked_credentials`): `gitleaks git --log-opts="--all" .` scans every commit, and Security > Secret scanning shows GitHub's own findings.
 - **Cryptography** (the `crypto_*` criteria): `git grep -n -i -E "crypt|cipher|hmac|md5|sha1|random"` in the project's own code. Nothing but hashes used as identifiers, such as a SHA-256 fingerprint, makes the cryptography criteria N/A.
 - **Network and TLS** (`crypto_used_network`, `crypto_tls12`, `crypto_certificate_verification`, `crypto_verification_private`): `git grep -n "http://"` finds a plain HTTP address other than localhost, and `git grep -n -i -E "rejectUnauthorized|NODE_TLS_REJECT_UNAUTHORIZED|ServerCertificateCustomValidationCallback|SkipCertificateCheck|verify=False|SslProtocols"` finds verification turned off or an old protocol pinned.
 - **A build** (`build` and the silver `build_*` criteria): a build makes the files users run, such as a compile or a bundle; a typecheck or a lint isn't one.
 - **Regression tests** (`regression_tests_added50`, `tests_are_added`): read the changelog's `### Fixed` entries and the {{ pr }} titles of the last six months and name each fix with its test; N/A only when none fixed a bug.
 - **Responses** (`report_responses`, `enhancement_responses`, `maintained`): the bug reports and enhancement requests of the last 2 to 12 months were answered, and the latest release and merges are recent.
-{%- if github %}
 - **The Security tab**, read in a browser by someone with access: private vulnerability reporting enabled (`vulnerability_report_private`); advisories in every state, where none makes `vulnerability_report_response`, `release_notes_vulns` and `vulnerability_report_credit` N/A; open CodeQL alerts under Code scanning with `tool:CodeQL`, where Scorecard's alerts are posture checks, not code findings (`static_analysis_fixed`), plus the closed alerts by reason (`tool:CodeQL is:closed`), naming each one closed as won't fix with its rationale; and open Dependabot and secret scanning alerts (`vulnerabilities_fixed_60_days`).
 - **Site headers** (`hardened_site`): `curl -sI https://github.com/OWNER/REPO` shows `strict-transport-security`, `content-security-policy` and `x-content-type-options`.
-{%- else %}
-- **Security reports**, read by a maintainer: the confidential issues that reported a vulnerability, and the dependency findings the project's own tools report.
-- **Site headers** (`hardened_site`): `curl -sI` on the project's GitLab address shows `strict-transport-security`, `content-security-policy` and `x-content-type-options`.
-{%- endif %}
 - **Saved answers**, once registered: https://www.bestpractices.dev/projects/{{ number }}.json holds each `<id>_status` and `<id>_justification`, the `badge_level`, and each level's percentage as `badge_percentage_0`, `_1` and `_2`. A saved answer stays as it was until someone answers again, so compare them after each change that closes a gap.
 
 ## Register and Answer
-{% if github %}
+
 Land the repository changes first, such as the badge in [README.md](../README.md), then answer: a saved answer stays
 as it was until someone answers again. Two sessions work well: one in the repository, which runs the
 [checks](#checks) and writes the verified answers, and Claude in Chrome, which fills the form.
@@ -407,9 +401,3 @@ For each level above, open /en/projects/{{ number }}/<level>/edit, set those cri
 
 Report each criterion's old and new status, each level's percentage before and after, and which MUST criteria still show Unmet or ?.
 ```
-{%- else %}
-Register at https://www.bestpractices.dev/en/projects/new with the repository's address, then answer each level's form
-from the tables above, passing first. Land a repository change before you answer for it: a saved answer stays as it
-was until someone answers again. `/best-practices`, run in the repository, does the checks and writes the verified
-answers to `best-practices-prompt.txt`.
-{%- endif %}
