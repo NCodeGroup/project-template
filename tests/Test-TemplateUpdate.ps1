@@ -10,7 +10,7 @@
     three versions behind, and current again, and checks that it opens one issue with the right title, label and
     release notes, leaves it alone when nothing changed, edits and retitles that same issue, closes it once the project
     is current, and ignores tags that aren't versions. Then checks the version from _commit, an existing label, the
-    oldest of several open notices, the old address and Copier's shorthands (rewritten to the fixture with Git's
+    oldest of several open notices, the old address and Copier's gh: shorthand (rewritten to the fixture with Git's
     insteadOf, so nothing reaches the network), a template folder that isn't here, a changelog too long for one issue,
     one with no section for the new version, a tag without CHANGELOG.md, a section that brings the body to exactly the
     60,000-character limit and one a character longer, a project ahead of the newest tag, and the runs that fail: an
@@ -332,12 +332,7 @@ try {
     Check 'gh fails: a failed issue list fails the run before any change' ($r.ExitCode -ne 0 -and $r.Flat.Contains('gh issue list exited with code 1') -and (Get-Change $r).Count -eq 0) "$($r.Output) $($r.Calls -join ' | ')"
     Set-GhState '{ "issues": [], "labels": ["bug"] }'
 
-    # 17. Copier's GitLab shorthand: the error names the address it expands to.
-    Set-Answer "_commit: v0.1.0`n_src_path: gl:owner/repo"
-    $r = Invoke-Notice
-    Check 'GitLab shorthand: reads https://gitlab.com/owner/repo' ($r.ExitCode -ne 0 -and $r.Flat.Contains("Can't read the project template's tags at https://gitlab.com/owner/repo.")) $r.Output
-
-    # 18. No _src_path, a version it can't read, and a template with no version tags each fail the run, saying why.
+    # 17. No _src_path, a version it can't read, and a template with no version tags each fail the run, saying why.
     Set-Answer '_commit: v0.1.0'
     $r = Invoke-Notice
     Check 'no _src_path: exits non-zero and says so' ($r.ExitCode -ne 0 -and $r.Flat.Contains('.copier-answers.yml has no _src_path')) $r.Output

@@ -107,14 +107,13 @@ if (-not $current) { throw "Can't read the project's template version from .temp
 
 $src = Get-Answer $answersFile '_src_path'
 if (-not $src) { throw '.copier-answers.yml has no _src_path, the address of the template.' }
-# Copier's shorthands, and the template's old address, which GitHub only redirects. Update-Project.ps1 moves a project
+# Copier's gh: shorthand, and the template's old address, which GitHub only redirects. Update-Project.ps1 moves a project
 # off the same old address; change both together.
 if ($src -match '^gh:(.+)\z') { $src = "https://github.com/$($Matches[1])" }
-elseif ($src -match '^gl:(.+)\z') { $src = "https://gitlab.com/$($Matches[1])" }
 if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?\z') { $src = 'https://github.com/NCodeGroup/project-template.git' }
 # A project created from a local clone of the template names that folder, which no other PC has: read the
 # template at its address. Update-Project.ps1 moves the project to it; change both together.
-if ($src -notmatch '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)' -and -not (Test-Path -LiteralPath $src -PathType Container)) {
+if ($src -notmatch '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|[^@/\\\s]+@[^:/\\\s]+:)' -and -not (Test-Path -LiteralPath $src -PathType Container)) {
     "_src_path in .copier-answers.yml names $src, a folder that isn't here, so the template is read at https://github.com/NCodeGroup/project-template.git. The next .\.template\Update-Project.ps1 run moves the project to that address."
     $src = 'https://github.com/NCodeGroup/project-template.git'
 }

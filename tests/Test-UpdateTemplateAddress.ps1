@@ -10,9 +10,9 @@
     them, once with a clone whose origin is a GitHub SSH address, which must move it to that address's https form, and
     once more after a v0.2.0 whose update script differs, which the update must hand over to and that script must make
     the move. The fifth names the old polewskm/project-template address and updates to a v0.3.0 whose update script
-    differs again, which must make that move after the hand-over too. The last three pass -TemplateClone with a GitLab
+    differs again, which must make that move after the hand-over too. The last three pass -TemplateClone with a GitHub
     ssh:// origin, a local path as its origin and no origin, which must move the project to
-    https://gitlab.com/fork/project-template.git, then twice to https://github.com/NCodeGroup/project-template.git.
+    https://github.com/fork/project-template.git, then twice to https://github.com/NCodeGroup/project-template.git.
     Each of the first three runs, at the newest version already, must commit only the _src_path line; the fourth and
     the fifth must commit the move with the v0.2.0 and v0.3.0 updates, and the last three only the _src_path line.
     Prints PASS or FAIL per check and exits 1 on any failure.
@@ -81,15 +81,13 @@ function Invoke-AddressUpdate([hashtable]$Extra = @{}, [string]$Source = $missin
         $answersBefore = [IO.File]::ReadAllText($answersFile)
         $snapshot = $tpl -replace '\\', '/'
         $savedConfig = @{ Count = $env:GIT_CONFIG_COUNT; Key0 = $env:GIT_CONFIG_KEY_0; Value0 = $env:GIT_CONFIG_VALUE_0; Key1 = $env:GIT_CONFIG_KEY_1; Value1 = $env:GIT_CONFIG_VALUE_1; Key2 = $env:GIT_CONFIG_KEY_2; Value2 = $env:GIT_CONFIG_VALUE_2; Key3 = $env:GIT_CONFIG_KEY_3; Value3 = $env:GIT_CONFIG_VALUE_3 }
-        $env:GIT_CONFIG_COUNT = '4'
+        $env:GIT_CONFIG_COUNT = '3'
         $env:GIT_CONFIG_KEY_0 = "url.$snapshot.insteadOf"
         $env:GIT_CONFIG_VALUE_0 = 'https://github.com/NCodeGroup/project-template.git'
         $env:GIT_CONFIG_KEY_1 = "url.$snapshot.insteadOf"
         $env:GIT_CONFIG_VALUE_1 = 'https://example.invalid/fork/project-template.git'
         $env:GIT_CONFIG_KEY_2 = "url.$snapshot.insteadOf"
         $env:GIT_CONFIG_VALUE_2 = 'https://github.com/fork/project-template.git'
-        $env:GIT_CONFIG_KEY_3 = "url.$snapshot.insteadOf"
-        $env:GIT_CONFIG_VALUE_3 = 'https://gitlab.com/fork/project-template.git'
         try {
             $lines = [Collections.Generic.List[string]]::new()
             try { & (Join-Path $project '.template\Update-Project.ps1') @Extra 2>&1 | ForEach-Object { $lines.Add("$_") }; $exitCode = $LASTEXITCODE } catch { $lines.Add("THROWN: $_"); $exitCode = -1 }
@@ -160,9 +158,9 @@ $subject = git -C $project log -1 --format=%s
 Check 'update: a later version''s script, handed the update, moves a project on the old polewskm/project-template address' (($r.ExitCode -eq 0) -and $r.Output.Contains('Handing the update over to the v0.3.0 version') -and $r.Output.Contains('Update-Project.ps1 from v0.3.0 is running.') -and $r.Output.Contains("The template moved to $canonical") -and ($r.AnswersAfter -match "(?m)^_src_path: $([regex]::Escape($canonical))\r?$") -and ($subject -eq 'Update from project-template v0.3.0') -and -not (git -C $project status --porcelain)) "exit=$($r.ExitCode) subject=$subject $($r.Output)"
 # The fork clone predates v0.2.0 and v0.3.0: bring their tags over, so it reads the version the project is on.
 Invoke-Git -C $fork fetch -q --tags $tpl
-Invoke-Git -C $fork remote set-url origin ssh://git@gitlab.com/fork/project-template.git
+Invoke-Git -C $fork remote set-url origin ssh://git@github.com/fork/project-template.git
 $r = Invoke-AddressUpdate @{ TemplateClone = $fork }
-Check 'update -TemplateClone: a clone whose origin is a GitLab ssh:// address moves the project to its https address' (Test-MovedTo $r 'https://gitlab.com/fork/project-template.git') "exit=$($r.ExitCode) changed=$($r.Changed -join ',') $($r.Output)"
+Check 'update -TemplateClone: a clone whose origin is a GitHub ssh:// address moves the project to its https address' (Test-MovedTo $r 'https://github.com/fork/project-template.git') "exit=$($r.ExitCode) changed=$($r.Changed -join ',') $($r.Output)"
 Invoke-Git -C $fork remote set-url origin (Join-Path $Work 'elsewhere')
 $r = Invoke-AddressUpdate @{ TemplateClone = $fork }
 Check 'update -TemplateClone: a clone whose origin is a local path moves the project to NCodeGroup/project-template' (Test-MovedTo $r $canonical) "exit=$($r.ExitCode) changed=$($r.Changed -join ',') $($r.Output)"
