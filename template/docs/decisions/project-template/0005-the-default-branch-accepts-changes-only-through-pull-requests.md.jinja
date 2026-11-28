@@ -33,16 +33,8 @@ it, or, in a project that merges through a merge queue, on the merged result the
      commit or a rebase;
    - the CI jobs, `build-and-test` and `Commit attribution` by default, are required status checks on a branch that is
      up to date with the default branch;
-{%- if git_host == 'github' %}
-   - where a workflow runs CodeQL on every pull request, as `.github/workflows/codeql.yml` does
-     ([ADR-0044](0044-a-fork-pull-request-merges-without-a-bypass.md)), or else CodeQL's default setup analyzes a
-     language ([ADR-0030](0030-the-code-scanning-rule-is-added-only-where-codeql-analyzes-a-language.md)), a
-     code-scanning rule blocks a pull request that adds an alert at warning level or above, or a security alert of any
-     severity.
-{%- else %}
    - where CodeQL's default setup is configured, a code-scanning rule blocks a pull request that adds an alert at
      warning level or above, or a security alert of any severity.
-{%- endif %}
    The repository also deletes a pull request's head branch when it merges.
 2. `AGENTS.md`'s Landing section says `integrate: pull-request`, so `/ship-plan` pushes the plan's branch and opens a
    pull request; it never pushes the default branch.
