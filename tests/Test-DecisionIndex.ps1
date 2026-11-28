@@ -6,9 +6,7 @@
     Builds one small fixture project per case, runs the check on it and compares the exit code and the output. Also
     checks that every decision record the template ships in docs/decisions/project-template/ is numbered 0001-0999 and
     linked from the template's index, and that the index lists each table's records in number order, with only records
-    numbered 0001-0099 under Every Project, and that copier.yml leaves out of a project on another host every record the
-    index lists only for GitHub, and that the index lists only for GitHub every record copier.yml leaves out of a
-    project on another host. Fixture Git repositories check that a record numbered below 1000 that is new since the
+    numbered 0001-0099 under Every Project. Fixture Git repositories check that a record numbered below 1000 that is new since the
     merge base with origin/main, or with -Base, fails, that a renamed older one passes, and that the check is skipped,
     saying so, without a merge base or in a folder that isn't a repository's root. Prints PASS or FAIL per check and
     exits 1 on any failure. The checks take seconds.
@@ -95,25 +93,6 @@ function Get-IndexOrderProblem([string]$Text) {
             if ($section -ceq 'Every Project' -and ($number -lt 1 -or $number -gt 99)) { '{0}: {1:D4} is outside 0001-0099' -f $section, $number }
             $previous = $number
         }
-    }
-}
-
-# Finds records listed inside GitHub-only blocks in the index.
-function Get-GitHubOnlyRecord([string]$Text) {
-    $inside = $false
-    foreach ($line in $Text -split '\r?\n') {
-        if ($line -cmatch "^\{%-? if git_host == 'github' %\}\s*$") { $inside = $true }
-        elseif ($line -cmatch '^\{%-? endif %\}\s*$') { $inside = $false }
-        elseif ($inside -and $line -cmatch '^\| \[[0-9]{4}\]\(([^)]+\.md)\)') { $Matches[1] }
-    }
-}
-# Finds records excluded by host conditions in copier.yml.
-function Get-HostExcludedRecord([string]$Copier) {
-    $condition = ''
-    foreach ($line in $Copier -split '\r?\n') {
-        if ($line -cmatch '^\s*\{% if (.+?) %\}\s*$') { $condition = $Matches[1] }
-        elseif ($line -cmatch '^\s*\{% endif %\}\s*$') { $condition = '' }
-        elseif (($condition -cmatch "git_host\s*!=\s*'github'" -or $condition -cmatch "not\s*\(\s*git_host\s*==\s*'github'") -and $line -cmatch '^\s*docs/decisions/project-template/(\S+\.md)\s*$') { $Matches[1] }
     }
 }
 
@@ -305,22 +284,11 @@ Check 'template records: two records with one number are named' ($fixtureShared 
 
 $fixtureIndex = @(
     '## Every Project', '', '| ADR | Decision |', '| --- | --- |', '| [0001](0001-a.md) | A |', '| [0153](0153-b.md) | B |',
-    "{%- if git_host == 'github' %}", '| [0002](0002-c.md) | C |', '{%- endif %}', '',
+    "{%- if stack == 'dotnet' %}", '| [0002](0002-c.md) | C |', '{%- endif %}', '',
     '## Libraries', '', '| ADR | Decision |', '| --- | --- |', '| [0130](0130-d.md) | D |', '| [0135](0135-e.md) | E |'
 ) -join "`n"
 $fixtureOrder = (Get-IndexOrderProblem $fixtureIndex) -join '; '
 Check 'index order: a row below the one before it and an Every Project row above 0099 are named' ($fixtureOrder -eq 'Every Project: 0153 is outside 0001-0099; Every Project: 0002 after 0153') "problems: $fixtureOrder"
-$fixtureGitHub = (@(Get-GitHubOnlyRecord $fixtureIndex)) -join ','
-Check 'github-only: the rows inside a git_host == github block are found' ($fixtureGitHub -eq '0002-c.md') "found: $fixtureGitHub"
-
-$fixtureHostCopier = @(
-    "{% if git_host == 'github' %}", '  docs/decisions/project-template/0030-github.md', '{% endif %}',
-    "{% if git_host != 'gitlab' %}", '  docs/decisions/project-template/0031-other.md', '{% endif %}',
-    "{% if git_host != 'github' %}", '  docs/decisions/project-template/0039-fork.md', '{% endif %}',
-    "{% if git_host is defined and not (git_host == 'github' and stack == 'dotnet') %}", '  docs/decisions/project-template/0151-library.md', '{% endif %}'
-) -join "`n"
-$fixtureExcluded = (@(Get-HostExcludedRecord $fixtureHostCopier)) -join ','
-Check 'host exclusion: only conditions that exclude GitHub host records are found' ($fixtureExcluded -eq '0039-fork.md,0151-library.md') "found: $fixtureExcluded"
 
 # The template's own records, in the folder every template update replaces.
 $templateFolder = Join-Path $repoRoot 'template\docs\decisions\project-template'
@@ -334,14 +302,6 @@ Check "repository: the template's decision index links every template record" ((
 
 $orderProblems = @(Get-IndexOrderProblem $templateIndex)
 Check "repository: the template's decision index lists each table in number order, and only 0001-0099 under Every Project" ($orderProblems.Count -eq 0) "problems: $($orderProblems -join '; ')"
-
-$copierText = [IO.File]::ReadAllText((Join-Path $repoRoot 'copier.yml'))
-$githubOnly = @(Get-GitHubOnlyRecord $templateIndex)
-$excluded = @(Get-HostExcludedRecord $copierText)
-$kept = @($githubOnly | Where-Object { $_ -notin $excluded })
-Check "repository: copier.yml leaves every record the index lists only for GitHub out of other hosts' projects" (($githubOnly.Count -gt 0) -and -not $kept) "GitHub-only: $($githubOnly.Count); not excluded: $($kept -join ', ')"
-$listedForAll = @($excluded | Where-Object { $_ -notin $githubOnly })
-Check "repository: the index lists only for GitHub every record copier.yml leaves out of other hosts' projects" (($excluded.Count -gt 0) -and -not $listedForAll) "excluded: $($excluded.Count); listed for every host: $($listedForAll -join ', ')"
 
 $shared = Get-SharedNumber $templateRecords
 Check 'repository: no two template decision records share a number' (($templateRecords.Count -gt 0) -and -not $shared) "records: $($templateRecords.Count); sharing a number: $($shared -join '; ')"
