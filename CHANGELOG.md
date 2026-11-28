@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.125.1] - 2026-11-28
+
+### Removed
+
+- `Adopt-Project.ps1` no longer counts a `.gitlab-ci.yml` among the files that list the build's files: its follow-up to re-admit `Directory.Build.props` and `build/ProjectTemplate.props` names the `.dockerignore` files and the GitHub workflows alone. `New-Project.ps1` and `Adopt-Project.ps1` still refuse a `-Data` `git_host` other than `github`, since Copier would ignore that answer without a word ([#551](https://github.com/NCodeGroup/project-template/issues/551), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
+
 ## [0.125.0] - 2026-11-28
 
 ### Added
@@ -2121,7 +2127,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.125.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.125.1...HEAD
+[0.125.1]: https://github.com/NCodeGroup/project-template/compare/v0.125.0...v0.125.1
 [0.125.0]: https://github.com/NCodeGroup/project-template/compare/v0.124.0...v0.125.0
 [0.124.0]: https://github.com/NCodeGroup/project-template/compare/v0.123.0...v0.124.0
 [0.123.0]: https://github.com/NCodeGroup/project-template/compare/v0.122.0...v0.123.0
