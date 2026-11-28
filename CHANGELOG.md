@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Removed
 
-- `Adopt-Project.ps1` no longer counts a `.gitlab-ci.yml` among the files that list the build's files: its follow-up to re-admit `Directory.Build.props` and `build/ProjectTemplate.props` names the `.dockerignore` files and the GitHub workflows alone. `New-Project.ps1` and `Adopt-Project.ps1` still refuse a `-Data` `git_host` other than `github`, since Copier would ignore that answer without a word ([#551](https://github.com/NCodeGroup/project-template/issues/551), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
+- In a .NET adoption, `Adopt-Project.ps1`'s follow-up to re-admit `Directory.Build.props` and `build/ProjectTemplate.props` names only the `.dockerignore` files and the GitHub workflows that name `Directory.Build.props`, never a `.gitlab-ci.yml`. `New-Project.ps1` and `Adopt-Project.ps1` still refuse a `-Data` `git_host` other than `github`, since Copier would ignore that answer without a word ([#551](https://github.com/NCodeGroup/project-template/issues/551), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
 
 ## [0.125.0] - 2026-11-28
 
