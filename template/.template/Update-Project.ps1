@@ -112,6 +112,7 @@
     tools/Set-RepositoryBaseline.ps1 leaves mutable, it says to delete or leave out that paragraph, also when the
     project is already up to date (the template's ADR-0028).
     With NCode Review, when .github/workflows/code-review.yml pins NCodeGroup/code-review before v1.5.0, passes no approve: true or passes approve: true without approver-private-key, or AGENTS.md's Landing section doesn't say draft: yes, it says what to change, to store the approver's key with tools/Enable-CodeReview.ps1 -ApproverPrivateKeyPath from NCodeGroup/code-review and to run the template's tools/Set-RepositoryBaseline.ps1 again, also when the project is already up to date (the template's ADR-0022 and ADR-0036).
+    When the update adds .github/workflows/codeql.yml, it says to run tools/Set-RepositoryBaseline.ps1 once the update merges, which turns CodeQL's default setup off, since GitHub refuses the workflow's results until then (the template's ADR-0044).
 
     On Windows it stops before it changes anything when the project's template version has a path Git for Windows
     refuses to check out, such as the uses_node file names of v0.69.0 to v0.75.0, because the update starts with
@@ -816,6 +817,13 @@ function Get-AttributionCheckNote([object[]]$Changes) {
             Where-Object { Select-String -LiteralPath $_.FullName -SimpleMatch '.githooks/commit-msg' -Quiet } |
             ForEach-Object { "$hooksRel/$($_.Name)" })
     if ($callers) { "These files still call .githooks/commit-msg, which this update removed, so every commit fails until you delete that call: $($callers -join ', ')" }
+}
+
+# What a project does after an update adds .github/workflows/codeql.yml (the template's ADR-0044): GitHub refuses its results while CodeQL's default setup is on.
+function Get-CodeQLWorkflowNote([object[]]$Changes) {
+    if (-not ($Changes | Where-Object { $_.Kind -eq 'added' -and $_.File -eq '.github/workflows/codeql.yml' })) { return }
+    ''
+    'This update adds .github/workflows/codeql.yml, which runs CodeQL on every pull request, a fork''s too, so a fork''s pull request can meet the code-scanning rule (the template''s ADR-0044). GitHub refuses its results while CodeQL''s default setup is on, so its Analyze jobs fail until, once this update merges, you run tools/Set-RepositoryBaseline.ps1 -Repo <name> from the template''s clone, which turns the default setup off. Where the organization''s security configuration sets code scanning, an owner first sets it to ''Enabled with advanced setup allowed''. gh api repos/<owner>/<name>/code-scanning/default-setup --jq .languages lists the languages the default setup analyzes: add any the workflow''s detect step doesn''t pick to it, and give a language that needs a build (Go, Swift, Kotlin) an Analyze job of its own.'
 }
 
 # The *.cs files under the current folder that don't start with the header .editorconfig's file_header_template sets,
@@ -1578,6 +1586,7 @@ try {
     }
 
     Get-AttributionCheckNote $changes
+    Get-CodeQLWorkflowNote $changes
     Get-LicenseWarning
     Get-BadgeReminder
 

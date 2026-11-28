@@ -83,6 +83,7 @@ $gaps = New-Fixture 'gaps' @{
     'logo.png'                 = $png
     '.github/workflows/main.yml' = "name: main`non: [push]`njobs:`n  build:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo hi`n"
     '.github/workflows/publish.yml' = "name: Publish`non:`n  release:`n    types: [published]`njobs:`n  publish:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo publish`n"
+    '.github/workflows/codeql.yml' = "name: CodeQL`non: [pull_request]`njobs:`n  analyze:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo codeql`n"
 } 'https://github.com/example/gaps.git'
 $gapsOut = & $adopt -Path $gaps -Template $tpl -Ref v0.1.0 -Data @{ workflow_tools = 'claude', 'copilot'; code_review = 'true' } -NoVerify | Out-String
 $gapsAttributes = Get-Content -Raw -LiteralPath (Join-Path $gaps '.gitattributes')
@@ -91,7 +92,7 @@ Check 'gaps: a catch-all text rule of the repository does not override the templ
 Check 'gaps: the repository''s other attribute lines are kept, and the report says what was left out' ($gapsAttributes.Contains('*.cs text diff=csharp') -and $gapsOut.Contains('left out its catch-all text rule')) $gapsOut
 $gapsGlobal = Get-Content -Raw -LiteralPath (Join-Path $gaps 'global.json')
 Check 'gaps: a partial SDK version in global.json is replaced by the template''s, which setup-dotnet accepts' ($gapsGlobal -match '"version":\s*"\d+\.\d+\.\d{3}"' -and -not $gapsGlobal.Contains('"10.0.0"') -and $gapsOut.Contains('isn''t a full version')) "$gapsGlobal | $gapsOut"
-Check 'gaps: the code review and release workflows, scorecard.yml and release-provenance.yml are not asked to be reconciled with ci.yml, but the repository''s own workflow is' ($gapsOut.Contains('reconcile .github/workflows/main.yml with ci.yml') -and -not $gapsOut.Contains('code-review.yml with ci.yml') -and -not $gapsOut.Contains('code-review-auto-merge.yml with ci.yml') -and -not $gapsOut.Contains('tag-release.yml with ci.yml') -and -not $gapsOut.Contains('scorecard.yml with ci.yml') -and -not $gapsOut.Contains('release-provenance.yml with ci.yml')) $gapsOut
+Check 'gaps: the code review and release workflows, scorecard.yml and release-provenance.yml are not asked to be reconciled with ci.yml, but the repository''s own workflow is' ($gapsOut.Contains('reconcile .github/workflows/main.yml with ci.yml') -and -not $gapsOut.Contains('code-review.yml with ci.yml') -and -not $gapsOut.Contains('code-review-auto-merge.yml with ci.yml') -and -not $gapsOut.Contains('tag-release.yml with ci.yml') -and -not $gapsOut.Contains('scorecard.yml with ci.yml') -and -not $gapsOut.Contains('codeql.yml with ci.yml') -and -not $gapsOut.Contains('release-provenance.yml with ci.yml')) $gapsOut
 # Update-Project.ps1's warning for a publish.yml without workflow_dispatch, which adoption prints word for word.
 $updateScript = [IO.File]::ReadAllText((Join-Path $repoRoot 'template/.template/Update-Project.ps1'))
 $dispatchWarning = [regex]::Match($updateScript, "(?m)^\s*'(\.github/workflows/publish\.yml has no workflow_dispatch trigger\.(?:[^']|'')*)'\s*$").Groups[1].Value.Replace("''", "'")
