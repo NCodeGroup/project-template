@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.120.0] - 2026-11-27
+
+### Changed
+
+- Each document, decision record and rule file a project gets keeps only its GitHub text: the `git_host` conditions are gone from `SECURITY.md`, `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, `ROADMAP.md`, `README.md`, `AGENTS.md`, the `docs/` pages, `.github/instructions/project-template.instructions.md`, `build/ProjectTemplate.props` and decision records 0005, 0006, 0016, 0019, 0020, 0022, 0023, 0031, 0037, 0136 and 0150. A project on GitHub gets the same text as before ([#531](https://github.com/NCodeGroup/project-template/issues/531), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
+- `code_review` is asked of every new project. `.template/Update-Project.ps1`, `.template/Get-TemplateUpdate.ps1`, `Adopt-Project.ps1` and `tools/Get-AdoptionChecklist.ps1` read the template's address as a GitHub one: Copier's `gl:` shorthand is no longer expanded, and only a github.com SSH address becomes its `https://` address. `New-Project.ps1` and `Adopt-Project.ps1` no longer answer `git_host`; both still refuse a `-Data` `git_host` other than `github` ([#531](https://github.com/NCodeGroup/project-template/issues/531), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
+
+### Removed
+
+- The `git_host` question: `copier.yml` no longer asks where the repository is hosted, and an update drops `git_host: github` from `.copier-answers.yml`. `.gitlab-ci.yml`, ADR-0029 ("GitLab projects audit their dependencies in CI", which ADR-0040 supersedes) and the `.gitlab-ci.yml` packing warning of `.template/Update-Project.ps1` are gone, and so are the GitLab mentions in `.github/actions/install-dotnet/action.yml`, `build/Install-Dotnet.ps1`, `build/Get-TestRuntimes.ps1`, `build/Test-DotnetSupport.ps1` and `.template/install-nvs.sh`. No project made from the template answered `gitlab` ([#531](https://github.com/NCodeGroup/project-template/issues/531), [ADR-0040](template/docs/decisions/project-template/0040-the-template-serves-ncodegroups-repositories-on-github-only.md)).
+
 ## [0.119.0] - 2026-11-27
 
 ### Changed
@@ -2044,7 +2055,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.119.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.120.0...HEAD
+[0.120.0]: https://github.com/NCodeGroup/project-template/compare/v0.119.0...v0.120.0
 [0.119.0]: https://github.com/NCodeGroup/project-template/compare/v0.118.1...v0.119.0
 [0.118.1]: https://github.com/NCodeGroup/project-template/compare/v0.118.0...v0.118.1
 [0.118.0]: https://github.com/NCodeGroup/project-template/compare/v0.117.2...v0.118.0
