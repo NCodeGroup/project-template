@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.120.0] - 2026-11-27
+## [0.122.0] - 2026-11-28
 
 ### Added
 
@@ -18,6 +18,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `tools/Set-RepositoryBaseline.ps1` counts a workflow on the default branch that runs CodeQL on `pull_request` as CodeQL's setup: the ruleset it creates or rewrites gets the code-scanning rule whatever the default setup says, and it turns CodeQL's default setup off, before the ruleset write, where a refusal fails the repository with nothing changed, and on a run that leaves the ruleset alone as a reported setting. `-RequireChecks auto` leaves out the workflow's `CodeQL languages` job ([#537](https://github.com/NCodeGroup/project-template/issues/537), [ADR-0044](template/docs/decisions/project-template/0044-a-fork-pull-request-merges-without-a-bypass.md)).
 - `tools/Get-AdoptionChecklist.ps1`'s row 2.3 is done where `.github/workflows/codeql.yml` runs CodeQL and the default setup is off, and `docs/adopt.md` says so ([#537](https://github.com/NCodeGroup/project-template/issues/537)).
 - `CONTRIBUTING.md` and `/address-feedback` say a fork's author brings its pull request up to date, never a maintainer, whose update approval of the last push would leave waiting for a second writer ([#537](https://github.com/NCodeGroup/project-template/issues/537), [ADR-0044](template/docs/decisions/project-template/0044-a-fork-pull-request-merges-without-a-bypass.md)).
+
+## [0.121.0] - 2026-11-27
+
+### Added
+
+- ADR-0043 records that NCode Review reviews a fork's ready pull request and never approves it: `code-review.yml` passes NCodeGroup/code-review's `review-forks: true`, so a pull request from a fork is reviewed once it isn't a draft and records its outcomes when it closes, while a maintainer approves it. It amends ADR-0019 and ADR-0022 ([#540](https://github.com/NCodeGroup/project-template/issues/540), [ADR-0043](template/docs/decisions/project-template/0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md)).
+
+### Changed
+
+- `.github/workflows/code-review.yml`, the one a GitHub project with NCode Review gets and this repository's own, pins NCodeGroup/code-review v1.7.0, by ADR-0009's commented exception until 2026-11-30, and passes `review-forks: true` to both NCode Review steps: a pull request from a fork is reviewed when it opens or reopens as ready for review, when it's marked ready and on a writer's `/review`, never as a draft when it opens and never as an approval, and its closing records its outcomes. The file is the project's own: to turn fork reviews on, take the change from the update's listing of the template's changes to it, or pin v1.7.0 or later in both NCode Review steps, add `review-forks: true` to both, replace the `review` job's `if:` line `github.event.pull_request.head.repo.full_name == github.repository &&` with `(github.event.pull_request.head.repo.full_name == github.repository || !github.event.pull_request.draft) &&`, and drop `&& github.event.pull_request.head.repo.full_name == github.repository` from the `outcomes` job's `if:` ([#540](https://github.com/NCodeGroup/project-template/issues/540), [ADR-0043](template/docs/decisions/project-template/0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md)).
+- `CONTRIBUTING.md`, in a GitHub project with NCode Review, says NCode Review reviews a pull request from a fork once it is marked ready and never approves it, so a maintainer approves it ([#540](https://github.com/NCodeGroup/project-template/issues/540)).
+
+## [0.120.0] - 2026-11-27
+
+### Added
+
+- ADR-0042 records how work is planned: an epic, an issue of type Epic, is split into stories of type Feature, Bug or Task, one plan each, whose parent and "blocked by" links record their place and order and whose plan steps stay in `PLAN.md`; a story is planned once it meets the Definition of Ready; work flows through Backlog, Ready, In progress, In review and Done with at most two stories in progress and no sprints; and issue forms come from NCodeGroup's `.github` repository, so the template ships no `.github/ISSUE_TEMPLATE/` and no answer that adds one, a test checks that it stays so, and no project falls back to labels for issue types. It amends ADR-0007. `.github/instructions/project-template.instructions.md` has a Backlog section with its rules, among them the REST forms for sub-issues and "blocked by" links, which take an issue's `id`, and editing an issue body through JSON and a file. A new project's `docs/designs/_template.md` and `ROADMAP.md` link epics instead of listing stories ([#522](https://github.com/NCodeGroup/project-template/issues/522), [#523](https://github.com/NCodeGroup/project-template/issues/523), [ADR-0042](template/docs/decisions/project-template/0042-work-is-planned-as-epics-stories-and-plan-steps-on-a-kanban-flow.md)).
+- `/decompose-issue #<epic>`, in Claude Code, Copilot Chat and Copilot CLI, splits an epic, or an issue too large for one plan, into stories that meet the Definition of Ready: it files a `Record decisions` story first when they need decisions no record makes, asks before it files anything, files each story with its type, as a sub-issue of the epic, with its "blocked by" links, through GitHub's REST API, narrows or links the open follow-up issues they cover, and names the `/run-issues epic:#<epic>` run that takes them ([#524](https://github.com/NCodeGroup/project-template/issues/524), [ADR-0042](template/docs/decisions/project-template/0042-work-is-planned-as-epics-stories-and-plan-steps-on-a-kanban-flow.md)).
+- `tools/kanban-board.mjs` creates or adopts a GitHub Project with the Status columns Backlog, Ready, In progress, In review and Done, links it to a repository, sets its description to the work-in-progress limit, two by default, lists the built-in workflows to turn on, and says so when the `gh` token lacks the `project` scope. A project's Landing section takes a `board: <owner>/<number>` line, `none` by default, which `.template/Get-PlanState.ps1` prints on its `landing` line; with it, `/triage-issues` moves a ready story to Ready, a plan snapshot moves its issues to In progress and `/ship-plan` moves them to In review when it opens the pull request. `AGENTS.md` is the project's own: add the line by hand ([#526](https://github.com/NCodeGroup/project-template/issues/526), [ADR-0042](template/docs/decisions/project-template/0042-work-is-planned-as-epics-stories-and-plan-steps-on-a-kanban-flow.md)).
+
+### Changed
+
+- `/triage-issues` judges readiness by the Definition of Ready, names the open issue that blocks a story, takes the kind of plan from the issue's type before its labels, names `/decompose-issue` for an epic or a large issue, takes `epic:#<number>` for an epic's open stories in the order their "blocked by" links give, and reports a "Part of" line without its parent link, a "Depends on" line without its "blocked by" link, and an open epic whose stories are all closed. `/plan-issue` refuses an epic and asks before planning an issue an open issue blocks, unless the request names that blocker too. `/run-issues` leaves out an entry an open issue outside the run blocks, and plans one an earlier entry blocks only once that entry has landed. `/ship-plan` files a story's follow-ups as sub-issues of its epic, typed Bug or Task, and says when a merge closes an epic's last open story, with the command to close it and a prompt for its retrospective ([#525](https://github.com/NCodeGroup/project-template/issues/525), [ADR-0042](template/docs/decisions/project-template/0042-work-is-planned-as-epics-stories-and-plan-steps-on-a-kanban-flow.md)).
+- No change for projects made from the template. `tests/e2e/Test-RunIssues.ps1 -Scenario blocked-board` runs `/run-issues #1 #2 #3 #5 wait:0` on a fixture where `#2` is blocked by `#1`, an entry ahead of it, `#3` by `#4`, an open issue outside the run, and the read of `#5`'s blocked-by links fails, with the board `fixture/7`, and checks that the run leaves `#3` and `#5` out, plans none of `#2`, `#3` and `#5` and moves `#1` on the board to In progress, then to In review; `tests/e2e/gh.ps1` serves issue types, parents, sub-issues, blocked-by links and the Projects API's fields, items and Status moves for it, fails the blocked-by read of an issue whose entry has `blocked_by_fails: true`, and CI sets up the scenario's fixture. ([#525](https://github.com/NCodeGroup/project-template/issues/525), [#526](https://github.com/NCodeGroup/project-template/issues/526))
 
 ## [0.119.0] - 2026-11-27
 
@@ -2057,7 +2081,9 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.120.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.122.0...HEAD
+[0.122.0]: https://github.com/NCodeGroup/project-template/compare/v0.121.0...v0.122.0
+[0.121.0]: https://github.com/NCodeGroup/project-template/compare/v0.120.0...v0.121.0
 [0.120.0]: https://github.com/NCodeGroup/project-template/compare/v0.119.0...v0.120.0
 [0.119.0]: https://github.com/NCodeGroup/project-template/compare/v0.118.1...v0.119.0
 [0.118.1]: https://github.com/NCodeGroup/project-template/compare/v0.118.0...v0.118.1

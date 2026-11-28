@@ -203,6 +203,7 @@ _exclude:
     docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md
     docs/decisions/project-template/0039-fork-pull-request-workflows-run-for-established-contributors.md
     docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md
+    docs/decisions/project-template/0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md
     docs/decisions/project-template/0044-a-fork-pull-request-merges-without-a-bypass.md
     {% endif %}
   - |-
