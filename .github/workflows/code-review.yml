@@ -38,7 +38,7 @@ name: Code review
 # maintainer approves it. Its closing records its outcomes. To leave forks out, drop review-forks from both steps, put
 # `github.event.pull_request.head.repo.full_name == github.repository &&` back in place of the review job's fork line,
 # and add `&& github.event.pull_request.head.repo.full_name == github.repository` to the end of the outcomes job's if:.
-# docs/decisions/project-template/0042-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md says
+# docs/decisions/project-template/0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md says
 # why, with NCodeGroup/code-review's ADR-1013.
 #
 # pull_request_target and issue_comment both run this file from the default branch, so a pull request can't change its
@@ -117,7 +117,7 @@ jobs:
           # The NCode Review Approver submits the approval, so it meets the ruleset's required approval; the key is a
           # secret of the code-review environment, which only the default branch can deploy to.
           approver-private-key: ${{ secrets.NCODE_REVIEW_APPROVER_PRIVATE_KEY }}
-          # Reviews a fork's pull request once it isn't a draft; it is never approved (ADR-0042).
+          # Reviews a fork's pull request once it isn't a draft; it is never approved (ADR-0043).
           review-forks: true
 
   outcomes:

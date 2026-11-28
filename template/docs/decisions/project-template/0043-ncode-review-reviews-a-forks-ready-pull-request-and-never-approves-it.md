@@ -1,4 +1,4 @@
-# 0042. NCode Review reviews a fork's ready pull request and never approves it
+# 0043. NCode Review reviews a fork's ready pull request and never approves it
 
 - **Status:** Accepted
 - **Date:** 2026-11-27
