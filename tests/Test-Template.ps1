@@ -1772,7 +1772,7 @@ Check 'workflow: triage, plan-issue, run-issues and ship-plan read and keep the 
 $planBoardFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'template/.claude/commands') -File | Where-Object { $_.Name -like 'plan-*.md' -or $_.Name -eq 'handoff-plan.md' } | ForEach-Object { "template\.claude\commands\$($_.Name)" })
 $boardFiles = $triageFiles + $shipFiles + $planBoardFiles + @('template\.github\skills\plan-issue\SKILL.md')
 $m = @('plan-issue.md', 'plan-feature.md', 'plan-bugfix.md', 'handoff-plan.md' | Where-Object { $planBoardFiles -notcontains "template\.claude\commands\$_" } | ForEach-Object { "template\.claude\commands\${_}: not found" })
-$m += @(Get-MissingText $boardFiles ('board=<owner>/<number>', 'projectsV2/<number>/fields', 'A board move never stops the command'))
+$m += @(Get-MissingText $boardFiles ('board=<owner>/<number>', 'projectsV2/<number>/fields', 'A board move never stops the command', 'option whose `name.raw` is the column'))
 $m += @(Get-MissingText $triageFiles 'to `Ready`')
 $m += @(Get-MissingText $planBoardFiles 'to `In progress` on the board')
 $m += @(Get-MissingText $shipFiles 'to `In review` on the board')
