@@ -11,8 +11,7 @@
     When -Template is a local clone of the template, such as ., the answers name the clone's origin remote as the
     template's address instead of its folder, so the project updates from any PC; a clone without an origin address
     keeps the folder, with a warning. The template is for NCodeGroup's GitHub repositories only (ADR-0040): a -Data
-    git_host other than github stops the script before Copier runs, and without one it answers git_host github, so
-    Copier doesn't ask it.
+    git_host other than github stops the script before Copier runs.
 
     Then initializes git on `main`, enables the template's Git hooks (core.hooksPath .githooks) and commits everything
     as the first commit. When Git already has a hooks path for the new repository, such as a global one, or hooks
@@ -75,8 +74,6 @@ $copierArgs = @('copy')
 if ($Ref) { $copierArgs += '--vcs-ref', $Ref }
 if ($Defaults) { $copierArgs += '--defaults' }
 foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValue $Data[$k])" }
-# Copier still asks where the repository is hosted; GitHub is the only answer (ADR-0040).
-if (-not $Data.ContainsKey('git_host')) { $copierArgs += '--data', 'git_host=github' }
 $copierArgs += $Template, $Path
 Invoke-Copier @copierArgs
 Set-TemplateSource (Resolve-Path -LiteralPath $Path).Path $Template
