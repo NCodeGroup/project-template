@@ -1,5 +1,5 @@
 # Installs the .NET SDK global.json selects and then the runtime of each older .NET a test project targets, which
-# build/Get-TestRuntimes.ps1 names, with actions/setup-dotnet, as build/Install-Dotnet.ps1 does on GitLab. A workflow
+# build/Get-TestRuntimes.ps1 names, with actions/setup-dotnet. A workflow
 # that builds or tests calls it right after actions/checkout, which puts it in the workspace:
 #   - uses: ./.github/actions/install-dotnet
 # A workflow whose push or pull_request trigger lists paths also lists .github/actions/install-dotnet/** and

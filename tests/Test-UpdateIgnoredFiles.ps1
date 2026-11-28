@@ -60,7 +60,7 @@ $tpl = Join-Path $Work 'template-repo'
 $null = & (Join-Path $PSScriptRoot 'New-TemplateSnapshot.ps1') $tpl
 
 $project = Join-Path $Work 'project'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test Ignored' --data stack=dotnet --data git_host=github --data 'workflow_tools=[claude]' $tpl $project
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Test Ignored' --data stack=dotnet --data 'workflow_tools=[claude]' $tpl $project
 
 Push-Location $project
 try {

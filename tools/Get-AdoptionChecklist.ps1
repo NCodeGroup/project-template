@@ -636,15 +636,14 @@ $checks['7.1'] = {
     if (-not $current) { throw "can't read the project's template version from .template-version ('$currentText')" }
     $src = Get-Answer '_src_path'
     if (-not $src) { throw '.copier-answers.yml has no _src_path' }
-    # Copier's shorthands, and the template's old address, which GitHub only redirects,
+    # Copier's gh: shorthand, and the template's old address, which GitHub only redirects,
     # as Get-TemplateUpdate.ps1 reads them.
     if ($src -match '^gh:(.+)\z') { $src = "https://github.com/$($Matches[1])" }
-    elseif ($src -match '^gl:(.+)\z') { $src = "https://gitlab.com/$($Matches[1])" }
     if ($src -match '^https://github\.com/polewskm/project-template(?:\.git)?/?\z') {
         $src = 'https://github.com/NCodeGroup/project-template.git'
     }
     # A template folder that isn't here, such as the clone the project was created from on another PC.
-    if ($src -notmatch '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)' -and -not (Test-Path -LiteralPath $src -PathType Container)) {
+    if ($src -notmatch '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|[^@/\\\s]+@[^:/\\\s]+:)' -and -not (Test-Path -LiteralPath $src -PathType Container)) {
         $src = 'https://github.com/NCodeGroup/project-template.git'
     }
     $r = Invoke-Tool 'git' @('ls-remote', '--tags', '--refs', '--', $src)

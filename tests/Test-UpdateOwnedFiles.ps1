@@ -56,7 +56,7 @@ $ownCi = "name: Own CI`non: push`njobs:`n  gate:`n    runs-on: ubuntu-latest`n  
 $answerPattern = '(?m)^project_owned_files:\r?\n- \.github/workflows/ci\.yml\r?$'
 
 $path = Join-Path $Work 'owned'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Owned' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' --data 'project_owned_files=[.github/workflows/ci.yml]' $tpl $path | Out-Null
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Owned' --data stack=python --data 'workflow_tools=[claude]' --data 'project_owned_files=[.github/workflows/ci.yml]' $tpl $path | Out-Null
 $ci = Join-Path $path '.github/workflows/ci.yml'
 [IO.File]::WriteAllText($ci, $ownCi)
 $security = Join-Path $path 'SECURITY.md'

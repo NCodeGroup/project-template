@@ -13,10 +13,9 @@
 
     Prints one channel per line, such as N.0.x, lowest first, for every such framework other than the SDK's own version;
     actions/setup-dotnet's dotnet-version and build/Install-Dotnet.ps1 take them. Prints nothing when every test
-    project targets the SDK's own version. On GitHub, the .github/actions/install-dotnet action, which ci.yml,
-    copilot-setup-steps.yml and publish.yml call, installs what it prints with actions/setup-dotnet; on GitLab,
-    .gitlab-ci.yml runs build/Install-Dotnet.ps1, which installs it beside the SDK. To run every test locally, run
-    build/Install-Dotnet.ps1 too.
+    project targets the SDK's own version. The .github/actions/install-dotnet action, which ci.yml,
+    copilot-setup-steps.yml and publish.yml call, installs what it prints with actions/setup-dotnet. To run every test
+    locally, run build/Install-Dotnet.ps1, which installs it beside the SDK.
 
 .EXAMPLE
     ./build/Get-TestRuntimes.ps1

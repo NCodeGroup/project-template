@@ -53,7 +53,6 @@ _merged_files:
   - .github/workflows/copilot-setup-steps.yml
   - .github/actions/install-dotnet/action.yml
   - .github/dependabot.yml
-  - .gitlab-ci.yml
   - Directory.Packages.props
   - global.json
   - nuget.config
@@ -62,7 +61,7 @@ _merged_files:
 # file's name never holds a condition, so every path checks out on any OS. An empty line excludes nothing; an entry can list several paths, one per line.
 # Each pattern reads its answer through a default or an `is defined` test, because an update renders the old version's files with these patterns before the project has that answer.
 _exclude:
-  - "{% if (code_review is defined and not code_review) or (git_host is defined and git_host != 'github') %}.github/workflows/code-review.yml{% endif %}"
+  - "{% if code_review is defined and not code_review %}.github/workflows/code-review.yml{% endif %}"
   - "{% if 'claude' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}CLAUDE.md{% endif %}"
   - "{% if 'claude' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.claude{% endif %}"
   - "{% if 'copilot' not in (workflow_tools | default(['claude', 'copilot', 'local'])) %}.github/agents/copilot-*.agent.md{% endif %}"
@@ -142,7 +141,7 @@ _exclude:
     docs/decisions/project-template/0154-a-library-build-takes-nothing-from-the-clock-and-ci-builds-it-twice.md
     {% endif %}
   - |-
-    {% if git_host is defined and stack is defined and nuget_package is defined and not (git_host == 'github' and stack == 'dotnet' and nuget_package) %}
+    {% if stack is defined and nuget_package is defined and not (stack == 'dotnet' and nuget_package) %}
     docs/decisions/project-template/0135-packages-are-published-from-a-github-release-through-trusted-publishing.md
     docs/decisions/project-template/0137-the-release-workflow-starts-package-publishing.md
     docs/decisions/project-template/0139-releases-carry-build-provenance.md
@@ -190,28 +189,11 @@ _exclude:
     .github/instructions/csharp-tests.instructions.md
     {% endif %}
   - |-
-    {% if git_host is defined and git_host != 'github' %}
-    .github/workflows/code-review-auto-merge.yml
-    .github/workflows/codeql.yml
-    .github/workflows/scorecard.yml
-    .github/workflows/tag-release.yml
-    .github/workflows/template-update.yml
-    docs/decisions/project-template/0020-github-projects-are-scored-by-openssf-scorecard.md
-    docs/decisions/project-template/0028-github-releases-are-immutable-and-their-tags-signed.md
-    docs/decisions/project-template/0034-with-one-writer-the-baseline-requires-no-approval.md
-    docs/decisions/project-template/0035-a-sole-maintainer-dismisses-the-scorecard-alerts-one-person-cannot-clear.md
-    docs/decisions/project-template/0036-a-required-approval-is-met-by-ncode-reviews-approver-app.md
-    docs/decisions/project-template/0039-fork-pull-request-workflows-run-for-established-contributors.md
-    docs/decisions/project-template/0041-ncode-review-reviews-and-approves-dependabots-pull-requests.md
-    docs/decisions/project-template/0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md
-    docs/decisions/project-template/0044-a-fork-pull-request-merges-without-a-bypass.md
-    {% endif %}
-  - |-
-    {% if git_host is defined and not (git_host == 'github' and (workflow_tools is not defined or 'copilot' in workflow_tools)) %}
+    {% if workflow_tools is defined and 'copilot' not in workflow_tools %}
     .github/workflows/copilot-setup-steps.yml
     {% endif %}
   - |-
-    {% if git_host is defined and stack is defined and nuget_package is defined and not (git_host == 'github' and stack == 'dotnet' and nuget_package) %}
+    {% if stack is defined and nuget_package is defined and not (stack == 'dotnet' and nuget_package) %}
     .github/workflows/publish.yml
     {% endif %}
   - |-
@@ -221,21 +203,8 @@ _exclude:
     .github/workflows/raise-baseline.yml
     {% endif %}
   - |-
-    {% if git_host is defined and git_host != 'github' %}
-    .github/workflows/ci.yml
-    {% endif %}
-  - |-
-    {% if git_host is defined and git_host != 'github' %}
-    .github/dependabot.yml
-    {% endif %}
-  - |-
-    {% if git_host is defined and stack is defined and not (git_host == 'github' and stack == 'dotnet') %}
+    {% if stack is defined and stack != 'dotnet' %}
     .github/actions
-    {% endif %}
-  - |-
-    {% if git_host is defined and git_host != 'gitlab' %}
-    /.gitlab-ci.yml
-    docs/decisions/project-template/0029-gitlab-projects-audit-their-dependencies-in-ci.md
     {% endif %}
   - |-
     {% if license is defined and license not in ['Apache-2.0', 'MIT'] %}
@@ -267,14 +236,6 @@ stack:
     Other: other
   default: dotnet
 
-git_host:
-  type: str
-  help: Where the repository is hosted
-  choices:
-    GitHub: github
-    GitLab: gitlab
-  default: github
-
 workflow_tools:
   type: str
   help: The AI tools to set the workflow up for
@@ -290,7 +251,6 @@ code_review:
   type: bool
   help: "Review pull requests with the NCode Review bot (NCodeGroup/code-review)? Adds a workflow that needs the organization's secrets and a one-time tools/Enable-CodeReview.ps1 run"
   default: false
-  when: "{{ git_host == 'github' }}"
 
 nuget_package:
   type: bool
@@ -390,7 +350,7 @@ file_headers:
 conduct_contact:
   type: str
   default: ""
-  help: "Where to report a Code of Conduct violation privately, such as an email address or a URL, or blank for the repository's private report form: Report a vulnerability on GitHub's Security tab, or a confidential issue on GitLab"
+  help: "Where to report a Code of Conduct violation privately, such as an email address or a URL, or blank for the repository's private report form: Report a vulnerability on GitHub's Security tab"
 
 # Never asked or recorded: the pre-release line of the AGENTS.md the template writes (ADR-0015). A new project starts
 # untracked; Adopt-Project.ps1 answers tracked, since an adopted repository has a history.
@@ -405,7 +365,7 @@ pre_release:
 release_policy:
   type: str
   when: false
-  default: "{% if nuget_package | default(false) and git_host == 'github' %}tag+release{% else %}none{% endif %}"
+  default: "{% if nuget_package | default(false) %}tag+release{% else %}none{% endif %}"
   validator: "{% if release_policy not in ['none', 'tag', 'tag+release'] %}One of none, tag or tag+release{% endif %}"
 
 project_owned_files:

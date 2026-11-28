@@ -547,9 +547,8 @@ try {
     $shared = @(
         '''^v?([0-9]+(?:\.[0-9]+){0,3})\z'''
         '''^gh:(.+)\z'''
-        '''^gl:(.+)\z'''
         '''^https://github\.com/polewskm/project-template(?:\.git)?/?\z'''
-        '''^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'''
+        '''^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|[^@/\\\s]+@[^:/\\\s]+:)'''
         '''https://github.com/NCodeGroup/project-template.git'''
     )
     $apart = @($shared | Where-Object { -not ($checkerText.Contains($_) -and $updateText.Contains($_)) })

@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Tests a committed, tagged (v0.1.0) snapshot of the current working tree in the work folder (-Work), so
-    uncommitted template changes are tested too. Renders every stack for GitHub and GitLab, up to one render per processor at once, and checks YAML, the
+    uncommitted template changes are tested too. Renders every stack, up to one render per processor at once, and checks YAML, the
     pwsh run: blocks and copier.yml's _exclude patterns with the Node.js scripts in tests/node, which use the yaml and nunjucks versions tests/node/package.json
     pins exactly; it installs them with npm ci when tests/node/node_modules doesn't hold what tests/node/package-lock.json locks, so it needs Node.js and npm
     on PATH. It checks those scripts on small fixtures first. Also checks that .github/workflows/test-template.yml runs every tests/Test-*.ps1, sets up Node.js from .node-version and installs the Copier version tests/requirements.txt pins, which a Dependabot pip entry keeps current, that tests/node/package.json pins every package exactly and a Dependabot npm entry keeps them current, that tests/requirements.txt pins only the Python programs the tests run and no Python file outside template/ is in the repository (ADR-0021), that this repository's own .github/workflows/code-review.yml is identical to the template's, that the generated workflow files under template/ and at the repository root
@@ -228,44 +228,35 @@ $dotnetOnly = 'Directory.Build.props', 'build\ProjectTemplate.props', 'build\Pro
 $nodeOnly = '.node-version', '.template\Initialize-Nvs.ps1', '.template\Use-Node.ps1', '.template\use-node.sh', '.template\install-nvs.sh', 'docs\decisions\project-template\0200-*.md'
 # Files only a .NET library gets (nuget_package), and the ones it gets with the license or icon it answered.
 $libraryOnly = 'docs\decisions\project-template\013*.md', 'docs\decisions\project-template\0147-*.md', 'docs\decisions\project-template\0149-*.md', 'docs\decisions\project-template\0152-*.md', 'build\Update-PublicApi.ps1', 'docs\api-compatibility.md'
-$hostOnly = @{ github = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml', '.github\workflows\scorecard.yml', '.github\workflows\codeql.yml'; gitlab = @('.gitlab-ci.yml') }
+$githubOnly = '.github\workflows\ci.yml', '.github\dependabot.yml', '.github\workflows\template-update.yml', '.github\workflows\tag-release.yml', '.github\workflows\code-review-auto-merge.yml', '.github\workflows\scorecard.yml', '.github\workflows\codeql.yml'
 # tests\Test-TemplateDotnet.ps1 renders the dotnet and dotnet-library-apache cases again with the same answers: change both together.
 $cases = @(
-    @{ Name = 'dotnet'; Stack = 'dotnet'; Host = 'github' }
-    @{ Name = 'python'; Stack = 'python'; Host = 'github' }
-    @{ Name = 'node'; Stack = 'node'; Host = 'github' }
-    @{ Name = 'powershell'; Stack = 'powershell'; Host = 'github' }
-    @{ Name = 'other'; Stack = 'other'; Host = 'github' }
-    @{ Name = 'other-code-review'; Stack = 'other'; Host = 'github'; Data = @{ code_review = 'true' } }
-    @{ Name = 'dotnet-gitlab'; Stack = 'dotnet'; Host = 'gitlab' }
-    @{ Name = 'dotnet-no-format'; Stack = 'dotnet'; Host = 'github'; Data = @{ csharp_format = 'false' } }
-    @{ Name = 'other-gitlab-code-review'; Stack = 'other'; Host = 'gitlab'; Data = @{ code_review = 'true' } }
-    @{ Name = 'python-gitlab'; Stack = 'python'; Host = 'gitlab' }
-    @{ Name = 'python-no-gate'; Stack = 'python'; Host = 'gitlab'; Data = @{ coverage_gate = 'false'; file_headers = 'false' } }
-    @{ Name = 'node-gitlab'; Stack = 'node'; Host = 'gitlab' }
-    @{ Name = 'node-pnpm'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'pnpm' } }
-    @{ Name = 'node-bun'; Stack = 'node'; Host = 'github'; Data = @{ package_manager = 'bun' } }
-    @{ Name = 'node-no-lint'; Stack = 'node'; Host = 'github'; Data = @{ node_lint = 'false' } }
-    @{ Name = 'node-yarn-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'yarn' } }
-    @{ Name = 'node-bun-gitlab'; Stack = 'node'; Host = 'gitlab'; Data = @{ package_manager = 'bun' } }
-    @{ Name = 'dotnet-node'; Stack = 'dotnet'; Host = 'github'; Data = @{ uses_node = 'true' } }
-    @{ Name = 'powershell-gitlab'; Stack = 'powershell'; Host = 'gitlab' }
-    @{ Name = 'other-gitlab'; Stack = 'other'; Host = 'gitlab' }
-    @{ Name = 'dotnet-node-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
-    @{ Name = 'python-node-gitlab'; Stack = 'python'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
-    @{ Name = 'powershell-node-gitlab'; Stack = 'powershell'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
-    @{ Name = 'other-node-gitlab'; Stack = 'other'; Host = 'gitlab'; Data = @{ uses_node = 'true' } }
-    @{ Name = 'dotnet-library'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
-    @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'Apache-2.0' } }
-    @{ Name = 'dotnet-library-gitlab'; Stack = 'dotnet'; Host = 'gitlab'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT' } }
-    @{ Name = 'dotnet-library-own-publisher'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; nuget_publisher = '.github/workflows/main.yml'; release_policy = 'none' } }
-    @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Host = 'github'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = '' }; Refused = 'Required for a NuGet package' }
-    @{ Name = 'python-copilot'; Stack = 'python'; Host = 'gitlab'; Tools = @('copilot') }
-    @{ Name = 'python-license'; Stack = 'python'; Host = 'github'; Data = @{ license = 'MIT'; conduct_contact = 'conduct@example.test'; best_practices_project = '16752' } }
-    @{ Name = 'python-unlicensed'; Stack = 'python'; Host = 'github'; Data = @{ license = '' } }
-    @{ Name = 'python-bad-project-number'; Stack = 'python'; Host = 'github'; Data = @{ best_practices_project = 'abc' }; Refused = 'number at bestpractices.dev, such as 16752' }
-    @{ Name = 'python-claude'; Stack = 'python'; Host = 'github'; Tools = @('claude') }
-    @{ Name = 'dotnet-author-comment'; Stack = 'dotnet'; Host = 'github'; Data = @{ author_name = 'C# Tools; Inc.' } }
+    @{ Name = 'dotnet'; Stack = 'dotnet' }
+    @{ Name = 'python'; Stack = 'python' }
+    @{ Name = 'node'; Stack = 'node' }
+    @{ Name = 'powershell'; Stack = 'powershell' }
+    @{ Name = 'other'; Stack = 'other' }
+    @{ Name = 'other-code-review'; Stack = 'other'; Data = @{ code_review = 'true' } }
+    @{ Name = 'dotnet-no-format'; Stack = 'dotnet'; Data = @{ csharp_format = 'false' } }
+    @{ Name = 'python-no-gate'; Stack = 'python'; Data = @{ coverage_gate = 'false'; file_headers = 'false' } }
+    @{ Name = 'node-pnpm'; Stack = 'node'; Data = @{ package_manager = 'pnpm' } }
+    @{ Name = 'node-bun'; Stack = 'node'; Data = @{ package_manager = 'bun' } }
+    @{ Name = 'node-no-lint'; Stack = 'node'; Data = @{ node_lint = 'false' } }
+    @{ Name = 'node-yarn'; Stack = 'node'; Data = @{ package_manager = 'yarn' } }
+    @{ Name = 'dotnet-node'; Stack = 'dotnet'; Data = @{ uses_node = 'true' } }
+    @{ Name = 'python-node'; Stack = 'python'; Data = @{ uses_node = 'true' } }
+    @{ Name = 'powershell-node'; Stack = 'powershell'; Data = @{ uses_node = 'true' } }
+    @{ Name = 'other-node'; Stack = 'other'; Data = @{ uses_node = 'true' } }
+    @{ Name = 'dotnet-library'; Stack = 'dotnet'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; package_icon = 'icon.png' } }
+    @{ Name = 'dotnet-library-apache'; Stack = 'dotnet'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'Apache-2.0' } }
+    @{ Name = 'dotnet-library-own-publisher'; Stack = 'dotnet'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = 'MIT'; nuget_publisher = '.github/workflows/main.yml'; release_policy = 'none' } }
+    @{ Name = 'dotnet-library-unlicensed'; Stack = 'dotnet'; Tools = 'claude', 'copilot'; Data = @{ nuget_package = 'true'; license = '' }; Refused = 'Required for a NuGet package' }
+    @{ Name = 'python-copilot'; Stack = 'python'; Tools = @('copilot') }
+    @{ Name = 'python-license'; Stack = 'python'; Data = @{ license = 'MIT'; conduct_contact = 'conduct@example.test'; best_practices_project = '16752' } }
+    @{ Name = 'python-unlicensed'; Stack = 'python'; Data = @{ license = '' } }
+    @{ Name = 'python-bad-project-number'; Stack = 'python'; Data = @{ best_practices_project = 'abc' }; Refused = 'number at bestpractices.dev, such as 16752' }
+    @{ Name = 'python-claude'; Stack = 'python'; Tools = @('claude') }
+    @{ Name = 'dotnet-author-comment'; Stack = 'dotnet'; Data = @{ author_name = 'C# Tools; Inc.' } }
 )
 if ($Only) { $cases = @($cases | Where-Object { $_.Name -in $Only }) }
 # The YAML, pwsh run: block and _exclude checks run the Node.js scripts in tests/node, with the yaml and nunjucks versions
@@ -295,7 +286,7 @@ $fixtureGood = Join-Path $nodeFixture 'good.yml'; $fixtureBad = Join-Path $nodeF
 [IO.File]::WriteAllText($fixtureGood, "a: 1`n")
 [IO.File]::WriteAllText($fixtureBad, "a: [1, 2`n")
 $fixtureTag = Join-Path $nodeFixture 'tag.yml'
-[IO.File]::WriteAllText($fixtureTag, "script: !reference [.setup, script]`n")
+[IO.File]::WriteAllText($fixtureTag, "value: !custom [a, b]`n")
 $fixtureOutput = node "$repoRoot/tests/node/check-yaml.mjs" $fixtureGood $fixtureBad $fixtureTag 2>&1 | Out-String
 Check 'tests/node/check-yaml.mjs: names an invalid YAML file and one with an unknown tag, and only them, and exits 1' ($LASTEXITCODE -eq 1 -and $fixtureOutput.Contains("${fixtureBad}: ") -and $fixtureOutput.Contains("${fixtureTag}: ") -and -not $fixtureOutput.Contains($fixtureGood)) $fixtureOutput.Trim()
 $fixtureOutput = node "$repoRoot/tests/node/pwsh-steps.mjs" $fixtureTag 2>&1 | Out-String
@@ -328,7 +319,7 @@ $renders = @($cases | ForEach-Object -ThrottleLimit ([Environment]::ProcessorCou
     $prefix = @($command | Select-Object -Skip 1)
     $tools = if ($case.Tools) { @($case.Tools) } else { $using:allTools }
     $copierArgs = [Collections.Generic.List[string]]::new()
-    foreach ($a in @($prefix) + @('copy', '--defaults', '--quiet', '--vcs-ref', 'v0.1.0', '--data', "project_name=Test $($case.Name)", '--data', "stack=$($case.Stack)", '--data', "git_host=$($case.Host)", '--data', "workflow_tools=[$($tools -join ', ')]")) { $copierArgs.Add($a) }
+    foreach ($a in @($prefix) + @('copy', '--defaults', '--quiet', '--vcs-ref', 'v0.1.0', '--data', "project_name=Test $($case.Name)", '--data', "stack=$($case.Stack)", '--data', "workflow_tools=[$($tools -join ', ')]")) { $copierArgs.Add($a) }
     foreach ($k in $case.Data.Keys) { $copierArgs.Add('--data'); $copierArgs.Add("$k=$($case.Data[$k])") }
     $copierArgs.Add($using:tplUrl); $copierArgs.Add((Join-Path $using:Work $case.Name))
     # Each render gets a Copier cache of its own: Copier refreshes one shared mirror per template URL without a lock, so parallel copies race on it, and the runspaces share one environment, so the variable is set on Copier's process only.
@@ -361,11 +352,11 @@ foreach ($case in $cases) {
     $missing = $common | Where-Object { -not (Test-Path (Join-Path $dest $_)) }
     Check "${name}: common files" (-not $missing) ($missing -join ', ')
     $conduct = [IO.File]::ReadAllText((Join-Path $dest 'CODE_OF_CONDUCT.md'))
-    $conductWant = if ($case.Data.conduct_contact) { 'lists, at ' + $case.Data.conduct_contact + '. All complaints' } elseif ($case.Host -eq 'gitlab') { '**This issue is confidential**' } else { 'choose **Report a vulnerability** and start the title with' }
+    $conductWant = if ($case.Data.conduct_contact) { 'lists, at ' + $case.Data.conduct_contact + '. All complaints' } else { 'choose **Report a vulnerability** and start the title with' }
     Check "${name}: CODE_OF_CONDUCT.md sends a report to the conduct contact, or else to the host's private form" ($conduct.Contains($conductWant) -and $conduct.Contains('version 2.1')) $conductWant
     $governance = [IO.File]::ReadAllText((Join-Path $dest 'GOVERNANCE.md'))
     $governanceHeadings = '## Roles', '## Decisions', '## Releases', '## Continuity', '## Changing This Document'
-    $governanceWantsBot = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
+    $governanceWantsBot = $case.Data.code_review -eq 'true'
     Check "${name}: GOVERNANCE.md has its sections" (-not ($governanceHeadings | Where-Object { -not $governance.Contains($_) }) -and $governance.Contains('ncode-review[bot]') -eq $governanceWantsBot) $governance
     $roadmap = [IO.File]::ReadAllText((Join-Path $dest 'ROADMAP.md'))
     $architecture = [IO.File]::ReadAllText((Join-Path $dest 'docs\architecture.md'))
@@ -375,13 +366,13 @@ foreach ($case in $cases) {
     Check "${name}: GOVERNANCE.md and docs/architecture.md describe how releases are turned on without naming the project's setting" (-not $governance.Contains('release: none') -and -not $architecture.Contains('release: none')) ($governance + $architecture)
     $assurance = [IO.File]::ReadAllText((Join-Path $dest 'docs\assurance-case.md'))
     $assuranceHeadings = '## Security Requirements', '## Threat Model', '## Secure Design Principles Applied', '## Common Weaknesses Countered', '## Evidence'
-    $assuranceWantsPublishing = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package -and $case.Host -eq 'github' -and -not $case.Data.nuget_publisher
+    $assuranceWantsPublishing = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package -and -not $case.Data.nuget_publisher
     Check "${name}: docs/assurance-case.md has its sections" (-not ($assuranceHeadings | Where-Object { -not $assurance.Contains($_) }) -and $assurance.Contains('trusted publishing') -eq $assuranceWantsPublishing) $assurance
     $badge = [IO.File]::ReadAllText((Join-Path $dest 'docs\best-practices-badge.md'))
     Check "${name}: docs/best-practices-badge.md maps the silver criteria" ($badge.Contains('## Toward Silver') -and $badge.Contains('access_continuity') -and $badge.Contains('PROJECT_ID') -ne [bool]$case.Data.best_practices_project -and $badge.Contains('signed_releases') -eq $assuranceWantsPublishing) $badge
     $criteriaText = [IO.File]::ReadAllText((Join-Path $dest 'docs\best-practices-criteria.md'))
     $criteriaRows = [regex]::Matches($criteriaText, '(?m)^\| `[A-Za-z0-9_]+` \| (MUST|SHOULD|SUGGESTED) \| (yes|no) \| (yes|no) \| ').Count
-    Check "${name}: docs/best-practices-criteria.md maps all 145 criteria, says what stops a level and how to check, and holds the registration prompt on GitHub only" ($criteriaRows -eq 145 -and $criteriaText.Contains('## Where a Level Stops') -and $criteriaText.Contains('## Checks') -and $criteriaText.Contains('## Register and Answer') -and $criteriaText.Contains('REPORT AT THE END') -eq ($case.Host -eq 'github')) "$criteriaRows rows"
+    Check "${name}: docs/best-practices-criteria.md maps all 145 criteria, says what stops a level and how to check, and holds the registration prompt" ($criteriaRows -eq 145 -and $criteriaText.Contains('## Where a Level Stops') -and $criteriaText.Contains('## Checks') -and $criteriaText.Contains('## Register and Answer') -and $criteriaText.Contains('REPORT AT THE END')) "$criteriaRows rows"
     $coverageGated = $case.Stack -in 'dotnet', 'python', 'node', 'powershell' -and $case.Data.coverage_gate -ne 'false'
     $coverageCheck = [regex]::Match($criteriaText, '(?m)^- \*\*Coverage\*\* .*$').Value
     Check "${name}: docs/best-practices-criteria.md's Coverage check says CI doesn't gate on coverage exactly when it doesn't, and names Test-Coverage.ps1 exactly when it does" ($coverageCheck -and $coverageCheck.Contains("even when CI doesn't gate on it") -ne $coverageGated -and $coverageCheck.Contains('Test-Coverage.ps1') -eq $coverageGated) $coverageCheck
@@ -398,25 +389,23 @@ foreach ($case in $cases) {
     Check "${name}: docs/best-practices-badge.md and docs/best-practices-criteria.md cite what CONTRIBUTING.md says, never a heading or a list item by number, and CONTRIBUTING.md says it" (-not $byPlace.Count -and -not $criteriaText.Contains('the same item') -and $badge.Contains("says that $testPolicy") -and $criteriaText.Contains("says that $testPolicy") -and $criteriaText.Contains('says to start each change with an issue') -and $criteriaText.Contains('says what a reviewer checks in each') -and $criteriaText.Contains('names the prerequisites') -and $contributingText.Contains('Work on a short-lived branch from the default branch.') -and $contributingText.Contains('is the index of the conventions') -and $contributingText.Contains('A change that adds or changes behavior adds or updates the automated tests that cover it.') -and $contributingText.Contains('Start with an issue that says what should change and why.') -and $contributingText.Contains('A reviewer checks that:')) ($byPlace -join ' || ')
     $testInvocation = @([regex]::Matches($criteriaText, '`([^`]+)`, the test command \[CONTRIBUTING\.md\]') | ForEach-Object { $_.Groups[1].Value })
     Check "${name}: CONTRIBUTING.md names the build and test commands that docs/best-practices-criteria.md's build, test and test_invocation rows cite" ($contributingText -match '(?m)^\| Build \| ' -and $contributingText -match '(?m)^\| Test \| ' -and -not @($testInvocation | Where-Object { -not $contributingText.Contains("| Test | ``$_`` |") }).Count) ($testInvocation -join ', ')
-    $releasePolicy = if ($case.Data.release_policy) { $case.Data.release_policy } elseif ($case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true' -and $case.Host -eq 'github') { 'tag+release' } else { 'none' }
+    $releasePolicy = if ($case.Data.release_policy) { $case.Data.release_policy } elseif ($case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true') { 'tag+release' } else { 'none' }
     $agentsReleaseText = [IO.File]::ReadAllText((Join-Path $dest 'AGENTS.md'))
-    Check "${name}: AGENTS.md's release line is the release_policy answer, and SECURITY.md says how to verify a release tag exactly when a GitHub project's releases are tagged" ($agentsReleaseText -match "(?m)^- release: $([regex]::Escape($releasePolicy))\r?$" -and ($securityText.Contains('gitsign verify-tag') -eq ($case.Host -eq 'github' -and $releasePolicy -ne 'none')) -and $securityText -notmatch '(?m)^## Verify a Release\r?\n(\r?\n)*(## |\z)') $securityText
+    Check "${name}: AGENTS.md's release line is the release_policy answer, and SECURITY.md says how to verify a release tag exactly when the project's releases are tagged" ($agentsReleaseText -match "(?m)^- release: $([regex]::Escape($releasePolicy))\r?$" -and ($securityText.Contains('gitsign verify-tag') -eq ($releasePolicy -ne 'none')) -and $securityText -notmatch '(?m)^## Verify a Release\r?\n(\r?\n)*(## |\z)') $securityText
     Check "${name}: .copier-answers.yml records nuget_publisher only when it is answered, and never release_policy" ($answersText -notmatch '(?m)^release_policy:' -and (($answersText -match '(?m)^nuget_publisher: \.github/workflows/main\.yml\r?$') -eq [bool]$case.Data.nuget_publisher)) $answersText
     $startsWant = if ($case.Data.nuget_publisher) { 'for a .NET library starts `' + $case.Data.nuget_publisher + '`, the workflow that publishes its packages, through its `workflow_dispatch` trigger;' } else { 'for a .NET library starts `.github/workflows/publish.yml`;' }
     Check "${name}: AGENTS.md's Landing section says tag-release.yml starts the nuget_publisher workflow when it is answered, else publish.yml" ($agentsReleaseText.Contains($startsWant)) $startsWant
     $rulesText = [IO.File]::ReadAllText((Join-Path $dest '.github\instructions\project-template.instructions.md'))
     $releasesBullet = [regex]::Match($rulesText, '(?m)^- Releases: .*$').Value
     $ownPublishing = [bool]$case.Data.nuget_publisher
-    $releasesOk = if ($case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true' -and $case.Host -eq 'github') {
+    $releasesOk = if ($case.Stack -eq 'dotnet' -and $case.Data.nuget_package -eq 'true') {
         $releasesBullet.Contains('With `release: tag+release` in `AGENTS.md`''s Landing section, `.github/workflows/tag-release.yml` tags each release and publishes its GitHub release as its pull request merges') -and ($releasesBullet.Contains('`nuget` environment') -ne $ownPublishing) -and ($rulesText.Contains('`.github/workflows/raise-baseline.yml`') -ne $ownPublishing) -and (-not $ownPublishing -or $releasesBullet.Contains('`' + $case.Data.nuget_publisher + '`, the project''s own workflow'))
     } else { -not $releasesBullet -and -not $rulesText.Contains('raise-baseline.yml') }
     Check "${name}: the template rules' Releases bullet says how a .NET library on GitHub publishes, naming its own publishing workflow when nuget_publisher is answered, and no other project has it" $releasesOk $releasesBullet
     $dependabotBullet = [regex]::Match($rulesText, '(?m)^- Dependabot opens a pull request each week .*$').Value
-    $reviewsDependabot = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
-    $dependabotOk = if ($case.Host -eq 'github') {
-        $dependabotBullet.Contains('A Dependabot pull request adds no changelog entry: Dependabot can''t write one') -and ($dependabotBullet.Contains('NCode Review reviews it when it opens and after each push Dependabot makes, and approves a clean one (ADR-0041)') -eq $reviewsDependabot) -and ($dependabotBullet.Contains('which `.github/workflows/code-review-auto-merge.yml` merges by itself') -eq $reviewsDependabot) -and ($dependabotBullet.Contains('CI tests it and a person merges it.') -ne $reviewsDependabot)
-    } else { -not $dependabotBullet }
-    Check "${name}: the template rules' Dependabot bullet says NCode Review reviews and approves Dependabot's pull requests and auto-merges its pin bump exactly when the project runs it, and always that a Dependabot pull request adds no changelog entry; a GitLab project has no Dependabot bullet" $dependabotOk $dependabotBullet
+    $reviewsDependabot = $case.Data.code_review -eq 'true'
+    $dependabotOk = $dependabotBullet.Contains('A Dependabot pull request adds no changelog entry: Dependabot can''t write one') -and ($dependabotBullet.Contains('NCode Review reviews it when it opens and after each push Dependabot makes, and approves a clean one (ADR-0041)') -eq $reviewsDependabot) -and ($dependabotBullet.Contains('which `.github/workflows/code-review-auto-merge.yml` merges by itself') -eq $reviewsDependabot) -and ($dependabotBullet.Contains('CI tests it and a person merges it.') -ne $reviewsDependabot)
+    Check "${name}: the template rules' Dependabot bullet says NCode Review reviews and approves Dependabot's pull requests and auto-merges its pin bump exactly when the project runs it, and always that a Dependabot pull request adds no changelog entry" $dependabotOk $dependabotBullet
     if ($case.Data.nuget_publisher) {
         $ownPublisher = $case.Data.nuget_publisher
         $stalePhrases = 'publish.yml', 'trusted publishing', '`nuget` environment', 'provenance', 'raise-baseline.yml', 'intoto'
@@ -503,31 +492,23 @@ foreach ($case in $cases) {
         $efCommand = 'dotnet ef migrations add InitialCreate --context <Context> --output-dir Migrations/<Name>'
         $efMissing = @(foreach ($doc in @(@{ N = 'rule'; T = $efRule }, @{ N = 'ADR-0143'; T = $migrationsAdr })) { foreach ($t in $efCommand, 'without its `DbContext` or `Context` suffix', '`Migrations/OpenId` for', 'CS0118') { if (-not $doc.T.Contains($t)) { "$($doc.N): $t" } }; if ($doc.T.Contains('Migrations/<Context>')) { "$($doc.N): still Migrations/<Context>" } })
         Check "${name}: the EF Core rule and ADR-0143 keep each context's initial migration in Migrations/<Name>, its class name without the DbContext or Context suffix, so the folder's namespace never hides the class (CS0118)" (-not $efMissing) ($efMissing -join '; ')
-        $ciFile = if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' }
+        $ciFile = '.github\workflows\ci.yml'
         $ciText = Get-Content -LiteralPath (Join-Path $dest $ciFile) -Raw
         Check "${name}: CI runs the Definition of Done for the default commands" ($ciText.Contains('build/dod.ps1') -and -not ($ciText -match '(?m)^\s+(- )?dotnet (build|test)\s*$')) $ciText
         $setupFile = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
-        $historyOk = if ($case.Host -eq 'github') { -not (Test-Path -LiteralPath $setupFile) -or ((Get-Content -LiteralPath $setupFile -Raw).Contains('fetch-depth: 0') -eq $library) } else { ($ciText -match 'NUGET_PACKAGES: \$CI_PROJECT_DIR/\.nuget/packages\r?\n(?:    #.*\r?\n)?    GIT_DEPTH: "0"') -eq $library }
+        $historyOk = -not (Test-Path -LiteralPath $setupFile) -or ((Get-Content -LiteralPath $setupFile -Raw).Contains('fetch-depth: 0') -eq $library)
         Check "${name}: a library's builds fetch the full history Nerdbank.GitVersioning needs" $historyOk $ciText
-        if ($case.Host -eq 'github') {
-            Check "${name}: CI caches NuGet packages, keyed on the restore's inputs" ($ciText.Contains('uses: actions/cache@') -and $ciText.Contains('path: ~/.nuget/packages') -and $ciText.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $ciText.Contains('${{ runner.os }}-nuget-' + "`n")) $ciText
-            Check "${name}: CI installs .NET with the install-dotnet action after the checkout and before the build" ([regex]::Matches($ciText, '(?m)^      - uses: \./\.github/actions/install-dotnet\r?$').Count -eq (1 + [int]$library) -and $ciText.IndexOf('uses: actions/checkout@') -lt $ciText.IndexOf('./.github/actions/install-dotnet') -and $ciText.IndexOf('./.github/actions/install-dotnet') -lt $ciText.IndexOf('build/dod.ps1') -and -not $ciText.Contains('actions/setup-dotnet') -and -not $ciText.Contains('Get-TestRuntimes')) $ciText
-            Check "${name}: CI checks that the SDK and every target framework are LTS releases Microsoft supports, after the install-dotnet action and before the build" ($ciText -match '(?m)^      - name: Check \.NET support\r?\n        run: \./build/Test-DotnetSupport\.ps1\r?$' -and $ciText.IndexOf('./.github/actions/install-dotnet') -lt $ciText.IndexOf('build/Test-DotnetSupport.ps1') -and $ciText.IndexOf('build/Test-DotnetSupport.ps1') -lt $ciText.IndexOf('build/dod.ps1')) $ciText
-            $installAction = Get-Content -LiteralPath (Join-Path $dest '.github\actions\install-dotnet\action.yml') -Raw
-            $actionUses = [regex]::Matches($installAction, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
-            Check "${name}: the install-dotnet action installs the SDK global.json selects, then the runtimes build/Get-TestRuntimes.ps1 names, with actions/setup-dotnet pinned to a full commit SHA, and names the shell of each command" ($installAction -match '(?m)^runs:\r?\n  using: composite\r?$' -and $actionUses.Count -eq 2 -and -not ($actionUses | Where-Object { $_.Groups[1].Value -ne 'actions/setup-dotnet' -or $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and $installAction.IndexOf('global-json-file: global.json') -gt 0 -and $installAction.IndexOf('global-json-file: global.json') -lt $installAction.IndexOf('./build/Get-TestRuntimes.ps1') -and $installAction.Contains("if: steps.runtimes.outputs.channels != ''") -and $installAction.Contains('dotnet-version: ${{ steps.runtimes.outputs.channels }}') -and [regex]::Matches($installAction, '(?m)^\s+run: ').Count -eq [regex]::Matches($installAction, '(?m)^\s+shell: pwsh\r?$').Count) $installAction
-            $runtimesStep = Get-StepScript $installAction 'runtimes'
-            $twoChannels = Invoke-RuntimesStep $runtimesStep "'8.0.x'`n'9.0.x'" $Work
-            $noChannel = Invoke-RuntimesStep $runtimesStep '' $Work
-            Check "${name}: the install-dotnet action's runtimes step passes each channel build/Get-TestRuntimes.ps1 prints to actions/setup-dotnet, and none when it prints none" ($runtimesStep -and $twoChannels -eq "channels<<EOF`n8.0.x`n9.0.x`nEOF`n" -and $noChannel -eq '') "$runtimesStep | $twoChannels | $noChannel"
-            Check "${name}: CI keeps the test results, after a failure too, and for a library the packages, as artifacts" ($ciText -match '(?m)^      - name: Upload test results\r?\n        if: always\(\)\r?\n        uses: actions/upload-artifact@[0-9a-f]{40} # v\d+\.\d+\.\d+\r?\n        with:\r?\n          name: test-results\r?\n          path: artifacts/test-results/\r?$' -and $ciText.Contains('if-no-files-found: ignore') -and $ciText.Contains('retention-days: 14') -and ($ciText.Contains('- name: Upload packages') -eq $library) -and -not $ciText.Contains('codecov')) $ciText
-        }
-        else {
-            Check "${name}: CI caches NuGet packages in the project folder, keyed on the package versions and the SDK" ($ciText.Contains('NUGET_PACKAGES: $CI_PROJECT_DIR/.nuget/packages') -and $ciText.Contains('files: [Directory.Packages.props, global.json]') -and $ciText.Contains('paths: [.nuget/packages/]')) $ciText
-            Check "${name}: CI installs the SDK global.json selects and the runtimes the tests target before it builds" ($ciText -match '(?m)^  before_script:\r?\n    - pwsh -NoProfile -File build/Install-Dotnet\.ps1\r?$' -and $ciText.IndexOf('build/Install-Dotnet.ps1') -lt $ciText.IndexOf('build/dod.ps1')) $ciText
-            Check "${name}: CI checks that the SDK and every target framework are LTS releases Microsoft supports, right after build/Install-Dotnet.ps1" ($ciText -match '(?m)^    - pwsh -NoProfile -File build/Install-Dotnet\.ps1\r?\n    - pwsh -NoProfile -File build/Test-DotnetSupport\.ps1\r?$') $ciText
-            Check "${name}: CI keeps the test results and packages, after a failure too" ($ciText -match '(?m)^  artifacts:\r?\n    when: always\r?\n    paths: \[artifacts/test-results/, artifacts/packages/\]\r?\n    expire_in: 14 days\r?$') $ciText
-        }
+        Check "${name}: CI caches NuGet packages, keyed on the restore's inputs" ($ciText.Contains('uses: actions/cache@') -and $ciText.Contains('path: ~/.nuget/packages') -and $ciText.Contains('key: ${{ runner.os }}-nuget-${{ hashFiles(''Directory.Packages.props'', ''global.json'', ''.config/dotnet-tools.json'', ''**/*.csproj'') }}') -and $ciText.Contains('${{ runner.os }}-nuget-' + "`n")) $ciText
+        Check "${name}: CI installs .NET with the install-dotnet action after the checkout and before the build" ([regex]::Matches($ciText, '(?m)^      - uses: \./\.github/actions/install-dotnet\r?$').Count -eq (1 + [int]$library) -and $ciText.IndexOf('uses: actions/checkout@') -lt $ciText.IndexOf('./.github/actions/install-dotnet') -and $ciText.IndexOf('./.github/actions/install-dotnet') -lt $ciText.IndexOf('build/dod.ps1') -and -not $ciText.Contains('actions/setup-dotnet') -and -not $ciText.Contains('Get-TestRuntimes')) $ciText
+        Check "${name}: CI checks that the SDK and every target framework are LTS releases Microsoft supports, after the install-dotnet action and before the build" ($ciText -match '(?m)^      - name: Check \.NET support\r?\n        run: \./build/Test-DotnetSupport\.ps1\r?$' -and $ciText.IndexOf('./.github/actions/install-dotnet') -lt $ciText.IndexOf('build/Test-DotnetSupport.ps1') -and $ciText.IndexOf('build/Test-DotnetSupport.ps1') -lt $ciText.IndexOf('build/dod.ps1')) $ciText
+        $installAction = Get-Content -LiteralPath (Join-Path $dest '.github\actions\install-dotnet\action.yml') -Raw
+        $actionUses = [regex]::Matches($installAction, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+        Check "${name}: the install-dotnet action installs the SDK global.json selects, then the runtimes build/Get-TestRuntimes.ps1 names, with actions/setup-dotnet pinned to a full commit SHA, and names the shell of each command" ($installAction -match '(?m)^runs:\r?\n  using: composite\r?$' -and $actionUses.Count -eq 2 -and -not ($actionUses | Where-Object { $_.Groups[1].Value -ne 'actions/setup-dotnet' -or $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and $installAction.IndexOf('global-json-file: global.json') -gt 0 -and $installAction.IndexOf('global-json-file: global.json') -lt $installAction.IndexOf('./build/Get-TestRuntimes.ps1') -and $installAction.Contains("if: steps.runtimes.outputs.channels != ''") -and $installAction.Contains('dotnet-version: ${{ steps.runtimes.outputs.channels }}') -and [regex]::Matches($installAction, '(?m)^\s+run: ').Count -eq [regex]::Matches($installAction, '(?m)^\s+shell: pwsh\r?$').Count) $installAction
+        $runtimesStep = Get-StepScript $installAction 'runtimes'
+        $twoChannels = Invoke-RuntimesStep $runtimesStep "'8.0.x'`n'9.0.x'" $Work
+        $noChannel = Invoke-RuntimesStep $runtimesStep '' $Work
+        Check "${name}: the install-dotnet action's runtimes step passes each channel build/Get-TestRuntimes.ps1 prints to actions/setup-dotnet, and none when it prints none" ($runtimesStep -and $twoChannels -eq "channels<<EOF`n8.0.x`n9.0.x`nEOF`n" -and $noChannel -eq '') "$runtimesStep | $twoChannels | $noChannel"
+        Check "${name}: CI keeps the test results, after a failure too, and for a library the packages, as artifacts" ($ciText -match '(?m)^      - name: Upload test results\r?\n        if: always\(\)\r?\n        uses: actions/upload-artifact@[0-9a-f]{40} # v\d+\.\d+\.\d+\r?\n        with:\r?\n          name: test-results\r?\n          path: artifacts/test-results/\r?$' -and $ciText.Contains('if-no-files-found: ignore') -and $ciText.Contains('retention-days: 14') -and ($ciText.Contains('- name: Upload packages') -eq $library) -and -not $ciText.Contains('codecov')) $ciText
         $libraryWrong = @($libraryOnly | Where-Object { [bool](Get-ChildItem -Path (Join-Path $dest $_) -ErrorAction SilentlyContinue) -ne $library })
         Check "${name}: library decisions only for a library" (-not $libraryWrong) ($libraryWrong -join ', ')
         $license = Join-Path $dest 'LICENSE.txt'
@@ -554,14 +535,14 @@ foreach ($case in $cases) {
         $extensionsText = Get-Content -LiteralPath (Join-Path $dest '.vscode\extensions.json') -Raw
         Check "${name}: .editorconfig indents project files and VS Code recommends CSharpier exactly when csharp_format is not false" ($editorconfig.Contains('[*.{csproj,slnx}]') -eq $wantFormatHere -and $extensionsText.Contains('csharpier.csharpier-vscode') -eq $wantFormatHere) $extensionsText
         $publish = Join-Path $dest '.github\workflows\publish.yml'
-        $wantsPublish = $library -and $case.Host -eq 'github' -and -not $case.Data.nuget_publisher
+        $wantsPublish = $library -and -not $case.Data.nuget_publisher
         Check "${name}: the publish workflow only for a library on GitHub" ((Test-Path -LiteralPath $publish) -eq $wantsPublish)
         $provenance = Join-Path $dest '.github\workflows\release-provenance.yml'
         Check "${name}: the release provenance workflow only for a library on GitHub" ((Test-Path -LiteralPath $provenance) -eq $wantsPublish)
         Check "${name}: build/Update-Baseline.ps1 only for a library" ((Test-Path -LiteralPath (Join-Path $dest 'build\Update-Baseline.ps1')) -eq $library)
         $raise = Join-Path $dest '.github\workflows\raise-baseline.yml'
         Check "${name}: the raise-baseline workflow only for a library on GitHub" ((Test-Path -LiteralPath $raise) -eq $wantsPublish)
-        Check "${name}: ADR-0151 only for a library on GitHub" ([bool](Get-ChildItem -Path (Join-Path $dest 'docs\decisions\project-template\0151-*.md') -ErrorAction SilentlyContinue) -eq ($library -and $case.Host -eq 'github'))
+        Check "${name}: ADR-0151 only for a library on GitHub" ([bool](Get-ChildItem -Path (Join-Path $dest 'docs\decisions\project-template\0151-*.md') -ErrorAction SilentlyContinue) -eq $library)
         if ($wantsPublish) {
             $provenanceText = Get-Content -LiteralPath $provenance -Raw
             $provenanceUses = [regex]::Matches($provenanceText, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
@@ -593,14 +574,13 @@ foreach ($case in $cases) {
             Check "${name}: the publish workflow calls release-provenance.yml and raise-baseline.yml after its publish job, the baseline for a stable version only" ($workflow.Contains('    uses: ./.github/workflows/release-provenance.yml') -and $workflow.Contains('    uses: ./.github/workflows/raise-baseline.yml') -and [regex]::Matches($workflow, 'needs: \[pack, publish\]').Count -eq 2 -and $workflow.Contains("if: `${{ !contains(needs.pack.outputs.version, '-') }}") -and $workflow.Contains('attestations: write') -and [regex]::Matches($workflow, [regex]::Escape('tag: v${{ needs.pack.outputs.version }}')).Count -eq 2) $workflow
         }
     }
-    $otherHost = if ($case.Host -eq 'github') { 'gitlab' } else { 'github' }
-    $wrong = @($hostOnly[$case.Host] | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @($hostOnly[$otherHost] | Where-Object { Test-Path (Join-Path $dest $_) })
-    Check "${name}: $($case.Host) files only" (-not $wrong) ($wrong -join ', ')
-    $installActionWanted = $case.Stack -eq 'dotnet' -and $case.Host -eq 'github'
-    Check "${name}: the install-dotnet action, and a .github/actions folder, only for a .NET project on GitHub" ((Test-Path -LiteralPath (Join-Path $dest '.github\actions\install-dotnet\action.yml')) -eq $installActionWanted -and (Test-Path -LiteralPath (Join-Path $dest '.github\actions')) -eq $installActionWanted)
-    $ciForIndex = Get-Content -LiteralPath (Join-Path $dest $(if ($case.Host -eq 'github') { '.github\workflows\ci.yml' } else { '.gitlab-ci.yml' })) -Raw
+    $wrong = @($githubOnly | Where-Object { -not (Test-Path (Join-Path $dest $_)) }) + @('.gitlab-ci.yml' | Where-Object { Test-Path (Join-Path $dest $_) })
+    Check "${name}: the GitHub files, and no .gitlab-ci.yml" (-not $wrong) ($wrong -join ', ')
+    $installActionWanted = $case.Stack -eq 'dotnet'
+    Check "${name}: the install-dotnet action, and a .github/actions folder, only for a .NET project" ((Test-Path -LiteralPath (Join-Path $dest '.github\actions\install-dotnet\action.yml')) -eq $installActionWanted -and (Test-Path -LiteralPath (Join-Path $dest '.github\actions')) -eq $installActionWanted)
+    $ciForIndex = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
     Check "${name}: CI checks the decision index" ($ciForIndex.Contains('.template/Test-AdrIndex.ps1')) $ciForIndex
-    $indexHistory = if ($case.Host -eq 'github') { $ciForIndex -match '(?s)  build-and-test:.*?fetch-depth: 0.*?- name: Check the decision index' } else { $ciForIndex.Contains('- pwsh -NoProfile -File .template/Test-AdrIndex.ps1 -Base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"') -and $ciForIndex.Contains('GIT_DEPTH: "0"') }
+    $indexHistory = $ciForIndex -match '(?s)  build-and-test:.*?fetch-depth: 0.*?- name: Check the decision index'
     Check "${name}: CI checks the decision index with the history to tell a new record" $indexHistory $ciForIndex
     # The repository's license: the license answer.
     $licenseAnswer = $wantLicense
@@ -633,10 +613,10 @@ foreach ($case in $cases) {
         }
         Check "${name}: ADR-0020's Signed-Releases and Packaging rows follow the nuget_package and nuget_publisher answers" $rowsRight (($signedRows + $packagingRows) -join ' | ')
     }
-    # The Copilot cloud agent's environment: only for a GitHub project that uses Copilot.
+    # The Copilot cloud agent's environment: only for a project that uses Copilot.
     $copilotSetup = Join-Path $dest '.github\workflows\copilot-setup-steps.yml'
-    $wantsSetup = $case.Host -eq 'github' -and 'copilot' -in $tools
-    Check "${name}: the Copilot setup workflow only for a GitHub project that uses Copilot" ((Test-Path -LiteralPath $copilotSetup) -eq $wantsSetup) "exists=$(Test-Path -LiteralPath $copilotSetup) wanted=$wantsSetup"
+    $wantsSetup = 'copilot' -in $tools
+    Check "${name}: the Copilot setup workflow only for a project that uses Copilot" ((Test-Path -LiteralPath $copilotSetup) -eq $wantsSetup) "exists=$(Test-Path -LiteralPath $copilotSetup) wanted=$wantsSetup"
     if ($wantsSetup) {
         $setup = Get-Content -LiteralPath $copilotSetup -Raw
         $setupUses = [regex]::Matches($setup, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
@@ -656,14 +636,14 @@ foreach ($case in $cases) {
             'python' { $setup.Contains('uses: actions/setup-python@') -and $setup.Contains('$PSNativeCommandUseErrorActionPreference = $true') -and $setup.Contains('python -m pip install -r requirements.txt') }
             'node' { $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }; $setup.Contains('uses: actions/setup-node@') -and $setup.Contains(@{ npm = 'run: npm ci'; pnpm = 'run: pnpm install --frozen-lockfile'; yarn = 'run: yarn install'; bun = 'run: bun install --frozen-lockfile' }[$pm]) }
             'powershell' { $setup.Contains('Install-Module Pester, PSScriptAnalyzer') }
-            default { $setupUses.Count -eq 1 }
+            default { $setupUses.Count -eq 1 + [int]$usesNode }
         }
         Check "${name}: the Copilot setup workflow installs what CI installs for the stack" $setupOk $setup
         Check "${name}: the Copilot setup workflow sets up Node.js from .node-version exactly when the project uses Node.js" ($setup.Contains('node-version-file: .node-version') -eq $usesNode) $setup
     }
-    # The code review caller: only for a GitHub project that asked for it, and never a GitLab one, which isn't asked.
+    # The code review caller: only for a project that asked for it.
     $reviewCaller = Join-Path $dest '.github\workflows\code-review.yml'
-    $wantsReview = $case.Host -eq 'github' -and $case.Data.code_review -eq 'true'
+    $wantsReview = $case.Data.code_review -eq 'true'
     Check "${name}: the code review caller is there only when asked for" ((Test-Path -LiteralPath $reviewCaller) -eq $wantsReview) "exists=$(Test-Path -LiteralPath $reviewCaller) wanted=$wantsReview"
     Check "${name}: AGENTS.md opens every pull request as a draft exactly when the project runs NCode Review" ((Select-String -LiteralPath (Join-Path $dest 'AGENTS.md') -Pattern '^- draft: yes$' -Quiet) -eq $wantsReview)
     Check "${name}: CONTRIBUTING.md says to comment /review after a push exactly when the project runs NCode Review" ((Get-Content -LiteralPath (Join-Path $dest 'CONTRIBUTING.md') -Raw).Contains('comments `/review` after one') -eq $wantsReview)
@@ -689,195 +669,187 @@ foreach ($case in $cases) {
         $answers = Get-Content -LiteralPath (Join-Path $dest '.copier-answers.yml') -Raw
         Check "${name}: the answer is recorded" ($answers -match '(?m)^code_review: true?$') $answers
     }
-    if ($case.Host -eq 'github') {
-        $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
-        Check "${name}: CI sets up Node.js from .node-version exactly when the project uses Node.js" ($ci.Contains('node-version-file: .node-version') -eq $usesNode -and ([regex]::Matches($ci, 'uses: actions/setup-node@').Count -eq [int]$usesNode)) $ci
-        Check "${name}: CI runs no commit attribution check, and not on an edit" (-not $ci.Contains('Test-CommitAttribution') -and -not $ci.Contains('commit-attribution:') -and $ci.Contains('merge_group:') -and $ci.Contains('types: [opened, synchronize, reopened]')) $ci
-        $wantsReproducible = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package
-        Check "${name}: CI builds a library's packages twice and compares them, and no other project's" ($ci.Contains('reproducible-build:') -eq $wantsReproducible -and (-not $wantsReproducible -or $ci.Contains('./.template/Test-ReproducibleBuild.ps1'))) $ci
-        $checkouts = [regex]::Matches($ci, '(?m)^\s+- uses: actions/checkout@').Count
-        Check "${name}: CI checkouts set persist-credentials false" ($checkouts -gt 0 -and [regex]::Matches($ci, '(?m)^\s+persist-credentials: false\r?$').Count -eq $checkouts) $ci
-        $dependabot = Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw
-        # One pull request per ecosystem: a filter on the update type would give each major update a pull request of its own. The one
-        # update-types line is the .NET SDK's major ignore: a new .NET major is a planned migration.
-        $majorIgnores = [regex]::Matches($dependabot, '(?m)^    ignore:\r?\n      - dependency-name: "\*"\r?\n        update-types: \["version-update:semver-major"\]\r?$').Count
-        Check "${name}: Dependabot groups every update of an ecosystem, major ones included, and ignores only the .NET SDK's majors" ([regex]::Matches($dependabot, 'update-types').Count -eq $majorIgnores -and $majorIgnores -eq [int]($case.Stack -eq 'dotnet') -and $dependabot.Contains('patterns: ["*"]')) $dependabot
-        # A version published minutes ago waits out the cooldown before it reaches the project.
-        $ecosystems = [regex]::Matches($dependabot, '(?m)^  - package-ecosystem: ').Count
-        Check "${name}: every Dependabot entry has a cooldown" ($ecosystems -gt 0 -and [regex]::Matches($dependabot, '(?m)^    cooldown:\r?\n      default-days: 3\r?$').Count -eq $ecosystems) $dependabot
-        $actionsDirectories = if ($case.Stack -eq 'dotnet') { '    directories: \["/", "/\.github/actions/\*"\]' } else { '    directory: /' }
-        Check "${name}: Dependabot moves the actions of the workflows and, for .NET, of the composite actions under .github/actions" ($dependabot -match "(?m)^  - package-ecosystem: github-actions\r?\n(?:    #.*\r?\n)*$actionsDirectories\r?$") $dependabot
-        Check "${name}: CI cancels a superseded run, but never a default-branch commit's or a merge queue entry's, whose group holds the commit SHA" ($ci.Contains('  group: ci-${{ github.ref }}-${{ (github.ref == format(''refs/heads/{0}'', github.event.repository.default_branch) || github.event_name == ''merge_group'') && github.sha || ''latest'' }}') -and $ci.Contains('  cancel-in-progress: ${{ github.ref != format(''refs/heads/{0}'', github.event.repository.default_branch) && github.event_name != ''merge_group'' }}')) $ci
-        Check "${name}: every CI job has a timeout, 30 minutes for the build" ([regex]::Matches($ci, '(?m)^    runs-on: ').Count -eq [regex]::Matches($ci, '(?m)^    timeout-minutes: \d+\r?$').Count -and $ci -match '(?m)^  build-and-test:\r?\n    runs-on: ubuntu-latest\r?\n    timeout-minutes: 30\r?$') $ci
-        $ciUses = [regex]::Matches($ci, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
-        Check "${name}: CI pins each action to a full commit SHA, with its tag in a comment" ($ciUses.Count -gt 0 -and -not ($ciUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $ci
-        # Security updates arrive as one pull request per ecosystem too.
-        $grouped = [regex]::Matches($dependabot, '(?m)^    groups:\r?$').Count
-        $securityGroups = [regex]::Matches($dependabot, '(?m)^      [\w-]+-security:\r?\n        applies-to: security-updates\r?\n        patterns: \["\*"\]\r?$').Count
-        Check "${name}: Dependabot gives security updates a group of their own in every grouped ecosystem" ($grouped -gt 0 -and $securityGroups -eq $grouped) $dependabot
-        # Dependabot puts an update in the first group that matches it: NCode Review's group has to come before the
-        # catch-all one, so its bump arrives alone, as code-review-auto-merge.yml needs.
-        Check "${name}: Dependabot gives the NCode Review action a group of its own, ahead of the catch-all actions group" ($dependabot -match '(?m)^  - package-ecosystem: github-actions\r?\n(?:    .*\r?\n)*?    groups:\r?\n(?:      #.*\r?\n)*      ncode-review:\r?\n        patterns: \["NCodeGroup/code-review"\]\r?\n      github-actions:\r?\n        patterns: \["\*"\]\r?$' -and [regex]::Matches($dependabot, 'NCodeGroup/code-review"').Count -eq 1) $dependabot
-        if ($case.Stack -eq 'python') {
-            Check "${name}: a failed pip install fails the CI step" ($ci.Contains('$PSNativeCommandUseErrorActionPreference = $true') -and $ci.IndexOf('$PSNativeCommandUseErrorActionPreference') -lt $ci.IndexOf('python -m pip install')) $ci
+    $ci = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\ci.yml') -Raw
+    Check "${name}: CI sets up Node.js from .node-version exactly when the project uses Node.js" ($ci.Contains('node-version-file: .node-version') -eq $usesNode -and ([regex]::Matches($ci, 'uses: actions/setup-node@').Count -eq [int]$usesNode)) $ci
+    Check "${name}: CI runs no commit attribution check, and not on an edit" (-not $ci.Contains('Test-CommitAttribution') -and -not $ci.Contains('commit-attribution:') -and $ci.Contains('merge_group:') -and $ci.Contains('types: [opened, synchronize, reopened]')) $ci
+    $wantsReproducible = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package
+    Check "${name}: CI builds a library's packages twice and compares them, and no other project's" ($ci.Contains('reproducible-build:') -eq $wantsReproducible -and (-not $wantsReproducible -or $ci.Contains('./.template/Test-ReproducibleBuild.ps1'))) $ci
+    $checkouts = [regex]::Matches($ci, '(?m)^\s+- uses: actions/checkout@').Count
+    Check "${name}: CI checkouts set persist-credentials false" ($checkouts -gt 0 -and [regex]::Matches($ci, '(?m)^\s+persist-credentials: false\r?$').Count -eq $checkouts) $ci
+    $dependabot = Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw
+    # One pull request per ecosystem: a filter on the update type would give each major update a pull request of its own. The one
+    # update-types line is the .NET SDK's major ignore: a new .NET major is a planned migration.
+    $majorIgnores = [regex]::Matches($dependabot, '(?m)^    ignore:\r?\n      - dependency-name: "\*"\r?\n        update-types: \["version-update:semver-major"\]\r?$').Count
+    Check "${name}: Dependabot groups every update of an ecosystem, major ones included, and ignores only the .NET SDK's majors" ([regex]::Matches($dependabot, 'update-types').Count -eq $majorIgnores -and $majorIgnores -eq [int]($case.Stack -eq 'dotnet') -and $dependabot.Contains('patterns: ["*"]')) $dependabot
+    # A version published minutes ago waits out the cooldown before it reaches the project.
+    $ecosystems = [regex]::Matches($dependabot, '(?m)^  - package-ecosystem: ').Count
+    Check "${name}: every Dependabot entry has a cooldown" ($ecosystems -gt 0 -and [regex]::Matches($dependabot, '(?m)^    cooldown:\r?\n      default-days: 3\r?$').Count -eq $ecosystems) $dependabot
+    $actionsDirectories = if ($case.Stack -eq 'dotnet') { '    directories: \["/", "/\.github/actions/\*"\]' } else { '    directory: /' }
+    Check "${name}: Dependabot moves the actions of the workflows and, for .NET, of the composite actions under .github/actions" ($dependabot -match "(?m)^  - package-ecosystem: github-actions\r?\n(?:    #.*\r?\n)*$actionsDirectories\r?$") $dependabot
+    Check "${name}: CI cancels a superseded run, but never a default-branch commit's or a merge queue entry's, whose group holds the commit SHA" ($ci.Contains('  group: ci-${{ github.ref }}-${{ (github.ref == format(''refs/heads/{0}'', github.event.repository.default_branch) || github.event_name == ''merge_group'') && github.sha || ''latest'' }}') -and $ci.Contains('  cancel-in-progress: ${{ github.ref != format(''refs/heads/{0}'', github.event.repository.default_branch) && github.event_name != ''merge_group'' }}')) $ci
+    Check "${name}: every CI job has a timeout, 30 minutes for the build" ([regex]::Matches($ci, '(?m)^    runs-on: ').Count -eq [regex]::Matches($ci, '(?m)^    timeout-minutes: \d+\r?$').Count -and $ci -match '(?m)^  build-and-test:\r?\n    runs-on: ubuntu-latest\r?\n    timeout-minutes: 30\r?$') $ci
+    $ciUses = [regex]::Matches($ci, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+    Check "${name}: CI pins each action to a full commit SHA, with its tag in a comment" ($ciUses.Count -gt 0 -and -not ($ciUses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $ci
+    # Security updates arrive as one pull request per ecosystem too.
+    $grouped = [regex]::Matches($dependabot, '(?m)^    groups:\r?$').Count
+    $securityGroups = [regex]::Matches($dependabot, '(?m)^      [\w-]+-security:\r?\n        applies-to: security-updates\r?\n        patterns: \["\*"\]\r?$').Count
+    Check "${name}: Dependabot gives security updates a group of their own in every grouped ecosystem" ($grouped -gt 0 -and $securityGroups -eq $grouped) $dependabot
+    # Dependabot puts an update in the first group that matches it: NCode Review's group has to come before the
+    # catch-all one, so its bump arrives alone, as code-review-auto-merge.yml needs.
+    Check "${name}: Dependabot gives the NCode Review action a group of its own, ahead of the catch-all actions group" ($dependabot -match '(?m)^  - package-ecosystem: github-actions\r?\n(?:    .*\r?\n)*?    groups:\r?\n(?:      #.*\r?\n)*      ncode-review:\r?\n        patterns: \["NCodeGroup/code-review"\]\r?\n      github-actions:\r?\n        patterns: \["\*"\]\r?$' -and [regex]::Matches($dependabot, 'NCodeGroup/code-review"').Count -eq 1) $dependabot
+    if ($case.Stack -eq 'python') {
+        Check "${name}: a failed pip install fails the CI step" ($ci.Contains('$PSNativeCommandUseErrorActionPreference = $true') -and $ci.IndexOf('$PSNativeCommandUseErrorActionPreference') -lt $ci.IndexOf('python -m pip install')) $ci
+    }
+    $notice = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\template-update.yml') -Raw
+    $uses = [regex]::Matches($notice, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+    Check "${name}: the template update workflow runs weekly and by hand, with only contents: read and issues: write, and runs .template/Get-TemplateUpdate.ps1" ($notice.Contains("- cron: '0 7 * * 1'") -and $notice.Contains('workflow_dispatch:') -and $notice -match '(?m)^permissions:\r?\n  contents: read\r?\n\r?\n' -and $notice -match '(?m)^    permissions:\r?\n      contents: read\r?\n      issues: write\r?\n' -and $notice.Contains('GH_TOKEN: ${{ github.token }}') -and $notice.Contains('run: ./.template/Get-TemplateUpdate.ps1')) $notice
+    Check "${name}: the template update workflow pins each action to a full commit SHA, with its tag in a comment, and persists no credentials" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($notice, '(?m)^\s+persist-credentials: false\r?$').Count -eq $uses.Count) $notice
+    $releaseWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\tag-release.yml') -Raw
+    $uses = [regex]::Matches($releaseWorkflow, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+    Check "${name}: the release workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $releaseWorkflow
+    Check "${name}: the release workflow runs CI again before it tags, and CI can be called" ($releaseWorkflow -match '(?m)^    uses: \./\.github/workflows/ci\.yml\r?$' -and $releaseWorkflow -match '(?m)^    needs: \[policy, test\]\r?$' -and $ci.Contains('workflow_call:')) $releaseWorkflow
+    Check "${name}: the release workflow signs a public repository's tag with a pinned gitsign" ($releaseWorkflow.Contains('chainguard-dev/actions/setup-gitsign@d496b2ab65497cac13d77ccd5038b8aae7e8c43b # v1.8.2') -and $releaseWorkflow.Contains('if: ${{ !github.event.repository.private }}') -and $releaseWorkflow.Contains('id-token: write') -and $releaseWorkflow.Contains("-Sign:(`$env:SIGN -eq 'true')")) $releaseWorkflow
+    # The Scorecard workflow: every GitHub project gets it.
+    $scorecard = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\scorecard.yml') -Raw
+    $uses = [regex]::Matches($scorecard, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+    Check "${name}: the Scorecard workflow pins each action to a full commit SHA with its tag in a comment, publishes its results with the OIDC and code scanning permissions, and reads contents by default" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and $scorecard.Contains('ossf/scorecard-action@') -and $scorecard.Contains('publish_results: true') -and $scorecard.Contains('id-token: write') -and $scorecard.Contains('security-events: write') -and $scorecard -match '(?m)^permissions:\r?\n  contents: read\r?$') $scorecard
+    # The CodeQL workflow: every GitHub project gets it, and it runs on every pull request, a fork's too.
+    $codeqlWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\codeql.yml') -Raw
+    $uses = [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+    Check "${name}: the CodeQL workflow pins each action to a full commit SHA with its tag in a comment, and every checkout persists no credentials" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: actions/checkout@').Count -gt 0 -and [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: actions/checkout@').Count -eq [regex]::Matches($codeqlWorkflow, '(?m)^\s+persist-credentials: false\r?$').Count) $codeqlWorkflow
+    Check "${name}: the CodeQL workflow reads contents by default and writes security events in its analyze job only" ($codeqlWorkflow -match '(?m)^permissions:\r?\n  contents: read\r?$' -and [regex]::Matches($codeqlWorkflow, 'security-events: write').Count -eq 1) $codeqlWorkflow
+    Check "${name}: the CodeQL workflow runs on pull requests and in the merge queue, picks its languages in a CodeQL languages job, and analyzes each with the extended queries and no build" ($codeqlWorkflow.Contains('pull_request:') -and $codeqlWorkflow.Contains('merge_group:') -and $codeqlWorkflow.Contains('queries: security-extended') -and $codeqlWorkflow.Contains('build-mode: none') -and $codeqlWorkflow.Contains('name: CodeQL languages') -and $codeqlWorkflow.Contains('language: ${{ fromJSON(needs.languages.outputs.languages) }}')) $codeqlWorkflow
+    $ciConcurrency = [regex]::Match($ci, '(?m)^concurrency:\r?\n  group: ci-[^\r\n]+\r?\n  cancel-in-progress: [^\r\n]+').Value
+    $codeqlConcurrency = [regex]::Match($codeqlWorkflow, '(?m)^concurrency:\r?\n  group: codeql-[^\r\n]+\r?\n  cancel-in-progress: [^\r\n]+').Value
+    Check "${name}: the CodeQL workflow has ci.yml's concurrency groups, named codeql-" ([bool]$ciConcurrency -and $codeqlConcurrency -eq $ciConcurrency.Replace('group: ci-', 'group: codeql-')) "ci=[$ciConcurrency] codeql=[$codeqlConcurrency]"
+    $installAt = $codeqlWorkflow.IndexOf('uses: ./.github/actions/install-dotnet')
+    Check "${name}: the CodeQL workflow installs .NET with the install-dotnet action for C# only, where the project has the action, after the checkout and before CodeQL starts" ([regex]::Matches($codeqlWorkflow, 'uses: \./\.github/actions/install-dotnet').Count -eq 1 -and $codeqlWorkflow.Contains("if: matrix.language == 'csharp' && hashFiles('.github/actions/install-dotnet/action.yml') != ''") -and $installAt -gt $codeqlWorkflow.LastIndexOf('uses: actions/checkout@') -and $installAt -lt $codeqlWorkflow.IndexOf('uses: github/codeql-action/init@')) $codeqlWorkflow
+    # The detect step that picks the languages, run once: every GitHub render has the same file.
+    if (-not $codeqlDetectRan) {
+        $codeqlDetectRan = $true
+        $detect = Get-StepScript $codeqlWorkflow 'detect'
+        $detectCases = [ordered]@{
+            'a tracked C# file and a Python file' = @{ Files = @('src/a.cs', 'tools/b.py', 'README.md'); Expected = 'languages=["actions","csharp","python"]' }
+            'no source file' = @{ Files = @('README.md'); Expected = 'languages=["actions"]' }
+            'all-languages' = @{ Files = @('src/a.cs', 'src/B.java', 'lib/c.rb', 'lib/d.rs', 'web/e.ts', 'native/f.cpp', 'tools/g.py', 'README.md'); Expected = 'languages=["actions","c-cpp","csharp","java-kotlin","javascript-typescript","python","ruby","rust"]' }
+            'needs-a-build' = @{ Files = @('main.go', 'App.swift', 'Main.kt', 'README.md'); Expected = 'languages=["actions"]' }
         }
-        $notice = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\template-update.yml') -Raw
-        $uses = [regex]::Matches($notice, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
-        Check "${name}: the template update workflow runs weekly and by hand, with only contents: read and issues: write, and runs .template/Get-TemplateUpdate.ps1" ($notice.Contains("- cron: '0 7 * * 1'") -and $notice.Contains('workflow_dispatch:') -and $notice -match '(?m)^permissions:\r?\n  contents: read\r?\n\r?\n' -and $notice -match '(?m)^    permissions:\r?\n      contents: read\r?\n      issues: write\r?\n' -and $notice.Contains('GH_TOKEN: ${{ github.token }}') -and $notice.Contains('run: ./.template/Get-TemplateUpdate.ps1')) $notice
-        Check "${name}: the template update workflow pins each action to a full commit SHA, with its tag in a comment, and persists no credentials" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($notice, '(?m)^\s+persist-credentials: false\r?$').Count -eq $uses.Count) $notice
-        $releaseWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\tag-release.yml') -Raw
-        $uses = [regex]::Matches($releaseWorkflow, '(?m)^\s+- uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
-        Check "${name}: the release workflow pins each action to a full commit SHA, with its tag in a comment" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' })) $releaseWorkflow
-        Check "${name}: the release workflow runs CI again before it tags, and CI can be called" ($releaseWorkflow -match '(?m)^    uses: \./\.github/workflows/ci\.yml\r?$' -and $releaseWorkflow -match '(?m)^    needs: \[policy, test\]\r?$' -and $ci.Contains('workflow_call:')) $releaseWorkflow
-        Check "${name}: the release workflow signs a public repository's tag with a pinned gitsign" ($releaseWorkflow.Contains('chainguard-dev/actions/setup-gitsign@d496b2ab65497cac13d77ccd5038b8aae7e8c43b # v1.8.2') -and $releaseWorkflow.Contains('if: ${{ !github.event.repository.private }}') -and $releaseWorkflow.Contains('id-token: write') -and $releaseWorkflow.Contains("-Sign:(`$env:SIGN -eq 'true')")) $releaseWorkflow
-        # The Scorecard workflow: every GitHub project gets it.
-        $scorecard = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\scorecard.yml') -Raw
-        $uses = [regex]::Matches($scorecard, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
-        Check "${name}: the Scorecard workflow pins each action to a full commit SHA with its tag in a comment, publishes its results with the OIDC and code scanning permissions, and reads contents by default" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and $scorecard.Contains('ossf/scorecard-action@') -and $scorecard.Contains('publish_results: true') -and $scorecard.Contains('id-token: write') -and $scorecard.Contains('security-events: write') -and $scorecard -match '(?m)^permissions:\r?\n  contents: read\r?$') $scorecard
-        # The CodeQL workflow: every GitHub project gets it, and it runs on every pull request, a fork's too.
-        $codeqlWorkflow = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\codeql.yml') -Raw
-        $uses = [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
-        Check "${name}: the CodeQL workflow pins each action to a full commit SHA with its tag in a comment, and every checkout persists no credentials" ($uses.Count -gt 0 -and -not ($uses | Where-Object { $_.Groups[2].Value -notmatch '^[0-9a-f]{40}$' -or $_.Groups[3].Value -notmatch '^# v\d+\.\d+\.\d+$' }) -and [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: actions/checkout@').Count -gt 0 -and [regex]::Matches($codeqlWorkflow, '(?m)^\s+(?:- )?uses: actions/checkout@').Count -eq [regex]::Matches($codeqlWorkflow, '(?m)^\s+persist-credentials: false\r?$').Count) $codeqlWorkflow
-        Check "${name}: the CodeQL workflow reads contents by default and writes security events in its analyze job only" ($codeqlWorkflow -match '(?m)^permissions:\r?\n  contents: read\r?$' -and [regex]::Matches($codeqlWorkflow, 'security-events: write').Count -eq 1) $codeqlWorkflow
-        Check "${name}: the CodeQL workflow runs on pull requests and in the merge queue, picks its languages in a CodeQL languages job, and analyzes each with the extended queries and no build" ($codeqlWorkflow.Contains('pull_request:') -and $codeqlWorkflow.Contains('merge_group:') -and $codeqlWorkflow.Contains('queries: security-extended') -and $codeqlWorkflow.Contains('build-mode: none') -and $codeqlWorkflow.Contains('name: CodeQL languages') -and $codeqlWorkflow.Contains('language: ${{ fromJSON(needs.languages.outputs.languages) }}')) $codeqlWorkflow
-        $ciConcurrency = [regex]::Match($ci, '(?m)^concurrency:\r?\n  group: ci-[^\r\n]+\r?\n  cancel-in-progress: [^\r\n]+').Value
-        $codeqlConcurrency = [regex]::Match($codeqlWorkflow, '(?m)^concurrency:\r?\n  group: codeql-[^\r\n]+\r?\n  cancel-in-progress: [^\r\n]+').Value
-        Check "${name}: the CodeQL workflow has ci.yml's concurrency groups, named codeql-" ([bool]$ciConcurrency -and $codeqlConcurrency -eq $ciConcurrency.Replace('group: ci-', 'group: codeql-')) "ci=[$ciConcurrency] codeql=[$codeqlConcurrency]"
-        $installAt = $codeqlWorkflow.IndexOf('uses: ./.github/actions/install-dotnet')
-        Check "${name}: the CodeQL workflow installs .NET with the install-dotnet action for C# only, where the project has the action, after the checkout and before CodeQL starts" ([regex]::Matches($codeqlWorkflow, 'uses: \./\.github/actions/install-dotnet').Count -eq 1 -and $codeqlWorkflow.Contains("if: matrix.language == 'csharp' && hashFiles('.github/actions/install-dotnet/action.yml') != ''") -and $installAt -gt $codeqlWorkflow.LastIndexOf('uses: actions/checkout@') -and $installAt -lt $codeqlWorkflow.IndexOf('uses: github/codeql-action/init@')) $codeqlWorkflow
-        # The detect step that picks the languages, run once: every GitHub render has the same file.
-        if (-not $codeqlDetectRan) {
-            $codeqlDetectRan = $true
-            $detect = Get-StepScript $codeqlWorkflow 'detect'
-            $detectCases = [ordered]@{
-                'a tracked C# file and a Python file' = @{ Files = @('src/a.cs', 'tools/b.py', 'README.md'); Expected = 'languages=["actions","csharp","python"]' }
-                'no source file' = @{ Files = @('README.md'); Expected = 'languages=["actions"]' }
-                'all-languages' = @{ Files = @('src/a.cs', 'src/B.java', 'lib/c.rb', 'lib/d.rs', 'web/e.ts', 'native/f.cpp', 'tools/g.py', 'README.md'); Expected = 'languages=["actions","c-cpp","csharp","java-kotlin","javascript-typescript","python","ruby","rust"]' }
-                'needs-a-build' = @{ Files = @('main.go', 'App.swift', 'Main.kt', 'README.md'); Expected = 'languages=["actions"]' }
-            }
-            $detectNumber = 0
-            foreach ($scenario in $detectCases.Keys) {
-                $detectNumber++
-                $detectRepo = Join-Path $Work "codeql-detect-$detectNumber"
-                New-Item -ItemType Directory -Force $detectRepo | Out-Null
-                Push-Location -LiteralPath $detectRepo
-                try {
-                    git init -q
-                    if ($LASTEXITCODE) { throw 'git init failed.' }
-                    foreach ($file in $detectCases[$scenario].Files) {
-                        $filePath = Join-Path $detectRepo $file
-                        New-Item -ItemType Directory -Force (Split-Path -Parent $filePath) | Out-Null
-                        Set-Content -LiteralPath $filePath -Value 'x'
-                    }
-                    git add -A
-                    if ($LASTEXITCODE) { throw 'git add failed.' }
-                    # The step runs in a child process, so a stray exit in it can't end this suite.
-                    $detectScript = Join-Path $Work "codeql-detect-$detectNumber.ps1"
-                    Set-Content -LiteralPath $detectScript -Value $detect
-                    $detectOutput = Join-Path $detectRepo 'github-output.txt'
-                    $savedGitHubOutput = $env:GITHUB_OUTPUT
-                    $env:GITHUB_OUTPUT = $detectOutput
-                    $detectError = ''
-                    try {
-                        $detectLog = & pwsh -NoProfile -File $detectScript 2>&1 | Out-String
-                        if ($LASTEXITCODE) { $detectError = "exit=$LASTEXITCODE $detectLog" }
-                    }
-                    catch { $detectError = "$_" }
-                    finally {
-                        if ($null -eq $savedGitHubOutput) { Remove-Item Env:GITHUB_OUTPUT -ErrorAction SilentlyContinue } else { $env:GITHUB_OUTPUT = $savedGitHubOutput }
-                    }
-                    $detected = if (Test-Path -LiteralPath $detectOutput) { (Get-Content -LiteralPath $detectOutput -Raw).Trim() } else { '' }
-                    Remove-Item -LiteralPath $detectOutput -Force -ErrorAction SilentlyContinue
+        $detectNumber = 0
+        foreach ($scenario in $detectCases.Keys) {
+            $detectNumber++
+            $detectRepo = Join-Path $Work "codeql-detect-$detectNumber"
+            New-Item -ItemType Directory -Force $detectRepo | Out-Null
+            Push-Location -LiteralPath $detectRepo
+            try {
+                git init -q
+                if ($LASTEXITCODE) { throw 'git init failed.' }
+                foreach ($file in $detectCases[$scenario].Files) {
+                    $filePath = Join-Path $detectRepo $file
+                    New-Item -ItemType Directory -Force (Split-Path -Parent $filePath) | Out-Null
+                    Set-Content -LiteralPath $filePath -Value 'x'
                 }
-                finally { Pop-Location }
-                Check "${name}: the CodeQL workflow's detect step picks the languages for $scenario" ($detect -and -not $detectError -and $detected -eq $detectCases[$scenario].Expected) "output=$detected error=$detectError"
+                git add -A
+                if ($LASTEXITCODE) { throw 'git add failed.' }
+                # The step runs in a child process, so a stray exit in it can't end this suite.
+                $detectScript = Join-Path $Work "codeql-detect-$detectNumber.ps1"
+                Set-Content -LiteralPath $detectScript -Value $detect
+                $detectOutput = Join-Path $detectRepo 'github-output.txt'
+                $savedGitHubOutput = $env:GITHUB_OUTPUT
+                $env:GITHUB_OUTPUT = $detectOutput
+                $detectError = ''
+                try {
+                    $detectLog = & pwsh -NoProfile -File $detectScript 2>&1 | Out-String
+                    if ($LASTEXITCODE) { $detectError = "exit=$LASTEXITCODE $detectLog" }
+                }
+                catch { $detectError = "$_" }
+                finally {
+                    if ($null -eq $savedGitHubOutput) { Remove-Item Env:GITHUB_OUTPUT -ErrorAction SilentlyContinue } else { $env:GITHUB_OUTPUT = $savedGitHubOutput }
+                }
+                $detected = if (Test-Path -LiteralPath $detectOutput) { (Get-Content -LiteralPath $detectOutput -Raw).Trim() } else { '' }
+                Remove-Item -LiteralPath $detectOutput -Force -ErrorAction SilentlyContinue
             }
-        }
-        # The code review auto-merge workflow: every GitHub project gets it, and it merges nothing where no Dependabot pull
-        # request moves the NCode Review pin.
-        $autoMerge = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\code-review-auto-merge.yml') -Raw
-        $uses = [regex]::Matches($autoMerge, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
-        Check "${name}: the code review auto-merge workflow runs from the default branch, only on Dependabot's pull requests from the repository itself, with no permissions but its job's contents: write and pull-requests: write" ($autoMerge -match '(?m)^  pull_request_target:\r?\n    types: \[opened, synchronize, reopened\]\r?$' -and -not $autoMerge.Contains('pull_request:') -and $autoMerge -match '(?m)^permissions: \{\}\r?$' -and $autoMerge.Contains("if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository") -and $autoMerge -match '(?m)^    permissions:\r?\n      contents: write\r?\n      pull-requests: write\r?\n    steps:\r?$' -and [regex]::Matches($autoMerge, ': write').Count -eq 2 -and $autoMerge -match '(?m)^    timeout-minutes: \d+\r?$') $autoMerge
-        Check "${name}: the code review auto-merge workflow checks out nothing and pins its one action, fetch-metadata, to a full commit SHA, with its tag in a comment" ($uses.Count -eq 1 -and $uses[0].Groups[1].Value -eq 'dependabot/fetch-metadata' -and $uses[0].Groups[2].Value -match '^[0-9a-f]{40}$' -and $uses[0].Groups[3].Value -match '^# v\d+\.\d+\.\d+$' -and -not $autoMerge.Contains('actions/checkout')) $autoMerge
-        Check "${name}: the code review auto-merge workflow turns on auto-merge, by a method the repository allows, only for a minor or patch bump of NCode Review alone whose every changed line is its pin" ($autoMerge.Contains("steps.metadata.outputs.dependency-names == 'NCodeGroup/code-review'") -and $autoMerge.Contains("steps.metadata.outputs.update-type == 'version-update:semver-minor'") -and $autoMerge.Contains("steps.metadata.outputs.update-type == 'version-update:semver-patch'") -and -not $autoMerge.Contains('semver-major') -and $autoMerge.Contains('uses: NCodeGroup/code-review@[0-9a-f]{40} # v\d+\.\d+\.\d+') -and $autoMerge.Contains('pulls/$env:PR_NUMBER/files') -and $autoMerge.Contains("if: steps.diff.outputs.only-pin == 'true'") -and $autoMerge.Contains('gh pr merge --auto "--$method" --match-head-commit "$env:HEAD_SHA" "$env:PR_URL"') -and $autoMerge -notmatch 'gh pr merge[^\r\n]*--(merge|rebase|squash)\b') $autoMerge
-        # The event's values reach the shell through env only: no expression in a run line or a run block.
-        $inRun = $false; $runIndent = 0; $runExpressions = 0
-        foreach ($line in $autoMerge -split '\r?\n') {
-            $indent = $line.Length - $line.TrimStart().Length
-            if ($inRun -and $line.Trim() -and $indent -le $runIndent) { $inRun = $false }
-            if ($line -match '^(\s+)run: (.*)$') { $runIndent = $Matches[1].Length; $inRun = $Matches[2] -eq '|'; if ($Matches[2].Contains('${{')) { $runExpressions++ }; continue }
-            if ($inRun -and $line.Contains('${{')) { $runExpressions++ }
-        }
-        Check "${name}: the code review auto-merge workflow passes the event's values to its commands through env only" ($runExpressions -eq 0 -and [regex]::Matches($autoMerge, '(?m)^\s+run: ').Count -eq 2) $autoMerge
-        # The diff check that decides only-pin, run once: every GitHub render has the same file.
-        if (-not $diffCheckRan) {
-            $diffCheckRan = $true
-            $diffCheck = Get-StepScript $autoMerge 'diff'
-            $diffFolder = Join-Path $Work 'auto-merge-diff-check'
-            New-Item -ItemType Directory -Force $diffFolder | Out-Null
-            $oldPin = '        uses: NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0'
-            $newPin = '        uses: NCodeGroup/code-review@0123456789abcdef0123456789abcdef01234567 # v0.5.0'
-            $bump = "@@ -60,7 +60,7 @@ jobs:`n       - name: Review`n-$oldPin`n+$newPin`n         with:"
-            function New-ChangedFile([string]$Path = '.github/workflows/code-review.yml', [string]$Status = 'modified', $Patch = $bump) {
-                $file = @{ filename = $Path; status = $Status }
-                if ($null -ne $Patch) { $file.patch = $Patch }
-                $file
-            }
-            $passes = [ordered]@{
-                'a clean pin bump' = @(, @((New-ChangedFile)))
-                'a clean pin bump in two workflows, on two pages' = @(@((New-ChangedFile)), @((New-ChangedFile '.github/workflows/other.yml' -Patch $bump.Replace('        uses:', '      - uses:'))))
-            }
-            $refuses = [ordered]@{
-                'a bump that also edits another line' = @(, @((New-ChangedFile -Patch "$bump`n+          timeout: 5")))
-                'a bump that also changes a line in another step' = @(, @((New-ChangedFile -Patch "$bump`n@@ -80,3 +80,3 @@`n-      - run: echo a`n+      - run: echo b")))
-                'a file outside .github/workflows' = @(, @((New-ChangedFile), (New-ChangedFile 'src/app.ps1' -Patch "@@ -1 +1 @@`n-a`n+b")))
-                'a workflow in a folder below .github/workflows' = @(, @((New-ChangedFile '.github/workflows/nested/code-review.yml')))
-                'an added workflow' = @(, @((New-ChangedFile '.github/workflows/new.yml' 'added' "@@ -0,0 +1 @@`n+$newPin")))
-                'a removed workflow' = @(, @((New-ChangedFile '.github/workflows/code-review.yml' 'removed' "@@ -1 +0,0 @@`n-$oldPin")))
-                'a renamed workflow' = @(, @((New-ChangedFile '.github/workflows/review.yml' 'renamed')))
-                'an empty patch' = @(, @((New-ChangedFile -Patch '')))
-                'no patch at all' = @(, @((New-ChangedFile -Patch $null)))
-                'a pin removed and none added' = @(, @((New-ChangedFile -Patch "@@ -60,2 +60,1 @@`n-$oldPin`n         with:")))
-                'two pins removed and one added' = @(, @((New-ChangedFile -Patch "@@ -60,3 +60,2 @@`n-$oldPin`n-$oldPin`n+$newPin")))
-                'no file at all' = @(, @())
-            }
-            foreach ($scenario in $passes.Keys) {
-                $r = Invoke-AutoMergeDiffCheck $diffCheck $passes[$scenario] $diffFolder
-                Check "${name}: the auto-merge diff check passes $scenario" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=true' -and -not $r.Printed -and ($r.Calls -join '|') -eq 'api --paginate --slurp repos/o/r/pulls/7/files') "output=$($r.Output) printed=$($r.Printed) calls=$($r.Calls -join '|') error=$($r.Error)"
-            }
-            foreach ($scenario in $refuses.Keys) {
-                $r = Invoke-AutoMergeDiffCheck $diffCheck $refuses[$scenario] $diffFolder
-                Check "${name}: the auto-merge diff check refuses $scenario" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=false' -and $r.Printed -like 'Left for a person to merge: *') "output=$($r.Output) printed=$($r.Printed) error=$($r.Error)"
-            }
-            # The merge step that picks the merge method, against fixture repository settings and branch rules.
-            $mergeScript = Get-StepScript $autoMerge 'merge'
-            $all = @{ mergeCommitAllowed = $true; rebaseMergeAllowed = $true; squashMergeAllowed = $true }
-            $noMerge = @{ mergeCommitAllowed = $false; rebaseMergeAllowed = $true; squashMergeAllowed = $true }
-            $squashOnly = @{ mergeCommitAllowed = $false; rebaseMergeAllowed = $false; squashMergeAllowed = $true }
-            $picks = [ordered]@{
-                'a repository that allows every method, with no rule' = @($all, @(, @()), 'merge')
-                'a repository without merge commits' = @($noMerge, @(, @()), 'rebase')
-                'a squash-only repository' = @($squashOnly, @(, @()), 'squash')
-                'a ruleset that allows only squash' = @($all, @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('squash') } })), 'squash')
-                'a ruleset that requires linear history' = @($all, @(, @(@{ type = 'required_linear_history' })), 'rebase')
-                'a ruleset that allows merge and rebase, in a repository without merge commits' = @($noMerge, @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('merge', 'rebase') } })), 'rebase')
-                'a pull request rule that lists no merge methods' = @($all, @(, @(@{ type = 'pull_request'; parameters = @{ required_approving_review_count = 0 } })), 'merge')
-                'a squash-only repository whose rules, on two pages, require linear history and allow only squash' = @($squashOnly, @(@(@{ type = 'required_linear_history' }), @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('squash') } })), 'squash')
-            }
-            foreach ($scenario in $picks.Keys) {
-                $method = $picks[$scenario][2]
-                $r = Invoke-AutoMergeMethod $mergeScript $picks[$scenario][0] $picks[$scenario][1]
-                Check "${name}: the auto-merge method check picks $method for $scenario" ($mergeScript -and -not $r.Error -and ($r.Calls -join '|') -eq "repo view o/r --json mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed|api --paginate --slurp repos/o/r/rules/branches/main|pr merge --auto --$method --match-head-commit 0123456789abcdef0123456789abcdef01234567 https://github.com/o/r/pull/7") "calls=$($r.Calls -join '|') error=$($r.Error)"
-            }
-            $r = Invoke-AutoMergeMethod $mergeScript $squashOnly @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('merge') } }))
-            Check "${name}: the auto-merge method check turns on nothing for a squash-only repository whose ruleset allows only merge commits" ($mergeScript -and $r.Error -like 'No merge method is allowed by both*' -and -not ($r.Calls -like 'pr merge*')) "calls=$($r.Calls -join '|') error=$($r.Error)"
+            finally { Pop-Location }
+            Check "${name}: the CodeQL workflow's detect step picks the languages for $scenario" ($detect -and -not $detectError -and $detected -eq $detectCases[$scenario].Expected) "output=$detected error=$detectError"
         }
     }
-    else {
-        $ci = Get-Content -LiteralPath (Join-Path $dest '.gitlab-ci.yml') -Raw
-        Check "${name}: CI checks the decision index in an always-on job, and runs no commit attribution check" ($ci.Contains('decision-index:') -and $ci.Contains('GIT_DEPTH: "0"') -and $ci.Contains('.template/Test-AdrIndex.ps1 -Base') -and -not $ci.Contains('Test-CommitAttribution') -and -not $ci.Contains('commit-attribution')) $ci
-        $wantsBaseline = $case.Stack -eq 'dotnet' -and [bool]$case.Data.nuget_package
-        Check "${name}: GitLab CI raises a library's baseline from a version tag, with a token, and no other project's" ($ci.Contains('raise-baseline:') -eq $wantsBaseline -and (-not $wantsBaseline -or ($ci.Contains('build/Update-Baseline.ps1') -and $ci.Contains('BASELINE_TOKEN') -and $ci.Contains('merge_request.create') -and $ci.Contains('ls-remote failed with exit code')))) $ci
+    # The code review auto-merge workflow: every GitHub project gets it, and it merges nothing where no Dependabot pull
+    # request moves the NCode Review pin.
+    $autoMerge = Get-Content -LiteralPath (Join-Path $dest '.github\workflows\code-review-auto-merge.yml') -Raw
+    $uses = [regex]::Matches($autoMerge, '(?m)^\s+(?:- )?uses: (\S+)@(\S+)[ \t]*(#[^\r\n]*)?\r?$')
+    Check "${name}: the code review auto-merge workflow runs from the default branch, only on Dependabot's pull requests from the repository itself, with no permissions but its job's contents: write and pull-requests: write" ($autoMerge -match '(?m)^  pull_request_target:\r?\n    types: \[opened, synchronize, reopened\]\r?$' -and -not $autoMerge.Contains('pull_request:') -and $autoMerge -match '(?m)^permissions: \{\}\r?$' -and $autoMerge.Contains("if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository") -and $autoMerge -match '(?m)^    permissions:\r?\n      contents: write\r?\n      pull-requests: write\r?\n    steps:\r?$' -and [regex]::Matches($autoMerge, ': write').Count -eq 2 -and $autoMerge -match '(?m)^    timeout-minutes: \d+\r?$') $autoMerge
+    Check "${name}: the code review auto-merge workflow checks out nothing and pins its one action, fetch-metadata, to a full commit SHA, with its tag in a comment" ($uses.Count -eq 1 -and $uses[0].Groups[1].Value -eq 'dependabot/fetch-metadata' -and $uses[0].Groups[2].Value -match '^[0-9a-f]{40}$' -and $uses[0].Groups[3].Value -match '^# v\d+\.\d+\.\d+$' -and -not $autoMerge.Contains('actions/checkout')) $autoMerge
+    Check "${name}: the code review auto-merge workflow turns on auto-merge, by a method the repository allows, only for a minor or patch bump of NCode Review alone whose every changed line is its pin" ($autoMerge.Contains("steps.metadata.outputs.dependency-names == 'NCodeGroup/code-review'") -and $autoMerge.Contains("steps.metadata.outputs.update-type == 'version-update:semver-minor'") -and $autoMerge.Contains("steps.metadata.outputs.update-type == 'version-update:semver-patch'") -and -not $autoMerge.Contains('semver-major') -and $autoMerge.Contains('uses: NCodeGroup/code-review@[0-9a-f]{40} # v\d+\.\d+\.\d+') -and $autoMerge.Contains('pulls/$env:PR_NUMBER/files') -and $autoMerge.Contains("if: steps.diff.outputs.only-pin == 'true'") -and $autoMerge.Contains('gh pr merge --auto "--$method" --match-head-commit "$env:HEAD_SHA" "$env:PR_URL"') -and $autoMerge -notmatch 'gh pr merge[^\r\n]*--(merge|rebase|squash)\b') $autoMerge
+    # The event's values reach the shell through env only: no expression in a run line or a run block.
+    $inRun = $false; $runIndent = 0; $runExpressions = 0
+    foreach ($line in $autoMerge -split '\r?\n') {
+        $indent = $line.Length - $line.TrimStart().Length
+        if ($inRun -and $line.Trim() -and $indent -le $runIndent) { $inRun = $false }
+        if ($line -match '^(\s+)run: (.*)$') { $runIndent = $Matches[1].Length; $inRun = $Matches[2] -eq '|'; if ($Matches[2].Contains('${{')) { $runExpressions++ }; continue }
+        if ($inRun -and $line.Contains('${{')) { $runExpressions++ }
+    }
+    Check "${name}: the code review auto-merge workflow passes the event's values to its commands through env only" ($runExpressions -eq 0 -and [regex]::Matches($autoMerge, '(?m)^\s+run: ').Count -eq 2) $autoMerge
+    # The diff check that decides only-pin, run once: every GitHub render has the same file.
+    if (-not $diffCheckRan) {
+        $diffCheckRan = $true
+        $diffCheck = Get-StepScript $autoMerge 'diff'
+        $diffFolder = Join-Path $Work 'auto-merge-diff-check'
+        New-Item -ItemType Directory -Force $diffFolder | Out-Null
+        $oldPin = '        uses: NCodeGroup/code-review@ee50bafe8c5461196800f219bad6297b25fb3e79 # v0.4.0'
+        $newPin = '        uses: NCodeGroup/code-review@0123456789abcdef0123456789abcdef01234567 # v0.5.0'
+        $bump = "@@ -60,7 +60,7 @@ jobs:`n       - name: Review`n-$oldPin`n+$newPin`n         with:"
+        function New-ChangedFile([string]$Path = '.github/workflows/code-review.yml', [string]$Status = 'modified', $Patch = $bump) {
+            $file = @{ filename = $Path; status = $Status }
+            if ($null -ne $Patch) { $file.patch = $Patch }
+            $file
+        }
+        $passes = [ordered]@{
+            'a clean pin bump' = @(, @((New-ChangedFile)))
+            'a clean pin bump in two workflows, on two pages' = @(@((New-ChangedFile)), @((New-ChangedFile '.github/workflows/other.yml' -Patch $bump.Replace('        uses:', '      - uses:'))))
+        }
+        $refuses = [ordered]@{
+            'a bump that also edits another line' = @(, @((New-ChangedFile -Patch "$bump`n+          timeout: 5")))
+            'a bump that also changes a line in another step' = @(, @((New-ChangedFile -Patch "$bump`n@@ -80,3 +80,3 @@`n-      - run: echo a`n+      - run: echo b")))
+            'a file outside .github/workflows' = @(, @((New-ChangedFile), (New-ChangedFile 'src/app.ps1' -Patch "@@ -1 +1 @@`n-a`n+b")))
+            'a workflow in a folder below .github/workflows' = @(, @((New-ChangedFile '.github/workflows/nested/code-review.yml')))
+            'an added workflow' = @(, @((New-ChangedFile '.github/workflows/new.yml' 'added' "@@ -0,0 +1 @@`n+$newPin")))
+            'a removed workflow' = @(, @((New-ChangedFile '.github/workflows/code-review.yml' 'removed' "@@ -1 +0,0 @@`n-$oldPin")))
+            'a renamed workflow' = @(, @((New-ChangedFile '.github/workflows/review.yml' 'renamed')))
+            'an empty patch' = @(, @((New-ChangedFile -Patch '')))
+            'no patch at all' = @(, @((New-ChangedFile -Patch $null)))
+            'a pin removed and none added' = @(, @((New-ChangedFile -Patch "@@ -60,2 +60,1 @@`n-$oldPin`n         with:")))
+            'two pins removed and one added' = @(, @((New-ChangedFile -Patch "@@ -60,3 +60,2 @@`n-$oldPin`n-$oldPin`n+$newPin")))
+            'no file at all' = @(, @())
+        }
+        foreach ($scenario in $passes.Keys) {
+            $r = Invoke-AutoMergeDiffCheck $diffCheck $passes[$scenario] $diffFolder
+            Check "${name}: the auto-merge diff check passes $scenario" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=true' -and -not $r.Printed -and ($r.Calls -join '|') -eq 'api --paginate --slurp repos/o/r/pulls/7/files') "output=$($r.Output) printed=$($r.Printed) calls=$($r.Calls -join '|') error=$($r.Error)"
+        }
+        foreach ($scenario in $refuses.Keys) {
+            $r = Invoke-AutoMergeDiffCheck $diffCheck $refuses[$scenario] $diffFolder
+            Check "${name}: the auto-merge diff check refuses $scenario" ($diffCheck -and -not $r.Error -and $r.Output -eq 'only-pin=false' -and $r.Printed -like 'Left for a person to merge: *') "output=$($r.Output) printed=$($r.Printed) error=$($r.Error)"
+        }
+        # The merge step that picks the merge method, against fixture repository settings and branch rules.
+        $mergeScript = Get-StepScript $autoMerge 'merge'
+        $all = @{ mergeCommitAllowed = $true; rebaseMergeAllowed = $true; squashMergeAllowed = $true }
+        $noMerge = @{ mergeCommitAllowed = $false; rebaseMergeAllowed = $true; squashMergeAllowed = $true }
+        $squashOnly = @{ mergeCommitAllowed = $false; rebaseMergeAllowed = $false; squashMergeAllowed = $true }
+        $picks = [ordered]@{
+            'a repository that allows every method, with no rule' = @($all, @(, @()), 'merge')
+            'a repository without merge commits' = @($noMerge, @(, @()), 'rebase')
+            'a squash-only repository' = @($squashOnly, @(, @()), 'squash')
+            'a ruleset that allows only squash' = @($all, @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('squash') } })), 'squash')
+            'a ruleset that requires linear history' = @($all, @(, @(@{ type = 'required_linear_history' })), 'rebase')
+            'a ruleset that allows merge and rebase, in a repository without merge commits' = @($noMerge, @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('merge', 'rebase') } })), 'rebase')
+            'a pull request rule that lists no merge methods' = @($all, @(, @(@{ type = 'pull_request'; parameters = @{ required_approving_review_count = 0 } })), 'merge')
+            'a squash-only repository whose rules, on two pages, require linear history and allow only squash' = @($squashOnly, @(@(@{ type = 'required_linear_history' }), @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('squash') } })), 'squash')
+        }
+        foreach ($scenario in $picks.Keys) {
+            $method = $picks[$scenario][2]
+            $r = Invoke-AutoMergeMethod $mergeScript $picks[$scenario][0] $picks[$scenario][1]
+            Check "${name}: the auto-merge method check picks $method for $scenario" ($mergeScript -and -not $r.Error -and ($r.Calls -join '|') -eq "repo view o/r --json mergeCommitAllowed,rebaseMergeAllowed,squashMergeAllowed|api --paginate --slurp repos/o/r/rules/branches/main|pr merge --auto --$method --match-head-commit 0123456789abcdef0123456789abcdef01234567 https://github.com/o/r/pull/7") "calls=$($r.Calls -join '|') error=$($r.Error)"
+        }
+        $r = Invoke-AutoMergeMethod $mergeScript $squashOnly @(, @(@{ type = 'pull_request'; parameters = @{ allowed_merge_methods = @('merge') } }))
+        Check "${name}: the auto-merge method check turns on nothing for a squash-only repository whose ruleset allows only merge commits" ($mergeScript -and $r.Error -like 'No merge method is allowed by both*' -and -not ($r.Calls -like 'pr merge*')) "calls=$($r.Calls -join '|') error=$($r.Error)"
     }
     if ($case.Stack -eq 'node') {
         $pm = if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' }
@@ -885,50 +857,24 @@ foreach ($case in $cases) {
         $agentsForLint = Get-Content -LiteralPath (Join-Path $dest 'AGENTS.md') -Raw
         Check "${name}: biome.json, the CI lint step and the Landing gate exactly when node_lint is not false" ((Test-Path -LiteralPath (Join-Path $dest 'biome.json')) -eq $lint -and $ci.Contains("$pm run lint") -eq $lint -and ($agentsForLint -match "(?m)^- gate: $([regex]::Escape("if (Test-Path package.json) { $pm run lint }"))\r?$") -eq $lint) $ci
         $install = @{ npm = 'npm ci'; pnpm = 'pnpm install --frozen-lockfile'; yarn = 'yarn install'; bun = 'bun install --frozen-lockfile' }[$pm]
-        $setup = @{ npm = ''; pnpm = 'corepack enable pnpm'; yarn = 'corepack enable yarn'; bun = if ($case.Host -eq 'github') { 'oven-sh/setup-bun@' } else { 'image: oven/bun:1' } }[$pm]
+        $setup = @{ npm = ''; pnpm = 'corepack enable pnpm'; yarn = 'corepack enable yarn'; bun = 'oven-sh/setup-bun@' }[$pm]
         $otherManagers = @('npm', 'pnpm', 'yarn', 'bun') | Where-Object { $_ -ne $pm }
         $managerOk = $ci.Contains($install) -and $ci.Contains($setup) -and ($ci.Contains('corepack') -eq ($pm -in 'pnpm', 'yarn')) -and
             $ci -match "(?<![\w-])$pm run build" -and $ci -match "(?<![\w-])$pm run test" -and -not ($otherManagers | Where-Object { $ci -match "(?<![\w-])$_ (run|ci|install(?! --global))" })
-        if ($case.Host -eq 'github') {
-            $ecosystem = if ($pm -eq 'bun') { 'bun' } else { 'npm' }
-            $managerOk = $managerOk -and (Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw).Contains("package-ecosystem: $ecosystem")
-        }
+        $ecosystem = if ($pm -eq 'bun') { 'bun' } else { 'npm' }
+        $managerOk = $managerOk -and (Get-Content -LiteralPath (Join-Path $dest '.github\dependabot.yml') -Raw).Contains("package-ecosystem: $ecosystem")
         Check "${name}: CI installs and runs with $pm" $managerOk $ci
-        if ($case.Host -eq 'github') {
-            Check "${name}: CI reads the Node.js version from .node-version" ($ci.Contains('node-version-file: .node-version') -and -not $ci.Contains('lts/*')) $ci
-        }
-        elseif ($pm -ne 'bun') {
-            $useNode = $ci.IndexOf('. ./.template/use-node.sh')
-            Check "${name}: GitLab CI selects the .node-version Node.js through use-node.sh, installing the pinned nvs only when needed, before it installs anything" ($ci.Contains('bash ./.template/install-nvs.sh') -and -not $ci.Contains('jasongin/nvs') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf($install) -and ($pm -notin 'pnpm', 'yarn' -or $useNode -lt $ci.IndexOf('corepack'))) $ci
-        }
-        else { Check "${name}: GitLab CI runs Bun without nvs" (-not $ci.Contains('install-nvs.sh') -and -not $ci.Contains('use-node.sh')) $ci }
+        Check "${name}: CI reads the Node.js version from .node-version" ($ci.Contains('node-version-file: .node-version') -and -not $ci.Contains('lts/*')) $ci
     }
     if ($case.Stack -in 'python', 'node', 'powershell') {
         $gate = $case.Data.coverage_gate -ne 'false'
         Check "${name}: CI checks the coverage exactly when coverage_gate is not false" ($ci.Contains('Test-Coverage.ps1') -eq $gate) $ci
-    }
-    if ($case.Host -eq 'gitlab') {
-        $audit = @{ npm = 'npm audit --audit-level=moderate'; pnpm = 'pnpm audit --audit-level moderate'; yarn = 'yarn npm audit --all --recursive --severity moderate'; bun = 'bun audit --audit-level=moderate' }
-        $wantAudit = if ($case.Stack -eq 'node') { $audit[$(if ($case.Data.package_manager) { $case.Data.package_manager } else { 'npm' })] } elseif ($case.Stack -eq 'python') { 'pip-audit -r requirements.txt' } else { '' }
-        Check "${name}: GitLab CI audits the dependencies exactly for Node.js and Python" ($ci.Contains('dependency-audit:') -eq [bool]$wantAudit -and (-not $wantAudit -or $ci.Contains($wantAudit))) $ci
     }
     $licensed = -not ($case.Data -and $case.Data.ContainsKey('license') -and $case.Data.license -eq '')
     $wantHeaders = $case.Stack -ne 'dotnet' -and $licensed -and $case.Data.file_headers -ne 'false'
     Check "${name}: CI checks the file headers exactly when file_headers is on" ($ci.Contains('Test-FileHeaders.ps1') -eq $wantHeaders) $ci
     if ($case.Stack -eq 'python') {
         Check "${name}: the default test command writes coverage.xml exactly when coverage_gate is not false" ((Get-Content -Raw -LiteralPath (Join-Path $dest 'AGENTS.md')).Contains('--cov --cov-branch --cov-report=xml') -eq ($case.Data.coverage_gate -ne 'false')) ''
-    }
-    if ($case.Host -eq 'gitlab' -and $case.Stack -in 'dotnet', 'python', 'powershell', 'other') {
-        $useNode = $ci.IndexOf('. ./.template/use-node.sh')
-        if ($usesNode) { Check "${name}: GitLab CI selects the .node-version Node.js through use-node.sh, installing the pinned nvs only when needed, before the build" ($ci.Contains('bash ./.template/install-nvs.sh') -and -not $ci.Contains('jasongin/nvs') -and $useNode -gt 0 -and $useNode -lt $ci.IndexOf("`n  script:")) $ci }
-        else { Check "${name}: GitLab CI installs no nvs without uses_node" (-not $ci.Contains('install-nvs.sh') -and -not $ci.Contains('use-node.sh')) $ci }
-        if ($case.Stack -eq 'powershell') {
-            Check "${name}: GitLab CI runs the PowerShell job in the .NET SDK image, which has Git and curl, and installs nothing with apt-get" ($ci -match 'build-and-test:\r?\n(?:  #.*\r?\n)*  image: mcr\.microsoft\.com/dotnet/sdk:10\.0\r?\n' -and -not $ci.Contains('mcr.microsoft.com/powershell') -and -not $ci.Contains('apt-get')) $ci
-        }
-        if ($case.Stack -eq 'other') {
-            $image = if ($usesNode) { 'node:lts' } else { 'alpine:3' }
-            Check "${name}: GitLab CI runs the other stack's job in $image, with a before_script exactly when nvs needs one" ($ci -match "build-and-test:\r?\n(?:  #.*\r?\n)*  image: $([regex]::Escape($image))\r?\n" -and ($ci.Contains("`n  before_script:") -eq $usesNode)) $ci
-        }
     }
     $wanted = @($tools | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique)
     $unwanted = @($allTools | Where-Object { $_ -notin $tools } | ForEach-Object { $toolFiles[$_] } | Select-Object -Unique | Where-Object { $_ -notin $wanted })
@@ -1019,10 +965,6 @@ Check 'repository: every pwsh run: block of the workflows parses' (-not $ownPars
 $ownFiles = git -C $repoRoot -c core.quotePath=false ls-files --eol | Where-Object { $_ -match '^i/lf\s' } | ForEach-Object { Join-Path $repoRoot (($_ -split "`t", 2)[1]) }
 $badEnd = $ownFiles | Where-Object { $b = [IO.File]::ReadAllBytes($_); $b.Length -and ($b[-1] -ne 10 -or ($b.Length -gt 1 -and $b[-2] -eq 10)) } | ForEach-Object { $_.Substring($repoRoot.Length).TrimStart('\', '/') }
 Check 'repository: every text file ends with exactly one newline' (-not $badEnd) ($badEnd -join ', ')
-# The GitLab .NET jobs run in the SDK image of the LTS global.json pins (ADR-0155 item 2).
-$sdkMajor = ((Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template/global.json') | ConvertFrom-Json).sdk.version -split '\.')[0]
-$imageMajors = @([regex]::Matches((Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'template/.gitlab-ci.yml.jinja')), 'mcr\.microsoft\.com/dotnet/sdk:(\d+)\.\d+') | ForEach-Object { $_.Groups[1].Value })
-Check 'repository: every .NET SDK image tag in template/.gitlab-ci.yml.jinja names the major version of the SDK template/global.json pins (ADR-0155)' ($imageMajors.Count -gt 0 -and -not @($imageMajors | Where-Object { $_ -ne $sdkMajor })) "global.json: $sdkMajor; image tags: $($imageMajors -join ', ')"
 # This repository runs the template's NCode Review caller as is, so a change to either copy must land in both.
 $reviewCallers = @('.github\workflows\code-review.yml', 'template\.github\workflows\code-review.yml' | ForEach-Object { Join-Path $repoRoot $_ })
 Check 'repository: .github/workflows/code-review.yml is identical to template/.github/workflows/code-review.yml (copy the changed one over the other)' (@($reviewCallers | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }).Count -eq 2 -and (Get-FileHash -LiteralPath $reviewCallers[0]).Hash -eq (Get-FileHash -LiteralPath $reviewCallers[1]).Hash) ($reviewCallers -join ', ')
@@ -1277,7 +1219,7 @@ $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.git
 $m += @(if (-not ((git -C $repoRoot ls-files -s template/.githooks/pre-push) -join '').StartsWith('100755')) { 'template/.githooks/pre-push: not executable in the index' })
 Check 'workflow: ship-plan opens a draft pull request when asked or when the Landing section says draft: yes, and the pre-push hook is executable' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md', '.claude\commands\ship-plan.md') ('the default when the Landing section has no `- draft:` line', 'a project that wants drafts writes `- draft: yes`'))
-$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- draft: {% if git_host == ''github'' and code_review is defined and code_review %}yes{% else %}no{% endif %}', '`draft`: `no`, the default when the line is missing, which a template update never changes'))
+$m += @(Get-MissingText 'template\AGENTS.md.jinja' ('- draft: {% if code_review is defined and code_review %}yes{% else %}no{% endif %}', '`draft`: `no`, the default when the line is missing, which a template update never changes'))
 Check 'workflow: draft stays no by default, and ship-plan and AGENTS.md say how a project opts in with draft: yes' (-not $m) ($m -join '; ')
 $m = @(Get-MissingText ('template\.claude\commands\ship-plan.md', 'template\.github\prompts\ship-plan.prompt.md', 'template\.github\skills\ship-plan\SKILL.md') ('`gate` is `none` or the command to run before a push', 'if (-not $? -or $LASTEXITCODE) { exit 1 } else { exit 0 }', 'stop before pushing: say the gate failed', 'the gate changed files'))
 Check 'workflow: ship-plan runs the Landing section''s gate before it pushes and stops when it fails or changes a file' (-not $m) ($m -join '; ')

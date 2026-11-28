@@ -1,7 +1,7 @@
 {%- set library = stack == 'dotnet' and (nuget_package | default(false)) %}
 {%- set publisher = nuget_publisher | default('') %}
-{%- set ghlib = git_host == 'github' and library and not publisher %}
-{%- set host = 'GitHub organization' if git_host == 'github' else 'GitLab group' %}
+{%- set ghlib = library and not publisher %}
+{%- set host = 'GitHub organization' %}
 {%- set project = best_practices_project | default('') | string %}
 {%- set number = project if project else 'PROJECT_ID' -%}
 # OpenSSF Best Practices Badge
@@ -22,10 +22,10 @@ three levels to the answer to expect and its evidence, and holds the prompt that
 <a href="https://www.bestpractices.dev/projects/{{ number }}"><img alt="OpenSSF Best Practices"
   src="https://www.bestpractices.dev/projects/{{ number }}/badge"></a>
 ```
-{% if git_host == 'github' %}
+
 OpenSSF Scorecard's CII-Best-Practices check scores the badge level: in progress 2, passing 5, silver 7, gold 10
 ([ADR-0020](decisions/project-template/0020-github-projects-are-scored-by-openssf-scorecard.md)).
-{% endif %}
+
 ## Toward Silver
 
 The silver criteria that need a document point to these:
@@ -63,7 +63,6 @@ The silver criteria that need a document point to these:
   [assurance-case.md](assurance-case.md#security-reviews).
 - `dco` (silver SHOULD): unmet. The project doesn't ask for `Signed-off-by`
   ([ADR-0023](decisions/project-template/0023-a-project-ships-the-documents-the-best-practices-silver-level-asks-for.md)).
-{%- if git_host == 'github' %}
 
 ## Also Supported
 
@@ -71,4 +70,3 @@ OpenSSF Scorecard runs on every push to `main` and once a week (`.github/workflo
 each release carries provenance attestations and an SBOM (`.github/workflows/release-provenance.yml`, which
 `publish.yml` calls,
 [ADR-0151](decisions/project-template/0151-release-follow-ups-are-jobs-publish-calls.md)){% endif %}.
-{%- endif %}

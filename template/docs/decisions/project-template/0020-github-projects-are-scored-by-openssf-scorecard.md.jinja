@@ -1,4 +1,4 @@
-{% set review = git_host == 'github' and code_review is defined and code_review -%}
+{% set review = code_review is defined and code_review -%}
 {% set library = stack == 'dotnet' and (nuget_package | default(false)) -%}
 {% set publisher = nuget_publisher | default('') if library else '' -%}
 {% set licensed = (license | default('')) in ['Apache-2.0', 'MIT'] -%}

@@ -3,15 +3,10 @@
 {% if project_description %}
 {{ project_description }}
 {% endif %}
-{%- if git_host == 'gitlab' %}
-[//]: # "Badges: to show the pipeline status, add this line below, with the project's path and default branch:"
-[//]: # "[![pipeline](https://gitlab.com/GROUP/PROJECT/badges/main/pipeline.svg)](https://gitlab.com/GROUP/PROJECT/-/pipelines)"
-{%- else %}
 [//]: # "Badges: to show the CI status, add this line below, with the repository's owner and name:"
 [//]: # "[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)"
 [//]: # "Badges: to show the OpenSSF Scorecard, add this line below, with the repository's owner and name:"
 [//]: # "[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/OWNER/REPO/badge)](https://scorecard.dev/viewer/?uri=github.com/OWNER/REPO)"
-{%- endif %}
 {%- if best_practices_project | default('') %}
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/{{ best_practices_project }}/badge)](https://www.bestpractices.dev/projects/{{ best_practices_project }})
 {%- else %}
@@ -56,7 +51,7 @@ In Claude Code, plan in Accept edits mode and execute in Auto.
 
 Each plan gets its own git worktree under `.claude/worktrees/`, in every tool, so several sessions can work on different plans at once.
 
-The workflow files come from a Copier template, which owns them: never edit `.template/`, `.template-version`, `.githooks/pre-push`, `.github/instructions/project-template.instructions.md`, `.copier-answers.yml`{% if 'claude' in workflow_tools %}, `CLAUDE.md`{% endif %} or the commands, agents and skills the template generates. To change how agents work here, edit `AGENTS.md` or a file it lists. To pull in template improvements, run `.\.template\Update-Project.ps1`: it updates itself, replaces the template's files, merges template changes into the shared settings files, and never touches `AGENTS.md` or this README. To plan the update first, with a trial run, the project files that need changing and the checks, run `/plan-template-update`.{% if git_host == 'github' %} The weekly `template-update` workflow opens an issue, labeled `template-update`, when a newer template version is out, and closes it once the project has updated; `/plan-issue` plans it.{% endif %}
+The workflow files come from a Copier template, which owns them: never edit `.template/`, `.template-version`, `.githooks/pre-push`, `.github/instructions/project-template.instructions.md`, `.copier-answers.yml`{% if 'claude' in workflow_tools %}, `CLAUDE.md`{% endif %} or the commands, agents and skills the template generates. To change how agents work here, edit `AGENTS.md` or a file it lists. To pull in template improvements, run `.\.template\Update-Project.ps1`: it updates itself, replaces the template's files, merges template changes into the shared settings files, and never touches `AGENTS.md` or this README. To plan the update first, with a trial run, the project files that need changing and the checks, run `/plan-template-update`. The weekly `template-update` workflow opens an issue, labeled `template-update`, when a newer template version is out, and closes it once the project has updated; `/plan-issue` plans it.
 
 ## Project
 

@@ -67,7 +67,7 @@ $kept = "# OpenTofu working directories and state`n.terraform/`n*.tfstate`n*.tfp
 # Renders a project from v0.1.0 and replaces its .gitignore with the merge the adoption would have written.
 function New-AdoptedProject([string]$Name) {
     $path = Join-Path $Work $Name
-    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=$Name" --data stack=other --data git_host=github --data 'workflow_tools=[claude]' $tpl $path | Out-Null
+    Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data "project_name=$Name" --data stack=other --data 'workflow_tools=[claude]' $tpl $path | Out-Null
     $ignore = Join-Path $path '.gitignore'
     [IO.File]::WriteAllText($ignore, (Merge-AdoptedFile '.gitignore' $kept ([IO.File]::ReadAllText($ignore))).Text)
     Push-Location $path

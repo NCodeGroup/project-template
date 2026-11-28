@@ -3,11 +3,12 @@
     Check that the working tree's template renders, and updates a project, exactly as the template at -Base does.
 
 .DESCRIPTION
-    Builds a template repository whose v0.1.0 holds the template files (copier.yml, .gitattributes and template/) of
-    the commit -Base and whose v0.2.0 holds those of the working tree. For each of six answer sets it renders a
-    project from both versions and checks that they hold the same files with the same bytes, apart from
-    .copier-answers.yml and .template-version. It then updates each v0.1.0 render to v0.2.0 and checks that the result
-    matches the v0.2.0 render in every file but .copier-answers.yml. Prints PASS or FAIL per check and exits 1 on any failure.
+    Builds a template repository whose v0.1.0 holds the template files (copier.yml, .gitattributes and template/) of the
+    commit -Base and whose v0.2.0 holds those of the working tree. For each of seven answer sets, all on GitHub, or the
+    ones -Only names, it renders a project from both versions and checks that they hold the same files with the same
+    bytes, apart from .copier-answers.yml and .template-version. It then updates each v0.1.0 render to v0.2.0 and checks
+    that the result matches the v0.2.0 render in every file but .copier-answers.yml. -SkipUpdate leaves the update out,
+    to check the renders alone. Prints PASS or FAIL per check and exits 1 on any failure.
 
     It is not named Test-*.ps1, so tests/Invoke-AllTests.ps1 doesn't run it: it needs a base commit to compare with.
     It is a tool for refactors that must not change what a project gets.
@@ -15,15 +16,25 @@
 .PARAMETER Base
     The commit, tag or branch whose template the working tree's template must match.
 
+.PARAMETER Only
+    The answer sets to check, by name: dotnet, dotnet-library, dotnet-library-icon, node-claude, python-node, other and
+    other-code-review. An unknown name stops the run before anything is rendered.
+
+.PARAMETER SkipUpdate
+    Check the renders only, without updating the -Base render.
+
 .PARAMETER Work
     The scratch folder, deleted and recreated. Defaults to project-template-compare-<process ID> in the temp folder,
     the run's own: deleted when every check passes, kept when one fails.
 
 .EXAMPLE
     .\tests\Compare-Renders.ps1 -Base 9bcb4c8557733dd1c8aea5d7370552d53b493a71
+
+.EXAMPLE
+    .\tests\Compare-Renders.ps1 -Base v0.119.0 -Only dotnet-library, other-code-review -SkipUpdate
 #>
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Base, [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-compare-$PID"))
+param([Parameter(Mandatory)][string]$Base, [string[]]$Only, [switch]$SkipUpdate, [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "project-template-compare-$PID"))
 $ErrorActionPreference = 'Stop'
 $ownWork = -not $PSBoundParameters.ContainsKey('Work')
 trap { "Kept the work folder: $Work"; break }
@@ -54,6 +65,21 @@ function Get-RenderedFileHash([string]$Folder) {
     $hashes
 }
 
+$cases = [ordered]@{
+    'dotnet'              = 'stack=dotnet', 'workflow_tools=[claude, copilot]'
+    'dotnet-library'      = 'stack=dotnet', 'workflow_tools=[claude, copilot]', 'nuget_package=true', 'license=MIT'
+    'dotnet-library-icon' = 'stack=dotnet', 'workflow_tools=[copilot]', 'nuget_package=true', 'license=Apache-2.0', 'package_icon=icon.png'
+    'node-claude'         = 'stack=node', 'workflow_tools=[claude]'
+    'python-node'         = 'stack=python', 'workflow_tools=[claude, copilot, local]', 'uses_node=true'
+    'other'               = 'stack=other', 'workflow_tools=[claude, copilot]'
+    'other-code-review'   = 'stack=other', 'workflow_tools=[claude]', 'code_review=true'
+}
+if ($Only) {
+    $unknown = @($Only | Where-Object { -not $cases.Contains($_) })
+    if ($unknown) { throw "No answer set named $($unknown -join ', '). The answer sets: $($cases.Keys -join ', ')." }
+    foreach ($name in @($cases.Keys)) { if ($name -notin $Only) { $cases.Remove($name) } }
+}
+
 if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
 # A direct run keeps its Copier mirror in its own work folder, not in the user's cache; under tests\Invoke-AllTests.ps1 it keeps the runner's folder.
 $copierCache = $env:COPIER_CACHE_DIR
@@ -76,15 +102,6 @@ Push-Location $tpl
 try { Invoke-Git add -A; Invoke-Git commit -q --allow-empty -m 'Working tree'; Invoke-Git tag v0.2.0 }
 finally { Pop-Location }
 
-$cases = [ordered]@{
-    'dotnet-github'         = 'stack=dotnet', 'git_host=github', 'workflow_tools=[claude, copilot]'
-    'dotnet-library-github' = 'stack=dotnet', 'git_host=github', 'workflow_tools=[claude, copilot]', 'nuget_package=true', 'license=MIT'
-    'dotnet-library-gitlab' = 'stack=dotnet', 'git_host=gitlab', 'workflow_tools=[copilot]', 'nuget_package=true', 'license=Apache-2.0', 'package_icon=icon.png'
-    'node-github-claude'    = 'stack=node', 'git_host=github', 'workflow_tools=[claude]'
-    'python-gitlab-node'    = 'stack=python', 'git_host=gitlab', 'workflow_tools=[claude, copilot, local]', 'uses_node=true'
-    'other-github'          = 'stack=other', 'git_host=github', 'workflow_tools=[claude, copilot]'
-}
-
 foreach ($name in $cases.Keys) {
     $data = @("project_name=Test $name") + $cases[$name] | ForEach-Object { '--data'; $_ }
     $before = Join-Path $Work "$name/before"
@@ -100,6 +117,7 @@ foreach ($name in $cases.Keys) {
 
     $different = @($beforeHash.Keys | Where-Object { $afterHash.ContainsKey($_) -and $_ -notin '.copier-answers.yml', '.template-version' -and $beforeHash[$_] -ne $afterHash[$_] } | Sort-Object)
     Check "${name}: every file holds the same bytes" (-not $different) "different: $($different -join ', ')"
+    if ($SkipUpdate) { continue }
 
     Push-Location $before
     try {

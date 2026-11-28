@@ -109,7 +109,6 @@ function Get-AdoptionAnswers([string]$Path) {
     $answers = [ordered]@{
         stack        = $stack
         project_name = if ($solutions.Count -eq 1) { $solutions[0].BaseName } else { Get-RepositoryName $Path $remote }
-        git_host     = 'github'
         # A repository with a history tracks its changes (ADR-0015): an AGENTS.md the template writes for it says pre-release: tracked.
         pre_release  = 'tracked'
     }
@@ -968,15 +967,15 @@ function Get-GitVersioningWorkflowNote {
 # else warn. $Path is absolute; $Template is as Copier got it, from the current location. Update-Project.ps1 cleans
 # -TemplateClone's origin with the same patterns (tests/Test-Adoption.ps1 checks); change them together.
 function Set-TemplateSource([string]$Path, [string]$Template) {
-    $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'
+    $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|[^@/\\\s]+@[^:/\\\s]+:)'
     if ($Template -match $remoteAddress -or -not (Test-Path -LiteralPath $Template -PathType Container)) { return }
     # A folder inside another repository isn't a clone of the template: Git would answer with that repository's origin.
     $prefix = "$(git -C $Template rev-parse --show-prefix 2>$null)".Trim()
     $origin = if (-not $LASTEXITCODE -and -not $prefix) { "$(git -C $Template config --get remote.origin.url 2>$null)".Trim() } else { '' }
     # An https origin can carry a user name and token, which the committed answers mustn't.
     $origin = $origin -replace '^(https?://)[^/@]*@', '$1'
-    # CI and a PC without the SSH key can't read an SSH address, so a GitHub or GitLab one becomes its https address.
-    $origin = $origin -replace '^(?:git@(github\.com|gitlab\.com):|ssh://git@(github\.com|gitlab\.com)/)', 'https://$1$2/'
+    # CI and a PC without the SSH key can't read an SSH address, so a GitHub one becomes its https address.
+    $origin = $origin -replace '^(?:git@github\.com:|ssh://git@github\.com/)', 'https://github.com/'
     if ($origin -notmatch $remoteAddress) {
         Write-Warning "The project names its template by the folder $Template, which only this PC has, because that folder has no origin remote with the template's address. An update on another PC moves it to https://github.com/NCodeGroup/project-template.git."
         return

@@ -89,7 +89,7 @@
     says to move such a job into a workflow of its own (the template's ADR-0026). When it has release-provenance.yml or
     raise-baseline.yml and a publish.yml that doesn't call one of them, or either, it warns that no release gets its
     provenance or baseline pull request (the template's ADR-0151). When the project has version.json, it also warns
-    about a publish.yml or a .gitlab-ci.yml that packs without -p:PublicRelease=true and, when
+    about a publish.yml that packs without -p:PublicRelease=true and, when
     build/ProjectTemplate.props references Nerdbank.GitVersioning, as a library's does, names the files that
     reference it themselves (the template's ADR-0138).
     It also names each job of the project's own workflows, other than publish.yml, that builds, packs, tests without --no-build or pushes packages with an actions/checkout step without fetch-depth: 0 whose folder holds such a step's working directory (its working-directory:, or the job's or the workflow's defaults:), on which Nerdbank.GitVersioning fails the build, or with a -p:Version argument, which it ignores; when it can't tell which checkout a step runs in, it names each shallow checkout of the job.
@@ -264,7 +264,7 @@ function Get-PublisherDispatchNote {
 # A .NET library on GitHub whose AGENTS.md says release: none or tag, or has no release line, publishes nothing as a release's pull request merges, though the template gives it tag+release and the workflows that publish on merge (the template's ADR-0016 and ADR-0137). AGENTS.md is the project's, so the note names the line to change and the update never changes it. Nothing without .github/workflows/tag-release.yml, or while a workflow the nuget_publisher answer names doesn't exist or has no workflow_dispatch trigger, through which tag-release.yml would start it.
 # The template's Adopt-Project.ps1 has a copy; tests/Test-UpdateNotes.ps1 keeps the copies equal.
 function Get-ReleasePolicyNote {
-    if ((Get-Answer 'nuget_package') -ne 'true' -or (Get-Answer 'git_host') -ne 'github' -or -not (Test-Path -LiteralPath .github/workflows/tag-release.yml)) { return }
+    if ((Get-Answer 'nuget_package') -ne 'true' -or -not (Test-Path -LiteralPath .github/workflows/tag-release.yml)) { return }
     $policy = Get-ReleasePolicyAnswer
     if ($policy -notin 'none', 'tag') { return }
     $publishers = @("$(Get-Answer 'nuget_publisher')" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -1174,14 +1174,14 @@ try {
     # NCodeGroup/project-template. Get-TemplateUpdate.ps1 reads such a folder the same way, and
     # Set-TemplateSource in the template's tools/adopt/Adoption.psm1 cleans a clone's origin with the same patterns
     # (tests/Test-Adoption.ps1 checks); change them together.
-    $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|gl:|[^@/\\\s]+@[^:/\\\s]+:)'
+    $remoteAddress = '^(?:[A-Za-z][A-Za-z0-9+.-]+://|gh:|[^@/\\\s]+@[^:/\\\s]+:)'
     $localSource = $null
     if ($src -and $src -notmatch $remoteAddress -and -not (Test-Path -LiteralPath $src -PathType Container)) {
         $cloneOrigin = if ($TemplateClone) { "$(git -C $TemplateClone config --get remote.origin.url 2>$null)".Trim() }
         # An https origin can carry a user name and token, which the committed answers mustn't.
         $cloneOrigin = $cloneOrigin -replace '^(https?://)[^/@]*@', '$1'
-        # CI and a PC without the SSH key can't read an SSH address, so a GitHub or GitLab one becomes its https address.
-        $cloneOrigin = $cloneOrigin -replace '^(?:git@(github\.com|gitlab\.com):|ssh://git@(github\.com|gitlab\.com)/)', 'https://$1$2/'
+        # CI and a PC without the SSH key can't read an SSH address, so a GitHub one becomes its https address.
+        $cloneOrigin = $cloneOrigin -replace '^(?:git@github\.com:|ssh://git@github\.com/)', 'https://github.com/'
         $localSource = $src
         $src = if ($cloneOrigin -match $remoteAddress) { $cloneOrigin } else { $movedSource }
     }
@@ -1587,16 +1587,6 @@ try {
         if ((Test-Path -LiteralPath .github/workflows/publish.yml) -and (Get-Content -LiteralPath .github/workflows/publish.yml -Raw) -notmatch 'PublicRelease=true') {
             ''
             '.github/workflows/publish.yml packs without -p:PublicRelease=true. Nerdbank.GitVersioning takes each package''s version from version.json and ignores -p:Version, and without PublicRelease it adds a -g<commit> suffix, so the check that every package has the tag''s version stops each release before it publishes. Add -p:PublicRelease=true to its dotnet test and dotnet pack commands, as the publish.yml the project template gives a .NET library on GitHub does (the template''s ADR-0138, in docs/decisions/project-template/).'
-        }
-        $gitlabCi = if (Test-Path -LiteralPath .gitlab-ci.yml) { Get-Content -LiteralPath .gitlab-ci.yml -Raw } else { '' }
-        if ($gitlabCi -match 'dotnet\s+pack\b|nuget(?:\.exe)?\s+push\b') {
-            $missing = @()
-            if ($gitlabCi -notmatch 'PublicRelease=true') { $missing += '-p:PublicRelease=true' }
-            if ($gitlabCi -notmatch '(?m)GIT_DEPTH:[ \t]*["'']?0["'']?[ \t]*(?:#.*)?\r?$') { $missing += 'GIT_DEPTH: "0"' }
-            if ($missing.Count) {
-                ''
-                ".gitlab-ci.yml packs or pushes packages without $($missing -join ' and '). Nerdbank.GitVersioning takes each package's version from version.json and ignores -p:Version, adds a -g<commit> suffix without PublicRelease, and fails on a shallow clone, which GitLab CI makes unless GIT_DEPTH is `"0`". Add -p:PublicRelease=true to its dotnet pack command and set GIT_DEPTH: `"0`" in its variables, as the publish.yml the project template gives a .NET library on GitHub does (the template's ADR-0138, in docs/decisions/project-template/)."
-            }
         }
         Get-GitVersioningWorkflowNote
         $gitVersioning = @(Get-GitVersioningReference)

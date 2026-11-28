@@ -103,7 +103,7 @@ try { Invoke-Git add -A; Invoke-Git commit -q -m 'Anchor skip patterns, add the 
 finally { Pop-Location }
 
 $path = Join-Path $Work 'skip'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Skip' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tpl $path | Out-Null
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Skip' --data stack=python --data 'workflow_tools=[claude]' $tpl $path | Out-Null
 $nested = Join-Path $path 'docs/decisions/project-template/README.md'
 # An earlier version wrote the index without the 0013 row.
 [IO.File]::WriteAllText($nested, ([IO.File]::ReadAllText($nested) -replace '(?m)^\| \[0013\]\(.*\r?\n', ''))
@@ -143,7 +143,7 @@ finally { Pop-Location }
 # A third project whose index already matches v0.2.0's: the refresh resets it to v0.1.0's and the update brings it back, so it is listed neither as refreshed nor as discarded (#432).
 $currentIndex = [IO.File]::ReadAllText($nested)
 $samePath = Join-Path $Work 'skip-same'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Skip' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tpl $samePath | Out-Null
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Skip' --data stack=python --data 'workflow_tools=[claude]' $tpl $samePath | Out-Null
 $sameNested = Join-Path $samePath 'docs/decisions/project-template/README.md'
 [IO.File]::WriteAllText($sameNested, $currentIndex)
 Push-Location $samePath
@@ -157,7 +157,7 @@ finally { Pop-Location }
 
 # A second project, renamed by its update to a name only v0.2.0 accepts: Copier can't render v0.1.0 for it, so the update can't refresh the index.
 $renderPath = Join-Path $Work 'skip-render'
-Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Skip' --data stack=python --data git_host=github --data 'workflow_tools=[claude]' $tpl $renderPath | Out-Null
+Invoke-Copier copy --defaults --quiet --vcs-ref v0.1.0 --data 'project_name=Skip' --data stack=python --data 'workflow_tools=[claude]' $tpl $renderPath | Out-Null
 $renderNested = Join-Path $renderPath 'docs/decisions/project-template/README.md'
 [IO.File]::WriteAllText($renderNested, ([IO.File]::ReadAllText($renderNested) -replace '(?m)^\| \[0013\]\(.*\r?\n', ''))
 [IO.File]::AppendAllText($renderNested, "Local note the refresh discards.`n")
