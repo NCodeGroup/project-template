@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.121.0] - 2026-11-27
+
+### Added
+
+- ADR-0043 records that NCode Review reviews a fork's ready pull request and never approves it: `code-review.yml` passes NCodeGroup/code-review's `review-forks: true`, so a pull request from a fork is reviewed once it isn't a draft and records its outcomes when it closes, while a maintainer approves it. It amends ADR-0019 and ADR-0022 ([#540](https://github.com/NCodeGroup/project-template/issues/540), [ADR-0043](template/docs/decisions/project-template/0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md)).
+
+### Changed
+
+- `.github/workflows/code-review.yml`, the one a GitHub project with NCode Review gets and this repository's own, pins NCodeGroup/code-review v1.7.0, by ADR-0009's commented exception until 2026-11-30, and passes `review-forks: true` to both NCode Review steps: a pull request from a fork is reviewed when it opens or reopens as ready for review, when it's marked ready and on a writer's `/review`, never as a draft when it opens and never as an approval, and its closing records its outcomes. The file is the project's own: to turn fork reviews on, take the change from the update's listing of the template's changes to it, or pin v1.7.0 or later in both NCode Review steps, add `review-forks: true` to both, replace the `review` job's `if:` line `github.event.pull_request.head.repo.full_name == github.repository &&` with `(github.event.pull_request.head.repo.full_name == github.repository || !github.event.pull_request.draft) &&`, and drop `&& github.event.pull_request.head.repo.full_name == github.repository` from the `outcomes` job's `if:` ([#540](https://github.com/NCodeGroup/project-template/issues/540), [ADR-0043](template/docs/decisions/project-template/0043-ncode-review-reviews-a-forks-ready-pull-request-and-never-approves-it.md)).
+- `CONTRIBUTING.md`, in a GitHub project with NCode Review, says NCode Review reviews a pull request from a fork once it is marked ready and never approves it, so a maintainer approves it ([#540](https://github.com/NCodeGroup/project-template/issues/540)).
+
 ## [0.120.0] - 2026-11-27
 
 ### Added
@@ -2057,7 +2068,8 @@ To run the v0.9.0 logic on the first update instead, run the wrapper from a clon
 - The .NET layer: `build/ProjectTemplate.props` (latest C#, nullable reference types, implicit usings, warnings as errors, `ContinuousIntegrationBuild` when `CI=true`, author metadata), central package management in `Directory.Packages.props`, the SDK in `global.json`, and C# conventions for Copilot and Claude Code.
 - CI on GitHub or GitLab that runs the build and test commands, with GitHub Actions pinned to commit SHAs, and on GitHub, Dependabot for the CI actions and, by stack, packages and the .NET SDK.
 
-[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.120.0...HEAD
+[unreleased]: https://github.com/NCodeGroup/project-template/compare/v0.121.0...HEAD
+[0.121.0]: https://github.com/NCodeGroup/project-template/compare/v0.120.0...v0.121.0
 [0.120.0]: https://github.com/NCodeGroup/project-template/compare/v0.119.0...v0.120.0
 [0.119.0]: https://github.com/NCodeGroup/project-template/compare/v0.118.1...v0.119.0
 [0.118.1]: https://github.com/NCodeGroup/project-template/compare/v0.118.0...v0.118.1
