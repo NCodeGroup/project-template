@@ -66,6 +66,14 @@ function Get-Answer([string[]]$Lines, [string]$Key) {
 if ((Test-Path $Path) -and (Get-ChildItem -LiteralPath $Path -Force | Select-Object -First 1)) { throw "$Path exists and is not empty." }
 if ($Defaults -and -not $Data.project_name) { throw "-Defaults asks nothing, and project_name has no default. Add it: -Data @{ project_name = '<name>' }" }
 if ($Data.ContainsKey('git_host') -and "$($Data['git_host'])" -ne 'github') { throw (Get-GitHubOnlyMessage "-Data answers git_host '$($Data['git_host'])'.") }
+$fullPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path).TrimEnd([char]'\', [char]'/')
+$repositoryName = Split-Path -Leaf $fullPath
+$pathExisted = Test-Path -LiteralPath $fullPath
+# NCodeGroup's rule for the repository's name (ADR-0045): checked before Copier when -Data answers stack, so nothing is asked or written.
+if ($CreateRemote -and $Data.ContainsKey('stack')) {
+    $refusal = Get-RepositoryNameRefusal $repositoryName "$($Data['stack'])"
+    if ($refusal) { throw "$refusal Nothing was created." }
+}
 foreach ($key in 'user.name', 'user.email') {
     if (-not (git config $key)) { throw "Git has no $key. Set it with: git config --global $key ""<value>""" }
 }
@@ -79,6 +87,14 @@ foreach ($k in $Data.Keys) { $copierArgs += '--data', "$k=$(ConvertTo-CopierValu
 if (-not $Data.ContainsKey('git_host')) { $copierArgs += '--data', 'git_host=github' }
 $copierArgs += $Template, $Path
 Invoke-Copier @copierArgs
+if ($CreateRemote) {
+    $refusal = Get-RepositoryNameRefusal $repositoryName (Get-Answer (Get-Content -LiteralPath (Join-Path $fullPath '.copier-answers.yml')) 'stack')
+    if ($refusal) {
+        # Deleted so the folder can be named again, also where only its case changes on a file system that ignores case.
+        if ($pathExisted) { Get-ChildItem -LiteralPath $fullPath -Force | Remove-Item -Recurse -Force } else { Remove-Item -LiteralPath $fullPath -Recurse -Force }
+        throw "$refusal The files Copier wrote are deleted, and nothing was created on GitHub."
+    }
+}
 Set-TemplateSource (Resolve-Path -LiteralPath $Path).Path $Template
 
 Push-Location $Path
@@ -101,7 +117,7 @@ try {
     "Committed the new project in $((Get-Location).Path)."
 
     if ($CreateRemote) {
-        $name = Split-Path -Leaf (Get-Location)
+        $name = $repositoryName
         $fullName = if ($Owner) { "$Owner/$name" } else { $name }
         gh repo create $fullName "--$Visibility" --source . --remote origin --push
         if ($LASTEXITCODE) { throw 'Creating or pushing the remote repository failed.' }
