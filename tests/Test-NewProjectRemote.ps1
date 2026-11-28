@@ -14,7 +14,8 @@
     It also checks that a local clone of the template as -Template has the first commit name the clone's origin remote
     as _src_path.
     It checks Get-RepositoryNameRefusal (ADR-0045) on names that fit and names that don't, for .NET and other stacks,
-    and the name each refusal gives.
+    and the name each refusal gives. It checks Get-RepositoryNameWarning, the note Adopt-Project.ps1 prints, on the same
+    names.
     It checks that -CreateRemote gives a fitting .NET or Python name to gh repo create, and that a name that doesn't
     fit stops with the fitting name, calls no gh and leaves no folder, before copier runs when -Data answers stack.
     It also checks that a refusal in an existing empty folder leaves the folder empty, that a -Path that ends in a
@@ -124,9 +125,18 @@ foreach ($case in @(
     else {
         Check "name rule: '$name' doesn't fit a $stack repository, and the refusal names '$expected'" ([bool]$refusal -and $refusal.Contains("Name the folder '$expected'.") -and $refusal.Contains('ADR-1001')) "refusal=$refusal"
     }
+    $warning = Get-RepositoryNameWarning $name $stack
+    if ($expected -eq '') {
+        Check "name warning: '$name' fits a $stack repository, so no note" ($null -eq $warning) "warning=$warning"
+    }
+    else {
+        Check "name warning: '$name' gets a note that names '$expected' and what a rename touches" ([bool]$warning -and $warning.Contains("The repository's name, '$name', doesn't fit") -and $warning.Contains("The name that fits is '$expected'.") -and $warning.Contains('1001-a-dotnet-repository-is-named-for-its-root-namespace') -and $warning.Contains('nuget.org trusted publishing policy') -and -not $warning.Contains('New-Project.ps1')) "warning=$warning"
+    }
 }
 $refusal = Get-RepositoryNameRefusal '2fa' 'dotnet'
 Check "name rule: '2fa' doesn't fit a dotnet repository, and the refusal names no folder that doesn't fit either" ([bool]$refusal -and -not $refusal.Contains('Name the folder')) "refusal=$refusal"
+$warning = Get-RepositoryNameWarning '2fa' 'dotnet'
+Check "name warning: '2fa' gets a note that names no name that doesn't fit either" ([bool]$warning -and -not $warning.Contains('The name that fits')) "warning=$warning"
 foreach ($case in @(("Buffers`n", 'dotnet'), ("qso-viewer`n", 'python'))) {
     $name, $stack = $case
     Check "name rule: a name that ends in a line break doesn't fit a $stack repository" ($null -ne (Get-RepositoryNameRefusal $name $stack))
