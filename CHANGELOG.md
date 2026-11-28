@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- A GitHub project's community files point to the organization's `.github` repository, whose `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` and `GOVERNANCE.md` are the defaults for the organization's repositories that have none of their own: `CONTRIBUTING.md` says the project's own files take precedence over those defaults, `CODE_OF_CONDUCT.md` sends a report about behavior elsewhere in the organization to that repository's private form, and `GOVERNANCE.md`'s Continuity section says the organization's owners can administer the repository. An existing project's copies are project-owned, so an update doesn't change them.
+- A GitHub project's community files point to the organization's `.github` repository, whose `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` and `GOVERNANCE.md` are the defaults for the organization's repositories that have none of their own: `CONTRIBUTING.md` says the project's own files take precedence over those defaults, `CODE_OF_CONDUCT.md`, when no `conduct_contact` is answered, sends a report about behavior elsewhere in the organization to that repository's private form, and `GOVERNANCE.md`'s Continuity section says the organization's owners can administer the repository. An existing project's copies are project-owned, so an update doesn't change them.
 
 ## [0.121.0] - 2026-11-27
 
